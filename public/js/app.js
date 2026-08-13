@@ -58,7 +58,7 @@ const I18N_EN = {
   'تغيير الحالة': 'Change status', 'مشغول': 'Busy', 'بالخارج': 'Away', 'حساب': 'Account', 'الطبيعة': 'Nature', 'اخرى': 'Other', 'رفع صورة': 'Upload photo',
   'اختيار هذه الصورة': 'Choose this photo', 'عام': 'General', 'تفعيل الصوت': 'Enable sound', 'صوت الرسائل الجديدة': 'New message sound',
   'صوت دخول المستخدمين': 'User join sound', 'اظهار الوقت في الرسائل': 'Show message time', 'استقبال الرسائل الخاصة': 'Receive private messages',
-  'إشعارات': 'Notifications', 'نظام الكتم': 'Mute system', 'احصل على توثيق دردشتي': 'Get verified', 'شارة تم التحقق ؟': 'Verification badge',
+  'إشعارات': 'Notifications', 'نظام الكتم': 'Mute system', 'نظام الإشراف': 'Supervision system', 'احصل على توثيق دردشتي': 'Get verified', 'شارة تم التحقق ؟': 'Verification badge',
   'احصل على شارة تحقق خاصة تظهر بجوار اسمك أينما ظهر': 'Get a verification badge shown next to your name everywhere', 'حماية حسابك': 'Protect your account',
   'احم حسابك في مجتمعنا من مرسلي البريد العشوائي، لن نقبل التحقق من أي شخص آخر يشبه حسابك': 'Protect your account from impersonation and spam.',
   'الثقة والتميز': 'Trust and distinction', 'اجعل مجتمع دردشتي يثق بك وكن دائمًا مميز في المقدمة': 'Build trust in the community and always stand out.',
@@ -174,6 +174,8 @@ function setLanguage(language, save = true) {
   document.title = APP_LANG === 'en' ? 'Arab Stars Chat' : 'شات نجوم العرب';
   document.body.classList.toggle('lang-en', APP_LANG === 'en');
   $$('.language-option').forEach(b => b.classList.toggle('active', b.dataset.language === APP_LANG));
+  const currentLanguage = $('#currentLanguageLabel');
+  if (currentLanguage) currentLanguage.textContent = APP_LANG === 'en' ? 'English' : 'العربية';
   applyLanguage(document.body);
 }
 function initLanguage() {
@@ -589,11 +591,13 @@ function renderMsg(m) {
     const bsz = Math.min(40, Math.max(12, +m.size || 14));
     el.className = 'robot-message';
     el.innerHTML = `
-      <img src="/img/robot-crown.svg" width="20" height="20" alt="">
+      <img src="/img/robot-message.svg" width="20" height="20" alt="">
       <span class="robot-message-text" style="color:${m.color || '#d946a6'};font-size:${bsz}px">${esc(m.text)}</span>`;
   } else if (m.type === 'welcome') {
-    el.className = 'room-welcome';
-    el.innerHTML = `<img src="/img/welcome-system.svg" width="20" height="20" alt=""><span class="room-welcome-text">${esc(m.text)}</span>`;
+    el.className = 'room-welcome supervision-welcome';
+    el.innerHTML = `
+      <img src="/img/robot-crown.svg" width="20" height="20" alt="">
+      <span class="room-welcome-content"><b class="room-welcome-title">نظام الإشراف</b><span class="room-welcome-text">${esc(m.text)}</span></span>`;
   } else if (m.type === 'join' || m.type === 'leave') {
     el.className = 'system-event ' + m.type;
     el.innerHTML = `

@@ -1254,8 +1254,6 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
 .status-stage .status-nav { z-index:4; }
 
 /* ===== تبديل اللغة ===== */
-.lang-cbtn { color:var(--main); }
-.lang-cbtn i { font-size:19px; }
 .language-sheet { padding:12px 16px 24px; border-radius:22px 22px 0 0; }
 .language-head { display:flex; align-items:center; justify-content:space-between; padding:0 2px 12px; border-bottom:1px solid #eef0f4; }
 .language-head b { color:#172033; font-size:17px; }
@@ -1274,7 +1272,6 @@ body.lang-en .sheet,
 body.lang-en .dialog { direction:ltr; }
 @media (max-width:370px) {
   .c-top-btns { gap:2px; }
-  .lang-cbtn { width:27px; }
 }
 
 @media (max-width:330px) {
@@ -1284,7 +1281,7 @@ body.lang-en .dialog { direction:ltr; }
   .c-mic { width:34px; }
   .c-top-btns { gap:1px; }
   .cbtn { width:26px; height:29px; }
-  .cbtn.ghost, .lang-cbtn { width:22px; }
+  .cbtn.ghost { width:22px; }
 }
 
 /* رسالة ترحيب الغرفة — تخطيط خفيف كما في القالب المرجعي */
@@ -1380,3 +1377,14 @@ body.lang-en .system-event-message { margin-right:0; margin-left:21px; }
 .robot-message img { width:20px; height:20px; min-width:20px; object-fit:contain; border-radius:3px; margin-top:1px; }
 .robot-message-text { font-family:'SF Arabic','Segoe UI',Tahoma,Arial,sans-serif !important; font-weight:800; word-break:break-word; }
 body.lang-en .robot-message { direction:ltr; margin-left:52px; margin-right:0; }
+
+/* زر اللغة داخل صفحة الإعدادات */
+.settings-language-row { width:100%; border-left:0; border-right:0; border-top:0; background:#fff; cursor:pointer; font-family:inherit; }
+.settings-language-title { display:flex; align-items:center; gap:9px; flex:1; }
+.settings-language-title i { width:30px; height:30px; border-radius:8px; background:#1479f2; color:#fff; display:flex; align-items:center; justify-content:center; font-size:17px; }
+.settings-language-value { color:var(--main); font-size:12px; font-weight:900; margin-inline-start:auto; }
+.settings-language-chevron { color:#c3c8d8; font-size:16px; }
+
+.room-welcome-content { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.room-welcome-title { color:var(--main); font-size:13px; font-weight:900; line-height:1.35; }
+.supervision-welcome .room-welcome-text { color:#111827; font-size:14px; }
