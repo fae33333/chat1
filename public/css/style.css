@@ -1286,3 +1286,20 @@ body.lang-en .dialog { direction:ltr; }
   .cbtn { width:26px; height:29px; }
   .cbtn.ghost, .lang-cbtn { width:22px; }
 }
+
+/* رسالة ترحيب الغرفة — تخطيط خفيف كما في القالب المرجعي */
+.room-welcome {
+  font-size:14px;
+  margin-left:52px;
+  flex-direction:row;
+  display:flex;
+  align-items:flex-start;
+  gap:7px;
+  margin-top:9px;
+  margin-bottom:9px;
+  color:#475569;
+  line-height:1.65;
+}
+.room-welcome img { width:20px; height:20px; flex:0 0 20px; object-fit:contain; margin-top:1px; }
+.room-welcome-text { font-weight:700; word-break:break-word; }
+body.lang-en .room-welcome { margin-left:52px; margin-right:0; direction:ltr; }

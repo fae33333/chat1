@@ -102,7 +102,7 @@ Object.assign(I18N_EN, {
   'قطر': 'Qatar', 'البحرين': 'Bahrain', 'سلطنة عمان': 'Oman', 'سوريا': 'Syria', 'لبنان': 'Lebanon', 'الجزائر': 'Algeria', 'المغرب': 'Morocco',
   'تونس': 'Tunisia', 'ليبيا': 'Libya', 'اليمن': 'Yemen', 'السودان': 'Sudan'
 });
-const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info';
+const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text';
 function translateDynamicText(text) {
   if (I18N_EN[text]) return I18N_EN[text];
   if (text.startsWith('اليوم الساعة ')) return 'Today at ' + text.slice('اليوم الساعة '.length);
@@ -589,6 +589,9 @@ function renderMsg(m) {
         </div>
         <div class="mline2"><span class="mtext" style="color:${m.color || '#d946a6'};font-size:${bsz}px;font-weight:800">${esc(m.text)}</span></div>
       </div>`;
+  } else if (m.type === 'welcome') {
+    el.className = 'room-welcome';
+    el.innerHTML = `<img src="/img/welcome-system.svg" width="20" height="20" alt=""><span class="room-welcome-text">${esc(m.text)}</span>`;
   } else if (m.type === 'gift') {
     const ex = parseExtra(m);
     const vis = ex.img || ex.emoji || '🎁';   // صورة مرفوعة أو إيموجي
@@ -616,7 +619,7 @@ function renderMsg(m) {
     el.innerHTML = `<div class="shead"><i class="f7-icons">chat_bubble_text_fill</i> رسالة النظام</div><div class="stext">${esc(m.text)}</div>`;
   }
   area.appendChild(el);
-  if (area.children.length > 140) area.querySelector('.msg,.sys')?.remove();
+  if (area.children.length > 140) area.querySelector('.msg,.sys,.room-welcome')?.remove();
 }
 function parseExtra(m) {
   try { return JSON.parse(m.extra || '{}'); } catch (e) { return {}; }
