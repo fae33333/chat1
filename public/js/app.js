@@ -496,6 +496,15 @@ function renderRooms() {
   $$('#roomsList .room-row').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
   renderRoomsPanel();
 }
+function setRoomReactionMode(room) {
+  const wrap = $('#roomLiveReactions');
+  const bubbles = $('#containersacscs');
+  const show = !!room && room.type !== 'voice';
+  bubbles.style.display = show ? 'flex' : 'none';
+  wrap.setAttribute('aria-hidden', show ? 'false' : 'true');
+  wrap.classList.toggle('voice-room', !!room && room.type === 'voice');
+  $('#chatScreen').classList.toggle('has-live-reactions', show);
+}
 function enterRoom(id, pwd) {
   if (!ME) { openLogin(); return; }
   const r = ROOMS.find(x => x.id === id);
@@ -506,6 +515,7 @@ function enterRoom(id, pwd) {
   if (r.locked && !adm && !pass) { openPassOv(r); return; }   // اطلب كلمة السر قبل الدخول
   if (pass) ROOM_PWD[id] = pass;
   CUR_ROOM = r;
+  setRoomReactionMode(r);
   $('#chatRoomName').textContent = r.name;
   $('#roomNotice').textContent = 'لا يوجد احد في البث المباشر حي الان';
   $('#msgArea').innerHTML = '';
@@ -1693,6 +1703,7 @@ $('#usersPanelX').onclick = () => setUsersPanel(false);
 function leaveRoom() {
   if (CUR_ROOM) SOCKET.emit('leave', CUR_ROOM.id);
   CUR_ROOM = null;
+  setRoomReactionMode(null);
   ROOM_USERS = [];
   closeOv('usersPanel');
   setRoomsPanel(false);
