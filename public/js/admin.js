@@ -52,9 +52,9 @@ const MENU = [
     { id: 'broadcast', icon: 'bolt_badge_a_fill', label: 'ارسال اعلان للجميع' },
     { id: 'words', icon: 'search', label: 'فلترة الكلمات' },
     { id: 'restart', icon: 'arrow_clockwise_circle_fill', label: 'استئناف الخادم' }]},
-  { icon: 'gift_fill', color: '#f472b6', label: 'الهدايا والملصقات', subs: [
+  { icon: 'gift_fill', color: '#f472b6', label: 'الهدايا والإيموجي', subs: [
     { id: 'gifts', icon: 'gift_fill', label: 'ادارة الهدايا' },
-    { id: 'stickers', icon: 'smiley_fill', label: 'رفع الملصقات' }]},
+    { id: 'emojis', icon: 'smiley_fill', label: 'رفع الإيموجي' }]},
   { icon: 'shield_fill', color: '#60a5fa', label: 'توثيق', subs: [
     { id: 'verified', icon: 'checkmark_shield_fill', label: 'توثيق' }]},
   { icon: 'eye_fill', color: '#f472b6', label: 'رصد فريق', subs: [
@@ -114,7 +114,7 @@ const inpRow = (icon, color, label, key, type = 'number', suffix = 'رصيد') =
 // =====================================================
 //  الصفحات
 // =====================================================
-// ---- مساعدا قسمَي الهدايا والملصقات ----
+// ---- مساعدا قسمَي الهدايا والإيموجي ----
 let ED_GIFT = null;
 async function renderAdminGifts() {
   const list = await api('/api/admin/gifts');
@@ -152,14 +152,14 @@ async function renderAdminBots() {
     renderAdminBots();
   });
 }
-async function renderAdminStickers() {
-  const list = await api('/api/admin/stickers');
-  $('#stAdminGrid').innerHTML = list.map(s => `
+async function renderAdminEmojis() {
+  const list = await api('/api/admin/emojis');
+  $('#emojiAdminGrid').innerHTML = list.map(e => `
     <div style="position:relative;background:#fff;border:1px solid #e7eaf5;border-radius:12px;padding:10px;display:flex;align-items:center;justify-content:center">
-      <img src="${esc(s.img)}" style="width:64px;height:64px;object-fit:contain">
-      <button class="st-del" data-id="${s.id}" style="position:absolute;top:4px;left:4px;border:0;background:#fee2e2;color:#dc2626;border-radius:8px;width:22px;height:22px;cursor:pointer;font-weight:900">×</button>
-    </div>`).join('') || '<div style="color:#9aa0b5;font-weight:800;grid-column:1/-1;text-align:center">لا توجد ملصقات بعد</div>';
-  $$('.st-del').forEach(b => b.onclick = async () => { await api('/api/admin/stickers/' + b.dataset.id + '/del', 'POST'); renderAdminStickers(); });
+      <img src="${esc(e.img)}" style="width:48px;height:48px;object-fit:contain">
+      <button class="emoji-del" data-id="${e.id}" style="position:absolute;top:4px;left:4px;border:0;background:#fee2e2;color:#dc2626;border-radius:8px;width:22px;height:22px;cursor:pointer;font-weight:900">×</button>
+    </div>`).join('') || '<div style="color:#9aa0b5;font-weight:800;grid-column:1/-1;text-align:center">لا يوجد إيموجي مرفوع بعد</div>';
+  $$('.emoji-del').forEach(b => b.onclick = async () => { await api('/api/admin/emojis/' + b.dataset.id + '/del', 'POST'); renderAdminEmojis(); });
 }
 
 const PAGES = {
@@ -348,36 +348,36 @@ const PAGES = {
     }
   },
 
-  // ====== رفع الملصقات ======
-  stickers: {
+  // ====== رفع الإيموجي ======
+  emojis: {
     build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#fbbf24">smiley_fill</i> رفع الملصقات</div>
-      <div class="section-title">إضافة ملصقات جديدة <i class="f7-icons mi" style="color:#818cf8">square_arrow_up_fill</i></div>
-      <div class="drop" id="stDrop">
+      <div class="page-title"><i class="f7-icons mi" style="color:#fbbf24">smiley_fill</i> رفع الإيموجي</div>
+      <div class="section-title">إضافة إيموجي مصور جديد <i class="f7-icons mi" style="color:#818cf8">square_arrow_up_fill</i></div>
+      <div class="drop" id="emojiDrop">
         <i class="f7-icons folder">folder_fill</i>
-        <div class="t1">انقر لاختيار صور الملصقات</div>
-        <div class="t2">يمكن اختيار أكثر من صورة معاً — PNG / GIF / WEBP — وتظهر فوراً في تبويب «ملصقات» بالدردشة</div>
-        <input type="file" id="stFile" accept="image/*" multiple style="display:none">
+        <div class="t1">انقر لاختيار صور الإيموجي</div>
+        <div class="t2">يمكن اختيار عدة صور — PNG / GIF / WEBP — وتظهر فوراً مع الإيموجي في الدردشة بحجم صغير</div>
+        <input type="file" id="emojiFiles" accept="image/png,image/gif,image/webp,image/jpeg" multiple style="display:none">
       </div>
-      <div class="section-title">الملصقات الحالية</div>
-      <div id="stAdminGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px"></div>`,
+      <div class="section-title">الإيموجي المرفوع حالياً</div>
+      <div id="emojiAdminGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:10px"></div>`,
     bind: async () => {
-      await renderAdminStickers();
+      await renderAdminEmojis();
       const doFiles = async (files) => {
         for (const f of files) {
           const fd = new FormData(); fd.append('file', f);
-          const up = await api('/api/admin/upload/sticker', 'POST', fd, true);
-          await api('/api/admin/stickers', 'POST', { img: up.path });
+          const up = await api('/api/admin/upload/emoji', 'POST', fd, true);
+          await api('/api/admin/emojis', 'POST', { img: up.path });
         }
-        toast('تمت الإضافة — ظهرت فوراً لجميع المتصلين ⚡');
-        renderAdminStickers();
+        toast('تم رفع الإيموجي وظهر فوراً لجميع المتصلين ⚡');
+        renderAdminEmojis();
       };
-      const dz = $('#stDrop');
-      dz.onclick = () => $('#stFile').click();
+      const dz = $('#emojiDrop');
+      dz.onclick = () => $('#emojiFiles').click();
       dz.ondragover = e => { e.preventDefault(); dz.style.background = '#eef2ff'; };
       dz.ondragleave = () => dz.style.background = '';
       dz.ondrop = e => { e.preventDefault(); dz.style.background = ''; if (e.dataTransfer.files.length) doFiles([...e.dataTransfer.files]); };
-      $('#stFile').onchange = () => { if ($('#stFile').files.length) doFiles([...$('#stFile').files]); };
+      $('#emojiFiles').onchange = () => { if ($('#emojiFiles').files.length) doFiles([...$('#emojiFiles').files]); };
     }
   },
 

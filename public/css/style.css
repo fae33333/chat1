@@ -287,7 +287,7 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .dot { width:9px; height:9px; border-radius:50%; display:inline-block; flex:none; }
 .dot.green { background:#22c55e; } .dot.red { background:#ef4444; } .dot.orange { background:#f59e0b; }
 
-/* ---------- منتقي الإيموجي/الملصقات ---------- */
+/* ---------- منتقي الإيموجي ---------- */
 .emoji-panel {
   position:absolute; bottom:112px; right:8px; left:8px; background:#fff; border-radius:14px; z-index:22; display:none;
   box-shadow:0 16px 40px rgba(10,15,40,.25); border:1px solid #e8ebf4;
@@ -298,8 +298,8 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .em-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; padding:8px; max-height:220px; overflow-y:auto; }
 .em-grid span { font-size:26px; text-align:center; padding:5px 0; cursor:pointer; border-radius:7px; }
 .em-grid span:hover { background:#f3f4f8; }
-.em-grid.big { grid-template-columns:repeat(5,1fr); }
-.em-grid.big span { font-size:34px; }
+.em-grid .custom-emoji-choice { width:36px; height:36px; object-fit:contain; justify-self:center; align-self:center; padding:3px; border-radius:8px; cursor:pointer; }
+.em-grid .custom-emoji-choice:hover { background:#f3f4f8; }
 
 /* ---------- النوافذ ---------- */
 .overlay { position:absolute; inset:0; background:rgba(15,18,35,.55); z-index:40; display:none; align-items:flex-end; justify-content:center; }
@@ -931,18 +931,12 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
 .mrply { display:block; background:rgba(231,84,142,.08); border-radius:8px; padding:3px 9px; margin:2px 0 4px; color:#a1274f; font-size:11.5px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; width:fit-content; }
 .mrply i { font-size:11px; margin-inline-end:3px; }
 
-/* ===== قائمة الألوان + الملصقات + بطاقة الهدية ===== */
-.em-tabs { display:flex; gap:6px; }
-.emt { border:0; background:#eef1fa; color:#5b6379; font-weight:900; font-size:12px; padding:5px 16px; border-radius:16px; cursor:pointer; font-family:inherit; }
-.emt.active { background:var(--main); color:#fff; }
-.em-grid.big img { width:62px; height:62px; object-fit:contain; cursor:pointer; padding:5px; border-radius:9px; }
-.em-grid.big img:hover { background:#f3f4f8; }
-.em-none { grid-column:1/-1; text-align:center; color:#9aa0b5; font-size:12.5px; font-weight:800; padding:26px 8px; }
+/* ===== قائمة الألوان + الإيموجي المصور + بطاقة الهدية ===== */
 .color-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; padding:14px; }
 .csw { aspect-ratio:1; border-radius:50%; border:2px solid #fff; box-shadow:0 1px 4px rgba(20,25,50,.18); cursor:pointer; }
 .csw.auto { background:#fff; color:var(--navy); font-size:10.5px; font-weight:900; border-color:#e2e6f2; }
 .csw.sel { outline:3px solid var(--main); outline-offset:2px; }
-.msticker { width:96px; height:96px; object-fit:contain; display:inline-block; }
+.mcustom-emoji { width:38px; height:38px; object-fit:contain; display:inline-block; }
 /* بطاقة الهدية داخل الغرفة (مثل القالب المرجعي) */
 .gm-card { direction:ltr; display:flex; gap:12px; align-items:center; background:linear-gradient(150deg,#bf1550,#9a0f3d); border-radius:16px; padding:10px 12px; box-shadow:0 2px 7px rgba(150,15,60,.25); }
 .gm-l { display:flex; flex-direction:column; align-items:center; gap:4px; min-width:74px; }

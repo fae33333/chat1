@@ -34,7 +34,7 @@ let APP_LANG = localStorage.getItem('chat_language') === 'en' ? 'en' : 'ar';
 const I18N_EN = {
   'دخول': 'Login', 'إنشاء حساب': 'Create account', 'الخروج': 'Logout', 'الافتراضية': 'Default', 'الصوتية': 'Voice',
   'لا يوجد احد في البث المباشر حي الان': 'No one is live right now', 'بث مباشر': 'Live', 'مغادرة الغرفة': 'Leave room', 'تحديث الغرف': 'Refresh rooms',
-  'متصل الان': 'Online now', 'إيموجي': 'Emoji', 'ملصقات': 'Stickers', 'قائمة الألوان': 'Colors',
+  'متصل الان': 'Online now', 'إيموجي': 'Emoji', 'قائمة الألوان': 'Colors',
   'الغرف': 'Rooms', 'الخاص': 'Private', 'الإشعارات': 'Notifications', 'القائمة': 'Menu',
   'الحالات': 'Statuses', 'حالتي': 'My status', 'اضغط لإضافة تحديث الحالة': 'Tap to add a status update', 'الحالات الحديثة': 'Recent updates',
   'جاري تحميل الحالات...': 'Loading statuses...', 'إضافة حالة': 'Add status', 'صورة': 'Photo', 'فيديو': 'Video', 'ملف صوتي': 'Audio', 'كتابة': 'Text',
@@ -82,7 +82,7 @@ const I18N_EN = {
   'تلقائي': 'Automatic', 'قائمة التجاهل': 'Ignore list', 'إعدادات الإشعارات': 'Notification settings'
 };
 Object.assign(I18N_EN, {
-  'مغلقة 🔒': 'Closed 🔒', 'لا توجد ملصقات بعد — تُضاف من لوحة الإدارة': 'No stickers yet — add them from the admin panel', 'لم يتلقَ هدايا بعد': 'No gifts received yet',
+  'مغلقة 🔒': 'Closed 🔒', 'لم يتلقَ هدايا بعد': 'No gifts received yet',
   'أنت متواجد في هذه الغرفة حالياً 📍': 'You are already in this room 📍', 'اختر غرفة أولا': 'Choose a room first', 'اختر هدية أولا': 'Choose a gift first',
   'اكتب الشكوى أولا': 'Write your complaint first', 'اكتب نص الحالة أولاً': 'Write your status first', 'انتهت هذه الحالة': 'This status has expired',
   'تعذر إرسال الطلب': 'Could not send the request', 'تعذر الإرسال': 'Could not send', 'تعذر الحفظ': 'Could not save', 'تعذر الدخول للغرفة': 'Could not enter the room',
@@ -376,7 +376,7 @@ function connectSocket() {
   SOCKET.on('sync', async () => {
     try { SETTINGS = await api('/api/public-settings'); applySettings(); } catch (e) { }
     try { GIFTS = await api('/api/gifts'); } catch (e) { }
-    loadStickers();
+    loadCustomEmojis();
     loadRooms();          // تحديث قائمة الغرف واللوحة المضغوطة داخل الغرفة
     if (typeof renderRoomsPanel === 'function') renderRoomsPanel();
   });
@@ -569,7 +569,7 @@ function renderMsg(m) {
     const rp = m.reply || u.reply || null;   // اقتباس «الرد على الرسالة»
     const tcol = m.color || u.color || null;  // لون خط مخصص من قائمة الألوان
     const tsize = Math.min(40, Math.max(12, +(m.size || u.size || 0))) || null;   // حجم خط مخصص (الروبوت)
-    const isStk = typeof m.text === 'string' && m.text.startsWith('st::');   // ملصق
+    const isCustomEmoji = typeof m.text === 'string' && m.text.startsWith('em::');
     el.className = 'msg';
     el.innerHTML = `
       <div class="mava">${avatarHtml(u.avatar)}</div>
@@ -581,8 +581,8 @@ function renderMsg(m) {
         ${rp ? `<span class="mrply" dir="rtl"><i class="f7-icons">arrowshape_turn_up_left_fill</i>${esc(rp.name)}: ${esc(rp.text)}</span>` : ''}
         <div class="mline2">
           ${(badge && badge !== 'register.png' && badge !== 'guest.png') ? `<img class="mmark" src="/badges/${badge}" alt="">` : ''}
-          ${isStk
-            ? `<img class="msticker" src="${esc(m.text.slice(4))}" alt="">`
+          ${isCustomEmoji
+            ? `<img class="mcustom-emoji" src="${esc(m.text.slice(4))}" alt="emoji">`
             : `<span class="mtext" style="color:${tcol || color};font-size:${tsize || SETTINGS.font_size || 14}px">${esc(m.text)}</span>`}
         </div>
       </div>`;
@@ -591,7 +591,9 @@ function renderMsg(m) {
       const uid = m.user_id || (m.user && m.user.id);
       if (uid) openUserSheet(+uid, { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted });
     };
-  } else if (m.type === 'bot') {   // رسالة النظام الآلية بالتنسيق المرجعي
+  } else if (m.type === 'bot') {   // رسالة النظام الآلية مع لون وحجم لوحة الإدارة
+    const botSize = Math.min(40, Math.max(12, +m.size || 16));
+    const botColor = /^#[0-9a-fA-F]{6}$/.test(String(m.color || '')) ? m.color : '#660033';
     el.className = 'robot-system-message';
     el.innerHTML = `
       <div class="robot-system-head">
@@ -599,7 +601,7 @@ function renderMsg(m) {
         <div class="robot-system-title">رسالة النظام</div>
       </div>
       <div class="font_msg robot-system-body">
-        <div class="u-msg robot-system-text">${esc(m.text)}</div>
+        <div class="u-msg robot-system-text" style="font-size:${botSize}px;color:${botColor}">${esc(m.text)}</div>
       </div>`;
   } else if (m.type === 'welcome') {
     el.className = 'room-welcome supervision-welcome';
@@ -1738,35 +1740,29 @@ function sendMsg() {
   setReply(null);
   $('#msgInput').value = '';
 }
-// الإيموجي + الملصقات
+// الإيموجي النصي والمصور المرفوع من لوحة الإدارة
 const EMOJIS = '😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 😝 😜 🤪 🤨 🧐 🤓 😎 🥸 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🤭 🤫 🤥 😶 😐 😑 😬 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕 🤑 🤠 😈 👿 👹 👺 🤡 💩 👻 💀 👽 👾 🤖 🎃 😺 😸 😹 😻 😼 😽 🙀 😿 😾 👍 👎 👏 🙌 👐 🤲 🤝 🙏 ✌️ 🤞 🤟 🤘 👌 👈 👉 👆 👇 ☝️ ✋ 🤚 🖐 🖖 👋 🤙 💪 ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 🌹 🌺 🌸 🌼 🌻 🔥 ✨ ⭐ 🌟 💫 💥 💢 💦 💨 🕊️ 🎁 🎂 🎈 🎉 🎊 ☕ 🍫 🍬 🍭 🚗 ⚽ 🏆 🎯 🎤 🎵 🎶 👑 💎 💍'.split(' ');
-$('#emojiGrid').innerHTML = EMOJIS.map(e => `<span>${e}</span>`).join('');
-$$('#emojiGrid span').forEach(s => s.onclick = () => {
-  const inp = $('#msgInput');
-  inp.value += s.textContent;
-  inp.focus();
-});
-// تبويبات إيموجي/ملصقات داخل اللوحة
-$$('.emt').forEach(t => t.onclick = () => {
-  $$('.emt').forEach(x => x.classList.toggle('active', x === t));
-  $('#emojiGrid').style.display = t.dataset.em === 'emo' ? 'grid' : 'none';
-  $('#stickerGrid').style.display = t.dataset.em === 'stk' ? 'grid' : 'none';
-});
-// الملصقات: تُرفع من لوحة الإدارة وتظهر هنا مباشرة
-let STICKERS = [];
-async function loadStickers() {
-  try { STICKERS = await api('/api/stickers'); } catch (e) { STICKERS = []; }
-  $('#stickerGrid').innerHTML = STICKERS.length
-    ? STICKERS.map(s => `<img src="${esc(s.img)}" alt="">`).join('')
-    : '<div class="em-none">لا توجد ملصقات بعد — تُضاف من لوحة الإدارة</div>';
-  $$('#stickerGrid img').forEach(im => im.onclick = () => {
+let CUSTOM_EMOJIS = [];
+function renderEmojiPicker() {
+  $('#emojiGrid').innerHTML = EMOJIS.map(e => `<span>${e}</span>`).join('') +
+    CUSTOM_EMOJIS.map(e => `<img class="custom-emoji-choice" src="${esc(e.img)}" data-id="${e.id}" alt="emoji">`).join('');
+  $$('#emojiGrid span').forEach(s => s.onclick = () => {
+    const inp = $('#msgInput');
+    inp.value += s.textContent;
+    inp.focus();
+  });
+  $$('#emojiGrid .custom-emoji-choice').forEach(im => im.onclick = () => {
     if (!ME) return openLogin();
-    if (!CUR_ROOM) return;
-    SOCKET.emit('msg', { roomId: CUR_ROOM.id, text: 'st::' + im.getAttribute('src') });
+    if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
+    SOCKET.emit('msg', { roomId: CUR_ROOM.id, text: 'em::' + im.getAttribute('src') });
     $('#emojiPanel').classList.remove('open');
   });
 }
-loadStickers();
+async function loadCustomEmojis() {
+  try { CUSTOM_EMOJIS = await api('/api/emojis'); } catch (e) { CUSTOM_EMOJIS = []; }
+  renderEmojiPicker();
+}
+loadCustomEmojis();
 api('/api/gifts').then(g => { GIFTS = g; }).catch(() => { });   // تحميل مسبق لقائمة الهدايا
 // قائمة الألوان — تغيير لون خط رسائلي (يُحفظ على جهازي)
 const TEXT_COLORS = ['#000000', '#e03131', '#e91e8c', '#9c36b5', '#7c3aed', '#1479f2', '#0e9fdd', '#38b6ff', '#2e9e44', '#66bb6a', '#f59e0b', '#ea580c', '#795548', '#6b7280'];
@@ -1807,8 +1803,6 @@ $('#privSettings').onclick = () => toast('اعدادات الخاص : استقب
 document.addEventListener('click', (e) => {
   const ep = $('#emojiPanel');
   if (ep.classList.contains('open') && !ep.contains(e.target) && !e.target.closest('#btnEmoji')) ep.classList.remove('open');
-  const sp = $('#stickerPanel');
-  if (sp && sp.classList.contains('open') && !sp.contains(e.target) && !e.target.closest('#btnApps')) sp.classList.remove('open');
 });
 // إغلاق النوافذ عند لمس الخلفية
 $$('.overlay:not(.full)').forEach(ov => ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); }));

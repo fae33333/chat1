@@ -47,7 +47,7 @@ io.use((socket, next) => sessionMw(socket.request, {}, next));
 // ---------- رفع الملفات ----------
 fs.mkdirSync(path.join(__dirname, 'public/uploads'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/gifts'), { recursive: true });
-fs.mkdirSync(path.join(__dirname, 'public/uploads/stickers'), { recursive: true });
+fs.mkdirSync(path.join(__dirname, 'public/uploads/emojis'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/rooms'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/statuses'), { recursive: true });
 const storage = multer.diskStorage({
@@ -58,10 +58,10 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage, limits: { fileSize: 8 * 1024 * 1024 } });
-// رفع الهدايا/الملصقات من لوحة الإدارة (مجلدات فرعية)
+// رفع الهدايا/الإيموجي من لوحة الإدارة (مجلدات فرعية)
 const storageMedia = multer.diskStorage({
   destination: (req, file, cb) => {
-    const sub = req.path.includes('sticker') ? 'stickers' : (req.path.includes('room') ? 'rooms' : 'gifts');
+    const sub = req.path.includes('emoji') ? 'emojis' : (req.path.includes('room') ? 'rooms' : 'gifts');
     cb(null, path.join(__dirname, 'public/uploads', sub));
   },
   filename: (req, file, cb) => cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 8) + path.extname(file.originalname).toLowerCase())
@@ -473,7 +473,7 @@ const GIFT_LIST = [
 })();
 
 app.get('/api/gifts', async (req, res) => res.json(await q.all(`SELECT * FROM gifts WHERE active=1 ORDER BY id`)));
-app.get('/api/stickers', async (req, res) => res.json(await q.all(`SELECT * FROM stickers ORDER BY id DESC`)));
+app.get('/api/emojis', async (req, res) => res.json(await q.all(`SELECT * FROM custom_emojis ORDER BY id DESC`)));
 
 app.post('/api/gifts/send', requireUser, async (req, res) => {
   const { to_id, gift_id, qty, room_id } = req.body;
@@ -793,24 +793,32 @@ app.post('/api/admin/upload/gift', requireAdmin, (req, res) => {
   });
 });
 
-// ---- رفع الملصقات ----
-app.get('/api/admin/stickers', requireAdmin, async (req, res) => res.json(await q.all(`SELECT * FROM stickers ORDER BY id DESC`)));
-app.post('/api/admin/stickers', requireAdmin, async (req, res) => {
+// ---- رفع إيموجي مخصص ----
+app.get('/api/admin/emojis', requireAdmin, async (req, res) => res.json(await q.all(`SELECT * FROM custom_emojis ORDER BY id DESC`)));
+app.post('/api/admin/emojis', requireAdmin, async (req, res) => {
   const { img } = req.body || {};
-  if (!img) return res.status(400).json({ error: 'لا توجد صورة' });
-  await q.run(`INSERT INTO stickers (img) VALUES (?)`, String(img).slice(0, 150));
+  if (!img) return res.status(400).json({ error: 'لا توجد صورة إيموجي' });
+  await q.run(`INSERT INTO custom_emojis (img) VALUES (?)`, String(img).slice(0, 150));
   io.emit('sync');
   res.json({ ok: true });
 });
-app.post('/api/admin/stickers/:id/del', requireAdmin, async (req, res) => {
-  await q.run(`DELETE FROM stickers WHERE id=?`, +req.params.id);
+app.post('/api/admin/emojis/:id/del', requireAdmin, async (req, res) => {
+  const emoji = await q.get(`SELECT img FROM custom_emojis WHERE id=?`, +req.params.id);
+  await q.run(`DELETE FROM custom_emojis WHERE id=?`, +req.params.id);
+  if (emoji && String(emoji.img).startsWith('/uploads/emojis/')) {
+    try { fs.unlinkSync(path.join(__dirname, 'public/uploads/emojis', path.basename(emoji.img))); } catch (e) { }
+  }
   io.emit('sync');
   res.json({ ok: true });
 });
-app.post('/api/admin/upload/sticker', requireAdmin, (req, res) => {
+app.post('/api/admin/upload/emoji', requireAdmin, (req, res) => {
   uploadMedia.single('file')(req, res, (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر الرفع: ' + (err ? err.message : 'لا يوجد ملف') });
-    res.json({ ok: true, path: '/uploads/stickers/' + req.file.filename });
+    if (!String(req.file.mimetype || '').startsWith('image/')) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      return res.status(400).json({ error: 'ملف الإيموجي يجب أن يكون صورة' });
+    }
+    res.json({ ok: true, path: '/uploads/emojis/' + req.file.filename });
   });
 });
 // صورة الغرفة
@@ -1354,8 +1362,8 @@ io.on('connection', async (socket) => {
     if (me.muted) return socket.emit('err', 'أنت مكتوم ولا يمكنك الكتابة');
     text = String(text || '').slice(0, 500).trim();
     if (!text) return;
-    // فلترة الكلمات (لا تطبق على روابط الملصقات)
-    if (!text.startsWith('st::')) {
+    // فلترة الكلمات (لا تطبق على رابط الإيموجي المصور)
+    if (!text.startsWith('em::')) {
       const words = await q.all(`SELECT word FROM banned_words`);
       for (const w of words) if (text.includes(w.word)) text = text.split(w.word).join('**');
     }

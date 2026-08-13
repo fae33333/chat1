@@ -132,7 +132,7 @@ db.serialize(() => {
     cat TEXT DEFAULT 'افتراضي',
     active INTEGER DEFAULT 1
   )`);
-  db.run(`CREATE TABLE IF NOT EXISTS stickers (
+  db.run(`CREATE TABLE IF NOT EXISTS custom_emojis (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     img TEXT NOT NULL,
     created_at INTEGER DEFAULT (strftime('%s','now'))
