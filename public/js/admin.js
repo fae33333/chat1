@@ -45,6 +45,7 @@ const MENU = [
     { id: 'userAdd', icon: 'plus_circle_fill', label: 'اضافه مستخدم' },
     { id: 'userEdit', icon: 'pencil_circle_fill', label: 'تحرير مستخدم' },
     { id: 'admins', icon: 'rosette', label: 'الحسابات الادارية' },
+    { id: 'kicks', icon: 'square_arrow_right_fill', label: 'قائمة المطرودين' },
     { id: 'bans', icon: 'slash_circle_fill', label: 'قائمة الحظر' }]},
   { icon: 'gear_alt_fill', color: '#94a3b8', label: 'نظام الادارة', subs: [
     { id: 'broadcast', icon: 'bolt_badge_a_fill', label: 'ارسال اعلان للجميع' },
@@ -619,6 +620,7 @@ const PAGES = {
                 <div style="display:flex;gap:6px;margin-top:4px;align-items:center">
                   <img src="/badges/${u.badge}" style="width:18px;height:18px">
                   <span class="chip">رصيد: ${u.balance}</span>
+                  ${u.ip ? `<span class="chip" dir="ltr">IP: ${esc(u.ip)}</span>` : ''}
                   ${u.banned ? '<span class="chip" style="color:#dc2626">محظور</span>' : ''}
                   ${u.muted ? '<span class="chip" style="color:#d97706">مكتوم</span>' : ''}
                 </div>
@@ -664,17 +666,51 @@ const PAGES = {
     }
   },
 
+  // ====== قائمة المطرودين من الغرف ======
+  kicks: {
+    build: () => `
+      <div class="page-title"><i class="f7-icons mi" style="color:#f97316">square_arrow_right_fill</i> قائمة المطرودين من الغرف</div>
+      <div class="info-box" style="background:#fff7ed;border-color:#fed7aa;color:#9a3412;margin-bottom:16px">
+        يبقى الطرد فعالاً ويمنع إعادة دخول الغرفة حتى تضغط «فك الطرد» من هذه الصفحة.
+      </div>
+      <div id="kicksList"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل المطرودين...</div></div>`,
+    bind: async () => {
+      const list = await api('/api/admin/kicks');
+      $('#kicksList').innerHTML = list.length ? list.map(k => `
+        <div class="list-card word-card">
+          <span class="word-name" style="display:flex;flex-direction:column;align-items:flex-start;gap:5px">
+            <span><i class="f7-icons" style="color:#f97316">square_arrow_right_fill</i> ${esc(k.username || 'زائر')}</span>
+            <span style="display:flex;gap:6px;flex-wrap:wrap">
+              <span class="chip">الغرفة: ${esc(k.room_name)}</span>
+              ${k.ip ? `<span class="chip" dir="ltr">IP: ${esc(k.ip)}</span>` : `<span class="chip">User ID: ${k.user_id}</span>`}
+              <span class="chip">${esc(k.reason || 'بدون سبب')}</span>
+            </span>
+          </span>
+          <button class="btn btn-green btn-sm" onclick="unkick(${k.id})"><i class="f7-icons">arrow_uturn_left</i> فك الطرد</button>
+        </div>`).join('') : '<div class="empty">✅ قائمة المطرودين فارغة</div>';
+    }
+  },
+
   // ====== قائمة الحظر ======
   bans: {
     build: () => `
       <div class="page-title"><i class="f7-icons mi" style="color:#dc2626">slash_circle_fill</i> قائمة الحظر</div>
+      <div class="info-box" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;margin-bottom:16px">
+        حظر الزائر مرتبط بعنوان IP الحقيقي ويبقى فعالاً حتى إزالته من هنا.
+      </div>
       <div id="bansList"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري التحميل...</div></div>`,
     bind: async () => {
       const list = await api('/api/admin/bans');
       $('#bansList').innerHTML = list.length ? list.map(b => `
         <div class="list-card word-card">
-          <span class="word-name"><i class="f7-icons">nosign</i> ${esc(b.username)} <span class="chip">${esc(b.reason || 'بدون سبب')}</span></span>
-          <button class="btn btn-red btn-sm" onclick="unban(${b.id})"><i class="f7-icons">trash_fill</i> إزالة الحظر</button>
+          <span class="word-name" style="display:flex;flex-direction:column;align-items:flex-start;gap:5px">
+            <span><i class="f7-icons">nosign</i> ${esc(b.username || 'زائر')}</span>
+            <span style="display:flex;gap:6px;flex-wrap:wrap">
+              ${b.ip ? `<span class="chip" dir="ltr">IP: ${esc(b.ip)}</span>` : '<span class="chip">حظر حساب</span>'}
+              <span class="chip">${esc(b.reason || 'بدون سبب')}</span>
+            </span>
+          </span>
+          <button class="btn btn-green btn-sm" onclick="unban(${b.id})"><i class="f7-icons">arrow_uturn_left</i> فك الحظر</button>
         </div>`).join('') : '<div class="empty">✅ قائمة الحظر فارغة</div>';
     }
   },
@@ -935,7 +971,8 @@ window.muteUser = async (id, m) => {
   // أعد تحميل القائمة مباشرة حتى يتحول الزر بين «كتم» و«إلغاء الكتم» دون تحديث الصفحة.
   if (window._renderUsers) await window._renderUsers($('#searchUser') ? $('#searchUser').value : '');
 };
-window.unban = async (id) => { await api('/api/admin/bans/' + id, 'DELETE'); toast('تمت إزالة الحظر'); loadPage('bans'); };
+window.unkick = async (id) => { await api('/api/admin/kicks/' + id, 'DELETE'); toast('تم فك الطرد ويمكن للمستخدم دخول الغرفة الآن'); loadPage('kicks'); };
+window.unban = async (id) => { await api('/api/admin/bans/' + id, 'DELETE'); toast('تم فك الحظر عن الحساب / IP'); loadPage('bans'); };
 window.delAdmin = async (id, name) => {
   if (!confirm(`حذف الحساب الإداري "${name}" ؟`)) return;
   await api('/api/admin/users/' + id, 'DELETE');

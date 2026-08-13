@@ -18,6 +18,19 @@ const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 
+// الاعتماد على عنوان الزائر الذي يمرره البروكسي الموثوق (Nginx/Cloudflare/Arena).
+// لا نثق إلا بوكلاء loopback والشبكات الخاصة حتى لا يستطيع العميل تزوير X-Forwarded-For مباشرة.
+app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+function normalizeIp(value) {
+  let ip = String(value || '').split(',')[0].trim();
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+  if (ip === '::1') ip = '127.0.0.1';
+  return ip.slice(0, 80);
+}
+function requestIp(req) {
+  return normalizeIp(req.ip || (req.socket && req.socket.remoteAddress) || '');
+}
+
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -79,9 +92,9 @@ const q = {
 // لذلك لا تنتقل هوية تبويب إلى تبويب آخر، وتختفي من العميل عند التحديث.
 const CHAT_TOKENS = new Map();
 const CHAT_TOKEN_TTL = 12 * 60 * 60 * 1000;
-function issueChatToken(user) {
+function issueChatToken(user, ip) {
   const token = crypto.randomBytes(32).toString('hex');
-  CHAT_TOKENS.set(token, { uid: +user.id, rank: user.rank || 'user', createdAt: Date.now() });
+  CHAT_TOKENS.set(token, { uid: +user.id, rank: user.rank || 'user', ip: normalizeIp(ip), createdAt: Date.now() });
   return token;
 }
 function chatTokenFromRequest(req) {
@@ -144,8 +157,25 @@ function requireUser(req, res, next) {
   if (!auth) return res.status(401).json({ error: 'غير مسجل في هذه الصفحة' });
   req.authUid = +auth.uid;
   req.authRank = auth.rank || 'user';
+  req.authIp = normalizeIp(auth.ip || requestIp(req));
   req.chatToken = auth.token || '';
   next();
+}
+async function requireRoomNotKicked(req, res, next) {
+  try {
+    const user = await q.get(`SELECT registered,ip FROM users WHERE id=?`, req.authUid);
+    if (!user) return res.status(401).json({ error: 'المستخدم غير موجود' });
+    const roomId = +req.params.id;
+    const ip = normalizeIp(req.authIp || user.ip);
+    const kick = !user.registered && ip
+      ? await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND ip=? LIMIT 1`, roomId, ip)
+      : await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND user_id=? LIMIT 1`, roomId, req.authUid);
+    if (kick) return res.status(403).json({
+      reason: 'kicked',
+      error: 'أنت مطرود من هذه الغرفة' + (kick.reason ? ': ' + kick.reason : '')
+    });
+    next();
+  } catch (e) { res.status(500).json({ error: 'تعذر التحقق من صلاحية دخول الغرفة' }); }
 }
 function requireAdmin(req, res, next) {
   if (!req.session.uid || !['admin', 'superadmin'].includes(req.session.rank))
@@ -216,16 +246,35 @@ function badgeOf(u) {
 // =====================================================
 //  API - المصادقة
 // =====================================================
-function finishAuthentication(req, res, user) {
-  const payload = { user: pubUser(user), badge: badgeOf(user) };
+async function guestIpBan(ip) {
+  if (!ip) return null;
+  return q.get(`SELECT id,reason FROM bans WHERE ip=? ORDER BY id DESC LIMIT 1`, ip);
+}
+async function guestIpMute(ip) {
+  if (!ip) return null;
+  return q.get(`SELECT id FROM ip_mutes WHERE ip=? LIMIT 1`, ip);
+}
+async function finishAuthentication(req, res, user) {
+  const ip = requestIp(req);
+  let fresh = user;
+  if (ip) {
+    if (!user.registered) {
+      const mutedByIp = await guestIpMute(ip);
+      await q.run(`UPDATE users SET ip=?, muted=? WHERE id=?`, ip, mutedByIp ? 1 : 0, user.id);
+    } else {
+      await q.run(`UPDATE users SET ip=? WHERE id=?`, ip, user.id);
+    }
+    fresh = await q.get(`SELECT * FROM users WHERE id=?`, user.id);
+  }
+  const payload = { user: pubUser(fresh), badge: badgeOf(fresh) };
   if (req.get('x-chat-client') === '1') {
     const previousToken = chatTokenFromRequest(req);
     if (previousToken) CHAT_TOKENS.delete(previousToken);
-    payload.tab_token = issueChatToken(user);
+    payload.tab_token = issueChatToken(fresh, ip);
     return res.json(payload);
   }
-  req.session.uid = user.id;
-  req.session.rank = user.rank;
+  req.session.uid = fresh.id;
+  req.session.rank = fresh.rank;
   res.json(payload);
 }
 
@@ -235,25 +284,32 @@ app.post('/api/login', async (req, res) => {
   if (!u || !u.password || !bcrypt.compareSync(password, u.password))
     return res.status(400).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
   if (u.banned) return res.status(403).json({ error: 'هذا الحساب محظور' });
-  finishAuthentication(req, res, u);
+  await finishAuthentication(req, res, u);
 });
 
 app.post('/api/guest', async (req, res) => {
   let { username, gender } = req.body;
   username = (username || '').trim().slice(0, 20);
   if (!username) return res.status(400).json({ error: 'اكتب اسم المستخدم' });
+  const ip = requestIp(req);
+  const ipBan = await guestIpBan(ip);
+  if (ipBan) return res.status(403).json({ error: 'عنوان IP الخاص بك محظور' + (ipBan.reason ? ': ' + ipBan.reason : '') });
   let u = await q.get(`SELECT * FROM users WHERE username=?`, username);
   if (u && u.registered) return res.status(400).json({ error: 'هذا الاسم مسجل، قم بتسجيل الدخول' });
   if (!u) {
     const r = await q.run(`INSERT INTO users (username,gender,registered,membership,rank) VALUES (?,?,0,'none','user')`, username, gender || 'secret');
     u = await q.get(`SELECT * FROM users WHERE id=?`, r.lastID);
   }
-  finishAuthentication(req, res, u);
+  // حظر الزائر مرتبط بالـ IP الحالي لا بالاسم الذي قد يُعاد استخدامه من شبكة أخرى.
+  if (u.banned) { await q.run(`UPDATE users SET banned=0 WHERE id=?`, u.id); u.banned = 0; }
+  await finishAuthentication(req, res, u);
 });
 
 app.post('/api/register', async (req, res) => {
   const { username, password, gender, age, country } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'أكمل الحقول المطلوبة' });
+  const ipBan = await guestIpBan(requestIp(req));
+  if (ipBan) return res.status(403).json({ error: 'لا يمكن التسجيل من عنوان IP محظور' });
   const ex = await q.get(`SELECT id FROM users WHERE username=?`, username);
   if (ex) {
     // ضيف يحوّل حسابه لمسجل
@@ -270,7 +326,7 @@ app.post('/api/register', async (req, res) => {
     username, bcrypt.hashSync(password, 10), gender || 'secret', age || 25, country || '');
   const u = await q.get(`SELECT * FROM users WHERE id=?`, r.lastID);
   io.emit('sync');
-  finishAuthentication(req, res, u);
+  await finishAuthentication(req, res, u);
 });
 
 // لوحة الإدارة تستخدم جلسة الكوكي المعتادة.
@@ -317,12 +373,12 @@ app.get('/api/rooms/:id', async (req, res) => {
   res.json({ ...room, locked: room.password ? 1 : 0, password: undefined });
 });
 
-app.get('/api/rooms/:id/messages', requireUser, async (req, res) => {
+app.get('/api/rooms/:id/messages', requireUser, requireRoomNotKicked, async (req, res) => {
   const msgs = await q.all(`SELECT * FROM messages WHERE room_id=? ORDER BY id DESC LIMIT 60`, req.params.id);
   res.json(msgs.reverse());
 });
 
-app.get('/api/rooms/:id/users', requireUser, async (req, res) => {
+app.get('/api/rooms/:id/users', requireUser, requireRoomNotKicked, async (req, res) => {
   const set = roomUsers[req.params.id];
   if (!set) return res.json([]);
   const users = [];
@@ -778,7 +834,7 @@ app.delete('/api/admin/rooms/:id', requireAdmin, async (req, res) => {
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
   const search = req.query.q || '';
   const rows = await q.all(`SELECT * FROM users WHERE username LIKE ? ORDER BY id DESC LIMIT 200`, `%${search}%`);
-  res.json(rows.map(u => ({ ...pubUser(u), banned: u.banned, muted: u.muted, badge: badgeOf(u) })));
+  res.json(rows.map(u => ({ ...pubUser(u), banned: u.banned, muted: u.muted, ip: u.ip || '', badge: badgeOf(u) })));
 });
 
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
@@ -808,49 +864,115 @@ app.delete('/api/admin/users/:id', requireSuper, async (req, res) => {
   res.json({ ok: true });
 });
 
+function isIpModeratedGuest(target) {
+  return !target.registered && !!normalizeIp(target.ip);
+}
+function socketsForModerationTarget(target) {
+  const byIp = isIpModeratedGuest(target);
+  const ip = normalizeIp(target.ip);
+  return [...io.sockets.sockets.values()].filter(socket => byIp
+    ? (!socket.data.registered && socket.data.clientIp === ip)
+    : (+socket.data.userId === +target.id));
+}
+async function userIdsForModerationTarget(target) {
+  if (!isIpModeratedGuest(target)) return [+target.id];
+  const rows = await q.all(`SELECT id FROM users WHERE registered=0 AND ip=?`, normalizeIp(target.ip));
+  return rows.map(r => +r.id);
+}
+
 app.post('/api/admin/users/:id/ban', requireModerator, async (req, res) => {
   const banned = req.body.banned ? 1 : 0;
-  const target = await q.get(`SELECT id,username,rank FROM users WHERE id=?`, +req.params.id);
+  const target = await q.get(`SELECT id,username,rank,registered,ip FROM users WHERE id=?`, +req.params.id);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
   if (!allowModerationAction(req, res, target)) return;
-  await q.run(`UPDATE users SET banned=? WHERE id=?`, banned, target.id);
-  if (banned) await q.run(`INSERT OR IGNORE INTO bans (username,reason) VALUES (?,?)`, target.username, req.body.reason || '');
-  else await q.run(`DELETE FROM bans WHERE username=?`, target.username);
-  res.json({ ok: true, banned });
+  const reason = String(req.body.reason || 'حظر من الإدارة').slice(0, 150);
+  const byIp = isIpModeratedGuest(target);
+  const ip = normalizeIp(target.ip);
+
+  if (byIp) {
+    await q.run(`UPDATE users SET banned=? WHERE registered=0 AND ip=?`, banned, ip);
+    if (banned) {
+      const exists = await q.get(`SELECT id FROM bans WHERE ip=? LIMIT 1`, ip);
+      if (!exists) await q.run(`INSERT INTO bans (username,ip,reason) VALUES (?,?,?)`, target.username, ip, reason);
+    } else {
+      await q.run(`DELETE FROM bans WHERE ip=?`, ip);
+    }
+  } else {
+    await q.run(`UPDATE users SET banned=? WHERE id=?`, banned, target.id);
+    if (banned) {
+      const exists = await q.get(`SELECT id FROM bans WHERE username=? AND (ip='' OR ip IS NULL) LIMIT 1`, target.username);
+      if (!exists) await q.run(`INSERT INTO bans (username,ip,reason) VALUES (?, '', ?)`, target.username, reason);
+    } else {
+      await q.run(`DELETE FROM bans WHERE username=? AND (ip='' OR ip IS NULL)`, target.username);
+    }
+  }
+
+  if (banned) {
+    for (const socket of socketsForModerationTarget(target)) {
+      socket.emit('banned', { text: byIp ? 'تم حظر عنوان IP الخاص بك بواسطة الإدارة' : 'تم حظر حسابك بواسطة الإدارة' });
+      setTimeout(() => socket.disconnect(true), 80);
+    }
+  }
+  res.json({ ok: true, banned, by_ip: byIp ? 1 : 0 });
 });
 
 app.post('/api/admin/users/:id/mute', requireModerator, async (req, res) => {
   const uid = +req.params.id;
   const muted = req.body.muted ? 1 : 0;
-  const target = await q.get(`SELECT id,username,rank FROM users WHERE id=?`, uid);
+  const target = await q.get(`SELECT id,username,rank,registered,ip FROM users WHERE id=?`, uid);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
   if (!allowModerationAction(req, res, target)) return;
+  const byIp = isIpModeratedGuest(target);
+  const ip = normalizeIp(target.ip);
+  let affectedIds;
 
-  await q.run(`UPDATE users SET muted=? WHERE id=?`, muted, uid);
-  await refreshUserEverywhere(uid);
-  io.to('user_' + uid).emit('mute_changed', { muted });
-  res.json({ ok: true, muted });
+  if (byIp) {
+    if (muted) {
+      await q.run(`INSERT INTO ip_mutes (ip,username,reason) VALUES (?,?,?) ON CONFLICT(ip) DO UPDATE SET username=excluded.username,reason=excluded.reason`,
+        ip, target.username, String(req.body.reason || 'كتم من الإدارة').slice(0, 150));
+    } else {
+      await q.run(`DELETE FROM ip_mutes WHERE ip=?`, ip);
+    }
+    await q.run(`UPDATE users SET muted=? WHERE registered=0 AND ip=?`, muted, ip);
+    affectedIds = await userIdsForModerationTarget(target);
+  } else {
+    await q.run(`UPDATE users SET muted=? WHERE id=?`, muted, uid);
+    affectedIds = [uid];
+  }
+  for (const id of affectedIds) await refreshUserEverywhere(id);
+  for (const socket of socketsForModerationTarget(target)) socket.emit('mute_changed', { muted });
+  res.json({ ok: true, muted, by_ip: byIp ? 1 : 0 });
 });
 
-// طرد المستخدم من الغرفة الحالية مع إبقاء حسابه واتصاله بالموقع فعالين.
+// الطرد دائم حتى إلغائه من لوحة الإدارة، ويطبّق على IP للزائر.
 app.post('/api/admin/users/:id/kick', requireModerator, async (req, res) => {
   const uid = +req.params.id;
   const roomId = +req.body.room_id;
-  const target = await q.get(`SELECT id,username,rank FROM users WHERE id=?`, uid);
+  const target = await q.get(`SELECT id,username,rank,registered,ip FROM users WHERE id=?`, uid);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
   if (!allowModerationAction(req, res, target, true)) return;
-  if (!roomUsers[roomId] || !roomUsers[roomId].has(uid))
+  const byIp = isIpModeratedGuest(target);
+  const ip = normalizeIp(target.ip);
+  const affectedIds = await userIdsForModerationTarget(target);
+  if (!roomUsers[roomId] || !affectedIds.some(id => roomUsers[roomId].has(id)))
     return res.status(400).json({ error: 'المستخدم لم يعد موجوداً في الغرفة' });
 
-  io.to('user_' + uid).emit('kicked', { roomId, text: 'تم طردك من الغرفة بواسطة الإدارة' });
-  for (const socketId of (userSockets[uid] || [])) {
-    const targetSocket = io.sockets.sockets.get(socketId);
-    if (targetSocket) targetSocket.leave('room_' + roomId);
+  const exists = byIp
+    ? await q.get(`SELECT id FROM room_kicks WHERE room_id=? AND ip=? LIMIT 1`, roomId, ip)
+    : await q.get(`SELECT id FROM room_kicks WHERE room_id=? AND user_id=? LIMIT 1`, roomId, uid);
+  if (!exists) {
+    await q.run(`INSERT INTO room_kicks (room_id,user_id,username,ip,reason,kicked_by) VALUES (?,?,?,?,?,?)`,
+      roomId, byIp ? 0 : uid, target.username, byIp ? ip : '', String(req.body.reason || 'طرد من الغرفة').slice(0, 150), req.moderator.username);
   }
-  roomUsers[roomId].delete(uid);
+
+  for (const socket of socketsForModerationTarget(target)) {
+    socket.emit('kicked', { roomId, text: 'تم طردك من هذه الغرفة بواسطة الإدارة' });
+    socket.leave('room_' + roomId);
+  }
+  affectedIds.forEach(id => roomUsers[roomId].delete(id));
   await emitRoomUsers(roomId);
   await emitRoomCounts();
-  res.json({ ok: true });
+  res.json({ ok: true, by_ip: byIp ? 1 : 0 });
 });
 
 // ---- الحسابات الإدارية ----
@@ -859,14 +981,32 @@ app.get('/api/admin/admins', requireAdmin, async (req, res) => {
   res.json(rows.map(u => ({ ...pubUser(u), badge: badgeOf(u) })));
 });
 
-// ---- قائمة الحظر ----
+// ---- قائمة الحظر حسب الحساب أو IP ----
 app.get('/api/admin/bans', requireAdmin, async (req, res) => res.json(await q.all(`SELECT * FROM bans ORDER BY id DESC`)));
 app.delete('/api/admin/bans/:id', requireAdmin, async (req, res) => {
   const b = await q.get(`SELECT * FROM bans WHERE id=?`, req.params.id);
   if (b) {
-    await q.run(`DELETE FROM bans WHERE id=?`, req.params.id);
-    await q.run(`UPDATE users SET banned=0 WHERE username=?`, b.username);
+    if (b.ip) {
+      await q.run(`DELETE FROM bans WHERE ip=?`, b.ip);
+      await q.run(`UPDATE users SET banned=0 WHERE registered=0 AND ip=?`, b.ip);
+    } else {
+      await q.run(`DELETE FROM bans WHERE id=?`, b.id);
+      await q.run(`UPDATE users SET banned=0 WHERE username=?`, b.username);
+    }
   }
+  res.json({ ok: true });
+});
+
+// ---- قائمة المطرودين من الغرف — لا ينتهي الطرد إلا بالحذف من هنا ----
+app.get('/api/admin/kicks', requireAdmin, async (req, res) => {
+  const rows = await q.all(`
+    SELECT k.*,COALESCE(r.name,'غرفة محذوفة') room_name
+    FROM room_kicks k LEFT JOIN rooms r ON r.id=k.room_id
+    ORDER BY k.id DESC`);
+  res.json(rows);
+});
+app.delete('/api/admin/kicks/:id', requireAdmin, async (req, res) => {
+  await q.run(`DELETE FROM room_kicks WHERE id=?`, +req.params.id);
   res.json({ ok: true });
 });
 
@@ -967,8 +1107,13 @@ io.on('connection', async (socket) => {
   if (!uid) { socket.disconnect(); return; }
   let me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
   if (!me) { socket.disconnect(); return; }
+  const clientIp = normalizeIp((tokenAuth && tokenAuth.ip) || socket.handshake.address || '');
+  if (me.banned || (!me.registered && await guestIpBan(clientIp))) { socket.disconnect(); return; }
   if (tokenAuth && CHAT_TOKENS.has(socketToken)) CHAT_TOKENS.get(socketToken).rank = me.rank;
   socket.data.chatToken = socketToken;
+  socket.data.userId = uid;
+  socket.data.registered = me.registered ? 1 : 0;
+  socket.data.clientIp = clientIp;
 
   const mePub = { ...pubUser(me), badge: badgeOf(me) };
   onlineUsers[uid] = mePub;
@@ -982,6 +1127,14 @@ io.on('connection', async (socket) => {
     const done = (o) => { if (ack) ack(o); };
     const room = await q.get(`SELECT * FROM rooms WHERE id=?`, roomId);
     if (!room) return done({ ok: false, reason: 'missing', text: 'الغرفة غير موجودة' });
+    const kick = !me.registered && clientIp
+      ? await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND ip=? LIMIT 1`, +roomId, clientIp)
+      : await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND user_id=? LIMIT 1`, +roomId, uid);
+    if (kick) return done({
+      ok: false,
+      reason: 'kicked',
+      text: '🚫 أنت مطرود من هذه الغرفة' + (kick.reason ? ': ' + kick.reason : '') + ' — تواصل مع الإدارة لفك الطرد'
+    });
     const isAdm = me.rank === 'superadmin' || me.rank === 'admin';
     if (room.status !== 'open' && !isAdm)
       return done({ ok: false, reason: 'closed', text: '🔒 هذه الغرفة مغلقة حالياً من الإدارة' });

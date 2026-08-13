@@ -162,6 +162,29 @@ db.serialize(() => {
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
 
+  // ---------- كتم الزوار حسب عنوان IP ----------
+  db.run(`CREATE TABLE IF NOT EXISTS ip_mutes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT UNIQUE NOT NULL,
+    username TEXT DEFAULT '',
+    reason TEXT DEFAULT '',
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+
+  // ---------- المطرودون من الغرف (يبقى الطرد حتى إلغائه من لوحة الإدارة) ----------
+  db.run(`CREATE TABLE IF NOT EXISTS room_kicks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id INTEGER NOT NULL,
+    user_id INTEGER DEFAULT 0,
+    username TEXT DEFAULT '',
+    ip TEXT DEFAULT '',
+    reason TEXT DEFAULT '',
+    kicked_by TEXT DEFAULT '',
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_room_kicks_room_ip ON room_kicks (room_id, ip)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_room_kicks_room_user ON room_kicks (room_id, user_id)`);
+
   // ---------- التوثيق ----------
   db.run(`CREATE TABLE IF NOT EXISTS verified (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

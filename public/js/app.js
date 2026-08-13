@@ -241,6 +241,11 @@ function connectSocket() {
     showScreen('rooms');
     toast(text || 'تم طردك من الغرفة', false);
   });
+  SOCKET.on('banned', ({ text }) => {
+    toast(text || 'تم حظرك بواسطة الإدارة', false);
+    CHAT_TOKEN = '';
+    setTimeout(() => location.reload(), 2200);
+  });
   SOCKET.on('err', (t) => toast(t, false));
 }
 function showAnnounce(text) {
@@ -332,17 +337,20 @@ function enterRoom(id, pwd) {
   setRoomsPanel(false);
   $('#roomsVeil').style.display = 'none';
   SOCKET.emit('join', id, pass, (res) => {
-    if (res && res.ok) return;
-    // رُفض الدخول (كلمة مرور خاطئة/غرفة مغلقة) — نرجع لقائمة الغرف
+    if (res && res.ok) {
+      loadRoomMessages(id);
+      api('/api/rooms/' + id + '/users').then(u => { ROOM_USERS = u; renderUsers(); });
+      return;
+    }
+    // رُفض الدخول (كلمة مرور خاطئة/غرفة مغلقة/مطرود) — نرجع لقائمة الغرف
     delete ROOM_PWD[id];
     leaveRoom();
     showScreen('rooms');
     if (res.reason === 'password') openPassOv(r, false);
     else if (res.reason === 'wrong_pass') openPassOv(r, true);
-    else toast(res.text || 'تعذر الدخول للغرفة');
+    else if (res.reason === 'kicked') toast(res.text || '🚫 أنت مطرود من هذه الغرفة', false);
+    else toast(res.text || 'تعذر الدخول للغرفة', false);
   });
-  loadRoomMessages(id);
-  api('/api/rooms/' + id + '/users').then(u => { ROOM_USERS = u; renderUsers(); });
 }
 // نافذة كلمة مرور الغرفة المحمية
 let PASS_ROOM = null;
@@ -537,7 +545,7 @@ $('#usMute').onclick = async () => {
     const roomUser = ROOM_USERS.find(u => u.id === target.id);
     if (roomUser) roomUser.muted = target.muted;
     syncUserActionSheet();
-    toast(target.muted ? `تم كتم ${target.username}` : `تم إلغاء كتم ${target.username}`);
+    toast((target.muted ? `تم كتم ${target.username}` : `تم إلغاء كتم ${target.username}`) + (d.by_ip ? ' حسب عنوان IP' : ''));
   } catch (e) { toast(e.error || 'تعذر تغيير حالة الكتم', false); }
   finally { button.disabled = false; }
 };
@@ -547,9 +555,9 @@ $('#usKick').onclick = async () => {
   const button = $('#usKick');
   button.disabled = true;
   try {
-    await api(`/api/admin/users/${target.id}/kick`, 'POST', { room_id: CUR_ROOM.id });
+    const d = await api(`/api/admin/users/${target.id}/kick`, 'POST', { room_id: CUR_ROOM.id });
     closeOv('userSheet');
-    toast('تم طرد ' + target.username + ' من الغرفة');
+    toast('تم طرد ' + target.username + ' من الغرفة' + (d.by_ip ? ' حسب عنوان IP' : ''));
   } catch (e) { toast(e.error || 'تعذر طرد المستخدم', false); }
   finally { button.disabled = false; }
 };
@@ -557,8 +565,10 @@ $('#usBan').onclick = async () => {
   if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية الحظر', false);
   const target = CUR_TARGET;
   closeOv('userSheet');
-  try { await api(`/api/admin/users/${target.id}/ban`, 'POST', { banned: true, reason: 'حظر من الغرفة', room_id: CUR_ROOM ? CUR_ROOM.id : 0 }); toast('تم حظر ' + target.username); }
-  catch (e) { toast(e.error || 'لا تملك صلاحية الحظر', false); }
+  try {
+    const d = await api(`/api/admin/users/${target.id}/ban`, 'POST', { banned: true, reason: 'حظر من الغرفة', room_id: CUR_ROOM ? CUR_ROOM.id : 0 });
+    toast('تم حظر ' + target.username + (d.by_ip ? ' حسب عنوان IP' : ''));
+  } catch (e) { toast(e.error || 'لا تملك صلاحية الحظر', false); }
 };
 $('#usUserCard').onclick = () => { if (CUR_TARGET) { closeOv('userSheet'); openProfile(CUR_TARGET.id); } };
 $('#usProfile').onclick = () => { if (CUR_TARGET) { closeOv('userSheet'); openProfile(CUR_TARGET.id); } };
