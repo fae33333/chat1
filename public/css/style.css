@@ -1364,3 +1364,19 @@ body.lang-en .room-welcome { margin-left:52px; margin-right:0; direction:ltr; }
 body.lang-en .system-event-head { direction:ltr; }
 body.lang-en .system-event-body { direction:ltr; text-align:left; padding-right:0; padding-left:15px; }
 body.lang-en .system-event-message { margin-right:0; margin-left:21px; }
+
+/* رسالة الروبوت — تاج 20×20 بجانب النص */
+.robot-message {
+  font-size:14px;
+  margin-left:52px;
+  flex-direction:row;
+  display:flex;
+  align-items:flex-start;
+  gap:7px;
+  margin-top:5px;
+  margin-bottom:7px;
+  line-height:1.65;
+}
+.robot-message img { width:20px; height:20px; min-width:20px; object-fit:contain; border-radius:3px; margin-top:1px; }
+.robot-message-text { font-family:'SF Arabic','Segoe UI',Tahoma,Arial,sans-serif !important; font-weight:800; word-break:break-word; }
+body.lang-en .robot-message { direction:ltr; margin-left:52px; margin-right:0; }

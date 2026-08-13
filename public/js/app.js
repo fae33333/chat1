@@ -102,7 +102,7 @@ Object.assign(I18N_EN, {
   'قطر': 'Qatar', 'البحرين': 'Bahrain', 'سلطنة عمان': 'Oman', 'سوريا': 'Syria', 'لبنان': 'Lebanon', 'الجزائر': 'Algeria', 'المغرب': 'Morocco',
   'تونس': 'Tunisia', 'ليبيا': 'Libya', 'اليمن': 'Yemen', 'السودان': 'Sudan'
 });
-const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text';
+const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-message-text';
 function translateDynamicText(text) {
   if (I18N_EN[text]) return I18N_EN[text];
   let match = text.match(/^مرحباً بـ (.+) في غرفة (.+)$/);
@@ -585,18 +585,12 @@ function renderMsg(m) {
       const uid = m.user_id || (m.user && m.user.id);
       if (uid) openUserSheet(+uid, { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted });
     };
-  } else if (m.type === 'bot') {   // رسالة الروبوت المجدولة (صورة روبوت + لون وحجم مخصصان)
-    const bsz = Math.min(40, Math.max(12, +m.size || 16));
-    el.className = 'msg';
+  } else if (m.type === 'bot') {   // رسالة الروبوت: أيقونة التاج ثم النص في سطر خفيف
+    const bsz = Math.min(40, Math.max(12, +m.size || 14));
+    el.className = 'robot-message';
     el.innerHTML = `
-      <div class="mava">${avatarHtml('/avatars/default.png')}</div>
-      <div class="mbody">
-        <div class="mline1">
-          <span class="mname" style="color:#d946a6;font-weight:900">روبوت 🤖</span>
-          ${(SETTINGS.show_time === '1' && PREFS.show_time) ? `<span class="mtime">${t}</span>` : ''}
-        </div>
-        <div class="mline2"><span class="mtext" style="color:${m.color || '#d946a6'};font-size:${bsz}px;font-weight:800">${esc(m.text)}</span></div>
-      </div>`;
+      <img src="/img/robot-crown.svg" width="20" height="20" alt="">
+      <span class="robot-message-text" style="color:${m.color || '#d946a6'};font-size:${bsz}px">${esc(m.text)}</span>`;
   } else if (m.type === 'welcome') {
     el.className = 'room-welcome';
     el.innerHTML = `<img src="/img/welcome-system.svg" width="20" height="20" alt=""><span class="room-welcome-text">${esc(m.text)}</span>`;
@@ -647,7 +641,7 @@ function renderMsg(m) {
     el.innerHTML = `<div class="shead"><i class="f7-icons">chat_bubble_text_fill</i> رسالة النظام</div><div class="stext">${esc(m.text)}</div>`;
   }
   area.appendChild(el);
-  if (area.children.length > 140) area.querySelector('.msg,.sys,.room-welcome,.system-event')?.remove();
+  if (area.children.length > 140) area.querySelector('.msg,.sys,.room-welcome,.system-event,.robot-message')?.remove();
 }
 function parseExtra(m) {
   try { return JSON.parse(m.extra || '{}'); } catch (e) { return {}; }
