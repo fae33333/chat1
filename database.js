@@ -92,6 +92,27 @@ db.serialize(() => {
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
 
+  // ---------- حالات المستخدمين (تختفي بعد 24 ساعة) ----------
+  db.run(`CREATE TABLE IF NOT EXISTS statuses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    image TEXT NOT NULL,
+    caption TEXT DEFAULT '',
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    expires_at INTEGER NOT NULL
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_statuses_active ON statuses (expires_at, created_at)`);
+
+  // مشاهدات الحالة — لا تُعرض أسماؤها إلا لصاحب الحالة عبر API محمي
+  db.run(`CREATE TABLE IF NOT EXISTS status_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    status_id INTEGER NOT NULL,
+    viewer_id INTEGER NOT NULL,
+    viewed_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(status_id, viewer_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_status_views_status ON status_views (status_id, viewed_at)`);
+
   // ---------- الهدايا ----------
   db.run(`CREATE TABLE IF NOT EXISTS gifts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

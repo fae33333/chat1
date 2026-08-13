@@ -17,6 +17,7 @@ let UP_PLAN = 'vip', UP_MONTHS = 1, UP_TARGET = null;
 let PM_WITH = null, PRIV_UNREAD = 0;
 let NOTIFS = [];
 let SEL_AVATAR = null, AVA_CAT = 'def';
+let STATUSES = [], STATUS_GROUP = [], STATUS_INDEX = 0, CURRENT_STATUS = null;
 // قائمة التجاهل محلية لكل متصفح؛ نستخدم المعرّفات حتى لا تتأثر بتغيير الاسم.
 let IGNORED_USERS = new Set();
 try { IGNORED_USERS = new Set(JSON.parse(localStorage.getItem('ignored_users') || '[]').map(Number)); } catch (e) { }
@@ -209,6 +210,16 @@ function connectSocket() {
     beep(660, .2);
   });
   SOCKET.on('membership_changed', ({ plan }) => { if (ME) { ME.membership = plan; MYBADGE = badgeOf(ME); } });
+  SOCKET.on('statuses_changed', () => {
+    if ($('#statusOv').classList.contains('open')) loadStatuses();
+  });
+  SOCKET.on('status_viewed', ({ statusId }) => {
+    const s = STATUSES.find(x => x.id === +statusId);
+    if (s && s.is_owner) {
+      s.view_count = (+s.view_count || 0) + 1;
+      if (CURRENT_STATUS && CURRENT_STATUS.id === s.id) $('#statusViewCount').textContent = s.view_count;
+    }
+  });
   SOCKET.on('mute_changed', ({ muted }) => {
     if (!ME) return;
     ME.muted = muted ? 1 : 0;
@@ -885,6 +896,183 @@ function updatePrivBadge() {
   if (PRIV_UNREAD > 0) { b.style.display = 'flex'; b.textContent = PRIV_UNREAD; }
   else b.style.display = 'none';
 }
+
+// =====================================================
+//  الحالات — صور لمدة 24 ساعة
+// =====================================================
+function statusTime(ts) {
+  const d = new Date((+ts || 0) * 1000);
+  const now = new Date();
+  const dayStart = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((dayStart(now) - dayStart(d)) / 86400000);
+  const clock = d.toLocaleTimeString('ar-JO', { hour: 'numeric', minute: '2-digit' });
+  if (days === 0) return 'اليوم الساعة ' + clock;
+  if (days === 1) return 'أمس الساعة ' + clock;
+  return d.toLocaleDateString('ar-JO', { day: 'numeric', month: 'short' }) + '، ' + clock;
+}
+function statusGroups() {
+  const groups = new Map();
+  STATUSES.forEach(s => {
+    if (!groups.has(s.user_id)) groups.set(s.user_id, []);
+    groups.get(s.user_id).push(s);
+  });
+  groups.forEach(items => items.sort((a, b) => a.created_at - b.created_at));
+  return groups;
+}
+async function openStatuses() {
+  if (!ME) return openLogin();
+  openOv('statusOv');
+  $('#statusMyAvatar').innerHTML = avatarHtml(ME.avatar);
+  await loadStatuses();
+}
+async function loadStatuses() {
+  if (!ME) return;
+  try {
+    STATUSES = await api('/api/statuses');
+    renderStatuses();
+  } catch (e) {
+    $('#statusList').innerHTML = '<div class="status-empty"><i class="f7-icons">exclamationmark_circle</i>تعذر تحميل الحالات</div>';
+  }
+}
+function renderStatuses() {
+  if (!ME) return;
+  const groups = statusGroups();
+  const mine = groups.get(ME.id) || [];
+  $('#statusMyAvatar').innerHTML = avatarHtml(ME.avatar);
+  $('#statusMyAvatar').classList.toggle('has-status', mine.length > 0);
+  $('#myStatusTime').textContent = mine.length
+    ? `آخر تحديث ${statusTime(mine[mine.length - 1].created_at)}`
+    : 'اضغط لإضافة تحديث الحالة';
+
+  const recent = [...groups.entries()]
+    .filter(([uid]) => +uid !== ME.id)
+    .sort((a, b) => b[1][b[1].length - 1].created_at - a[1][a[1].length - 1].created_at);
+  $('#statusList').innerHTML = recent.length ? recent.map(([uid, items]) => {
+    const latest = items[items.length - 1];
+    const unseen = items.some(s => !s.viewed);
+    return `<div class="status-row ${unseen ? 'unseen' : 'seen'}" data-user="${uid}" role="button" tabindex="0">
+      <div class="status-avatar-wrap"><span class="status-avatar">${avatarHtml(latest.avatar)}</span></div>
+      <div class="status-row-info">
+        <b>${esc(latest.username)}${latest.verified ? ' <i class="f7-icons" style="font-size:13px;color:#1685f5">checkmark_seal_fill</i>' : ''}</b>
+        <span>${statusTime(latest.created_at)}</span>
+      </div>
+      <i class="f7-icons status-row-chevron">chevron_left</i>
+    </div>`;
+  }).join('') : '<div class="status-empty"><i class="f7-icons">circle_dashed</i>لا توجد حالات حديثة بعد</div>';
+  $$('#statusList .status-row').forEach(row => {
+    row.onclick = () => openStatusGroup(+row.dataset.user);
+    row.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openStatusGroup(+row.dataset.user); } };
+  });
+}
+function chooseStatusImage() {
+  if (!ME) return openLogin();
+  if (!ME.registered) return openOv('needRegOv');
+  const file = $('#statusFile');
+  file.value = '';
+  file.click();
+}
+async function uploadStatus(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) return toast('اختر ملف صورة فقط', false);
+  if (file.size > 12 * 1024 * 1024) return toast('حجم الصورة أكبر من 12MB', false);
+  const fd = new FormData();
+  fd.append('status', file);
+  try {
+    toast('جاري رفع الحالة...');
+    const added = await api('/api/statuses', 'POST', fd, true);
+    await loadStatuses();
+    toast('تم نشر حالتك لمدة 24 ساعة ✓');
+    openStatusGroup(ME.id, added.id);
+  } catch (e) { toast(e.error || 'تعذر رفع الحالة', false); }
+}
+async function openStatusGroup(userId, statusId) {
+  const groups = statusGroups();
+  STATUS_GROUP = groups.get(+userId) || [];
+  if (!STATUS_GROUP.length) return toast('انتهت هذه الحالة', false);
+  if (statusId) STATUS_INDEX = Math.max(0, STATUS_GROUP.findIndex(s => s.id === +statusId));
+  else if (+userId === ME.id) STATUS_INDEX = STATUS_GROUP.length - 1;
+  else {
+    const unseen = STATUS_GROUP.findIndex(s => !s.viewed);
+    STATUS_INDEX = unseen >= 0 ? unseen : STATUS_GROUP.length - 1;
+  }
+  openOv('statusViewerOv');
+  await showCurrentStatus();
+}
+async function showCurrentStatus() {
+  const s = STATUS_GROUP[STATUS_INDEX];
+  if (!s) return closeOv('statusViewerOv');
+  CURRENT_STATUS = s;
+  $('#statusViewerImage').src = s.image;
+  $('#statusViewerAvatar').innerHTML = avatarHtml(s.avatar);
+  $('#statusViewerName').textContent = s.is_owner ? 'حالتي' : s.username;
+  $('#statusViewerTime').textContent = statusTime(s.created_at);
+  $('#statusCaption').textContent = s.caption || '';
+  $('#statusProgress').innerHTML = STATUS_GROUP.map((x, i) => `<span class="${i < STATUS_INDEX ? 'done' : i === STATUS_INDEX ? 'current' : ''}"></span>`).join('');
+  $('#statusPrev').disabled = STATUS_INDEX <= 0;
+  $('#statusNext').disabled = STATUS_INDEX >= STATUS_GROUP.length - 1;
+  $('#statusOwnerTools').hidden = !s.is_owner;
+  if (s.is_owner) $('#statusViewCount').textContent = +s.view_count || 0;
+
+  try {
+    const viewed = await api(`/api/statuses/${s.id}/view`, 'POST');
+    const cached = STATUSES.find(x => x.id === s.id);
+    if (cached) {
+      cached.viewed = 1;
+      if (s.is_owner) cached.view_count = +viewed.view_count || 0;
+    }
+    if (CURRENT_STATUS && CURRENT_STATUS.id === s.id && s.is_owner)
+      $('#statusViewCount').textContent = +viewed.view_count || 0;
+    renderStatuses();
+  } catch (e) {
+    if (CURRENT_STATUS && CURRENT_STATUS.id === s.id) {
+      closeOv('statusViewerOv');
+      toast(e.error || 'تعذر فتح الحالة', false);
+      loadStatuses();
+    }
+  }
+}
+async function showStatusViewers() {
+  const s = CURRENT_STATUS;
+  if (!s || !s.is_owner) return;
+  try {
+    const viewers = await api(`/api/statuses/${s.id}/viewers`);
+    $('#statusViewersCount').textContent = viewers.length;
+    $('#statusViewCount').textContent = viewers.length;
+    s.view_count = viewers.length;
+    $('#statusViewersList').innerHTML = viewers.length ? viewers.map(v => `
+      <div class="status-viewer-row">
+        <span class="sv-avatar">${avatarHtml(v.avatar)}</span>
+        <span class="sv-info"><b>${esc(v.username)}</b><span>${statusTime(v.viewed_at)}</span></span>
+      </div>`).join('') : '<div class="status-no-viewers"><i class="f7-icons">eye_slash_fill</i>لم يشاهد أحد حالتك حتى الآن</div>';
+    openOv('statusViewersOv');
+  } catch (e) { toast(e.error || 'لا يمكن عرض المشاهدين', false); }
+}
+
+$('#btnAddStatus').onclick = openStatuses;
+$('#statusHeadAdd').onclick = chooseStatusImage;
+$('#statusFab').onclick = chooseStatusImage;
+$('#statusAddBadge').onclick = e => { e.stopPropagation(); chooseStatusImage(); };
+$('#myStatusRow').onclick = () => {
+  const mine = STATUSES.filter(s => s.user_id === ME.id);
+  if (mine.length) openStatusGroup(ME.id);
+  else chooseStatusImage();
+};
+$('#myStatusRow').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#myStatusRow').click(); } };
+$('#statusFile').onchange = () => uploadStatus($('#statusFile').files[0]);
+$('#statusPrev').onclick = () => { if (STATUS_INDEX > 0) { STATUS_INDEX--; showCurrentStatus(); } };
+$('#statusNext').onclick = () => { if (STATUS_INDEX < STATUS_GROUP.length - 1) { STATUS_INDEX++; showCurrentStatus(); } };
+$('#statusShowViewers').onclick = showStatusViewers;
+$('#statusDelete').onclick = async () => {
+  const s = CURRENT_STATUS;
+  if (!s || !s.is_owner || !confirm('هل تريد حذف هذه الحالة؟')) return;
+  try {
+    await api('/api/statuses/' + s.id, 'DELETE');
+    closeOv('statusViewersOv');
+    closeOv('statusViewerOv');
+    await loadStatuses();
+    toast('تم حذف الحالة');
+  } catch (e) { toast(e.error || 'تعذر حذف الحالة', false); }
+};
 
 // =====================================================
 //  القائمة / الحالة / الصورة

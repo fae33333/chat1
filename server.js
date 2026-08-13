@@ -35,6 +35,7 @@ fs.mkdirSync(path.join(__dirname, 'public/uploads'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/gifts'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/stickers'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/rooms'), { recursive: true });
+fs.mkdirSync(path.join(__dirname, 'public/uploads/statuses'), { recursive: true });
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, 'public/uploads')),
   filename: (req, file, cb) => {
@@ -52,6 +53,19 @@ const storageMedia = multer.diskStorage({
   filename: (req, file, cb) => cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 8) + path.extname(file.originalname).toLowerCase())
 });
 const uploadMedia = multer({ storage: storageMedia, limits: { fileSize: 8 * 1024 * 1024 } });
+
+// رفع صور الحالات في مجلد مستقل، مع رفض أي ملف غير صوري.
+const statusStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, 'public/uploads/statuses')),
+  filename: (req, file, cb) => cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 10) + path.extname(file.originalname).toLowerCase())
+});
+const uploadStatus = multer({
+  storage: statusStorage,
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => file.mimetype && file.mimetype.startsWith('image/')
+    ? cb(null, true)
+    : cb(new Error('يمكن رفع الصور فقط'))
+});
 
 // ====== أدوات مساعدة ======
 const q = {
@@ -349,6 +363,114 @@ app.post('/api/avatar', requireUser, (req, res) => {
       res.json({ ok: true, avatar });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
+});
+
+// =====================================================
+//  API - الحالات (صور لمدة 24 ساعة + مشاهدات خاصة بصاحبها)
+// =====================================================
+function deleteStatusImage(image) {
+  if (!image || !image.startsWith('/uploads/statuses/')) return;
+  const file = path.join(__dirname, 'public/uploads/statuses', path.basename(image));
+  try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch (e) { }
+}
+async function cleanupExpiredStatuses() {
+  const now = Math.floor(Date.now() / 1000);
+  const expired = await q.all(`SELECT id,image FROM statuses WHERE expires_at<=?`, now);
+  if (!expired.length) return;
+  const ids = expired.map(s => s.id);
+  for (const id of ids) await q.run(`DELETE FROM status_views WHERE status_id=?`, id);
+  await q.run(`DELETE FROM statuses WHERE expires_at<=?`, now);
+  expired.forEach(s => deleteStatusImage(s.image));
+}
+
+// قائمة الحالات النشطة. عدد وأسماء المشاهدين لا يصلان إلا لصاحب الحالة.
+app.get('/api/statuses', requireUser, async (req, res) => {
+  await cleanupExpiredStatuses();
+  const uid = +req.session.uid;
+  const now = Math.floor(Date.now() / 1000);
+  const rows = await q.all(`
+    SELECT s.id,s.user_id,s.image,s.caption,s.created_at,s.expires_at,
+           u.username,u.avatar,u.registered,
+           EXISTS(SELECT 1 FROM status_views sv WHERE sv.status_id=s.id AND sv.viewer_id=?) viewed,
+           (SELECT COUNT(*) FROM status_views sv2 WHERE sv2.status_id=s.id) view_count
+    FROM statuses s JOIN users u ON u.id=s.user_id
+    WHERE s.expires_at>? AND u.banned=0
+    ORDER BY s.created_at DESC`, uid, now);
+  res.json(rows.map(s => ({
+    ...s,
+    verified: VERIFIED_SET.has(s.username) ? 1 : 0,
+    is_owner: s.user_id === uid ? 1 : 0,
+    view_count: s.user_id === uid ? s.view_count : undefined
+  })));
+});
+
+app.post('/api/statuses', requireUser, (req, res) => {
+  uploadStatus.single('status')(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'حجم الصورة أكبر من 12MB' : err.message });
+    if (!req.file) return res.status(400).json({ error: 'اختر صورة للحالة' });
+    try {
+      const me = await q.get(`SELECT id,registered FROM users WHERE id=?`, req.session.uid);
+      if (!me || !me.registered) {
+        try { fs.unlinkSync(req.file.path); } catch (e) { }
+        return res.status(403).json({ error: 'رفع الحالة متاح للأعضاء المسجلين فقط' });
+      }
+      await cleanupExpiredStatuses();
+      const image = '/uploads/statuses/' + req.file.filename;
+      const caption = String((req.body && req.body.caption) || '').trim().slice(0, 160);
+      const now = Math.floor(Date.now() / 1000);
+      const out = await q.run(`INSERT INTO statuses (user_id,image,caption,created_at,expires_at) VALUES (?,?,?,?,?)`,
+        me.id, image, caption, now, now + 24 * 60 * 60);
+      io.emit('statuses_changed');
+      res.json({ ok: true, id: out.lastID, image, caption, created_at: now, expires_at: now + 86400 });
+    } catch (e) {
+      try { fs.unlinkSync(req.file.path); } catch (x) { }
+      res.status(500).json({ error: 'تعذر حفظ الحالة' });
+    }
+  });
+});
+
+// تسجيل المشاهدة مرة واحدة. مشاهدة المالك لحالته لا تُسجّل.
+app.post('/api/statuses/:id/view', requireUser, async (req, res) => {
+  await cleanupExpiredStatuses();
+  const uid = +req.session.uid;
+  const status = await q.get(`
+    SELECT s.*,u.username,u.avatar FROM statuses s JOIN users u ON u.id=s.user_id
+    WHERE s.id=? AND s.expires_at>?`, +req.params.id, Math.floor(Date.now() / 1000));
+  if (!status) return res.status(404).json({ error: 'انتهت هذه الحالة أو حُذفت' });
+  if (status.user_id !== uid) {
+    const viewed = await q.run(`INSERT OR IGNORE INTO status_views (status_id,viewer_id,viewed_at) VALUES (?,?,strftime('%s','now'))`, status.id, uid);
+    if (viewed.changes) io.to('user_' + status.user_id).emit('status_viewed', { statusId: status.id });
+  }
+  const count = status.user_id === uid
+    ? (await q.get(`SELECT COUNT(*) c FROM status_views WHERE status_id=?`, status.id)).c
+    : undefined;
+  res.json({ ...status, is_owner: status.user_id === uid ? 1 : 0, view_count: count });
+});
+
+// محمي على الخادم: أسماء مشاهدي الحالة متاحة لصاحب الحالة فقط.
+app.get('/api/statuses/:id/viewers', requireUser, async (req, res) => {
+  await cleanupExpiredStatuses();
+  const status = await q.get(`SELECT id,user_id FROM statuses WHERE id=?`, +req.params.id);
+  if (!status) return res.status(404).json({ error: 'الحالة غير موجودة' });
+  if (status.user_id !== +req.session.uid)
+    return res.status(403).json({ error: 'مشاهدو الحالة متاحون لصاحبها فقط' });
+  const viewers = await q.all(`
+    SELECT u.id,u.username,u.avatar,sv.viewed_at
+    FROM status_views sv JOIN users u ON u.id=sv.viewer_id
+    WHERE sv.status_id=? ORDER BY sv.viewed_at DESC`, status.id);
+  res.json(viewers);
+});
+
+app.delete('/api/statuses/:id', requireUser, async (req, res) => {
+  const status = await q.get(`SELECT id,user_id,image FROM statuses WHERE id=?`, +req.params.id);
+  if (!status) return res.status(404).json({ error: 'الحالة غير موجودة' });
+  if (status.user_id !== +req.session.uid)
+    return res.status(403).json({ error: 'لا يمكنك حذف حالة مستخدم آخر' });
+  await q.run(`DELETE FROM status_views WHERE status_id=?`, status.id);
+  await q.run(`DELETE FROM statuses WHERE id=?`, status.id);
+  deleteStatusImage(status.image);
+  io.emit('statuses_changed');
+  res.json({ ok: true });
 });
 
 // الإشعارات
