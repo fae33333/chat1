@@ -11,6 +11,7 @@ function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
 let ROOMS = [], ROOM_COUNTS = {}, CUR_ROOM = null, CUR_TAB = 'default';
 let ROOM_PWD = {};                       // كلمات مرور الغرف الصحيحة لهذه الجلسة (لا تُعاد كتابتها)
 const isAdmRank = () => ME && (ME.rank === 'superadmin' || ME.rank === 'admin');
+const canModerateRank = () => ME && ['superadmin', 'admin', 'roomadmin'].includes(ME.rank);
 let ROOM_USERS = [], CUR_TARGET = null;
 let GIFTS = [], SEL_GIFT = null, G_QTY = 1;
 let UP_PLAN = 'vip', UP_MONTHS = 1, UP_TARGET = null;
@@ -470,8 +471,8 @@ function syncUserActionSheet() {
   $('#usIgnoreLabel').textContent = IGNORED_USERS.has(+CUR_TARGET.id) ? 'إلغاء التجاهل' : 'تجاهل';
   $('#usMuteLabel').textContent = CUR_TARGET.muted ? 'إلغاء الكتم' : 'كتم المستخدم';
   $('#usMuteIcon').textContent = CUR_TARGET.muted ? 'mic_fill' : 'mic_slash_fill';
-  // أدوات الإدارة الحساسة لا تظهر للأعضاء العاديين.
-  $$('.user-action-sheet .us-moderation').forEach(b => { b.style.display = isAdmRank() ? 'flex' : 'none'; });
+  // أدوات الإشراف تظهر للسوبر/الادمن/ادمن الغرفة، ويعيد الخادم التحقق من النطاق والرتبة.
+  $$('.user-action-sheet .us-moderation').forEach(b => { b.style.display = canModerateRank() ? 'flex' : 'none'; });
 }
 function openUserSheet(uid, msg) {
   setUsersPanel(false);
@@ -517,13 +518,13 @@ $('#usIgnore').onclick = () => {
   syncUserActionSheet();
 };
 $('#usMute').onclick = async () => {
-  if (!CUR_TARGET || !isAdmRank()) return toast('لا تملك صلاحية الكتم', false);
+  if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية الكتم', false);
   const button = $('#usMute');
   const target = CUR_TARGET;
   const nextMuted = !target.muted;
   button.disabled = true;
   try {
-    const d = await api(`/api/admin/users/${target.id}/mute`, 'POST', { muted: nextMuted });
+    const d = await api(`/api/admin/users/${target.id}/mute`, 'POST', { muted: nextMuted, room_id: CUR_ROOM ? CUR_ROOM.id : 0 });
     target.muted = d.muted ? 1 : 0;
     const roomUser = ROOM_USERS.find(u => u.id === target.id);
     if (roomUser) roomUser.muted = target.muted;
@@ -533,7 +534,7 @@ $('#usMute').onclick = async () => {
   finally { button.disabled = false; }
 };
 $('#usKick').onclick = async () => {
-  if (!CUR_TARGET || !CUR_ROOM || !isAdmRank()) return toast('لا تملك صلاحية الطرد', false);
+  if (!CUR_TARGET || !CUR_ROOM || !canModerateRank()) return toast('لا تملك صلاحية الطرد', false);
   const target = CUR_TARGET;
   const button = $('#usKick');
   button.disabled = true;
@@ -545,10 +546,10 @@ $('#usKick').onclick = async () => {
   finally { button.disabled = false; }
 };
 $('#usBan').onclick = async () => {
-  if (!CUR_TARGET || !isAdmRank()) return toast('لا تملك صلاحية الحظر', false);
+  if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية الحظر', false);
   const target = CUR_TARGET;
   closeOv('userSheet');
-  try { await api(`/api/admin/users/${target.id}/ban`, 'POST', { banned: true, reason: 'حظر من الغرفة' }); toast('تم حظر ' + target.username); }
+  try { await api(`/api/admin/users/${target.id}/ban`, 'POST', { banned: true, reason: 'حظر من الغرفة', room_id: CUR_ROOM ? CUR_ROOM.id : 0 }); toast('تم حظر ' + target.username); }
   catch (e) { toast(e.error || 'لا تملك صلاحية الحظر', false); }
 };
 $('#usUserCard').onclick = () => { if (CUR_TARGET) { closeOv('userSheet'); openProfile(CUR_TARGET.id); } };

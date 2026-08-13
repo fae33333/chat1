@@ -110,6 +110,45 @@ function requireAdmin(req, res, next) {
     return res.status(403).json({ error: 'ممنوع' });
   next();
 }
+// صلاحيات الإشراف داخل الغرفة تشمل «ادمن غرفة»، مع قراءة الرتبة الحالية
+// من قاعدة البيانات حتى لا تسبب الجلسة القديمة خطأ 403 بعد تغيير الصلاحية.
+async function requireModerator(req, res, next) {
+  if (!req.session.uid) return res.status(401).json({ error: 'غير مسجل' });
+  try {
+    const moderator = await q.get(`SELECT id,username,rank FROM users WHERE id=?`, req.session.uid);
+    if (!moderator || !['roomadmin', 'admin', 'superadmin'].includes(moderator.rank))
+      return res.status(403).json({ error: 'لا تملك صلاحية الإشراف' });
+    req.session.rank = moderator.rank;
+    req.moderator = moderator;
+    next();
+  } catch (e) { res.status(500).json({ error: 'تعذر التحقق من الصلاحية' }); }
+}
+const MOD_RANK_LEVEL = { user: 0, roomadmin: 1, admin: 2, superadmin: 3 };
+function allowModerationAction(req, res, target, roomRequired = false) {
+  const moderator = req.moderator;
+  if (!moderator || !target) return false;
+  if (+target.id === +moderator.id) {
+    res.status(400).json({ error: 'لا يمكنك تنفيذ هذا الإجراء على نفسك' });
+    return false;
+  }
+  if ((MOD_RANK_LEVEL[target.rank] || 0) >= (MOD_RANK_LEVEL[moderator.rank] || 0)) {
+    res.status(403).json({ error: 'لا يمكنك الإشراف على مستخدم بصلاحية مساوية أو أعلى' });
+    return false;
+  }
+  // ادمن الغرفة يستطيع إدارة الموجودين معه في الغرفة الحالية فقط.
+  if (moderator.rank === 'roomadmin' || roomRequired) {
+    const roomId = +req.body.room_id;
+    if (!roomId) {
+      res.status(400).json({ error: 'الغرفة غير محددة' });
+      return false;
+    }
+    if (moderator.rank === 'roomadmin' && (!roomUsers[roomId] || !roomUsers[roomId].has(+moderator.id) || !roomUsers[roomId].has(+target.id))) {
+      res.status(403).json({ error: 'يمكنك الإشراف على مستخدمي غرفتك الحالية فقط' });
+      return false;
+    }
+  }
+  return true;
+}
 function requireSuper(req, res, next) {
   if (!req.session.uid || req.session.rank !== 'superadmin')
     return res.status(403).json({ error: 'ممنوع - سوبر ادمين فقط' });
@@ -698,20 +737,23 @@ app.delete('/api/admin/users/:id', requireSuper, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/admin/users/:id/ban', requireAdmin, async (req, res) => {
-  await q.run(`UPDATE users SET banned=? WHERE id=?`, req.body.banned ? 1 : 0, req.params.id);
-  const u = await q.get(`SELECT username FROM users WHERE id=?`, req.params.id);
-  if (req.body.banned) await q.run(`INSERT OR IGNORE INTO bans (username,reason) VALUES (?,?)`, u.username, req.body.reason || '');
-  else await q.run(`DELETE FROM bans WHERE username=?`, u.username);
-  res.json({ ok: true });
+app.post('/api/admin/users/:id/ban', requireModerator, async (req, res) => {
+  const banned = req.body.banned ? 1 : 0;
+  const target = await q.get(`SELECT id,username,rank FROM users WHERE id=?`, +req.params.id);
+  if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  if (!allowModerationAction(req, res, target)) return;
+  await q.run(`UPDATE users SET banned=? WHERE id=?`, banned, target.id);
+  if (banned) await q.run(`INSERT OR IGNORE INTO bans (username,reason) VALUES (?,?)`, target.username, req.body.reason || '');
+  else await q.run(`DELETE FROM bans WHERE username=?`, target.username);
+  res.json({ ok: true, banned });
 });
 
-app.post('/api/admin/users/:id/mute', requireAdmin, async (req, res) => {
+app.post('/api/admin/users/:id/mute', requireModerator, async (req, res) => {
   const uid = +req.params.id;
   const muted = req.body.muted ? 1 : 0;
-  const target = await q.get(`SELECT id,username FROM users WHERE id=?`, uid);
+  const target = await q.get(`SELECT id,username,rank FROM users WHERE id=?`, uid);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
-  if (uid === +req.session.uid) return res.status(400).json({ error: 'لا يمكنك كتم نفسك' });
+  if (!allowModerationAction(req, res, target)) return;
 
   await q.run(`UPDATE users SET muted=? WHERE id=?`, muted, uid);
   await refreshUserEverywhere(uid);
@@ -720,14 +762,12 @@ app.post('/api/admin/users/:id/mute', requireAdmin, async (req, res) => {
 });
 
 // طرد المستخدم من الغرفة الحالية مع إبقاء حسابه واتصاله بالموقع فعالين.
-app.post('/api/admin/users/:id/kick', requireAdmin, async (req, res) => {
+app.post('/api/admin/users/:id/kick', requireModerator, async (req, res) => {
   const uid = +req.params.id;
   const roomId = +req.body.room_id;
-  if (!roomId) return res.status(400).json({ error: 'الغرفة غير محددة' });
-  if (uid === +req.session.uid) return res.status(400).json({ error: 'لا يمكنك طرد نفسك' });
-
-  const target = await q.get(`SELECT id,username FROM users WHERE id=?`, uid);
+  const target = await q.get(`SELECT id,username,rank FROM users WHERE id=?`, uid);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  if (!allowModerationAction(req, res, target, true)) return;
   if (!roomUsers[roomId] || !roomUsers[roomId].has(uid))
     return res.status(400).json({ error: 'المستخدم لم يعد موجوداً في الغرفة' });
 
