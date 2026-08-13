@@ -17,6 +17,10 @@ let UP_PLAN = 'vip', UP_MONTHS = 1, UP_TARGET = null;
 let PM_WITH = null, PRIV_UNREAD = 0;
 let NOTIFS = [];
 let SEL_AVATAR = null, AVA_CAT = 'def';
+// قائمة التجاهل محلية لكل متصفح؛ نستخدم المعرّفات حتى لا تتأثر بتغيير الاسم.
+let IGNORED_USERS = new Set();
+try { IGNORED_USERS = new Set(JSON.parse(localStorage.getItem('ignored_users') || '[]').map(Number)); } catch (e) { }
+function saveIgnoredUsers() { localStorage.setItem('ignored_users', JSON.stringify([...IGNORED_USERS])); }
 
 // ---------- أدوات ----------
 async function api(url, method = 'GET', body, isForm = false) {
@@ -176,6 +180,8 @@ function connectSocket() {
   });
   SOCKET.on('roomCounts', (c) => { ROOM_COUNTS = c; renderRooms(); });
   SOCKET.on('private', (p) => {
+    // لا نعرض رسائل المستخدم الموجود في قائمة التجاهل المحلية.
+    if (p.from_id !== ME.id && IGNORED_USERS.has(+p.from_id)) return;
     if (PM_WITH && (p.from_id === PM_WITH.id || p.from_id === ME.id)) {
       renderPm(p); scrollPm();
     } else if (p.from_id !== ME.id) {
@@ -203,6 +209,18 @@ function connectSocket() {
     beep(660, .2);
   });
   SOCKET.on('membership_changed', ({ plan }) => { if (ME) { ME.membership = plan; MYBADGE = badgeOf(ME); } });
+  SOCKET.on('mute_changed', ({ muted }) => {
+    if (!ME) return;
+    ME.muted = muted ? 1 : 0;
+    toast(muted ? 'قامت الإدارة بكتمك' : 'قامت الإدارة بإلغاء كتمك', !muted);
+  });
+  SOCKET.on('kicked', ({ roomId, text }) => {
+    if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
+    closeOv('userSheet');
+    leaveRoom();
+    showScreen('rooms');
+    toast(text || 'تم طردك من الغرفة', false);
+  });
   SOCKET.on('err', (t) => toast(t, false));
 }
 function showAnnounce(text) {
@@ -328,6 +346,8 @@ function scrollBottom() { const a = $('#msgArea'); a.scrollTop = a.scrollHeight;
 // =====================================================
 function renderMsg(m) {
   const area = $('#msgArea');
+  const senderId = +(m.user_id || (m.user && m.user.id) || 0);
+  if (m.type === 'msg' && senderId && IGNORED_USERS.has(senderId)) return;
   let el = document.createElement('div');
   const t = timeHm(m.created_at || Date.now() / 1000);
   if (m.type === 'msg') {
@@ -359,7 +379,7 @@ function renderMsg(m) {
     // النقر على صورة الرسالة يفتح ورقة المستخدم (ومن بينها «الرد على الرسالة»)
     el.querySelector('.mava').onclick = () => {
       const uid = m.user_id || (m.user && m.user.id);
-      if (uid) openUserSheet(+uid, { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender });
+      if (uid) openUserSheet(+uid, { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted });
     };
   } else if (m.type === 'bot') {   // رسالة الروبوت المجدولة (صورة روبوت + لون وحجم مخصصان)
     const bsz = Math.min(40, Math.max(12, +m.size || 16));
@@ -426,18 +446,39 @@ function renderUsers() {
 
 // قائمة إجراءات المستخدم
 let US_MSG = null;   // سياق الرسالة عند فتح الورقة من النقر على صورة رسالة
+function userSheetMembership(u) {
+  if (u.rank && u.rank !== 'user') return RANK_NAMES[u.rank] || 'حساب إداري';
+  if (u.membership && u.membership !== 'none') return MEM_NAMES[u.membership] || u.membership;
+  return u.registered ? 'عضو مسجل' : 'زائر';
+}
+function syncUserActionSheet() {
+  if (!CUR_TARGET) return;
+  $('#usAvatar').innerHTML = avatarHtml(CUR_TARGET.avatar);
+  $('#usName').textContent = CUR_TARGET.username;
+  $('#usMembership').textContent = userSheetMembership(CUR_TARGET);
+  $('#usIgnoreLabel').textContent = IGNORED_USERS.has(+CUR_TARGET.id) ? 'إلغاء التجاهل' : 'تجاهل';
+  $('#usMuteLabel').textContent = CUR_TARGET.muted ? 'إلغاء الكتم' : 'كتم المستخدم';
+  $('#usMuteIcon').textContent = CUR_TARGET.muted ? 'mic_fill' : 'mic_slash_fill';
+  // أدوات الإدارة الحساسة لا تظهر للأعضاء العاديين.
+  $$('.user-action-sheet .us-moderation').forEach(b => { b.style.display = isAdmRank() ? 'flex' : 'none'; });
+}
 function openUserSheet(uid, msg) {
   setUsersPanel(false);
   // النقر على اسمي/صورتي يفتح «تغيير الحالة» بدل ورقة المستخدم
   if (ME && uid === ME.id) { openOv('quickOv'); return; }
   let u = ROOM_USERS.find(x => x.id === uid);
-  if (!u && msg) u = { id: uid, username: msg.username, avatar: msg.avatar || '', rank: msg.rank || 'user', membership: msg.membership || 'none', gender: msg.gender || 'secret' };
+  if (!u && msg) u = { id: uid, username: msg.username, avatar: msg.avatar || '', rank: msg.rank || 'user', membership: msg.membership || 'none', gender: msg.gender || 'secret', registered: msg.registered === undefined ? 1 : msg.registered, muted: msg.muted ? 1 : 0 };
   if (!u) return;
   CUR_TARGET = u;
   US_MSG = msg || null;
-  $('#usName').textContent = u.username;
-  $('#usReply').style.display = US_MSG ? '' : 'none';
+  syncUserActionSheet();
   openOv('userSheet');
+  // اجلب الحالة الأحدث كي يبقى نص «إلغاء الكتم» صحيحاً حتى عند فتح رسالة قديمة.
+  api('/api/user/' + uid).then(d => {
+    if (!d.user || !CUR_TARGET || CUR_TARGET.id !== uid) return;
+    Object.assign(CUR_TARGET, d.user);
+    syncUserActionSheet();
+  }).catch(() => { });
 }
 // الرد على الرسالة: شريط وردي فوق حقل الكتابة (الاسم + اقتباس + زر إلغاء)
 let REPLY_TO = null;
@@ -451,17 +492,56 @@ $('#usReply').onclick = () => { closeOv('userSheet'); if (US_MSG) setReply(US_MS
 $('#usPrivate').onclick = () => { closeOv('userSheet'); if (!ME.registered) return openOv('needRegOv'); openPrivateWith(CUR_TARGET); };
 $('#usGift').onclick = () => { closeOv('userSheet'); if (!ME.registered) return openOv('needRegOv'); openGifts(CUR_TARGET); };
 $('#usUpgrade').onclick = () => { closeOv('userSheet'); if (!ME.registered) return openOv('needRegOv'); openUpgrade(CUR_TARGET); };
+$('#usIgnore').onclick = () => {
+  if (!CUR_TARGET) return;
+  const uid = +CUR_TARGET.id;
+  if (IGNORED_USERS.has(uid)) {
+    IGNORED_USERS.delete(uid);
+    toast('تم إلغاء تجاهل ' + CUR_TARGET.username);
+  } else {
+    IGNORED_USERS.add(uid);
+    toast('تم تجاهل ' + CUR_TARGET.username);
+  }
+  saveIgnoredUsers();
+  syncUserActionSheet();
+};
+$('#usMute').onclick = async () => {
+  if (!CUR_TARGET || !isAdmRank()) return toast('لا تملك صلاحية الكتم', false);
+  const button = $('#usMute');
+  const target = CUR_TARGET;
+  const nextMuted = !target.muted;
+  button.disabled = true;
+  try {
+    const d = await api(`/api/admin/users/${target.id}/mute`, 'POST', { muted: nextMuted });
+    target.muted = d.muted ? 1 : 0;
+    const roomUser = ROOM_USERS.find(u => u.id === target.id);
+    if (roomUser) roomUser.muted = target.muted;
+    syncUserActionSheet();
+    toast(target.muted ? `تم كتم ${target.username}` : `تم إلغاء كتم ${target.username}`);
+  } catch (e) { toast(e.error || 'تعذر تغيير حالة الكتم', false); }
+  finally { button.disabled = false; }
+};
+$('#usKick').onclick = async () => {
+  if (!CUR_TARGET || !CUR_ROOM || !isAdmRank()) return toast('لا تملك صلاحية الطرد', false);
+  const target = CUR_TARGET;
+  const button = $('#usKick');
+  button.disabled = true;
+  try {
+    await api(`/api/admin/users/${target.id}/kick`, 'POST', { room_id: CUR_ROOM.id });
+    closeOv('userSheet');
+    toast('تم طرد ' + target.username + ' من الغرفة');
+  } catch (e) { toast(e.error || 'تعذر طرد المستخدم', false); }
+  finally { button.disabled = false; }
+};
 $('#usBan').onclick = async () => {
+  if (!CUR_TARGET || !isAdmRank()) return toast('لا تملك صلاحية الحظر', false);
+  const target = CUR_TARGET;
   closeOv('userSheet');
-  try { await api(`/api/admin/users/${CUR_TARGET.id}/ban`, 'POST', { banned: true, reason: 'حظر من الغرفة' }); toast('تم حظر ' + CUR_TARGET.username); }
+  try { await api(`/api/admin/users/${target.id}/ban`, 'POST', { banned: true, reason: 'حظر من الغرفة' }); toast('تم حظر ' + target.username); }
   catch (e) { toast(e.error || 'لا تملك صلاحية الحظر', false); }
 };
-$('#usReport').onclick = async () => {
-  closeOv('userSheet');
-  try { await api('/api/complaint', 'POST', { subject: 'بلاغ عن مستخدم', message: 'بلاغ عن: ' + CUR_TARGET.username }); } catch (e) { }
-  toast('تم إرسال البلاغ للإدارة ✅');
-};
-$('#usProfile').onclick = () => { closeOv('userSheet'); openProfile(CUR_TARGET.id); };
+$('#usUserCard').onclick = () => { if (CUR_TARGET) { closeOv('userSheet'); openProfile(CUR_TARGET.id); } };
+$('#usProfile').onclick = () => { if (CUR_TARGET) { closeOv('userSheet'); openProfile(CUR_TARGET.id); } };
 
 // =====================================================
 //  الهدايا

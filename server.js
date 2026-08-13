@@ -83,6 +83,7 @@ function pubUser(u) {
     id: u.id, username: u.username, gender: u.gender, age: u.age, country: u.country,
     balance: u.balance, membership: u.membership, rank: u.rank, registered: u.registered,
     avatar: u.avatar, status: u.status, email: u.email || '', bio: u.bio || '',
+    muted: u.muted ? 1 : 0,
     verified: VERIFIED_SET.has(u.username) ? 1 : 0
   };
 }
@@ -584,7 +585,38 @@ app.post('/api/admin/users/:id/ban', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/admin/users/:id/mute', requireAdmin, async (req, res) => {
-  await q.run(`UPDATE users SET muted=? WHERE id=?`, req.body.muted ? 1 : 0, req.params.id);
+  const uid = +req.params.id;
+  const muted = req.body.muted ? 1 : 0;
+  const target = await q.get(`SELECT id,username FROM users WHERE id=?`, uid);
+  if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  if (uid === +req.session.uid) return res.status(400).json({ error: 'لا يمكنك كتم نفسك' });
+
+  await q.run(`UPDATE users SET muted=? WHERE id=?`, muted, uid);
+  await refreshUserEverywhere(uid);
+  io.to('user_' + uid).emit('mute_changed', { muted });
+  res.json({ ok: true, muted });
+});
+
+// طرد المستخدم من الغرفة الحالية مع إبقاء حسابه واتصاله بالموقع فعالين.
+app.post('/api/admin/users/:id/kick', requireAdmin, async (req, res) => {
+  const uid = +req.params.id;
+  const roomId = +req.body.room_id;
+  if (!roomId) return res.status(400).json({ error: 'الغرفة غير محددة' });
+  if (uid === +req.session.uid) return res.status(400).json({ error: 'لا يمكنك طرد نفسك' });
+
+  const target = await q.get(`SELECT id,username FROM users WHERE id=?`, uid);
+  if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  if (!roomUsers[roomId] || !roomUsers[roomId].has(uid))
+    return res.status(400).json({ error: 'المستخدم لم يعد موجوداً في الغرفة' });
+
+  io.to('user_' + uid).emit('kicked', { roomId, text: 'تم طردك من الغرفة بواسطة الإدارة' });
+  for (const socketId of (userSockets[uid] || [])) {
+    const targetSocket = io.sockets.sockets.get(socketId);
+    if (targetSocket) targetSocket.leave('room_' + roomId);
+  }
+  roomUsers[roomId].delete(uid);
+  await emitRoomUsers(roomId);
+  await emitRoomCounts();
   res.json({ ok: true });
 });
 
@@ -752,7 +784,7 @@ io.on('connection', async (socket) => {
     onlineUsers[uid] = freshPub;
     const rp = reply && reply.name ? { name: String(reply.name).slice(0, 40), text: String(reply.text || '').slice(0, 90) } : null;   // الرد على الرسالة
     const col = /^#[0-9a-fA-F]{6}$/.test(String(color || '')) ? String(color) : null;   // لون الخط من قائمة الألوان
-    const extra = JSON.stringify({ badge: freshPub.badge, gender: me.gender, rank: me.rank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, reply: rp, color: col, verified: VERIFIED_SET.has(me.username) ? 1 : 0 });
+    const extra = JSON.stringify({ badge: freshPub.badge, gender: me.gender, rank: me.rank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, verified: VERIFIED_SET.has(me.username) ? 1 : 0 });
     const ins = await q.run(`INSERT INTO messages (room_id,user_id,username,text,type,extra) VALUES (?,?,?,?,'msg',?)`, roomId, uid, me.username, text, extra);
     const msg = {
       id: ins.lastID, room_id: +roomId, text, type: 'msg',

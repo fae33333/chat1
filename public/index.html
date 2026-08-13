@@ -249,19 +249,29 @@
     </div>
   </div>
 
-  <!-- قائمة إجراءات المستخدم -->
+  <!-- قائمة إجراءات المستخدم — مطابقة للقالب المرجعي -->
   <div class="overlay" id="userSheet">
-    <div class="sheet usheet">
-      <div class="sh-handle"></div>
-      <div class="usheet-name" id="usName">-</div>
-      <button class="us-opt" id="usReply"><i class="f7-icons">arrowshape_turn_up_left_fill</i> الرد على الرسالة</button>
-      <button class="us-opt" id="usPrivate"><i class="f7-icons">chat_bubble_text_fill</i> دردشة خاصة</button>
-      <button class="us-opt" id="usGift"><i class="f7-icons">gift_fill</i> أرسل هدية</button>
-      <button class="us-opt" id="usUpgrade"><i class="f7-icons">chart_bar_fill</i> تجديد ترقية المستخدم</button>
-      <button class="us-opt" id="usBan"><i class="f7-icons">exclamationmark_triangle_fill</i> حظر هذا المستخدم</button>
-      <button class="us-opt" id="usReport"><i class="f7-icons">exclamationmark_shield_fill</i> الإبلاغ عن المستخدم</button>
-      <button class="us-opt" id="usProfile"><i class="f7-icons">person_crop_circle</i> عرض الملف الشخصي</button>
-      <button class="us-cancel" data-close="userSheet">الغاء</button>
+    <div class="sheet usheet user-action-sheet">
+      <button class="us-usercard" id="usUserCard" type="button">
+        <span class="us-avatar" id="usAvatar"></span>
+        <span class="us-userinfo">
+          <b id="usName">-</b>
+          <small id="usMembership">عضو مسجل</small>
+        </span>
+      </button>
+      <!-- الإبقاء على وظيفة الرد برمجياً من دون تغيير صفوف القالب المرجعي -->
+      <button id="usReply" type="button" hidden>الرد على الرسالة</button>
+      <div class="us-actions">
+        <button class="us-opt" id="usPrivate" type="button"><i class="f7-icons us-icon private">chat_bubble_fill</i><span>دردشة خاصة</span><i class="f7-icons us-chevron">chevron_right</i></button>
+        <button class="us-opt" id="usGift" type="button"><i class="f7-icons us-icon gift">gift_fill</i><span>ارسل هدية</span><i class="f7-icons us-chevron">chevron_right</i></button>
+        <button class="us-opt" id="usUpgrade" type="button"><i class="f7-icons us-icon upgrade">chart_bar_fill</i><span>ترقية هذا المستخدم</span><i class="f7-icons us-chevron">chevron_right</i></button>
+        <button class="us-opt" id="usIgnore" type="button"><i class="f7-icons us-icon ignore">exclamationmark_circle_fill</i><span id="usIgnoreLabel">تجاهل</span><i class="f7-icons us-chevron">chevron_right</i></button>
+        <button class="us-opt us-moderation" id="usMute" type="button"><i class="f7-icons us-icon mute" id="usMuteIcon">mic_slash_fill</i><span id="usMuteLabel">كتم المستخدم</span><i class="f7-icons us-chevron">chevron_right</i></button>
+        <button class="us-opt us-moderation" id="usKick" type="button"><i class="f7-icons us-icon kick">square_arrow_right_fill</i><span>طرد المستخدم</span><i class="f7-icons us-chevron">chevron_right</i></button>
+        <button class="us-opt us-moderation" id="usBan" type="button"><i class="f7-icons us-icon ban">nosign</i><span>حظر المستخدم</span><i class="f7-icons us-chevron">chevron_right</i></button>
+        <button class="us-opt" id="usProfile" type="button"><i class="f7-icons us-icon profile">person_crop_circle_fill</i><span>المعلومات الشخصية</span><i class="f7-icons us-chevron">chevron_right</i></button>
+      </div>
+      <button class="us-cancel" data-close="userSheet" type="button">إغلاق</button>
     </div>
   </div>
 

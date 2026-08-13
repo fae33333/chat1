@@ -377,6 +377,132 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .us-opt.st > i:first-child { color:var(--navy); }
 .us-cancel { width:100%; background:none; border:0; padding:13px; text-align:center; color:#6b7280; font-weight:800; font-size:14px; cursor:pointer; }
 
+/* قالب قائمة إجراءات المستخدم — بطاقة سفلية مطابقة للصورة المرجعية */
+#userSheet {
+  background:rgba(27,31,44,.38);
+  -webkit-backdrop-filter:blur(2px);
+  backdrop-filter:blur(2px);
+}
+#userSheet .user-action-sheet {
+  padding:0;
+  border-radius:18px 18px 0 0;
+  max-height:calc(100% - 22px);
+  overflow:hidden auto;
+  background:#fff;
+  box-shadow:0 -8px 30px rgba(20,24,40,.16);
+}
+.us-usercard {
+  direction:ltr;
+  width:100%;
+  min-height:60px;
+  padding:7px 8px;
+  border:0;
+  border-bottom:1px solid #ededed;
+  background:#fff;
+  display:flex;
+  align-items:center;
+  gap:9px;
+  text-align:left;
+  cursor:pointer;
+  font-family:inherit;
+}
+.us-avatar {
+  width:45px;
+  height:45px;
+  border-radius:50%;
+  border:2px solid #1685f5;
+  padding:2px;
+  overflow:hidden;
+  flex:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#fff;
+}
+.us-avatar img,
+.us-avatar > span {
+  width:100%;
+  height:100%;
+  border-radius:50%;
+  object-fit:cover;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.us-userinfo {
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:3px;
+}
+.us-userinfo b {
+  max-width:230px;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  color:#171717;
+  font-size:14px;
+  font-weight:700;
+  line-height:1.2;
+}
+.us-userinfo small {
+  color:#e21e2c;
+  font-size:10.5px;
+  font-weight:700;
+  line-height:1.2;
+}
+.user-action-sheet .us-actions { width:100%; }
+.user-action-sheet .us-opt {
+  direction:ltr;
+  min-height:30px;
+  padding:5px 14px;
+  border:0;
+  border-bottom:1px solid #eeeeee;
+  gap:10px;
+  color:#333;
+  background:#fff;
+  font-size:13.5px;
+  font-weight:500;
+  line-height:20px;
+  text-align:left;
+  transition:background .15s;
+}
+.user-action-sheet .us-opt:active { background:#f6f6f6; }
+.user-action-sheet .us-opt:disabled { opacity:.55; cursor:wait; }
+.user-action-sheet .us-opt span { flex:1; text-align:left; }
+.user-action-sheet .us-opt i.us-icon {
+  width:21px;
+  flex:none;
+  font-size:19px;
+  text-align:center;
+}
+.user-action-sheet .us-opt i.private { color:#b20e52; }
+.user-action-sheet .us-opt i.gift { color:#c32268; }
+.user-action-sheet .us-opt i.upgrade { color:#a42b78; }
+.user-action-sheet .us-opt i.ignore { color:#a61958; }
+.user-action-sheet .us-opt i.mute { color:#f02b49; }
+.user-action-sheet .us-opt i.kick { color:#ff7a00; }
+.user-action-sheet .us-opt i.ban { color:#ff2947; }
+.user-action-sheet .us-opt i.profile { color:#a61958; }
+.user-action-sheet .us-opt i.us-chevron {
+  width:auto;
+  margin-left:auto;
+  color:#9c9c9c;
+  font-size:18px;
+  font-weight:700;
+}
+.user-action-sheet .us-cancel {
+  min-height:28px;
+  padding:5px 12px 7px;
+  color:#ef2c3c;
+  background:#fff;
+  border:0;
+  font-size:12px;
+  font-weight:800;
+  text-align:center;
+}
+
 /* متجر الهدايا */
 .gsheet, .upsheet { border-radius:20px 20px 0 0; }
 .seg.blue { border-color:var(--main); }

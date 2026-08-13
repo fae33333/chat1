@@ -626,7 +626,7 @@ const PAGES = {
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
               <button class="btn btn-yellow btn-sm" onclick="editUser(${u.id})"><i class="f7-icons">pencil</i> تعديل</button>
-              <button class="btn btn-gray btn-sm" onclick="muteUser(${u.id},${u.muted ? 0 : 1})"><i class="f7-icons">${u.muted ? 'mic_fill' : 'mic_slash_fill'}</i> ${u.muted ? 'فك الكتم' : 'كتم'}</button>
+              <button class="btn btn-gray btn-sm" onclick="muteUser(${u.id},${u.muted ? 0 : 1})"><i class="f7-icons">${u.muted ? 'mic_fill' : 'mic_slash_fill'}</i> ${u.muted ? 'إلغاء الكتم' : 'كتم'}</button>
               <button class="btn btn-red btn-sm" onclick="banUser(${u.id},${u.banned ? 0 : 1})"><i class="f7-icons">slash_circle_fill</i> ${u.banned ? 'فك الحظر' : 'حظر'}</button>
             </div>
           </div>`).join('') : '<div class="empty">لا يوجد مستخدمون مطابقون</div>';
@@ -931,8 +931,9 @@ window.banUser = async (id, b) => {
 };
 window.muteUser = async (id, m) => {
   await api(`/api/admin/users/${id}/mute`, 'POST', { muted: !!m });
-  toast(m ? 'تم كتم المستخدم' : 'تم فك الكتم');
-  if (window._renderUsers) window._renderUsers($('#searchUser') ? $('#searchUser').value : '');
+  toast(m ? 'تم كتم المستخدم' : 'تم إلغاء كتم المستخدم');
+  // أعد تحميل القائمة مباشرة حتى يتحول الزر بين «كتم» و«إلغاء الكتم» دون تحديث الصفحة.
+  if (window._renderUsers) await window._renderUsers($('#searchUser') ? $('#searchUser').value : '');
 };
 window.unban = async (id) => { await api('/api/admin/bans/' + id, 'DELETE'); toast('تمت إزالة الحظر'); loadPage('bans'); };
 window.delAdmin = async (id, name) => {
