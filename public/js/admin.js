@@ -475,6 +475,9 @@ const PAGES = {
       </div>
       <div class="fgroup"><label><i class="f7-icons mi" style="color:#60a5fa">text_alignleft</i> وصف الغرفة</label>
         <input class="inp" id="rDesc" value="${esc(r.description || 'اهلا وسهلا بكم في شات نجوم العرب ★')}"></div>
+      <div class="fgroup"><label><i class="f7-icons mi" style="color:#16a34a">chat_bubble_text_fill</i> رسالة الترحيب عند دخول الغرفة</label>
+        <textarea class="inp" id="rWelcome" rows="3" maxlength="500" placeholder="اتركها فارغة ليبدأ العام بدون أي رسالة">${esc(r.welcome || '')}</textarea>
+        <div style="font-size:11.5px;color:#9aa0b5;margin-top:5px">هذه الرسالة وحدها تظهر للعضو عند الدخول، ولا يتم تحميل سجل الرسائل القديم.</div></div>
       <div class="grid2">
         <div class="fgroup"><label><i class="f7-icons mi" style="color:#818cf8">person2_fill</i> الحد الأقصى للمستخدمين</label>
           <input class="inp" type="number" id="rMax" value="${r.max_users || 1000}"></div>
@@ -520,6 +523,7 @@ const PAGES = {
         const imgPath = $('#roomImgPath').textContent.trim();
         const body = {
           name: $('#rName').value.trim(), description: $('#rDesc').value,
+          welcome: $('#rWelcome').value.trim(),
           status: $('#rStatus').value, max_users: +$('#rMax').value || 1000, type: $('#rType').value,
           sound: $('#rSound').value === '1', video: $('#rVideo').value === '1', bots: $('#rBots').value === '1',
           gifts: $('#rGifts').value === '1', games: $('#rGames').value === '1',

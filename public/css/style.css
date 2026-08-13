@@ -1252,3 +1252,37 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
 .pv-row.guest-pm { border-color:#ffe1e6; background:#fffafb; }
 
 .status-stage .status-nav { z-index:4; }
+
+/* ===== تبديل اللغة ===== */
+.lang-cbtn { color:var(--main); }
+.lang-cbtn i { font-size:19px; }
+.language-sheet { padding:12px 16px 24px; border-radius:22px 22px 0 0; }
+.language-head { display:flex; align-items:center; justify-content:space-between; padding:0 2px 12px; border-bottom:1px solid #eef0f4; }
+.language-head b { color:#172033; font-size:17px; }
+.language-head button { width:32px; height:32px; border:0; border-radius:50%; background:#f0f2f6; color:#667085; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.language-option { direction:ltr; width:100%; padding:13px 4px; border:0; border-bottom:1px solid #f0f2f5; background:#fff; display:flex; align-items:center; gap:11px; text-align:left; cursor:pointer; color:#172033; }
+.language-option:last-child { border-bottom:0; }
+.language-flag { width:40px; height:40px; border-radius:12px; background:#edf4ff; color:#1479f2; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:900; flex:none; }
+.language-option > span:nth-child(2) { flex:1; display:flex; flex-direction:column; gap:3px; }
+.language-option b { font-size:14px; }
+.language-option small { color:#8992a2; font-size:11px; }
+.language-check { color:#d5dae3; font-size:21px; }
+.language-option.active .language-check { color:#16a765; }
+body.lang-en { direction:ltr; }
+body.lang-en .pvpage,
+body.lang-en .sheet,
+body.lang-en .dialog { direction:ltr; }
+@media (max-width:370px) {
+  .c-top-btns { gap:2px; }
+  .lang-cbtn { width:27px; }
+}
+
+@media (max-width:330px) {
+  .c-top { padding-inline:4px; gap:2px; }
+  .c-back { font-size:22px; }
+  .c-room-name { max-width:18%; padding:6px 5px; font-size:11px; }
+  .c-mic { width:34px; }
+  .c-top-btns { gap:1px; }
+  .cbtn { width:26px; height:29px; }
+  .cbtn.ghost, .lang-cbtn { width:22px; }
+}

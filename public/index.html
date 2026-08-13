@@ -60,6 +60,7 @@
         </button>
         <button class="cbtn" id="btnHome"><i class="f7-icons">house_fill</i></button>
         <button class="cbtn" id="btnRoomUsers"><i class="f7-icons">person3_fill</i></button>
+        <button class="cbtn ghost lang-cbtn" id="btnLanguage" type="button" aria-label="تغيير اللغة" title="تغيير اللغة"><i class="f7-icons">globe</i></button>
         <button class="cbtn ghost" id="btnRoomMore"><i class="f7-icons">ellipsis_vertical</i></button>
       </span>
     </header>
@@ -260,6 +261,16 @@
       </div>
       <div class="status-viewers-count"><i class="f7-icons">eye_fill</i> <span id="statusViewersCount">0</span> مشاهدة</div>
       <div id="statusViewersList"></div>
+    </div>
+  </div>
+
+  <!-- اختيار لغة الواجهة -->
+  <div class="overlay" id="languageOv">
+    <div class="sheet language-sheet">
+      <div class="sh-handle"></div>
+      <div class="language-head"><b>لغة الواجهة</b><button data-close="languageOv" type="button"><i class="f7-icons">xmark</i></button></div>
+      <button class="language-option" data-language="ar" type="button"><span class="language-flag">ع</span><span><b>العربية</b><small>عرض الواجهة باللغة العربية</small></span><i class="f7-icons language-check">checkmark_circle_fill</i></button>
+      <button class="language-option" data-language="en" type="button"><span class="language-flag">EN</span><span><b>English</b><small>عرض الواجهة باللغة الإنجليزية</small></span><i class="f7-icons language-check">checkmark_circle_fill</i></button>
     </div>
   </div>
 

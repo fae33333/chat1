@@ -27,6 +27,157 @@ let IGNORED_USERS = new Set();
 try { IGNORED_USERS = new Set(JSON.parse(localStorage.getItem('ignored_users') || '[]').map(Number)); } catch (e) { }
 function saveIgnoredUsers() { localStorage.setItem('ignored_users', JSON.stringify([...IGNORED_USERS])); }
 
+// =====================================================
+//  ترجمة واجهة الشات (العربية / English)
+// =====================================================
+let APP_LANG = localStorage.getItem('chat_language') === 'en' ? 'en' : 'ar';
+const I18N_EN = {
+  'دخول': 'Login', 'إنشاء حساب': 'Create account', 'الخروج': 'Logout', 'الافتراضية': 'Default', 'الصوتية': 'Voice',
+  'لا يوجد احد في البث المباشر حي الان': 'No one is live right now', 'بث مباشر': 'Live', 'مغادرة الغرفة': 'Leave room', 'تحديث الغرف': 'Refresh rooms',
+  'متصل الان': 'Online now', 'إيموجي': 'Emoji', 'ملصقات': 'Stickers', 'قائمة الألوان': 'Colors',
+  'الغرف': 'Rooms', 'الخاص': 'Private', 'الإشعارات': 'Notifications', 'القائمة': 'Menu',
+  'الحالات': 'Statuses', 'حالتي': 'My status', 'اضغط لإضافة تحديث الحالة': 'Tap to add a status update', 'الحالات الحديثة': 'Recent updates',
+  'جاري تحميل الحالات...': 'Loading statuses...', 'إضافة حالة': 'Add status', 'صورة': 'Photo', 'فيديو': 'Video', 'ملف صوتي': 'Audio', 'كتابة': 'Text',
+  'تختفي الحالة تلقائياً بعد 24 ساعة': 'Your status disappears automatically after 24 hours', 'إلغاء': 'Cancel', 'حالة كتابية': 'Text status', 'نشر': 'Publish',
+  'حالة صوتية': 'Audio status', 'المشاهدات': 'Views', 'حذف الحالة': 'Delete status', 'شاهد حالتي': 'Viewed my status', 'مشاهدة': 'view',
+  'لغة الواجهة': 'Interface language', 'العربية': 'Arabic', 'عرض الواجهة باللغة العربية': 'Display the interface in Arabic', 'عرض الواجهة باللغة الإنجليزية': 'Display the interface in English', 'تغيير اللغة': 'Change language',
+  'تسجيل الدخول': 'Sign in', 'دخول كزائر/ة': 'Continue as guest', 'نسيت كلمة السر؟': 'Forgot your password?', 'استعادة كلمة السر': 'Recover password',
+  'لا يوجد لديك عضوية؟': 'Do not have an account?', 'إنشاء حساب مجانًا': 'Create a free account', 'النوع': 'Gender', 'ذكر': 'Male', 'أنثى': 'Female', 'مجهول': 'Unknown',
+  'الرجاء قراءة': 'Please read', 'شروط الاستخدام': 'Terms of Use', 'وقراءة': 'and read', 'سياسة الخصوصية': 'Privacy Policy', 'تسجيل العضوية': 'Register account',
+  'يتطلب الدخول باستخدام عضويتك أو تسجيل عضوية': 'Sign in or create an account', 'هذه الميزة متاحة للمستخدمين المسجلين فقط، قم بتسجيل عضوية مجانا الان': 'This feature is available to registered users only. Create a free account now.',
+  'التسجيل الان': 'Register now', 'لاحقا': 'Later', 'عضو مسجل': 'Registered member', 'زائر': 'Guest', 'الرد على الرسالة': 'Reply to message',
+  'دردشة خاصة': 'Private chat', 'ارسل هدية': 'Send gift', 'ترقية هذا المستخدم': 'Upgrade this user', 'تجاهل': 'Ignore', 'إلغاء التجاهل': 'Unignore',
+  'كتم المستخدم': 'Mute user', 'إلغاء الكتم': 'Unmute', 'طرد المستخدم': 'Kick user', 'حظر المستخدم': 'Ban user', 'المعلومات الشخصية': 'Profile information', 'إغلاق': 'Close',
+  'متجر الهدايا الافتراضية': 'Virtual gift store', 'فاخرة': 'Luxury', 'جواهر': 'Jewels', 'افتراضي': 'Default', 'هدية لـ :': 'Gift to:', 'اختر هدية': 'Choose a gift',
+  'كمية :': 'Quantity:', 'تحتاج لتنفق :': 'You need to spend:', 'جائزة هذه الهدية :': 'Gift reward:', 'يحصل مستلم هذه الهدية على هذا الرصيد': 'The recipient receives this balance',
+  'رصيدك الحالي :': 'Your current balance:', 'الغاء': 'Cancel', 'أرسل': 'Send', 'الترقية': 'Upgrade', 'قم بترقية عضوية الحساب لتبرز من بين الحشود !': 'Upgrade the account to stand out from the crowd!',
+  'الترقية الى :': 'Upgrade to:', 'المدة بالأشهر :': 'Duration in months:', 'ترقية': 'Upgrade', 'حسابي': 'My account', 'الهدايا': 'Gifts', 'عودة': 'Back',
+  'المحادثات الخاصة': 'Private conversations', 'الاعضاء المسجلين': 'Registered members', 'غير مرغوب فيه': 'Spam', 'القائمة الرئيسية': 'Main menu',
+  'متصل': 'Online', 'رصيدك الحالي': 'Current balance', 'شراء رصيد': 'Buy credit', 'توثيق حسابي': 'Verify my account', 'ترقية حسابي': 'Upgrade my account',
+  'تغيير الصورة': 'Change photo', 'هدايا حسابي': 'My gifts', 'قوائم الحظر': 'Block lists', 'الاعدادات': 'Settings', 'تسجيل الخروج': 'Sign out',
+  'تغيير الحالة': 'Change status', 'مشغول': 'Busy', 'بالخارج': 'Away', 'حساب': 'Account', 'الطبيعة': 'Nature', 'اخرى': 'Other', 'رفع صورة': 'Upload photo',
+  'اختيار هذه الصورة': 'Choose this photo', 'عام': 'General', 'تفعيل الصوت': 'Enable sound', 'صوت الرسائل الجديدة': 'New message sound',
+  'صوت دخول المستخدمين': 'User join sound', 'اظهار الوقت في الرسائل': 'Show message time', 'استقبال الرسائل الخاصة': 'Receive private messages',
+  'إشعارات': 'Notifications', 'احصل على توثيق دردشتي': 'Get verified', 'شارة تم التحقق ؟': 'Verification badge',
+  'احصل على شارة تحقق خاصة تظهر بجوار اسمك أينما ظهر': 'Get a verification badge shown next to your name everywhere', 'حماية حسابك': 'Protect your account',
+  'احم حسابك في مجتمعنا من مرسلي البريد العشوائي، لن نقبل التحقق من أي شخص آخر يشبه حسابك': 'Protect your account from impersonation and spam.',
+  'الثقة والتميز': 'Trust and distinction', 'اجعل مجتمع دردشتي يثق بك وكن دائمًا مميز في المقدمة': 'Build trust in the community and always stand out.',
+  'الصلاحية والرسوم': 'Validity and fees', 'الرسوم هي': 'The fee is', '10 ذهب': '10 Gold', 'افتراضي ومدة الصلاحية': 'and the validity period is', '3 أشهر': '3 months',
+  'طلب التحقق من حسابي': 'Request account verification',
+  'سيتم خصم رسوم إرسال قدرها 10 ذهب افتراضي، وفي حالة رفض إرسالك، سيتم إرجاع الرسوم إلى حسابك. بعد التحقق من حسابك سيكون التحقق الخاص بك صالحًا لمدة 3 أشهر، إذا انتهكت شروط الاستخدام الخاصة بنا فسيتم إلغاء حالة التحقق الخاصة بك ولن يتم استرداد الرسوم': 'A 10 Gold submission fee will be deducted. If your request is rejected, the fee will be returned. Verification remains valid for 3 months and may be revoked if the Terms of Use are violated.',
+  'اشترِ الذهب الافتراضي لترقية حسابك أو حساب أصدقائك وإرسال الهدايا': 'Buy virtual gold to upgrade accounts and send gifts.',
+  'شراء ذهب دردشتي الافتراضي': 'Buy virtual gold', 'من خلال شراء ذهب دردشتي الافتراضي، فإنك توافق على شروط الاستخدام الخاصة بنا بما في ذلك شرط التحكيم وسياسة الخصوصية الخاصة بنا': 'By purchasing virtual gold, you agree to our Terms of Use, arbitration provision, and Privacy Policy.', 'متابعة شراء': 'Continue purchase', 'هل انت متأكد تريد الخروج من هذه الغرفة ؟': 'Are you sure you want to leave this room?',
+  'كلا': 'No', 'نعم': 'Yes', 'غرفة محمية': 'Protected room', 'غرفة «': 'Room “', '» محمية بكلمة مرور.': '” is password protected.', 'اكتب كلمة المرور للدخول:': 'Enter the room password:', '❌ كلمة المرور غير صحيحة — حاول مرة أخرى': '❌ Incorrect password — try again',
+  'الحالة السابقة': 'Previous status', 'الحالة التالية': 'Next status',
+  'قسم الشكاوي': 'Complaints', 'إرسال الشكوى': 'Send complaint', 'رسالة النظام': 'System message', 'إعلان من الإدارة': 'Admin announcement', 'نظام الهدايا': 'Gift system',
+  'لا توجد غرف هنا': 'No rooms here', 'لا يوجد متصلون': 'No users online', 'لا توجد حالات حديثة بعد': 'No recent updates', 'تعذر تحميل الحالات': 'Could not load statuses',
+  'لا توجد رسائل من الزوار': 'No messages from guests', 'لا توجد محادثات مع أعضاء مسجلين': 'No conversations with registered members',
+  'لا يوجد رسائل خاصة بعد': 'No private messages yet', 'لا يوجد إشعارات بعد': 'No notifications yet', 'لا توجد هدايا بعد': 'No gifts yet',
+  'إلغاء الطرد': 'Remove kick', 'أنت هنا': 'You are here', 'بحث عن غرف': 'Search rooms', 'بحث عن مستخدمين': 'Search users', 'ابحث عن غرفك': 'Search rooms',
+  'رسالة عامة': 'Public message', 'رسالة': 'Message', 'اكتب حالتك...': 'Write your status...', 'الأسم المستعار': 'Display name', 'اسم المستعار': 'Display name',
+  'الرقم السري': 'Password', 'العمر': 'Age', 'كلمة المرور': 'Password', 'موضوع الشكوى': 'Complaint subject', 'اكتب شكواك هنا...': 'Write your complaint here...',
+  'جاري تحميل قائمة الغرف...': 'Loading rooms...', 'الرسائل': 'Messages', 'معلومات': 'Information', 'الإبلاغ': 'Report', 'إرسل ترقية': 'Send upgrade', 'إرسل هدية': 'Send gift',
+  'دردشة': 'Chat', 'يتم عرض الهدايا التي يتلقاها هذا المستخدم هنا': 'Gifts received by this user appear here', 'أظهر المزيد': 'Show more',
+  'تنفيذ وحفظ': 'Save changes', 'البريد الالكتروني': 'Email', 'الدولة / بلدة': 'Country / City', 'النبذة': 'Bio', 'حفظ': 'Save',
+  'تلقائي': 'Automatic', 'قائمة التجاهل': 'Ignore list', 'إعدادات الإشعارات': 'Notification settings'
+};
+Object.assign(I18N_EN, {
+  'مغلقة 🔒': 'Closed 🔒', 'لا توجد ملصقات بعد — تُضاف من لوحة الإدارة': 'No stickers yet — add them from the admin panel', 'لم يتلقَ هدايا بعد': 'No gifts received yet',
+  'أنت متواجد في هذه الغرفة حالياً 📍': 'You are already in this room 📍', 'اختر غرفة أولا': 'Choose a room first', 'اختر هدية أولا': 'Choose a gift first',
+  'اكتب الشكوى أولا': 'Write your complaint first', 'اكتب نص الحالة أولاً': 'Write your status first', 'انتهت هذه الحالة': 'This status has expired',
+  'تعذر إرسال الطلب': 'Could not send the request', 'تعذر الإرسال': 'Could not send', 'تعذر الحفظ': 'Could not save', 'تعذر الدخول للغرفة': 'Could not enter the room',
+  'تعذر الشراء': 'Purchase failed', 'تعذر تغيير حالة الكتم': 'Could not change mute status', 'تعذر حذف الحالة': 'Could not delete status', 'تعذر حفظ الصورة': 'Could not save photo',
+  'تعذر رفع الصورة': 'Could not upload photo', 'تعذر طرد المستخدم': 'Could not kick user', 'تعذر فتح الحالة': 'Could not open status', 'تعذر فتح الملف الشخصي': 'Could not open profile',
+  'تعذر نشر الحالة': 'Could not publish status', 'تعذرت الترقية': 'Upgrade failed', 'تم إرسال الشكوى للإدارة ✅': 'Complaint sent to the administration ✅',
+  'تم إرسال الصورة 📷': 'Photo sent 📷', 'تم إرسال طلب التوثيق للإدارة ✓ (خصم 10 ذهب)': 'Verification request sent ✓ (10 Gold deducted)',
+  'تم الحفظ بنجاح ✅': 'Saved successfully ✅', 'تم تحديث قائمة الغرف ✓': 'Room list refreshed ✓', 'تم تسجيل عضويتك بنجاح 🎉': 'Account registered successfully 🎉',
+  'تم تغيير اللغة إلى العربية': 'Language changed to Arabic', 'تم تغيير لون خطك 🎨': 'Text color changed 🎨', 'تم حذف الحالة': 'Status deleted',
+  'تم حظرك بواسطة الإدارة': 'You were banned by the administration', 'تم حفظ الاعدادات ✓': 'Settings saved ✓', 'تم حفظ الصورة ✅': 'Photo saved ✅',
+  'تم رفع الصورة وحفظها ✅': 'Photo uploaded and saved ✅', 'تم طردك من الغرفة': 'You were kicked from the room', 'تم نشر حالتك لمدة 24 ساعة ✓': 'Your status was published for 24 hours ✓',
+  'تمت الإضافة لقائمة التجاهل 🚫': 'Added to the ignore list 🚫', 'جاري نشر الحالة...': 'Publishing status...', 'حجم الملف أكبر من 50MB': 'File is larger than 50MB',
+  'حساب إداري': 'Admin account', 'رجع لون خطك للون رتبتك': 'Text color reset to your rank color', 'ادمن': 'Admin', 'ادمن غرفة': 'Room admin', 'سوبر ادمين': 'Super admin',
+  'عضوية Plus': 'Plus membership', 'عضوية Premium': 'Premium membership', 'عضوية النخبة': 'VIP membership', 'عضوية مميز': 'Special membership',
+  'غير متصل': 'Offline', 'فشل التسجيل': 'Registration failed', 'فشل الدخول': 'Login failed', 'نوع الملف لا يطابق نوع الحالة المختار': 'The file does not match the selected status type',
+  'الأردن': 'Jordan', 'السعودية': 'Saudi Arabia', 'مصر': 'Egypt', 'العراق': 'Iraq', 'فلسطين': 'Palestine', 'الإمارات': 'UAE', 'الكويت': 'Kuwait',
+  'قطر': 'Qatar', 'البحرين': 'Bahrain', 'سلطنة عمان': 'Oman', 'سوريا': 'Syria', 'لبنان': 'Lebanon', 'الجزائر': 'Algeria', 'المغرب': 'Morocco',
+  'تونس': 'Tunisia', 'ليبيا': 'Libya', 'اليمن': 'Yemen', 'السودان': 'Sudan'
+});
+const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info';
+function translateDynamicText(text) {
+  if (I18N_EN[text]) return I18N_EN[text];
+  if (text.startsWith('اليوم الساعة ')) return 'Today at ' + text.slice('اليوم الساعة '.length);
+  if (text.startsWith('أمس الساعة ')) return 'Yesterday at ' + text.slice('أمس الساعة '.length);
+  if (text.startsWith('آخر تحديث ')) return 'Last update ' + translateDynamicText(text.slice('آخر تحديث '.length));
+  if (text.startsWith('متصل الان ')) return 'Online now ' + text.slice('متصل الان '.length);
+  if (text.startsWith('تم كتم ')) return 'Muted ' + text.slice('تم كتم '.length);
+  if (text.startsWith('تم إلغاء كتم ')) return 'Unmuted ' + text.slice('تم إلغاء كتم '.length);
+  if (text.startsWith('تم طرد ')) return 'Kicked ' + text.slice('تم طرد '.length);
+  if (text.startsWith('تم حظر ')) return 'Banned ' + text.slice('تم حظر '.length);
+  if (text.startsWith('تم تجاهل ')) return 'Ignored ' + text.slice('تم تجاهل '.length);
+  if (text.startsWith('تم إلغاء تجاهل ')) return 'Unignored ' + text.slice('تم إلغاء تجاهل '.length);
+  if (text.startsWith('مرحبا بك ')) return 'Welcome ' + text.slice('مرحبا بك '.length);
+  if (text.startsWith('أهلا بك كزائر ')) return 'Welcome, guest ' + text.slice('أهلا بك كزائر '.length);
+  if (text.startsWith('رصيد: ')) return 'Balance: ' + text.slice('رصيد: '.length);
+  if (text.startsWith('تم تغيير الحالة إلى ')) return 'Status changed to ' + translateDynamicText(text.slice('تم تغيير الحالة إلى '.length));
+  if (text.startsWith('غرفة مستخدمين ')) return 'Users room: ' + text.slice('غرفة مستخدمين '.length);
+  if (text.startsWith('إبلاغ عن ')) return 'Report ' + text.slice('إبلاغ عن '.length);
+  if (text.endsWith(' حسب عنوان IP')) return translateDynamicText(text.slice(0, -' حسب عنوان IP'.length)) + ' by IP address';
+  if (text.endsWith(' من الغرفة')) return translateDynamicText(text.slice(0, -' من الغرفة'.length)) + ' from the room';
+  return text;
+}
+function shouldSkipTranslation(node) {
+  const el = node.nodeType === 1 ? node : node.parentElement;
+  return !el || !!el.closest('script,style,' + I18N_SKIP_SELECTOR);
+}
+function translateTextNode(node) {
+  if (!node || node.nodeType !== 3 || shouldSkipTranslation(node)) return;
+  if (node.__arabicSource === undefined) node.__arabicSource = node.nodeValue;
+  const source = node.__arabicSource;
+  const match = source.match(/^(\s*)([\s\S]*?)(\s*)$/);
+  const core = match ? match[2] : source;
+  const translated = APP_LANG === 'en' ? translateDynamicText(core) : core;
+  const next = (match ? match[1] : '') + translated + (match ? match[3] : '');
+  if (node.nodeValue !== next) node.nodeValue = next;
+}
+function translateAttributes(el) {
+  if (!el || el.nodeType !== 1 || shouldSkipTranslation(el)) return;
+  el.__arabicAttrs = el.__arabicAttrs || {};
+  for (const attr of ['placeholder', 'title', 'aria-label']) {
+    if (!el.hasAttribute(attr)) continue;
+    if (el.__arabicAttrs[attr] === undefined) el.__arabicAttrs[attr] = el.getAttribute(attr);
+    const source = el.__arabicAttrs[attr];
+    el.setAttribute(attr, APP_LANG === 'en' ? translateDynamicText(source) : source);
+  }
+}
+function applyLanguage(root = document.body) {
+  if (!root) return;
+  if (root.nodeType === 3) return translateTextNode(root);
+  translateAttributes(root);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) node.nodeType === 3 ? translateTextNode(node) : translateAttributes(node);
+}
+let LANGUAGE_OBSERVER = null;
+function setLanguage(language, save = true) {
+  APP_LANG = language === 'en' ? 'en' : 'ar';
+  if (save) localStorage.setItem('chat_language', APP_LANG);
+  document.documentElement.lang = APP_LANG;
+  document.documentElement.dir = APP_LANG === 'ar' ? 'rtl' : 'ltr';
+  document.title = APP_LANG === 'en' ? 'Arab Stars Chat' : 'شات نجوم العرب';
+  document.body.classList.toggle('lang-en', APP_LANG === 'en');
+  $$('.language-option').forEach(b => b.classList.toggle('active', b.dataset.language === APP_LANG));
+  applyLanguage(document.body);
+}
+function initLanguage() {
+  setLanguage(APP_LANG, false);
+  if (!LANGUAGE_OBSERVER) {
+    LANGUAGE_OBSERVER = new MutationObserver(mutations => {
+      for (const mutation of mutations) for (const node of mutation.addedNodes) applyLanguage(node);
+    });
+    LANGUAGE_OBSERVER.observe(document.body, { childList: true, subtree: true });
+  }
+}
+
 // ---------- أدوات ----------
 async function api(url, method = 'GET', body, isForm = false) {
   const o = { method, credentials: 'same-origin', headers: { 'X-Chat-Client': '1' } };
@@ -143,6 +294,7 @@ function beep(freq = 660, dur = .12) {
 //  الإقلاع
 // =====================================================
 (async function init() {
+  initLanguage();
   try { SETTINGS = await api('/api/public-settings'); } catch (e) { }
   applySettings();
   applyPrefsToSwitches();
@@ -155,7 +307,7 @@ function beep(freq = 660, dur = .12) {
 })();
 
 function applySettings() {
-  document.body.className = 'skin-' + (SETTINGS.skin || 'default');
+  document.body.className = 'skin-' + (SETTINGS.skin || 'default') + (APP_LANG === 'en' ? ' lang-en' : '');
   $('#siteName').textContent = SETTINGS.site_name || 'نجوم العرب';
   if (SETTINGS.logo_url) {
     $('#siteLogo').innerHTML = `<img src="${esc(SETTINGS.logo_url)}" alt="">`;
@@ -222,6 +374,21 @@ function connectSocket() {
   SOCKET.on('membership_changed', ({ plan }) => { if (ME) { ME.membership = plan; MYBADGE = badgeOf(ME); } });
   SOCKET.on('statuses_changed', () => {
     if ($('#statusOv').classList.contains('open')) loadStatuses();
+  });
+  SOCKET.on('verification_changed', ({ username, verified }) => {
+    ROOM_USERS.forEach(u => { if (u.username === username) u.verified = verified ? 1 : 0; });
+    if (CUR_TARGET && CUR_TARGET.username === username) CUR_TARGET.verified = verified ? 1 : 0;
+    if (PM_WITH && PM_WITH.username === username) PM_WITH.verified = verified ? 1 : 0;
+    STATUSES.forEach(s => { if (s.username === username) s.verified = verified ? 1 : 0; });
+    renderUsers();
+    if ($('#statusOv').classList.contains('open')) renderStatuses();
+    if ($('#privOv').classList.contains('open')) renderPrivConvs(PRIV_TAB);
+    $$('#msgArea .mname').forEach(nameEl => {
+      if (nameEl.dataset.username !== username) return;
+      const oldCheck = nameEl.querySelector('.vcheck');
+      if (verified && !oldCheck) nameEl.insertAdjacentHTML('beforeend', ' <i class="f7-icons vcheck">checkmark_seal_fill</i>');
+      if (!verified && oldCheck) oldCheck.remove();
+    });
   });
   SOCKET.on('status_viewed', ({ statusId }) => {
     const s = STATUSES.find(x => x.id === +statusId);
@@ -339,7 +506,7 @@ function enterRoom(id, pwd) {
   $('#roomsVeil').style.display = 'none';
   SOCKET.emit('join', id, pass, (res) => {
     if (res && res.ok) {
-      loadRoomMessages(id);
+      // لا نحمّل سجل الرسائل القديم؛ العام يبدأ فارغاً ويظهر فقط ترحيب الغرفة من الإدارة.
       api('/api/rooms/' + id + '/users').then(u => { ROOM_USERS = u; renderUsers(); });
       return;
     }
@@ -394,7 +561,7 @@ function renderMsg(m) {
       <div class="mava">${avatarHtml(u.avatar)}</div>
       <div class="mbody">
         <div class="mline1">
-          <span class="mname" style="color:${color};font-weight:${weight}">${esc(uname)}${u.verified ? ' <i class="f7-icons vcheck">checkmark_seal_fill</i>' : ''}</span>
+          <span class="mname" data-username="${esc(uname)}" style="color:${color};font-weight:${weight}">${esc(uname)}${u.verified ? ' <i class="f7-icons vcheck">checkmark_seal_fill</i>' : ''}</span>
           ${(SETTINGS.show_time === '1' && PREFS.show_time) ? `<span class="mtime">${t}</span>` : ''}
         </div>
         ${rp ? `<span class="mrply" dir="rtl"><i class="f7-icons">arrowshape_turn_up_left_fill</i>${esc(rp.name)}: ${esc(rp.text)}</span>` : ''}
@@ -1503,6 +1670,8 @@ $('#btnRoomUsers').onclick = () => setUsersPanel(!$('#usersPanel').classList.con
 // زر النقاط: قائمة خيارات الغرفة
 function closeRoomDrop() { $('#roomDrop').classList.remove('open'); $('#roomDropBg').style.display = 'none'; }
 $('#btnRoomMore').onclick = (e) => { e.stopPropagation(); $('#roomDropBg').style.display = 'block'; $('#roomDrop').classList.toggle('open'); };
+$('#btnLanguage').onclick = () => { setLanguage(APP_LANG, false); openOv('languageOv'); };
+$$('.language-option').forEach(b => b.onclick = () => { setLanguage(b.dataset.language); closeOv('languageOv'); toast(b.dataset.language === 'en' ? 'Language changed to English' : 'تم تغيير اللغة إلى العربية'); });
 $('#roomDropBg').onclick = closeRoomDrop;
 $('#dropLeaveRoom').onclick = () => { closeRoomDrop(); openOv('exitOv'); };
 $('#dropRefreshRooms').onclick = async () => { closeRoomDrop(); await loadRooms(); toast('تم تحديث قائمة الغرف ✓'); };

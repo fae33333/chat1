@@ -150,6 +150,14 @@ async function refreshVerified() {
 refreshVerified();
 setTimeout(refreshVerified, 1200);
 setInterval(refreshVerified, 15000);
+async function broadcastVerificationState(username) {
+  const verified = VERIFIED_SET.has(username) ? 1 : 0;
+  for (const id of Object.keys(onlineUsers)) {
+    if (onlineUsers[id] && onlineUsers[id].username === username) onlineUsers[id].verified = verified;
+  }
+  await Promise.all(Object.keys(roomUsers).map(rid => emitRoomUsers(rid)));
+  io.emit('verification_changed', { username, verified });
+}
 function pubUser(u) {
   if (!u) return null;
   return {
@@ -1073,12 +1081,15 @@ app.post('/api/admin/verified', requireAdmin, async (req, res) => {
   const names = String(req.body.names || '').split('|').map(s => s.trim()).filter(Boolean);
   for (const n of names) await q.run(`INSERT OR IGNORE INTO verified (username) VALUES (?)`, n);
   await refreshVerified();
+  for (const n of names) await broadcastVerificationState(n);
   io.emit('sync');
   res.json({ ok: true });
 });
 app.delete('/api/admin/verified/:id', requireAdmin, async (req, res) => {
+  const entry = await q.get(`SELECT username FROM verified WHERE id=?`, req.params.id);
   await q.run(`DELETE FROM verified WHERE id=?`, req.params.id);
   await refreshVerified();
+  if (entry) await broadcastVerificationState(entry.username);
   io.emit('sync');
   res.json({ ok: true });
 });
@@ -1185,9 +1196,12 @@ io.on('connection', async (socket) => {
     }
     socket.join('room_' + roomId);
     (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(uid);
-    const text = `مرحبا بـ ${me.username} في غرفة ${room.name}`;
-    // تنبيه الدخول يُبث عبر الويب سوكيت مباشرة فقط — دون حفظه في سجل الدردشة
-    io.to('room_' + roomId).emit('msg', { id: Date.now(), room_id: +roomId, username: 'رسالة النظام', text, type: 'join', created_at: Math.floor(Date.now() / 1000) });
+    // العام يبدأ فارغاً لكل داخل جديد؛ نعرض له فقط ترحيب الغرفة الذي كتبته الإدارة.
+    const welcome = String(room.welcome || '').trim();
+    if (welcome) socket.emit('msg', {
+      id: Date.now(), room_id: +roomId, username: 'رسالة النظام',
+      text: welcome, type: 'welcome', created_at: Math.floor(Date.now() / 1000)
+    });
     emitRoomUsers(roomId);
     emitRoomCounts();
     done({ ok: true });
