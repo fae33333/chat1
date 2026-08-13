@@ -185,7 +185,37 @@
         </div>
       </div>
       <button class="status-fab" id="statusFab" type="button" aria-label="إضافة حالة"><i class="f7-icons">camera_fill</i></button>
-      <input type="file" id="statusFile" accept="image/*" hidden>
+      <input type="file" id="statusFile" hidden>
+    </div>
+  </div>
+
+  <!-- اختيار نوع الحالة -->
+  <div class="overlay" id="statusTypeOv">
+    <div class="sheet status-type-sheet">
+      <div class="sh-handle"></div>
+      <div class="status-type-head"><b>إضافة حالة</b><button data-close="statusTypeOv" type="button"><i class="f7-icons">xmark</i></button></div>
+      <div class="status-type-grid">
+        <button class="status-type-btn image" data-status-type="image" type="button"><i class="f7-icons">photo_fill</i><span>صورة</span></button>
+        <button class="status-type-btn video" data-status-type="video" type="button"><i class="f7-icons">videocam_fill</i><span>فيديو</span></button>
+        <button class="status-type-btn audio" data-status-type="audio" type="button"><i class="f7-icons">music_note_2</i><span>ملف صوتي</span></button>
+        <button class="status-type-btn text" data-status-type="text" type="button"><i class="f7-icons">textformat</i><span>كتابة</span></button>
+      </div>
+      <p class="status-type-note">تختفي الحالة تلقائياً بعد 24 ساعة</p>
+    </div>
+  </div>
+
+  <!-- إنشاء حالة كتابية -->
+  <div class="overlay full" id="statusTextOv">
+    <div class="status-text-page">
+      <div class="status-text-head">
+        <button data-close="statusTextOv" type="button">إلغاء</button>
+        <b>حالة كتابية</b>
+        <button class="publish" id="statusTextPublish" type="button">نشر</button>
+      </div>
+      <div class="status-text-canvas" id="statusTextCanvas">
+        <textarea id="statusTextInput" maxlength="500" placeholder="اكتب حالتك..."></textarea>
+      </div>
+      <div class="status-bg-colors" id="statusBgColors"></div>
     </div>
   </div>
 
@@ -199,7 +229,16 @@
         <span class="status-viewer-who"><b id="statusViewerName">-</b><small id="statusViewerTime">-</small></span>
       </div>
       <div class="status-stage">
-        <img id="statusViewerImage" alt="الحالة">
+        <div class="status-media-host" id="statusMediaHost">
+          <img id="statusViewerImage" alt="الحالة" hidden>
+          <video id="statusViewerVideo" controls playsinline preload="metadata" hidden></video>
+          <div class="status-audio-player" id="statusAudioPlayer" hidden>
+            <span class="status-audio-icon"><i class="f7-icons">music_note_2</i></span>
+            <b>حالة صوتية</b>
+            <audio id="statusViewerAudio" controls preload="metadata"></audio>
+          </div>
+          <div class="status-text-view" id="statusViewerText" hidden></div>
+        </div>
         <button class="status-nav prev" id="statusPrev" type="button" aria-label="الحالة السابقة"></button>
         <button class="status-nav next" id="statusNext" type="button" aria-label="الحالة التالية"></button>
       </div>

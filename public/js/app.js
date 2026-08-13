@@ -18,7 +18,7 @@ const canModerateRank = () => ME && ['superadmin', 'admin', 'roomadmin'].include
 let ROOM_USERS = [], CUR_TARGET = null;
 let GIFTS = [], SEL_GIFT = null, G_QTY = 1;
 let UP_PLAN = 'vip', UP_MONTHS = 1, UP_TARGET = null;
-let PM_WITH = null, PRIV_UNREAD = 0;
+let PM_WITH = null, PRIV_UNREAD = 0, PRIV_TAB = 'members';
 let NOTIFS = [];
 let SEL_AVATAR = null, AVA_CAT = 'def';
 let STATUSES = [], STATUS_GROUP = [], STATUS_INDEX = 0, CURRENT_STATUS = null;
@@ -200,6 +200,7 @@ function connectSocket() {
       if (PREFS.pm_recv) beep(880, .15);
       pushNotif('chat_bubble2_fill', `رسالة خاصة من ${p.from_name}`);
     }
+    if ($('#privOv').classList.contains('open')) renderPrivConvs(PRIV_TAB);
   });
   SOCKET.on('notify', (n) => {
     if (ME && typeof n.balance === 'number') { ME.balance = n.balance; $('#menuBal').textContent = n.balance; }
@@ -517,7 +518,7 @@ function setReply(m) {
 }
 $('#rbClose').onclick = () => setReply(null);
 $('#usReply').onclick = () => { closeOv('userSheet'); if (US_MSG) setReply(US_MSG); };
-$('#usPrivate').onclick = () => { closeOv('userSheet'); if (!ME.registered) return openOv('needRegOv'); openPrivateWith(CUR_TARGET); };
+$('#usPrivate').onclick = () => { closeOv('userSheet'); openPrivateWith(CUR_TARGET); };
 $('#usGift').onclick = () => { closeOv('userSheet'); if (!ME.registered) return openOv('needRegOv'); openGifts(CUR_TARGET); };
 $('#usUpgrade').onclick = () => { closeOv('userSheet'); if (!ME.registered) return openOv('needRegOv'); openUpgrade(CUR_TARGET); };
 $('#usIgnore').onclick = () => {
@@ -758,7 +759,7 @@ function renderVisitorProfile(u, d) {
     $('#vpInfo').style.display = t.dataset.vtab === 'info' ? '' : 'none';
     $('#vpGifts').style.display = t.dataset.vtab === 'gifts' ? '' : 'none';
   });
-  $('#vaChat').onclick = () => { closeOv('profOv'); if (!ME.registered) return openOv('needRegOv'); openPrivateWith(u); };
+  $('#vaChat').onclick = () => { closeOv('profOv'); openPrivateWith(u); };
   $('#vaGift').onclick = () => { closeOv('profOv'); if (!ME.registered) return openOv('needRegOv'); openGifts(u); };
   $('#vaUpgrade').onclick = () => { closeOv('profOv'); openUpgrade(u); };
   $('#vaReport').onclick = () => { closeOv('profOv'); openOv('compOv'); const s = $('#compSubject'); if (s) s.value = 'إبلاغ عن ' + u.username; };
@@ -845,26 +846,25 @@ function renderProfGifts(gifts) {
 // =====================================================
 async function openPrivateList() {
   if (!ME) return openLogin();
-  if (!ME.registered) return openOv('needRegOv');
   openOv('privOv');
-  renderPrivConvs('members');
+  renderPrivConvs(PRIV_TAB);
 }
-async function renderPrivConvs(tab) {
+async function renderPrivConvs(tab = 'members') {
+  PRIV_TAB = tab;
   $$('.pv-tab').forEach(t => t.classList.toggle('active', t.dataset.ptab === tab));
-  if (tab === 'spam') {
-    $('#privList').innerHTML = '<div class="pv-empty"><div>لا يوجد رسائل غير مرغوب فيها</div></div>';
-    return;
-  }
-  const convs = await api('/api/private');
+  const allConvs = await api('/api/private');
+  // محادثات الأعضاء المسجلين في التبويب الأول، والزوار في «غير مرغوب فيه».
+  const convs = allConvs.filter(c => tab === 'spam' ? !c.registered : !!c.registered);
   $('#privList').innerHTML = convs.length ? convs.map(c => `
-    <div class="pv-row" data-id="${c.id}">
+    <div class="pv-row ${c.registered ? '' : 'guest-pm'}" data-id="${c.id}">
       <div class="uava">${avatarHtml(c.avatar)}</div>
       <div class="ptxt">
-        <div class="pname">${esc(c.username)} <img src="/badges/${GENDER_IMG[c.gender] || 'secret.png'}"></div>
+        <div class="pname">${esc(c.username)} ${c.verified ? '<i class="f7-icons" style="font-size:13px;color:#1685f5">checkmark_seal_fill</i>' : ''}<img src="/badges/${GENDER_IMG[c.gender] || 'secret.png'}"></div>
         <div class="plast">${esc(c.last)}</div>
       </div>
+      ${c.registered ? '' : '<span class="pm-guest-tag">زائر</span>'}
       <i class="f7-icons" style="color:#c3c8d8">chevron_right</i>
-    </div>`).join('') : '<div class="pv-empty"><span class="empty-img"><img src="/img/chat_empty.png" alt=""></span><div>لا يوجد رسائل خاصة بعد</div></div>';
+    </div>`).join('') : `<div class="pv-empty"><span class="empty-img"><img src="/img/chat_empty.png" alt=""></span><div>${tab === 'spam' ? 'لا توجد رسائل من الزوار' : 'لا توجد محادثات مع أعضاء مسجلين'}</div></div>`;
   $$('#privList .pv-row').forEach(r => r.onclick = () => openPrivateWith(convs.find(x => x.id === +r.dataset.id)));
 }
 $$('.pv-tab').forEach(t => t.onclick = () => renderPrivConvs(t.dataset.ptab));
@@ -917,7 +917,7 @@ function updatePrivBadge() {
 }
 
 // =====================================================
-//  الحالات — صور لمدة 24 ساعة
+//  الحالات — صورة / فيديو / صوت / كتابة لمدة 24 ساعة
 // =====================================================
 function statusTime(ts) {
   const d = new Date((+ts || 0) * 1000);
@@ -983,26 +983,66 @@ function renderStatuses() {
     row.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openStatusGroup(+row.dataset.user); } };
   });
 }
-function chooseStatusImage() {
+const STATUS_BACKGROUNDS = ['#1f6f5f', '#2563eb', '#7c3aed', '#be185d', '#dc2626', '#ea580c', '#111827', '#374151'];
+let STATUS_UPLOAD_TYPE = 'image', STATUS_TEXT_BG = STATUS_BACKGROUNDS[0];
+function openStatusTypeChooser() {
   if (!ME) return openLogin();
   if (!ME.registered) return openOv('needRegOv');
+  openOv('statusTypeOv');
+}
+function chooseStatusFile(type) {
+  STATUS_UPLOAD_TYPE = type;
   const file = $('#statusFile');
   file.value = '';
+  file.accept = type === 'image' ? 'image/*' : type === 'video' ? 'video/*' : 'audio/*';
+  closeOv('statusTypeOv');
   file.click();
 }
-async function uploadStatus(file) {
-  if (!file) return;
-  if (!file.type.startsWith('image/')) return toast('اختر ملف صورة فقط', false);
-  if (file.size > 12 * 1024 * 1024) return toast('حجم الصورة أكبر من 12MB', false);
-  const fd = new FormData();
-  fd.append('status', file);
+function renderStatusBackgrounds() {
+  $('#statusBgColors').innerHTML = STATUS_BACKGROUNDS.map(c => `<button class="status-bg-color${c === STATUS_TEXT_BG ? ' active' : ''}" data-color="${c}" style="background:${c}" type="button"></button>`).join('');
+  $$('#statusBgColors .status-bg-color').forEach(b => b.onclick = () => {
+    STATUS_TEXT_BG = b.dataset.color;
+    $('#statusTextCanvas').style.background = STATUS_TEXT_BG;
+    renderStatusBackgrounds();
+  });
+}
+function openTextStatusComposer() {
+  closeOv('statusTypeOv');
+  STATUS_TEXT_BG = STATUS_BACKGROUNDS[0];
+  $('#statusTextInput').value = '';
+  $('#statusTextCanvas').style.background = STATUS_TEXT_BG;
+  renderStatusBackgrounds();
+  openOv('statusTextOv');
+  setTimeout(() => $('#statusTextInput').focus(), 80);
+}
+async function publishStatusForm(fd) {
   try {
-    toast('جاري رفع الحالة...');
+    toast('جاري نشر الحالة...');
     const added = await api('/api/statuses', 'POST', fd, true);
+    closeOv('statusTextOv');
     await loadStatuses();
     toast('تم نشر حالتك لمدة 24 ساعة ✓');
     openStatusGroup(ME.id, added.id);
-  } catch (e) { toast(e.error || 'تعذر رفع الحالة', false); }
+  } catch (e) { toast(e.error || 'تعذر نشر الحالة', false); }
+}
+async function uploadStatus(file) {
+  if (!file) return;
+  const actualType = String(file.type || '').split('/')[0];
+  if (actualType !== STATUS_UPLOAD_TYPE) return toast('نوع الملف لا يطابق نوع الحالة المختار', false);
+  if (file.size > 50 * 1024 * 1024) return toast('حجم الملف أكبر من 50MB', false);
+  const fd = new FormData();
+  fd.append('media_type', STATUS_UPLOAD_TYPE);
+  fd.append('status', file);
+  await publishStatusForm(fd);
+}
+async function publishTextStatus() {
+  const text = $('#statusTextInput').value.trim();
+  if (!text) return toast('اكتب نص الحالة أولاً', false);
+  const fd = new FormData();
+  fd.append('media_type', 'text');
+  fd.append('text_content', text);
+  fd.append('background', STATUS_TEXT_BG);
+  await publishStatusForm(fd);
 }
 async function openStatusGroup(userId, statusId) {
   const groups = statusGroups();
@@ -1017,11 +1057,38 @@ async function openStatusGroup(userId, statusId) {
   openOv('statusViewerOv');
   await showCurrentStatus();
 }
+function stopStatusMedia() {
+  const video = $('#statusViewerVideo'), audio = $('#statusViewerAudio');
+  try { video.pause(); } catch (e) { }
+  try { audio.pause(); } catch (e) { }
+}
+function renderStatusMedia(s) {
+  stopStatusMedia();
+  const image = $('#statusViewerImage');
+  const video = $('#statusViewerVideo');
+  const audioWrap = $('#statusAudioPlayer');
+  const audio = $('#statusViewerAudio');
+  const text = $('#statusViewerText');
+  [image, video, audioWrap, text].forEach(el => { el.hidden = true; });
+  const type = s.media_type || 'image';
+  const media = s.media || s.image || '';
+  if (type === 'video') {
+    video.src = media; video.hidden = false;
+  } else if (type === 'audio') {
+    audio.src = media; audioWrap.hidden = false;
+  } else if (type === 'text') {
+    text.textContent = s.text_content || '';
+    text.style.background = s.background || '#1f6f5f';
+    text.hidden = false;
+  } else {
+    image.src = media; image.hidden = false;
+  }
+}
 async function showCurrentStatus() {
   const s = STATUS_GROUP[STATUS_INDEX];
   if (!s) return closeOv('statusViewerOv');
   CURRENT_STATUS = s;
-  $('#statusViewerImage').src = s.image;
+  renderStatusMedia(s);
   $('#statusViewerAvatar').innerHTML = avatarHtml(s.avatar);
   $('#statusViewerName').textContent = s.is_owner ? 'حالتي' : s.username;
   $('#statusViewerTime').textContent = statusTime(s.created_at);
@@ -1068,24 +1135,28 @@ async function showStatusViewers() {
 }
 
 $('#btnAddStatus').onclick = openStatuses;
-$('#statusHeadAdd').onclick = chooseStatusImage;
-$('#statusFab').onclick = chooseStatusImage;
-$('#statusAddBadge').onclick = e => { e.stopPropagation(); chooseStatusImage(); };
+$('#statusHeadAdd').onclick = openStatusTypeChooser;
+$('#statusFab').onclick = openStatusTypeChooser;
+$('#statusAddBadge').onclick = e => { e.stopPropagation(); openStatusTypeChooser(); };
 $('#myStatusRow').onclick = () => {
   const mine = STATUSES.filter(s => s.user_id === ME.id);
   if (mine.length) openStatusGroup(ME.id);
-  else chooseStatusImage();
+  else openStatusTypeChooser();
 };
 $('#myStatusRow').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#myStatusRow').click(); } };
+$$('.status-type-btn').forEach(b => b.onclick = () => b.dataset.statusType === 'text' ? openTextStatusComposer() : chooseStatusFile(b.dataset.statusType));
+$('#statusTextPublish').onclick = publishTextStatus;
 $('#statusFile').onchange = () => uploadStatus($('#statusFile').files[0]);
 $('#statusPrev').onclick = () => { if (STATUS_INDEX > 0) { STATUS_INDEX--; showCurrentStatus(); } };
 $('#statusNext').onclick = () => { if (STATUS_INDEX < STATUS_GROUP.length - 1) { STATUS_INDEX++; showCurrentStatus(); } };
 $('#statusShowViewers').onclick = showStatusViewers;
+$$('[data-close="statusViewerOv"]').forEach(b => b.addEventListener('click', stopStatusMedia));
 $('#statusDelete').onclick = async () => {
   const s = CURRENT_STATUS;
   if (!s || !s.is_owner || !confirm('هل تريد حذف هذه الحالة؟')) return;
   try {
     await api('/api/statuses/' + s.id, 'DELETE');
+    stopStatusMedia();
     closeOv('statusViewersOv');
     closeOv('statusViewerOv');
     await loadStatuses();

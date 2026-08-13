@@ -97,10 +97,19 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     image TEXT NOT NULL,
+    media_type TEXT DEFAULT 'image',       -- image | video | audio | text
+    media TEXT DEFAULT '',                 -- مسار ملف الصورة/الفيديو/الصوت
+    text_content TEXT DEFAULT '',          -- محتوى الحالة الكتابية
+    background TEXT DEFAULT '#1f6f5f',
     caption TEXT DEFAULT '',
     created_at INTEGER DEFAULT (strftime('%s','now')),
     expires_at INTEGER NOT NULL
   )`);
+  // ترقية قواعد البيانات السابقة دون حذف الحالات الموجودة.
+  db.run(`ALTER TABLE statuses ADD COLUMN media_type TEXT DEFAULT 'image'`, () => { });
+  db.run(`ALTER TABLE statuses ADD COLUMN media TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE statuses ADD COLUMN text_content TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE statuses ADD COLUMN background TEXT DEFAULT '#1f6f5f'`, () => { });
   db.run(`CREATE INDEX IF NOT EXISTS idx_statuses_active ON statuses (expires_at, created_at)`);
 
   // مشاهدات الحالة — لا تُعرض أسماؤها إلا لصاحب الحالة عبر API محمي

@@ -1209,3 +1209,46 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
   .cbtn.ghost { width:19px; }
   .status-cbtn svg { width:18px; height:18px; }
 }
+
+/* ===== أنواع الحالات: صورة / فيديو / صوت / كتابة ===== */
+.status-type-sheet { padding:12px 16px 24px; border-radius:22px 22px 0 0; }
+.status-type-head { display:flex; align-items:center; justify-content:space-between; padding:0 2px 14px; }
+.status-type-head b { color:#172033; font-size:17px; }
+.status-type-head button { width:32px; height:32px; border:0; border-radius:50%; background:#f0f2f6; color:#667085; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.status-type-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.status-type-btn { min-height:94px; border:1px solid #e7eaf0; border-radius:16px; background:#f8fafc; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; color:#273043; font-size:13.5px; font-weight:900; cursor:pointer; }
+.status-type-btn i { width:42px; height:42px; border-radius:50%; color:#fff; display:flex; align-items:center; justify-content:center; font-size:21px; }
+.status-type-btn.image i { background:#16a765; }
+.status-type-btn.video i { background:#1479f2; }
+.status-type-btn.audio i { background:#8b5cf6; }
+.status-type-btn.text i { background:#f59e0b; }
+.status-type-note { text-align:center; color:#98a0ae; font-size:11.5px; font-weight:700; margin-top:14px; }
+.status-text-page { width:100%; height:100%; display:flex; flex-direction:column; background:#10151d; }
+.status-text-head { direction:rtl; min-height:56px; padding:8px 13px; display:flex; align-items:center; justify-content:space-between; background:#fff; color:#172033; }
+.status-text-head button { border:0; background:transparent; color:#667085; font-family:inherit; font-size:13px; font-weight:800; cursor:pointer; }
+.status-text-head button.publish { color:#fff; background:#16a765; border-radius:18px; padding:7px 18px; }
+.status-text-head b { font-size:16px; }
+.status-text-canvas { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; padding:30px; background:#1f6f5f; transition:background .2s; }
+.status-text-canvas textarea { width:100%; min-height:180px; max-height:75%; border:0; outline:0; resize:none; background:transparent; color:#fff; text-align:center; font-family:inherit; font-size:27px; font-weight:900; line-height:1.7; text-shadow:0 1px 2px rgba(0,0,0,.15); }
+.status-text-canvas textarea::placeholder { color:rgba(255,255,255,.65); }
+.status-bg-colors { direction:ltr; display:flex; gap:11px; justify-content:center; padding:14px; background:#fff; overflow-x:auto; }
+.status-bg-color { width:31px; height:31px; border-radius:50%; border:3px solid #fff; box-shadow:0 0 0 1px #d6dae2; flex:none; cursor:pointer; }
+.status-bg-color.active { box-shadow:0 0 0 3px var(--main); }
+.status-media-host { width:100%; height:100%; position:relative; display:flex; align-items:center; justify-content:center; }
+.status-media-host > img,
+.status-media-host > video { width:100%; height:100%; object-fit:contain; display:block; }
+.status-media-host [hidden] { display:none !important; }
+.status-media-host > video,
+.status-audio-player,
+.status-text-view { position:relative; z-index:3; }
+.status-audio-player { width:min(88%,360px); padding:28px 20px 24px; border-radius:22px; background:linear-gradient(145deg,#252b3b,#161a24); box-shadow:0 18px 50px rgba(0,0,0,.35); display:flex; flex-direction:column; align-items:center; gap:14px; }
+.status-audio-icon { width:94px; height:94px; border-radius:50%; background:linear-gradient(145deg,#9b6cff,#6d3bd1); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 12px 30px rgba(139,92,246,.35); }
+.status-audio-icon i { font-size:42px; }
+.status-audio-player b { color:#fff; font-size:16px; }
+.status-audio-player audio { width:100%; height:42px; }
+.status-text-view { width:100%; height:100%; padding:34px; color:#fff; display:flex; align-items:center; justify-content:center; text-align:center; white-space:pre-wrap; overflow-y:auto; font-size:29px; font-weight:900; line-height:1.75; text-shadow:0 1px 3px rgba(0,0,0,.2); }
+.status-nav:disabled { pointer-events:none; }
+.pm-guest-tag { flex:none; background:#fff1f2; color:#e11d48; border-radius:14px; padding:3px 9px; font-size:9.5px; font-weight:900; }
+.pv-row.guest-pm { border-color:#ffe1e6; background:#fffafb; }
+
+.status-stage .status-nav { z-index:4; }

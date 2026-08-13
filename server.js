@@ -73,12 +73,20 @@ const statusStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, 'public/uploads/statuses')),
   filename: (req, file, cb) => cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 10) + path.extname(file.originalname).toLowerCase())
 });
+const STATUS_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.webp', '.gif',
+  '.mp4', '.webm', '.mov', '.m4v',
+  '.mp3', '.wav', '.ogg', '.m4a', '.aac', '.opus'
+]);
 const uploadStatus = multer({
   storage: statusStorage,
-  limits: { fileSize: 12 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => file.mimetype && file.mimetype.startsWith('image/')
-    ? cb(null, true)
-    : cb(new Error('يمكن رفع الصور فقط'))
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const type = String(file.mimetype || '').split('/')[0];
+    const allowed = STATUS_EXTENSIONS.has(ext) && ['image', 'video', 'audio'].includes(type);
+    cb(allowed ? null : new Error('يمكن رفع صورة أو فيديو أو ملف صوتي فقط'), allowed);
+  }
 });
 
 // ====== أدوات مساعدة ======
@@ -400,7 +408,8 @@ app.get('/api/user/:id', requireUser, async (req, res) => {
 app.get('/api/private', requireUser, async (req, res) => {
   const uid = req.authUid;
   const rows = await q.all(`
-    SELECT p.*, u.username other_name, u.avatar other_avatar, u.gender other_gender, u.membership other_mem, u.rank other_rank, u.id other_id
+    SELECT p.*, u.username other_name, u.avatar other_avatar, u.gender other_gender,
+           u.membership other_mem, u.rank other_rank, u.registered other_registered, u.id other_id
     FROM private_messages p JOIN users u ON (u.id = CASE WHEN p.from_id=? THEN p.to_id ELSE p.from_id END)
     WHERE p.from_id=? OR p.to_id=? ORDER BY p.id DESC`, uid, uid, uid);
   const seen = {};
@@ -409,7 +418,11 @@ app.get('/api/private', requireUser, async (req, res) => {
     const oid = r.from_id === uid ? r.to_id : r.from_id;
     if (seen[oid]) continue;
     seen[oid] = 1;
-    convs.push({ id: oid, username: r.other_name, avatar: r.other_avatar, gender: r.other_gender, membership: r.other_mem, rank: r.other_rank, last: r.text, at: r.created_at });
+    convs.push({
+      id: oid, username: r.other_name, avatar: r.other_avatar, gender: r.other_gender,
+      membership: r.other_mem, rank: r.other_rank, registered: r.other_registered ? 1 : 0,
+      verified: VERIFIED_SET.has(r.other_name) ? 1 : 0, last: r.text, at: r.created_at
+    });
   }
   res.json(convs);
 });
@@ -532,21 +545,31 @@ app.post('/api/avatar', requireUser, (req, res) => {
 });
 
 // =====================================================
-//  API - الحالات (صور لمدة 24 ساعة + مشاهدات خاصة بصاحبها)
+//  API - الحالات (صورة/فيديو/صوت/كتابة لمدة 24 ساعة)
 // =====================================================
-function deleteStatusImage(image) {
-  if (!image || !image.startsWith('/uploads/statuses/')) return;
-  const file = path.join(__dirname, 'public/uploads/statuses', path.basename(image));
+function normalizeStatus(status) {
+  return {
+    ...status,
+    media_type: status.media_type || 'image',
+    media: status.media || status.image || '',
+    text_content: status.text_content || '',
+    background: /^#[0-9a-fA-F]{6}$/.test(status.background || '') ? status.background : '#1f6f5f'
+  };
+}
+function deleteStatusMedia(status) {
+  const media = typeof status === 'string' ? status : ((status && (status.media || status.image)) || '');
+  if (!media || !media.startsWith('/uploads/statuses/')) return;
+  const file = path.join(__dirname, 'public/uploads/statuses', path.basename(media));
   try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch (e) { }
 }
 async function cleanupExpiredStatuses() {
   const now = Math.floor(Date.now() / 1000);
-  const expired = await q.all(`SELECT id,image FROM statuses WHERE expires_at<=?`, now);
+  const expired = await q.all(`SELECT id,image,media FROM statuses WHERE expires_at<=?`, now);
   if (!expired.length) return;
   const ids = expired.map(s => s.id);
   for (const id of ids) await q.run(`DELETE FROM status_views WHERE status_id=?`, id);
   await q.run(`DELETE FROM statuses WHERE expires_at<=?`, now);
-  expired.forEach(s => deleteStatusImage(s.image));
+  expired.forEach(deleteStatusMedia);
 }
 
 // قائمة الحالات النشطة. عدد وأسماء المشاهدين لا يصلان إلا لصاحب الحالة.
@@ -555,41 +578,59 @@ app.get('/api/statuses', requireUser, async (req, res) => {
   const uid = +req.authUid;
   const now = Math.floor(Date.now() / 1000);
   const rows = await q.all(`
-    SELECT s.id,s.user_id,s.image,s.caption,s.created_at,s.expires_at,
-           u.username,u.avatar,u.registered,
+    SELECT s.*,u.username,u.avatar,u.registered,
            EXISTS(SELECT 1 FROM status_views sv WHERE sv.status_id=s.id AND sv.viewer_id=?) viewed,
            (SELECT COUNT(*) FROM status_views sv2 WHERE sv2.status_id=s.id) view_count
     FROM statuses s JOIN users u ON u.id=s.user_id
     WHERE s.expires_at>? AND u.banned=0
     ORDER BY s.created_at DESC`, uid, now);
-  res.json(rows.map(s => ({
-    ...s,
-    verified: VERIFIED_SET.has(s.username) ? 1 : 0,
-    is_owner: s.user_id === uid ? 1 : 0,
-    view_count: s.user_id === uid ? s.view_count : undefined
-  })));
+  res.json(rows.map(row => {
+    const s = normalizeStatus(row);
+    return {
+      ...s,
+      verified: VERIFIED_SET.has(s.username) ? 1 : 0,
+      is_owner: s.user_id === uid ? 1 : 0,
+      view_count: s.user_id === uid ? s.view_count : undefined
+    };
+  }));
 });
 
 app.post('/api/statuses', requireUser, (req, res) => {
   uploadStatus.single('status')(req, res, async (err) => {
-    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'حجم الصورة أكبر من 12MB' : err.message });
-    if (!req.file) return res.status(400).json({ error: 'اختر صورة للحالة' });
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'حجم الملف أكبر من 50MB' : err.message });
     try {
       const me = await q.get(`SELECT id,registered FROM users WHERE id=?`, req.authUid);
       if (!me || !me.registered) {
-        try { fs.unlinkSync(req.file.path); } catch (e) { }
+        if (req.file) { try { fs.unlinkSync(req.file.path); } catch (e) { } }
         return res.status(403).json({ error: 'رفع الحالة متاح للأعضاء المسجلين فقط' });
       }
       await cleanupExpiredStatuses();
-      const image = '/uploads/statuses/' + req.file.filename;
+      const requestedType = String((req.body && req.body.media_type) || '').toLowerCase();
+      const fileType = req.file ? String(req.file.mimetype || '').split('/')[0] : '';
+      const mediaType = req.file && ['image', 'video', 'audio'].includes(fileType) ? fileType : requestedType;
+      if (!['image', 'video', 'audio', 'text'].includes(mediaType))
+        return res.status(400).json({ error: 'نوع الحالة غير صالح' });
+      if (mediaType !== 'text' && !req.file)
+        return res.status(400).json({ error: 'اختر ملف الحالة أولاً' });
+      if (mediaType === 'text' && req.file)
+        return res.status(400).json({ error: 'الحالة الكتابية لا تحتاج ملفاً' });
+
+      const media = req.file ? '/uploads/statuses/' + req.file.filename : '';
+      const textContent = String((req.body && req.body.text_content) || '').trim().slice(0, 500);
+      if (mediaType === 'text' && !textContent)
+        return res.status(400).json({ error: 'اكتب نص الحالة' });
+      const rawBackground = String((req.body && req.body.background) || '');
+      const background = /^#[0-9a-fA-F]{6}$/.test(rawBackground) ? rawBackground : '#1f6f5f';
       const caption = String((req.body && req.body.caption) || '').trim().slice(0, 160);
       const now = Math.floor(Date.now() / 1000);
-      const out = await q.run(`INSERT INTO statuses (user_id,image,caption,created_at,expires_at) VALUES (?,?,?,?,?)`,
-        me.id, image, caption, now, now + 24 * 60 * 60);
+      const out = await q.run(`
+        INSERT INTO statuses (user_id,image,media_type,media,text_content,background,caption,created_at,expires_at)
+        VALUES (?,?,?,?,?,?,?,?,?)`,
+        me.id, media, mediaType, media, textContent, background, caption, now, now + 24 * 60 * 60);
       io.emit('statuses_changed');
-      res.json({ ok: true, id: out.lastID, image, caption, created_at: now, expires_at: now + 86400 });
+      res.json({ ok: true, id: out.lastID, image: media, media_type: mediaType, media, text_content: textContent, background, caption, created_at: now, expires_at: now + 86400 });
     } catch (e) {
-      try { fs.unlinkSync(req.file.path); } catch (x) { }
+      if (req.file) { try { fs.unlinkSync(req.file.path); } catch (x) { } }
       res.status(500).json({ error: 'تعذر حفظ الحالة' });
     }
   });
@@ -610,7 +651,7 @@ app.post('/api/statuses/:id/view', requireUser, async (req, res) => {
   const count = status.user_id === uid
     ? (await q.get(`SELECT COUNT(*) c FROM status_views WHERE status_id=?`, status.id)).c
     : undefined;
-  res.json({ ...status, is_owner: status.user_id === uid ? 1 : 0, view_count: count });
+  res.json({ ...normalizeStatus(status), is_owner: status.user_id === uid ? 1 : 0, view_count: count });
 });
 
 // محمي على الخادم: أسماء مشاهدي الحالة متاحة لصاحب الحالة فقط.
@@ -628,13 +669,13 @@ app.get('/api/statuses/:id/viewers', requireUser, async (req, res) => {
 });
 
 app.delete('/api/statuses/:id', requireUser, async (req, res) => {
-  const status = await q.get(`SELECT id,user_id,image FROM statuses WHERE id=?`, +req.params.id);
+  const status = await q.get(`SELECT id,user_id,image,media FROM statuses WHERE id=?`, +req.params.id);
   if (!status) return res.status(404).json({ error: 'الحالة غير موجودة' });
   if (status.user_id !== +req.authUid)
     return res.status(403).json({ error: 'لا يمكنك حذف حالة مستخدم آخر' });
   await q.run(`DELETE FROM status_views WHERE status_id=?`, status.id);
   await q.run(`DELETE FROM statuses WHERE id=?`, status.id);
-  deleteStatusImage(status.image);
+  deleteStatusMedia(status);
   io.emit('statuses_changed');
   res.json({ ok: true });
 });
@@ -1189,8 +1230,14 @@ io.on('connection', async (socket) => {
   socket.on('private', async ({ toId, text }) => {
     text = String(text || '').slice(0, 500).trim();
     if (!text) return;
+    me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
+    const recipient = await q.get(`SELECT id FROM users WHERE id=?`, +toId);
+    if (!recipient) return socket.emit('err', 'المستخدم غير موجود');
     const ins = await q.run(`INSERT INTO private_messages (from_id,to_id,from_name,text) VALUES (?,?,?,?)`, uid, toId, me.username, text);
-    const payload = { id: ins.lastID, from_id: uid, to_id: +toId, from_name: me.username, text, created_at: Math.floor(Date.now() / 1000) };
+    const payload = {
+      id: ins.lastID, from_id: uid, to_id: +toId, from_name: me.username,
+      from_registered: me.registered ? 1 : 0, text, created_at: Math.floor(Date.now() / 1000)
+    };
     io.to('user_' + toId).emit('private', payload);
     socket.emit('private', payload);
   });
