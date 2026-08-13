@@ -102,7 +102,7 @@ Object.assign(I18N_EN, {
   'قطر': 'Qatar', 'البحرين': 'Bahrain', 'سلطنة عمان': 'Oman', 'سوريا': 'Syria', 'لبنان': 'Lebanon', 'الجزائر': 'Algeria', 'المغرب': 'Morocco',
   'تونس': 'Tunisia', 'ليبيا': 'Libya', 'اليمن': 'Yemen', 'السودان': 'Sudan'
 });
-const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-message-text';
+const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text';
 function translateDynamicText(text) {
   if (I18N_EN[text]) return I18N_EN[text];
   let match = text.match(/^مرحباً بـ (.+) في غرفة (.+)$/);
@@ -587,12 +587,16 @@ function renderMsg(m) {
       const uid = m.user_id || (m.user && m.user.id);
       if (uid) openUserSheet(+uid, { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted });
     };
-  } else if (m.type === 'bot') {   // رسالة الروبوت: أيقونة التاج ثم النص في سطر خفيف
-    const bsz = Math.min(40, Math.max(12, +m.size || 14));
-    el.className = 'robot-message';
+  } else if (m.type === 'bot') {   // رسالة النظام الآلية بالتنسيق المرجعي
+    el.className = 'robot-system-message';
     el.innerHTML = `
-      <img src="/img/robot-message.svg" width="20" height="20" alt="">
-      <span class="robot-message-text" style="color:${m.color || '#d946a6'};font-size:${bsz}px">${esc(m.text)}</span>`;
+      <div class="robot-system-head">
+        <img src="/img/robot-message.svg" width="20" height="20" alt="">
+        <div class="robot-system-title">رسالة النظام</div>
+      </div>
+      <div class="font_msg robot-system-body">
+        <div class="u-msg robot-system-text">${esc(m.text)}</div>
+      </div>`;
   } else if (m.type === 'welcome') {
     el.className = 'room-welcome supervision-welcome';
     el.innerHTML = `
@@ -645,7 +649,7 @@ function renderMsg(m) {
     el.innerHTML = `<div class="shead"><i class="f7-icons">chat_bubble_text_fill</i> رسالة النظام</div><div class="stext">${esc(m.text)}</div>`;
   }
   area.appendChild(el);
-  if (area.children.length > 140) area.querySelector('.msg,.sys,.room-welcome,.system-event,.robot-message')?.remove();
+  if (area.children.length > 140) area.querySelector('.msg,.sys,.room-welcome,.system-event,.robot-system-message')?.remove();
 }
 function parseExtra(m) {
   try { return JSON.parse(m.extra || '{}'); } catch (e) { return {}; }

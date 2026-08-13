@@ -1362,21 +1362,40 @@ body.lang-en .system-event-head { direction:ltr; }
 body.lang-en .system-event-body { direction:ltr; text-align:left; padding-right:0; padding-left:15px; }
 body.lang-en .system-event-message { margin-right:0; margin-left:21px; }
 
-/* رسالة الروبوت — تاج 20×20 بجانب النص */
-.robot-message {
+/* رسالة الروبوت = رسالة نظام بتنسيق المرجع */
+.robot-system-message { width:100%; margin:0; padding:0; }
+.robot-system-head {
   font-size:14px;
   margin-left:52px;
   flex-direction:row;
   display:flex;
-  align-items:flex-start;
-  gap:7px;
+  align-items:center;
+  gap:10px;
   margin-top:5px;
-  margin-bottom:7px;
-  line-height:1.65;
 }
-.robot-message img { width:20px; height:20px; min-width:20px; object-fit:contain; border-radius:3px; margin-top:1px; }
-.robot-message-text { font-family:'SF Arabic','Segoe UI',Tahoma,Arial,sans-serif !important; font-weight:800; word-break:break-word; }
-body.lang-en .robot-message { direction:ltr; margin-left:52px; margin-right:0; }
+.robot-system-head img { width:20px; height:20px; min-width:20px; object-fit:contain; }
+.robot-system-title { color:rgb(93,86,207); font-weight:bold; }
+.robot-system-body {
+  flex-flow:wrap;
+  display:flex;
+  color:rgb(0,0,0);
+  font-size:14px;
+  text-align:left;
+  margin-left:33px;
+  padding-right:0;
+  unicode-bidi:embed;
+}
+.robot-system-text {
+  font-size:16px;
+  color:#660033;
+  display:flex;
+  flex-wrap:wrap;
+  font-weight:700 !important;
+  margin:2px 0 6px 22px;
+  line-height:1.65;
+  word-break:break-word;
+}
+body.lang-en .robot-system-message { direction:ltr; }
 
 /* زر اللغة داخل صفحة الإعدادات */
 .settings-language-row { width:100%; border-left:0; border-right:0; border-top:0; background:#fff; cursor:pointer; font-family:inherit; }
