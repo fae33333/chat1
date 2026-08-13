@@ -4,6 +4,9 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 let ME = null, MYBADGE = 'guest.png', SOCKET = null;
+// رمز هوية خاص بهذه الصفحة فقط؛ لا يُحفظ في localStorage أو sessionStorage.
+// عند التحديث أو فتح تبويب جديد يجب إدخال الاسم من جديد.
+let CHAT_TOKEN = '';
 let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1' };
 let PREFS = { snd_all: 1, snd_msg: 0, snd_join: 1, show_time: 1, pm_recv: 1 };
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
@@ -26,8 +29,9 @@ function saveIgnoredUsers() { localStorage.setItem('ignored_users', JSON.stringi
 
 // ---------- أدوات ----------
 async function api(url, method = 'GET', body, isForm = false) {
-  const o = { method, credentials: 'same-origin' };
-  if (body && !isForm) { o.headers = { 'Content-Type': 'application/json' }; o.body = JSON.stringify(body); }
+  const o = { method, credentials: 'same-origin', headers: { 'X-Chat-Client': '1' } };
+  if (CHAT_TOKEN) o.headers['X-Chat-Token'] = CHAT_TOKEN;
+  if (body && !isForm) { o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); }
   if (body && isForm) o.body = body;
   const r = await fetch(url, o);
   const d = await r.json().catch(() => ({}));
@@ -142,10 +146,12 @@ function beep(freq = 660, dur = .12) {
   try { SETTINGS = await api('/api/public-settings'); } catch (e) { }
   applySettings();
   applyPrefsToSwitches();
-  const d = await api('/api/me');
-  if (d.user) { ME = d.user; MYBADGE = d.badge; onLoggedIn(); }
+  // لا نستعيد هوية من الكوكي. CHAT_TOKEN يبدأ فارغاً في كل تحميل للصفحة.
+  const d = await api('/api/chat/me');
+  if (d.user && CHAT_TOKEN) {
+    ME = d.user; MYBADGE = d.badge; onLoggedIn(); connectSocketRetry();
+  }
   await loadRooms();
-  connectSocketRetry();
 })();
 
 function applySettings() {
@@ -166,7 +172,9 @@ function applyPrefsToSwitches() {
 }
 
 function connectSocket() {
-  SOCKET = io();
+  if (!ME || !CHAT_TOKEN) return;
+  // هوية هذه الصفحة تنتقل إلى الخادم عبر WebSocket ولا تعتمد على كوكي مشترك بين التبويبات.
+  SOCKET = io({ auth: { client: 'chat', token: CHAT_TOKEN } });
   // عند إعادة الاتصال (مثل بعد تسجيل اسم جديد) نعود للغرفة الحالية مباشرة فيُحدَّث الاسم للجميع
   SOCKET.on('connect', () => { if (CUR_ROOM) SOCKET.emit('join', CUR_ROOM.id, ROOM_PWD[CUR_ROOM.id] || ''); });
   SOCKET.on('msg', (m) => {
@@ -1295,6 +1303,7 @@ $('#dropLogout').onclick = async () => { closeEnterDrop(); await api('/api/logou
 $('#doLogin').onclick = async () => {
   try {
     const d = await api('/api/login', 'POST', { username: $('#lUser').value.trim(), password: $('#lPass').value });
+    CHAT_TOKEN = d.tab_token || '';
     ME = d.user; MYBADGE = d.badge;
     closeOv('loginOv');
     onLoggedIn();
@@ -1308,6 +1317,7 @@ $('#doGuest').onclick = async () => {
     let name = $('#gName').value.trim();
     if (!name) { const names = ['زائر', 'ضيف', 'نجم', 'عاشق', 'مغامر', 'رامي', 'فارس', 'همس', 'شهم', 'ذوق']; name = names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 900 + 100); }
     const d = await api('/api/guest', 'POST', { username: name, gender });
+    CHAT_TOKEN = d.tab_token || '';
     ME = d.user; MYBADGE = d.badge;
     closeOv('loginOv');
     onLoggedIn();
@@ -1325,6 +1335,7 @@ $('#doRegister').onclick = async () => {
       username: $('#rUser').value.trim(), password: $('#rPass').value,
       gender, age: +$('#rAge').value || 25
     });
+    CHAT_TOKEN = d.tab_token || '';
     ME = d.user; MYBADGE = d.badge;
     closeOv('regOv');
     onLoggedIn();

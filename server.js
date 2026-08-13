@@ -5,6 +5,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
 const multer = require('multer');
@@ -74,6 +75,43 @@ const q = {
   run: (sql, ...p) => new Promise((res, rej) => db.run(sql, p, function (e) { e ? rej(e) : res(this); }))
 };
 
+// هوية مستقلة لكل صفحة شات. الرمز محفوظ في ذاكرة الصفحة والخادم فقط؛
+// لذلك لا تنتقل هوية تبويب إلى تبويب آخر، وتختفي من العميل عند التحديث.
+const CHAT_TOKENS = new Map();
+const CHAT_TOKEN_TTL = 12 * 60 * 60 * 1000;
+function issueChatToken(user) {
+  const token = crypto.randomBytes(32).toString('hex');
+  CHAT_TOKENS.set(token, { uid: +user.id, rank: user.rank || 'user', createdAt: Date.now() });
+  return token;
+}
+function chatTokenFromRequest(req) {
+  return String(req.get('x-chat-token') || '').trim();
+}
+function chatAuthByToken(token) {
+  const auth = token && CHAT_TOKENS.get(String(token));
+  if (!auth) return null;
+  if (Date.now() - auth.createdAt > CHAT_TOKEN_TTL) {
+    CHAT_TOKENS.delete(String(token));
+    return null;
+  }
+  return auth;
+}
+function resolveRequestAuth(req) {
+  const isChatClient = req.get('x-chat-client') === '1';
+  if (isChatClient) {
+    const token = chatTokenFromRequest(req);
+    const auth = chatAuthByToken(token);
+    return auth ? { ...auth, token, source: 'chat' } : null;
+  }
+  return req.session && req.session.uid
+    ? { uid: +req.session.uid, rank: req.session.rank || 'user', source: 'session' }
+    : null;
+}
+setInterval(() => {
+  const cutoff = Date.now() - CHAT_TOKEN_TTL;
+  for (const [token, auth] of CHAT_TOKENS) if (auth.createdAt < cutoff) CHAT_TOKENS.delete(token);
+}, 60 * 60 * 1000).unref();
+
 async function getSettings() {
   const rows = await q.all(`SELECT key,value FROM settings`);
   const s = {};
@@ -102,7 +140,11 @@ function pubUser(u) {
   };
 }
 function requireUser(req, res, next) {
-  if (!req.session.uid) return res.status(401).json({ error: 'غير مسجل' });
+  const auth = resolveRequestAuth(req);
+  if (!auth) return res.status(401).json({ error: 'غير مسجل في هذه الصفحة' });
+  req.authUid = +auth.uid;
+  req.authRank = auth.rank || 'user';
+  req.chatToken = auth.token || '';
   next();
 }
 function requireAdmin(req, res, next) {
@@ -113,12 +155,16 @@ function requireAdmin(req, res, next) {
 // صلاحيات الإشراف داخل الغرفة تشمل «ادمن غرفة»، مع قراءة الرتبة الحالية
 // من قاعدة البيانات حتى لا تسبب الجلسة القديمة خطأ 403 بعد تغيير الصلاحية.
 async function requireModerator(req, res, next) {
-  if (!req.session.uid) return res.status(401).json({ error: 'غير مسجل' });
+  const auth = resolveRequestAuth(req);
+  if (!auth) return res.status(401).json({ error: 'غير مسجل في هذه الصفحة' });
   try {
-    const moderator = await q.get(`SELECT id,username,rank FROM users WHERE id=?`, req.session.uid);
+    const moderator = await q.get(`SELECT id,username,rank FROM users WHERE id=?`, auth.uid);
     if (!moderator || !['roomadmin', 'admin', 'superadmin'].includes(moderator.rank))
       return res.status(403).json({ error: 'لا تملك صلاحية الإشراف' });
-    req.session.rank = moderator.rank;
+    req.authUid = +moderator.id;
+    req.authRank = moderator.rank;
+    if (auth.source === 'session') req.session.rank = moderator.rank;
+    else if (auth.token && CHAT_TOKENS.has(auth.token)) CHAT_TOKENS.get(auth.token).rank = moderator.rank;
     req.moderator = moderator;
     next();
   } catch (e) { res.status(500).json({ error: 'تعذر التحقق من الصلاحية' }); }
@@ -170,15 +216,26 @@ function badgeOf(u) {
 // =====================================================
 //  API - المصادقة
 // =====================================================
+function finishAuthentication(req, res, user) {
+  const payload = { user: pubUser(user), badge: badgeOf(user) };
+  if (req.get('x-chat-client') === '1') {
+    const previousToken = chatTokenFromRequest(req);
+    if (previousToken) CHAT_TOKENS.delete(previousToken);
+    payload.tab_token = issueChatToken(user);
+    return res.json(payload);
+  }
+  req.session.uid = user.id;
+  req.session.rank = user.rank;
+  res.json(payload);
+}
+
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   const u = await q.get(`SELECT * FROM users WHERE username=?`, username);
   if (!u || !u.password || !bcrypt.compareSync(password, u.password))
     return res.status(400).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
   if (u.banned) return res.status(403).json({ error: 'هذا الحساب محظور' });
-  req.session.uid = u.id;
-  req.session.rank = u.rank;
-  res.json({ user: pubUser(u), badge: badgeOf(u) });
+  finishAuthentication(req, res, u);
 });
 
 app.post('/api/guest', async (req, res) => {
@@ -191,9 +248,7 @@ app.post('/api/guest', async (req, res) => {
     const r = await q.run(`INSERT INTO users (username,gender,registered,membership,rank) VALUES (?,?,0,'none','user')`, username, gender || 'secret');
     u = await q.get(`SELECT * FROM users WHERE id=?`, r.lastID);
   }
-  req.session.uid = u.id;
-  req.session.rank = u.rank;
-  res.json({ user: pubUser(u), badge: badgeOf(u) });
+  finishAuthentication(req, res, u);
 });
 
 app.post('/api/register', async (req, res) => {
@@ -206,19 +261,19 @@ app.post('/api/register', async (req, res) => {
     if (old.registered) return res.status(400).json({ error: 'الاسم مستخدم مسبقا' });
     await q.run(`UPDATE users SET password=?,gender=?,age=?,country=?,registered=1 WHERE id=?`,
       bcrypt.hashSync(password, 10), gender || 'secret', age || 25, country || '', old.id);
-    req.session.uid = old.id; req.session.rank = old.rank;
     await refreshUserEverywhere(old.id);   // تحديث الاسم/الصورة مباشرة لمن بداخل الغرف
     io.emit('sync');
-    return res.json({ user: pubUser(await q.get(`SELECT * FROM users WHERE id=?`, old.id)), badge: badgeOf(old) });
+    const fresh = await q.get(`SELECT * FROM users WHERE id=?`, old.id);
+    return finishAuthentication(req, res, fresh);
   }
   const r = await q.run(`INSERT INTO users (username,password,gender,age,country,registered,balance) VALUES (?,?,?,?,?,1,10)`,
     username, bcrypt.hashSync(password, 10), gender || 'secret', age || 25, country || '');
   const u = await q.get(`SELECT * FROM users WHERE id=?`, r.lastID);
-  req.session.uid = u.id; req.session.rank = u.rank;
   io.emit('sync');
-  res.json({ user: pubUser(u), badge: badgeOf(u) });
+  finishAuthentication(req, res, u);
 });
 
+// لوحة الإدارة تستخدم جلسة الكوكي المعتادة.
 app.get('/api/me', async (req, res) => {
   if (!req.session.uid) return res.json({ user: null });
   const u = await q.get(`SELECT * FROM users WHERE id=?`, req.session.uid);
@@ -227,7 +282,23 @@ app.get('/api/me', async (req, res) => {
   res.json({ user: pubUser(u), badge: badgeOf(u) });
 });
 
-app.post('/api/logout', (req, res) => { req.session.destroy(() => res.json({ ok: true })); });
+// صفحة الشات لا تستعيد أي اسم من الكوكي؛ يلزم رمز الصفحة الموجود في الذاكرة.
+app.get('/api/chat/me', async (req, res) => {
+  const auth = resolveRequestAuth(req);
+  if (!auth || auth.source !== 'chat') return res.json({ user: null });
+  const u = await q.get(`SELECT * FROM users WHERE id=?`, auth.uid);
+  if (!u) return res.json({ user: null });
+  res.json({ user: pubUser(u), badge: badgeOf(u) });
+});
+
+app.post('/api/logout', (req, res) => {
+  if (req.get('x-chat-client') === '1') {
+    const token = chatTokenFromRequest(req);
+    if (token) CHAT_TOKENS.delete(token);
+    return res.json({ ok: true });
+  }
+  req.session.destroy(() => res.json({ ok: true }));
+});
 
 // =====================================================
 //  API - الشات (غرف، مستخدمون، هدايا، ترقية...)
@@ -271,7 +342,7 @@ app.get('/api/user/:id', requireUser, async (req, res) => {
 
 // الرسائل الخاصة
 app.get('/api/private', requireUser, async (req, res) => {
-  const uid = req.session.uid;
+  const uid = req.authUid;
   const rows = await q.all(`
     SELECT p.*, u.username other_name, u.avatar other_avatar, u.gender other_gender, u.membership other_mem, u.rank other_rank, u.id other_id
     FROM private_messages p JOIN users u ON (u.id = CASE WHEN p.from_id=? THEN p.to_id ELSE p.from_id END)
@@ -288,7 +359,7 @@ app.get('/api/private', requireUser, async (req, res) => {
 });
 
 app.get('/api/private/:uid', requireUser, async (req, res) => {
-  const uid = req.session.uid, other = req.params.uid;
+  const uid = req.authUid, other = req.params.uid;
   const rows = await q.all(`SELECT * FROM private_messages WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?) ORDER BY id LIMIT 100`,
     uid, other, other, uid);
   await q.run(`UPDATE private_messages SET read=1 WHERE from_id=? AND to_id=?`, other, uid);
@@ -334,7 +405,7 @@ app.post('/api/gifts/send', requireUser, async (req, res) => {
   const qtyN = Math.min(99, Math.max(1, parseInt(qty) || 1));
   const amount = gift.price * qtyN;                 // يُخصم من مُرسِل الهدية
   const gain = (gift.payout || 0) * qtyN;           // يَربحه مستقبِل الهدية
-  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.session.uid);
+  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
   if (me.balance < amount) return res.status(400).json({ error: 'رصيدك غير كافي', need: amount });
   const to = await q.get(`SELECT * FROM users WHERE id=?`, to_id);
   if (!to) return res.status(404).json({ error: 'المستخدم غير موجود' });
@@ -367,7 +438,7 @@ app.post('/api/upgrade', requireUser, async (req, res) => {
   const costs = { vip: +s.vip_cost, premium: +s.premium_cost, plus: +s.plus_cost };
   if (!costs[plan]) return res.status(400).json({ error: 'خطة غير صالحة' });
   const total = costs[plan] * (months || 1);
-  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.session.uid);
+  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
   if (me.balance < total) return res.status(400).json({ error: 'رصيدك غير كافي' });
   const target = await q.get(`SELECT * FROM users WHERE id=?`, target_id || me.id);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
@@ -385,7 +456,7 @@ app.post('/api/upgrade', requireUser, async (req, res) => {
 app.post('/api/status', requireUser, async (req, res) => {
   const { status } = req.body;
   if (!['online', 'busy', 'away'].includes(status)) return res.status(400).json({ error: 'حالة غير صالحة' });
-  await q.run(`UPDATE users SET status=? WHERE id=?`, status, req.session.uid);
+  await q.run(`UPDATE users SET status=? WHERE id=?`, status, req.authUid);
   res.json({ ok: true });
 });
 
@@ -397,8 +468,8 @@ app.post('/api/avatar', requireUser, (req, res) => {
       if (req.file) avatar = '/uploads/' + req.file.filename;
       if (!avatar) return res.status(400).json({ error: 'لا توجد صورة' });
       if (avatar && !/^[\/a-zA-Z0-9_\-.]+$/.test(avatar)) return res.status(400).json({ error: 'رابط غير صالح' });
-      await q.run(`UPDATE users SET avatar=? WHERE id=?`, avatar, req.session.uid);
-      refreshUserEverywhere(req.session.uid);
+      await q.run(`UPDATE users SET avatar=? WHERE id=?`, avatar, req.authUid);
+      refreshUserEverywhere(req.authUid);
       res.json({ ok: true, avatar });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -425,7 +496,7 @@ async function cleanupExpiredStatuses() {
 // قائمة الحالات النشطة. عدد وأسماء المشاهدين لا يصلان إلا لصاحب الحالة.
 app.get('/api/statuses', requireUser, async (req, res) => {
   await cleanupExpiredStatuses();
-  const uid = +req.session.uid;
+  const uid = +req.authUid;
   const now = Math.floor(Date.now() / 1000);
   const rows = await q.all(`
     SELECT s.id,s.user_id,s.image,s.caption,s.created_at,s.expires_at,
@@ -448,7 +519,7 @@ app.post('/api/statuses', requireUser, (req, res) => {
     if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'حجم الصورة أكبر من 12MB' : err.message });
     if (!req.file) return res.status(400).json({ error: 'اختر صورة للحالة' });
     try {
-      const me = await q.get(`SELECT id,registered FROM users WHERE id=?`, req.session.uid);
+      const me = await q.get(`SELECT id,registered FROM users WHERE id=?`, req.authUid);
       if (!me || !me.registered) {
         try { fs.unlinkSync(req.file.path); } catch (e) { }
         return res.status(403).json({ error: 'رفع الحالة متاح للأعضاء المسجلين فقط' });
@@ -471,7 +542,7 @@ app.post('/api/statuses', requireUser, (req, res) => {
 // تسجيل المشاهدة مرة واحدة. مشاهدة المالك لحالته لا تُسجّل.
 app.post('/api/statuses/:id/view', requireUser, async (req, res) => {
   await cleanupExpiredStatuses();
-  const uid = +req.session.uid;
+  const uid = +req.authUid;
   const status = await q.get(`
     SELECT s.*,u.username,u.avatar FROM statuses s JOIN users u ON u.id=s.user_id
     WHERE s.id=? AND s.expires_at>?`, +req.params.id, Math.floor(Date.now() / 1000));
@@ -491,7 +562,7 @@ app.get('/api/statuses/:id/viewers', requireUser, async (req, res) => {
   await cleanupExpiredStatuses();
   const status = await q.get(`SELECT id,user_id FROM statuses WHERE id=?`, +req.params.id);
   if (!status) return res.status(404).json({ error: 'الحالة غير موجودة' });
-  if (status.user_id !== +req.session.uid)
+  if (status.user_id !== +req.authUid)
     return res.status(403).json({ error: 'مشاهدو الحالة متاحون لصاحبها فقط' });
   const viewers = await q.all(`
     SELECT u.id,u.username,u.avatar,sv.viewed_at
@@ -503,7 +574,7 @@ app.get('/api/statuses/:id/viewers', requireUser, async (req, res) => {
 app.delete('/api/statuses/:id', requireUser, async (req, res) => {
   const status = await q.get(`SELECT id,user_id,image FROM statuses WHERE id=?`, +req.params.id);
   if (!status) return res.status(404).json({ error: 'الحالة غير موجودة' });
-  if (status.user_id !== +req.session.uid)
+  if (status.user_id !== +req.authUid)
     return res.status(403).json({ error: 'لا يمكنك حذف حالة مستخدم آخر' });
   await q.run(`DELETE FROM status_views WHERE status_id=?`, status.id);
   await q.run(`DELETE FROM statuses WHERE id=?`, status.id);
@@ -514,7 +585,7 @@ app.delete('/api/statuses/:id', requireUser, async (req, res) => {
 
 // الإشعارات
 app.get('/api/notifications', requireUser, async (req, res) => {
-  res.json(await q.all(`SELECT * FROM notifications WHERE user_id=? OR user_id IS NULL ORDER BY id DESC LIMIT 60`, req.session.uid));
+  res.json(await q.all(`SELECT * FROM notifications WHERE user_id=? OR user_id IS NULL ORDER BY id DESC LIMIT 60`, req.authUid));
 });
 
 // تعديل الملف الشخصي (النوع/العمر/الدولة/البريد)
@@ -523,8 +594,8 @@ app.post('/api/profile', requireUser, async (req, res) => {
   const g = ['boy', 'girl', 'secret'].includes(gender) ? gender : 'secret';
   const a = Math.min(99, Math.max(10, parseInt(age) || 25));
   await q.run(`UPDATE users SET gender=?, age=?, country=?, email=?, bio=? WHERE id=?`,
-    g, a, String(country || '').slice(0, 40), String(email || '').slice(0, 80), String(bio === undefined ? '' : bio).slice(0, 300), req.session.uid);
-  refreshUserEverywhere(req.session.uid);
+    g, a, String(country || '').slice(0, 40), String(email || '').slice(0, 80), String(bio === undefined ? '' : bio).slice(0, 300), req.authUid);
+  refreshUserEverywhere(req.authUid);
   res.json({ ok: true });
 });
 // إعادة بث بيانات العضو للغرف المتواجد فيها (صورة/جنس/عضوية جديدة)
@@ -536,7 +607,7 @@ async function refreshUserEverywhere(uid) {
 
 // طلب توثيق الحساب (10 ذهب افتراضي)
 app.post('/api/verify-request', requireUser, async (req, res) => {
-  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.session.uid);
+  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
   if (!me || !me.registered) return res.status(403).json({ error: 'يتطلب عضوية مسجلة' });
   if (VERIFIED_SET.has(me.username)) return res.status(400).json({ error: 'حسابك موثق بالفعل ✓' });
   if (me.balance < 10) return res.status(400).json({ error: 'رصيدك غير كافي - تحتاج الى 10 ذهب' });
@@ -550,7 +621,7 @@ app.post('/api/verify-request', requireUser, async (req, res) => {
 
 // شراء الذهب الافتراضي (دفع تجريبي)
 app.post('/api/buy-gold', requireUser, async (req, res) => {
-  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.session.uid);
+  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
   if (!me || !me.registered) return res.status(403).json({ error: 'يتطلب عضوية مسجلة' });
   const gold = Math.min(10000, Math.max(0, parseInt(req.body.gold) || 0));
   if (!gold) return res.status(400).json({ error: 'كمية غير صالحة' });
@@ -562,9 +633,9 @@ app.post('/api/buy-gold', requireUser, async (req, res) => {
 // الشكاوى
 app.post('/api/complaint', requireUser, async (req, res) => {
   const { subject, message } = req.body;
-  const u = await q.get(`SELECT username FROM users WHERE id=?`, req.session.uid);
+  const u = await q.get(`SELECT username FROM users WHERE id=?`, req.authUid);
   await q.run(`INSERT INTO complaints (user_id,username,subject,message) VALUES (?,?,?,?)`,
-    req.session.uid, u.username, subject || '', message || '');
+    req.authUid, u.username, subject || '', message || '');
   res.json({ ok: true });
 });
 
@@ -888,11 +959,16 @@ const userSockets = {};   // uid -> [socketId]
 const roomUsers = {};     // roomId -> Set(uid)
 
 io.on('connection', async (socket) => {
+  const isChatPage = socket.handshake.auth && socket.handshake.auth.client === 'chat';
+  const socketToken = isChatPage ? String(socket.handshake.auth.token || '') : '';
+  const tokenAuth = isChatPage ? chatAuthByToken(socketToken) : null;
   const sess = socket.request.session;
-  if (!sess || !sess.uid) { socket.disconnect(); return; }
-  const uid = sess.uid;
+  const uid = tokenAuth ? +tokenAuth.uid : (!isChatPage && sess && sess.uid ? +sess.uid : 0);
+  if (!uid) { socket.disconnect(); return; }
   let me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
   if (!me) { socket.disconnect(); return; }
+  if (tokenAuth && CHAT_TOKENS.has(socketToken)) CHAT_TOKENS.get(socketToken).rank = me.rank;
+  socket.data.chatToken = socketToken;
 
   const mePub = { ...pubUser(me), badge: badgeOf(me) };
   onlineUsers[uid] = mePub;
