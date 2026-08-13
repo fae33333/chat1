@@ -990,6 +990,15 @@ app.post('/api/admin/users/:id/mute', requireModerator, async (req, res) => {
   }
   for (const id of affectedIds) await refreshUserEverywhere(id);
   for (const socket of socketsForModerationTarget(target)) socket.emit('mute_changed', { muted });
+  const roomId = +req.body.room_id;
+  if (roomId && roomUsers[roomId]) {
+    emitRoomSystemEvent(
+      roomId,
+      'mute',
+      muted ? `تم كتم ${target.username} بواسطة ${req.moderator.username}` : `تم إلغاء كتم ${target.username} بواسطة ${req.moderator.username}`,
+      { muted }
+    );
+  }
   res.json({ ok: true, muted, by_ip: byIp ? 1 : 0 });
 });
 
@@ -1015,10 +1024,13 @@ app.post('/api/admin/users/:id/kick', requireModerator, async (req, res) => {
   }
 
   for (const socket of socketsForModerationTarget(target)) {
+    if (!socket.rooms.has('room_' + roomId)) continue;
     socket.emit('kicked', { roomId, text: 'تم طردك من هذه الغرفة بواسطة الإدارة' });
+    if (socket.data.joinedRooms) socket.data.joinedRooms.delete(roomId);
     socket.leave('room_' + roomId);
   }
   affectedIds.forEach(id => roomUsers[roomId].delete(id));
+  emitRoomSystemEvent(roomId, 'leave', `${target.username} خرج من الغرفة`);
   await emitRoomUsers(roomId);
   await emitRoomCounts();
   res.json({ ok: true, by_ip: byIp ? 1 : 0 });
@@ -1150,6 +1162,21 @@ const onlineUsers = {};   // uid -> pubUser(+badge)
 const userSockets = {};   // uid -> [socketId]
 const roomUsers = {};     // roomId -> Set(uid)
 
+function userStillHasSocketInRoom(uid, roomId, excludedSocketId = '') {
+  return (userSockets[uid] || []).some(socketId => {
+    if (socketId === excludedSocketId) return false;
+    const activeSocket = io.sockets.sockets.get(socketId);
+    return !!(activeSocket && activeSocket.rooms.has('room_' + roomId));
+  });
+}
+function emitRoomSystemEvent(roomId, type, text, extra = {}) {
+  io.to('room_' + roomId).emit('msg', {
+    id: Date.now() + Math.floor(Math.random() * 1000), room_id: +roomId,
+    username: 'رسالة النظام', text, type,
+    created_at: Math.floor(Date.now() / 1000), ...extra
+  });
+}
+
 io.on('connection', async (socket) => {
   const isChatPage = socket.handshake.auth && socket.handshake.auth.client === 'chat';
   const socketToken = isChatPage ? String(socket.handshake.auth.token || '') : '';
@@ -1166,6 +1193,7 @@ io.on('connection', async (socket) => {
   socket.data.userId = uid;
   socket.data.registered = me.registered ? 1 : 0;
   socket.data.clientIp = clientIp;
+  socket.data.joinedRooms = new Set();
 
   const mePub = { ...pubUser(me), badge: badgeOf(me) };
   onlineUsers[uid] = mePub;
@@ -1194,9 +1222,14 @@ io.on('connection', async (socket) => {
       if (!pwd) return done({ ok: false, reason: 'password' });                 // يتطلب كلمة مرور
       if (String(pwd) !== String(room.password)) return done({ ok: false, reason: 'wrong_pass' });   // خاطئة — لا يدخل
     }
+    if (socket.data.joinedRooms.has(+roomId)) return done({ ok: true });
     socket.join('room_' + roomId);
+    socket.data.joinedRooms.add(+roomId);
     (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(uid);
-    // العام يبدأ فارغاً لكل داخل جديد؛ نعرض له فقط ترحيب الغرفة الذي كتبته الإدارة.
+
+    // رسالة دخول ظاهرة للجميع بالشكل المرجعي، مع إبقاء السجل القديم غير محمّل.
+    emitRoomSystemEvent(roomId, 'join', `مرحباً بـ ${me.username} في غرفة ${room.name}`);
+    // ترحيب الإدارة الاختياري يظهر للداخل فقط بعد رسالة الدخول.
     const welcome = String(room.welcome || '').trim();
     if (welcome) socket.emit('msg', {
       id: Date.now(), room_id: +roomId, username: 'رسالة النظام',
@@ -1209,8 +1242,14 @@ io.on('connection', async (socket) => {
 
   // مغادرة غرفة
   socket.on('leave', async (roomId) => {
+    roomId = +roomId;
+    if (!socket.data.joinedRooms.has(roomId)) return;
+    socket.data.joinedRooms.delete(roomId);
     socket.leave('room_' + roomId);
-    if (roomUsers[roomId]) { roomUsers[roomId].delete(uid); }
+    if (!userStillHasSocketInRoom(uid, roomId, socket.id)) {
+      if (roomUsers[roomId]) roomUsers[roomId].delete(uid);
+      emitRoomSystemEvent(roomId, 'leave', `${me.username} خرج من الغرفة`);
+    }
     emitRoomUsers(roomId);
     emitRoomCounts();
   });
@@ -1263,13 +1302,17 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('disconnect', () => {
+    const joinedRooms = [...(socket.data.joinedRooms || [])];
     userSockets[uid] = (userSockets[uid] || []).filter(s => s !== socket.id);
-    if (userSockets[uid].length === 0) {
-      delete onlineUsers[uid];
-      Object.keys(roomUsers).forEach(rid => {
-        if (roomUsers[rid].has(uid)) { roomUsers[rid].delete(uid); emitRoomUsers(rid); emitRoomCounts(); }
-      });
+    for (const roomId of joinedRooms) {
+      if (!userStillHasSocketInRoom(uid, roomId)) {
+        if (roomUsers[roomId]) roomUsers[roomId].delete(uid);
+        emitRoomSystemEvent(roomId, 'leave', `${me.username} خرج من الغرفة`);
+        emitRoomUsers(roomId);
+        emitRoomCounts();
+      }
     }
+    if (userSockets[uid].length === 0) delete onlineUsers[uid];
   });
 });
 

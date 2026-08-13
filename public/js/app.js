@@ -58,7 +58,7 @@ const I18N_EN = {
   'تغيير الحالة': 'Change status', 'مشغول': 'Busy', 'بالخارج': 'Away', 'حساب': 'Account', 'الطبيعة': 'Nature', 'اخرى': 'Other', 'رفع صورة': 'Upload photo',
   'اختيار هذه الصورة': 'Choose this photo', 'عام': 'General', 'تفعيل الصوت': 'Enable sound', 'صوت الرسائل الجديدة': 'New message sound',
   'صوت دخول المستخدمين': 'User join sound', 'اظهار الوقت في الرسائل': 'Show message time', 'استقبال الرسائل الخاصة': 'Receive private messages',
-  'إشعارات': 'Notifications', 'احصل على توثيق دردشتي': 'Get verified', 'شارة تم التحقق ؟': 'Verification badge',
+  'إشعارات': 'Notifications', 'نظام الكتم': 'Mute system', 'احصل على توثيق دردشتي': 'Get verified', 'شارة تم التحقق ؟': 'Verification badge',
   'احصل على شارة تحقق خاصة تظهر بجوار اسمك أينما ظهر': 'Get a verification badge shown next to your name everywhere', 'حماية حسابك': 'Protect your account',
   'احم حسابك في مجتمعنا من مرسلي البريد العشوائي، لن نقبل التحقق من أي شخص آخر يشبه حسابك': 'Protect your account from impersonation and spam.',
   'الثقة والتميز': 'Trust and distinction', 'اجعل مجتمع دردشتي يثق بك وكن دائمًا مميز في المقدمة': 'Build trust in the community and always stand out.',
@@ -105,6 +105,14 @@ Object.assign(I18N_EN, {
 const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text';
 function translateDynamicText(text) {
   if (I18N_EN[text]) return I18N_EN[text];
+  let match = text.match(/^مرحباً بـ (.+) في غرفة (.+)$/);
+  if (match) return `Welcome ${match[1]} to ${match[2]}`;
+  match = text.match(/^(.+) خرج من الغرفة$/);
+  if (match) return `${match[1]} left the room`;
+  match = text.match(/^تم كتم (.+) بواسطة (.+)$/);
+  if (match) return `${match[1]} was muted by ${match[2]}`;
+  match = text.match(/^تم إلغاء كتم (.+) بواسطة (.+)$/);
+  if (match) return `${match[1]} was unmuted by ${match[2]}`;
   if (text.startsWith('اليوم الساعة ')) return 'Today at ' + text.slice('اليوم الساعة '.length);
   if (text.startsWith('أمس الساعة ')) return 'Yesterday at ' + text.slice('أمس الساعة '.length);
   if (text.startsWith('آخر تحديث ')) return 'Last update ' + translateDynamicText(text.slice('آخر تحديث '.length));
@@ -592,6 +600,26 @@ function renderMsg(m) {
   } else if (m.type === 'welcome') {
     el.className = 'room-welcome';
     el.innerHTML = `<img src="/img/welcome-system.svg" width="20" height="20" alt=""><span class="room-welcome-text">${esc(m.text)}</span>`;
+  } else if (m.type === 'join' || m.type === 'leave') {
+    el.className = 'system-event ' + m.type;
+    el.innerHTML = `
+      <div class="system-event-head skin_f2">
+        <i class="icon f7-icons skin_color system-event-icon">speaker_3_fill</i>
+        <span>رسالة النظام</span>
+      </div>
+      <div class="font_msg system-event-body">
+        <div class="u-msg system-event-message">${esc(m.text)}</div>
+      </div>`;
+  } else if (m.type === 'mute') {
+    el.className = 'system-event mute-system';
+    el.innerHTML = `
+      <div class="system-event-head skin_f2">
+        <i class="icon f7-icons skin_color system-event-icon">speaker_3_fill</i>
+        <span>نظام الكتم</span>
+      </div>
+      <div class="font_msg system-event-body">
+        <div class="u-msg system-event-message" style="color:${m.muted === 0 ? '#16a34a' : '#ff0000'}">${esc(m.text)}</div>
+      </div>`;
   } else if (m.type === 'gift') {
     const ex = parseExtra(m);
     const vis = ex.img || ex.emoji || '🎁';   // صورة مرفوعة أو إيموجي
@@ -619,7 +647,7 @@ function renderMsg(m) {
     el.innerHTML = `<div class="shead"><i class="f7-icons">chat_bubble_text_fill</i> رسالة النظام</div><div class="stext">${esc(m.text)}</div>`;
   }
   area.appendChild(el);
-  if (area.children.length > 140) area.querySelector('.msg,.sys,.room-welcome')?.remove();
+  if (area.children.length > 140) area.querySelector('.msg,.sys,.room-welcome,.system-event')?.remove();
 }
 function parseExtra(m) {
   try { return JSON.parse(m.extra || '{}'); } catch (e) { return {}; }
@@ -634,10 +662,11 @@ function renderUsers() {
   const list = ROOM_USERS.filter(u => !q || u.username.includes(q))
     .sort((a, b) => rankWeight(b) - rankWeight(a) || String(a.username).localeCompare(String(b.username), 'ar'));
   $('#usersList').innerHTML = list.length ? list.map(u => `
-    <div class="users-row" data-id="${u.id}">
+    <div class="users-row${u.muted ? ' muted-user' : ''}" data-id="${u.id}">
       <img class="ubadge" src="/badges/${badgeOf(u)}" alt="">
       <div class="uava">${avatarHtml(u.avatar)}<span class="dot ${statusDot(u.status)}"></span></div>
       <div class="uname" style="color:${userColor(u)};font-weight:${userWeight(u)}">${esc(u.username)}${u.verified ? ' <i class="f7-icons vcheck">checkmark_seal_fill</i>' : ''}</div>
+      ${u.muted ? '<i class="f7-icons muted-user-mark">mic_slash_fill</i>' : ''}
       <img class="ugender" src="/badges/${GENDER_IMG[u.gender] || 'secret.png'}" alt="">
     </div>`).join('') : '<div class="pv-empty"><div>لا يوجد متصلون</div></div>';
   $$('#usersList .users-row').forEach(r => r.onclick = () => openUserSheet(+r.dataset.id));

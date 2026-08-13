@@ -1303,3 +1303,64 @@ body.lang-en .dialog { direction:ltr; }
 .room-welcome img { width:20px; height:20px; flex:0 0 20px; object-fit:contain; margin-top:1px; }
 .room-welcome-text { font-weight:700; word-break:break-word; }
 body.lang-en .room-welcome { margin-left:52px; margin-right:0; direction:ltr; }
+
+/* ===== رسائل دخول/خروج ونظام الكتم ===== */
+.system-event { width:100%; margin:0; padding:0; }
+.system-event-head {
+  margin-right:49px;
+  margin-left:49px;
+  margin-top:7px;
+  font-family:'SF Arabic','Segoe UI',Tahoma,Arial,sans-serif !important;
+  font-size:14px;
+  font-weight:bold;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  color:var(--navy);
+}
+.system-event-icon {
+  font-size:12px !important;
+  color:#fff !important;
+  background:var(--main);
+  border-radius:50%;
+  width:20px;
+  height:20px;
+  min-width:20px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.system-event-body {
+  flex-flow:wrap;
+  display:flex;
+  color:#000;
+  text-align:right;
+  padding-right:15px;
+  unicode-bidi:embed;
+  margin:0 4px 5px;
+  margin-left:54px;
+  font-family:'SF Arabic','Segoe UI',Tahoma,Arial,sans-serif !important;
+  font-size:14px;
+}
+.system-event-message {
+  margin-top:3px;
+  margin-right:21px;
+  padding:0;
+  border-radius:5px;
+  color:#000;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  font-size:14px;
+  font-weight:700 !important;
+  line-height:1.65;
+}
+.mute-system .system-event-message { border-radius:8px; }
+.users-row.muted-user { background-color:#f0f0f0 !important; opacity:1; transition:opacity .3s ease; position:relative; }
+.users-row.muted-user .ubadge { opacity:.3; }
+.users-row.muted-user .uava { opacity:.55; filter:grayscale(.35); }
+.muted-user-mark { color:#ef4444; font-size:16px; margin-inline-start:auto; }
+.users-row.muted-user .ugender { margin-left:0; }
+body.lang-en .system-event-head { direction:ltr; }
+body.lang-en .system-event-body { direction:ltr; text-align:left; padding-right:0; padding-left:15px; }
+body.lang-en .system-event-message { margin-right:0; margin-left:21px; }
