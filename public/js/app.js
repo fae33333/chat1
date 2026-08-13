@@ -100,7 +100,11 @@ Object.assign(I18N_EN, {
   'غير متصل': 'Offline', 'فشل التسجيل': 'Registration failed', 'فشل الدخول': 'Login failed', 'نوع الملف لا يطابق نوع الحالة المختار': 'The file does not match the selected status type',
   'الأردن': 'Jordan', 'السعودية': 'Saudi Arabia', 'مصر': 'Egypt', 'العراق': 'Iraq', 'فلسطين': 'Palestine', 'الإمارات': 'UAE', 'الكويت': 'Kuwait',
   'قطر': 'Qatar', 'البحرين': 'Bahrain', 'سلطنة عمان': 'Oman', 'سوريا': 'Syria', 'لبنان': 'Lebanon', 'الجزائر': 'Algeria', 'المغرب': 'Morocco',
-  'تونس': 'Tunisia', 'ليبيا': 'Libya', 'اليمن': 'Yemen', 'السودان': 'Sudan'
+  'تونس': 'Tunisia', 'ليبيا': 'Libya', 'اليمن': 'Yemen', 'السودان': 'Sudan',
+  'التكلفة المقترحة :': 'Suggested cost:', 'إرسال طلب الترقية': 'Send upgrade request', 'الموافقة والرسوم': 'Approval and fees',
+  'الإدارة تحدد مقدار الذهب النهائي عند الموافقة • رصيدك الحالي :': 'The administration sets the final Gold amount upon approval • Current balance:',
+  'التكلفة المقترحة': 'Suggested cost', 'وتستطيع الإدارة تحديد مقدار الذهب النهائي عند الموافقة': 'and the administration may set the final Gold amount upon approval', '، وتستطيع الإدارة تحديد مقدار الذهب النهائي عند الموافقة': ', and the administration may set the final Gold amount upon approval',
+  'لن يتم خصم أي ذهب عند إرسال الطلب. يصل اسمك إلى لوحة الإدارة، وبعد مراجعة الطلب تختار الإدارة مقدار الذهب ثم توافق على التوثيق أو ترفضه، وسيصلك إشعار بالنتيجة.': 'No Gold is deducted when submitting. The administration reviews your request, chooses the Gold amount, and then approves or rejects it. You will be notified of the result.'
 });
 const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text';
 function translateDynamicText(text) {
@@ -862,11 +866,9 @@ $('#upPlus').onclick = () => { UP_MONTHS = Math.min(24, UP_MONTHS + 1); $('#upQt
 $('#doUpgradeBtn').onclick = async () => {
   try {
     const d = await api('/api/upgrade', 'POST', { target_id: UP_TARGET.id, plan: UP_PLAN, months: UP_MONTHS });
-    ME.balance = d.balance;
-    if (UP_TARGET.id === ME.id) { ME.membership = UP_PLAN; MYBADGE = badgeOf(ME); }
-    toast(`تمت الترقية إلى ${UP_PLAN.toUpperCase()} بنجاح 👑`);
+    toast(`تم إرسال طلب ترقية ${UP_TARGET.username} إلى ${UP_PLAN.toUpperCase()} للإدارة ✓ (التكلفة المقترحة ${d.suggested_gold} ذهب)`);
     closeOv('upOv');
-  } catch (e) { toast(e.error || 'تعذرت الترقية', false); }
+  } catch (e) { toast(e.error || 'تعذر إرسال طلب الترقية', false); }
 };
 
 // =====================================================
@@ -1419,11 +1421,9 @@ function openVerify() {
 }
 $('#vfRequest').onclick = async () => {
   try {
-    const d = await api('/api/verify-request', 'POST');
-    ME.balance = d.balance;
-    $('#menuBal').textContent = d.balance;
+    await api('/api/verify-request', 'POST');
     closeOv('verifyOv');
-    toast('تم إرسال طلب التوثيق للإدارة ✓ (خصم 10 ذهب)');
+    toast('تم إرسال طلب التوثيق إلى لوحة الإدارة ✓ ولن يتم الخصم إلا بعد الموافقة');
   } catch (e) { toast(e.error || 'تعذر إرسال الطلب', false); }
 };
 

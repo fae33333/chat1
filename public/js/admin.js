@@ -44,6 +44,7 @@ const MENU = [
   { icon: 'person2_fill', color: '#818cf8', label: 'ادارة المستخدمين', subs: [
     { id: 'userAdd', icon: 'plus_circle_fill', label: 'اضافه مستخدم' },
     { id: 'userEdit', icon: 'pencil_circle_fill', label: 'تحرير مستخدم' },
+    { id: 'serviceRequests', icon: 'bell_badge_fill', label: 'طلبات التوثيق والترقية' },
     { id: 'admins', icon: 'rosette', label: 'الحسابات الادارية' },
     { id: 'kicks', icon: 'square_arrow_right_fill', label: 'قائمة المطرودين' },
     { id: 'bans', icon: 'slash_circle_fill', label: 'قائمة الحظر' }]},
@@ -641,6 +642,82 @@ const PAGES = {
       $('#searchBtn').onclick = () => render($('#searchUser').value);
       $('#searchUser').onkeydown = e => { if (e.key === 'Enter') render($('#searchUser').value); };
       window._renderUsers = render;
+    }
+  },
+
+  // ====== طلبات التوثيق والترقية ======
+  serviceRequests: {
+    build: () => `
+      <div class="page-title"><i class="f7-icons mi" style="color:#6366f1">bell_badge_fill</i> طلبات التوثيق والترقية</div>
+      <div class="info-box" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3;margin-bottom:16px">
+        عند الموافقة اختر مقدار الذهب الذي سيُخصم من صاحب الطلب. لا يتم الخصم ولا تطبيق التوثيق أو العضوية قبل موافقتك.
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px" id="requestTabs">
+        <button class="btn btn-purple req-tab" data-status="pending">قيد المراجعة</button>
+        <button class="btn btn-gray req-tab" data-status="approved">تمت الموافقة</button>
+        <button class="btn btn-gray req-tab" data-status="rejected">مرفوضة</button>
+      </div>
+      <div id="serviceRequestsList"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل الطلبات...</div></div>`,
+    bind: async () => {
+      let currentStatus = 'pending';
+      const render = async () => {
+        const list = await api('/api/admin/service-requests?status=' + currentStatus);
+        $$('.req-tab').forEach(b => {
+          b.classList.toggle('btn-purple', b.dataset.status === currentStatus);
+          b.classList.toggle('btn-gray', b.dataset.status !== currentStatus);
+        });
+        $('#serviceRequestsList').innerHTML = list.length ? list.map(r => {
+          const isVerify = r.request_type === 'verify';
+          const title = isVerify ? 'طلب توثيق الحساب' : `طلب ترقية إلى ${String(r.plan || '').toUpperCase()}`;
+          const details = isVerify
+            ? `المستخدم: ${esc(r.username)}`
+            : `صاحب الطلب: ${esc(r.username)} • الحساب المستهدف: ${esc(r.target_name)} • المدة: ${r.months} شهر`;
+          return `<div class="section" style="margin-bottom:12px;border-color:${isVerify ? '#bfdbfe' : '#ddd6fe'}">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <div style="width:44px;height:44px;border-radius:13px;background:${isVerify ? '#dbeafe' : '#ede9fe'};color:${isVerify ? '#2563eb' : '#7c3aed'};display:flex;align-items:center;justify-content:center;flex:none"><i class="f7-icons" style="font-size:23px">${isVerify ? 'checkmark_seal_fill' : 'crown_fill'}</i></div>
+              <div style="flex:1;min-width:220px">
+                <div style="font-weight:900;color:#1f2937">${title}</div>
+                <div style="font-size:12.5px;color:#6b7280;margin-top:4px">${details}</div>
+                <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:7px">
+                  <span class="chip">الرصيد الحالي: ${r.current_balance ?? 0} ذهب</span>
+                  <span class="chip">التكلفة المقترحة: ${r.suggested_gold || 0} ذهب</span>
+                  <span class="chip">${new Date(r.created_at * 1000).toLocaleString('ar')}</span>
+                </div>
+              </div>
+            </div>
+            ${currentStatus === 'pending' ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #edf0f5">
+              <label style="font-size:13px;font-weight:800;color:#374151">الذهب المطلوب خصمه:</label>
+              <input class="inp num request-gold" data-id="${r.id}" type="number" min="0" max="100000" value="${r.suggested_gold || 0}" style="width:120px">
+              <button class="btn btn-green request-approve" data-id="${r.id}"><i class="f7-icons">checkmark_circle_fill</i> موافقة وتنفيذ</button>
+              <button class="btn btn-red request-reject" data-id="${r.id}"><i class="f7-icons">xmark_circle_fill</i> رفض</button>
+            </div>` : `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #edf0f5;font-size:12.5px;color:${currentStatus === 'approved' ? '#059669' : '#dc2626'};font-weight:800">
+              ${currentStatus === 'approved' ? `تمت الموافقة وخصم ${r.approved_gold || 0} ذهب` : `تم الرفض: ${esc(r.note || 'بدون سبب')}`} ${r.admin_name ? `• بواسطة ${esc(r.admin_name)}` : ''}
+            </div>`}
+          </div>`;
+        }).join('') : '<div class="empty">لا توجد طلبات في هذه القائمة</div>';
+
+        $$('.request-approve').forEach(b => b.onclick = async () => {
+          const input = $(`.request-gold[data-id="${b.dataset.id}"]`);
+          const gold = Math.max(0, parseInt(input.value) || 0);
+          if (!confirm(`الموافقة وخصم ${gold} ذهب من المستخدم؟`)) return;
+          try {
+            await api('/api/admin/service-requests/' + b.dataset.id + '/approve', 'POST', { gold });
+            toast('تمت الموافقة وتنفيذ الطلب وخصم الذهب');
+            render();
+          } catch (e) { toast(e.error || 'تعذرت الموافقة', false); }
+        });
+        $$('.request-reject').forEach(b => b.onclick = async () => {
+          const note = prompt('اكتب سبب الرفض الذي سيصل للمستخدم:', 'تم رفض الطلب من الإدارة');
+          if (note === null) return;
+          try {
+            await api('/api/admin/service-requests/' + b.dataset.id + '/reject', 'POST', { note });
+            toast('تم رفض الطلب وإبلاغ المستخدم');
+            render();
+          } catch (e) { toast(e.error || 'تعذر رفض الطلب', false); }
+        });
+      };
+      $$('.req-tab').forEach(b => b.onclick = () => { currentStatus = b.dataset.status; render(); });
+      await render();
     }
   },
 

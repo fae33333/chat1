@@ -508,25 +508,35 @@ app.post('/api/gifts/send', requireUser, async (req, res) => {
   res.json({ ok: true, balance: me.balance - amount });
 });
 
-// ترقية العضوية بالرصيد
+async function notifyAdminAccounts(text) {
+  const admins = await q.all(`SELECT id FROM users WHERE rank IN ('admin','superadmin')`);
+  for (const admin of admins) {
+    await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, admin.id, text, 'bell_badge_fill');
+    io.to('user_' + admin.id).emit('notify', { icon: 'bell_badge_fill', text });
+  }
+  io.emit('service_request_created');
+}
+
+// طلب ترقية: لا يتم الخصم أو تطبيق العضوية إلا بعد موافقة الإدارة.
 app.post('/api/upgrade', requireUser, async (req, res) => {
-  const { target_id, plan, months } = req.body;
-  const s = await getSettings();
-  const costs = { vip: +s.vip_cost, premium: +s.premium_cost, plus: +s.plus_cost };
+  const { target_id, plan } = req.body;
+  const months = Math.min(24, Math.max(1, parseInt(req.body.months) || 1));
+  const settings = await getSettings();
+  const costs = { vip: +settings.vip_cost, premium: +settings.premium_cost, plus: +settings.plus_cost };
   if (!costs[plan]) return res.status(400).json({ error: 'خطة غير صالحة' });
-  const total = costs[plan] * (months || 1);
   const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
-  if (me.balance < total) return res.status(400).json({ error: 'رصيدك غير كافي' });
-  const target = await q.get(`SELECT * FROM users WHERE id=?`, target_id || me.id);
+  if (!me || !me.registered) return res.status(403).json({ error: 'يتطلب عضوية مسجلة' });
+  const target = await q.get(`SELECT * FROM users WHERE id=?`, +target_id || me.id);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
-  await q.run(`UPDATE users SET balance=balance-? WHERE id=?`, total, me.id);
-  await q.run(`UPDATE users SET membership=?, membership_expires=? WHERE id=?`,
-    plan, Date.now() + (months || 1) * 30 * 86400000, target.id);
-  // إشعار للمُرقَّى
-  io.to('user_' + target.id).emit('notify', { icon: 'crown_fill', text: `👑 تمت ترقية عضويتك إلى ${plan.toUpperCase()} لمدة ${months || 1} شهر` });
-  io.to('user_' + target.id).emit('membership_changed', { plan });
-  await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, target.id, `تمت ترقيتك إلى عضوية ${plan.toUpperCase()} 👑`, 'crown_fill');
-  res.json({ ok: true, balance: me.balance - total, membership: plan });
+  const duplicate = await q.get(`SELECT id FROM service_requests WHERE user_id=? AND target_id=? AND request_type='upgrade' AND status='pending'`, me.id, target.id);
+  if (duplicate) return res.status(400).json({ error: 'يوجد طلب ترقية قيد المراجعة لهذا المستخدم بالفعل' });
+  const suggestedGold = costs[plan] * months;
+  const out = await q.run(`
+    INSERT INTO service_requests (user_id,username,target_id,target_name,request_type,plan,months,suggested_gold)
+    VALUES (?,?,?,?, 'upgrade',?,?,?)`,
+    me.id, me.username, target.id, target.username, plan, months, suggestedGold);
+  await notifyAdminAccounts(`طلب ترقية جديد من ${me.username}: ${target.username} إلى ${plan.toUpperCase()} لمدة ${months} شهر`);
+  res.json({ ok: true, requested: true, request_id: out.lastID, suggested_gold: suggestedGold });
 });
 
 // تغيير الحالة / الصورة
@@ -710,18 +720,18 @@ async function refreshUserEverywhere(uid) {
   Object.keys(roomUsers).forEach(rid => { if (roomUsers[rid].has(uid)) emitRoomUsers(rid); });
 }
 
-// طلب توثيق الحساب (10 ذهب افتراضي)
+// طلب توثيق: تحدد الإدارة مقدار الذهب عند الموافقة ولا يتم الخصم مسبقاً.
 app.post('/api/verify-request', requireUser, async (req, res) => {
   const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
   if (!me || !me.registered) return res.status(403).json({ error: 'يتطلب عضوية مسجلة' });
   if (VERIFIED_SET.has(me.username)) return res.status(400).json({ error: 'حسابك موثق بالفعل ✓' });
-  if (me.balance < 10) return res.status(400).json({ error: 'رصيدك غير كافي - تحتاج الى 10 ذهب' });
-  const dup = await q.get(`SELECT id FROM complaints WHERE user_id=? AND subject=?`, me.id, 'طلب توثيق حساب');
-  if (dup) return res.status(400).json({ error: 'لديك طلب توثيق قيد المراجعة بالفعل' });
-  await q.run(`UPDATE users SET balance=balance-10 WHERE id=?`, me.id);
-  await q.run(`INSERT INTO complaints (user_id,username,subject,message) VALUES (?,?,?,?)`,
-    me.id, me.username, 'طلب توثيق حساب', `طلب توثيق الحساب ${me.username} (تم خصم 10 ذهب)`);
-  res.json({ ok: true, balance: me.balance - 10 });
+  const duplicate = await q.get(`SELECT id FROM service_requests WHERE user_id=? AND request_type='verify' AND status='pending'`, me.id);
+  if (duplicate) return res.status(400).json({ error: 'لديك طلب توثيق قيد المراجعة بالفعل' });
+  const out = await q.run(`
+    INSERT INTO service_requests (user_id,username,target_id,target_name,request_type,suggested_gold)
+    VALUES (?,?,?,?,'verify',10)`, me.id, me.username, me.id, me.username);
+  await notifyAdminAccounts(`طلب توثيق جديد من المستخدم ${me.username}`);
+  res.json({ ok: true, requested: true, request_id: out.lastID, suggested_gold: 10 });
 });
 
 // شراء الذهب الافتراضي (دفع تجريبي)
@@ -1068,6 +1078,90 @@ app.get('/api/admin/kicks', requireAdmin, async (req, res) => {
 });
 app.delete('/api/admin/kicks/:id', requireAdmin, async (req, res) => {
   await q.run(`DELETE FROM room_kicks WHERE id=?`, +req.params.id);
+  res.json({ ok: true });
+});
+
+// ---- طلبات التوثيق والترقية ----
+app.get('/api/admin/service-requests', requireAdmin, async (req, res) => {
+  const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : '';
+  const rows = await q.all(`
+    SELECT sr.*,u.balance current_balance,u.avatar requester_avatar,t.avatar target_avatar
+    FROM service_requests sr
+    LEFT JOIN users u ON u.id=sr.user_id
+    LEFT JOIN users t ON t.id=sr.target_id
+    ${status ? 'WHERE sr.status=?' : ''}
+    ORDER BY CASE sr.status WHEN 'pending' THEN 0 ELSE 1 END,sr.created_at DESC
+    LIMIT 200`, ...(status ? [status] : []));
+  res.json(rows);
+});
+
+app.post('/api/admin/service-requests/:id/approve', requireAdmin, async (req, res) => {
+  const id = +req.params.id;
+  const gold = Math.min(100000, Math.max(0, parseInt(req.body.gold) || 0));
+  const admin = await q.get(`SELECT id,username FROM users WHERE id=?`, req.session.uid);
+  const claim = await q.run(`UPDATE service_requests SET status='processing',admin_id=?,admin_name=? WHERE id=? AND status='pending'`, admin.id, admin.username, id);
+  if (!claim.changes) return res.status(400).json({ error: 'تمت معالجة هذا الطلب مسبقاً' });
+  const request = await q.get(`SELECT * FROM service_requests WHERE id=?`, id);
+  const requester = await q.get(`SELECT * FROM users WHERE id=?`, request.user_id);
+  const target = await q.get(`SELECT * FROM users WHERE id=?`, request.target_id);
+  const release = async (message) => {
+    await q.run(`UPDATE service_requests SET status='pending',admin_id=0,admin_name='' WHERE id=? AND status='processing'`, id);
+    return res.status(400).json({ error: message });
+  };
+  if (!requester || !target) return release('المستخدم غير موجود');
+  if (request.request_type === 'verify' && VERIFIED_SET.has(target.username)) return release('الحساب موثق بالفعل');
+  if (request.request_type === 'upgrade' && !['vip', 'premium', 'plus'].includes(request.plan)) return release('خطة الترقية غير صالحة');
+  if (requester.balance < gold) return release(`رصيد المستخدم غير كافٍ — رصيده الحالي ${requester.balance} ذهب`);
+
+  let charged = false;
+  try {
+    if (gold > 0) {
+      const charge = await q.run(`UPDATE users SET balance=balance-? WHERE id=? AND balance>=?`, gold, requester.id, gold);
+      if (!charge.changes) return release('رصيد المستخدم لم يعد كافياً');
+      charged = true;
+    }
+    if (request.request_type === 'verify') {
+      await q.run(`INSERT OR IGNORE INTO verified (username) VALUES (?)`, target.username);
+      await refreshVerified();
+      await broadcastVerificationState(target.username);
+    } else {
+      await q.run(`UPDATE users SET membership=?,membership_expires=? WHERE id=?`,
+        request.plan, Date.now() + Math.max(1, request.months) * 30 * 86400000, target.id);
+      await refreshUserEverywhere(target.id);
+      io.to('user_' + target.id).emit('membership_changed', { plan: request.plan });
+    }
+    await q.run(`UPDATE service_requests SET status='approved',approved_gold=?,resolved_at=strftime('%s','now') WHERE id=?`, gold, id);
+  } catch (e) {
+    if (charged) await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, gold, requester.id).catch(() => { });
+    await q.run(`UPDATE service_requests SET status='pending',admin_id=0,admin_name='' WHERE id=?`, id).catch(() => { });
+    return res.status(500).json({ error: 'تعذرت الموافقة على الطلب' });
+  }
+
+  const freshRequester = await q.get(`SELECT balance FROM users WHERE id=?`, requester.id);
+  const actionText = request.request_type === 'verify'
+    ? `تمت الموافقة على توثيق حسابك وخصم ${gold} ذهب`
+    : `تمت الموافقة على طلب ترقية ${target.username} إلى ${request.plan.toUpperCase()} وخصم ${gold} ذهب`;
+  await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, requester.id, actionText, request.request_type === 'verify' ? 'checkmark_seal_fill' : 'crown_fill');
+  io.to('user_' + requester.id).emit('notify', { icon: request.request_type === 'verify' ? 'checkmark_seal_fill' : 'crown_fill', text: actionText, balance: freshRequester.balance });
+  if (target.id !== requester.id) {
+    const targetText = `تمت ترقية عضويتك إلى ${request.plan.toUpperCase()} بواسطة طلب من ${requester.username}`;
+    await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, target.id, targetText, 'crown_fill');
+    io.to('user_' + target.id).emit('notify', { icon: 'crown_fill', text: targetText });
+  }
+  res.json({ ok: true, approved_gold: gold, balance: freshRequester.balance });
+});
+
+app.post('/api/admin/service-requests/:id/reject', requireAdmin, async (req, res) => {
+  const id = +req.params.id;
+  const note = String(req.body.note || 'تم رفض الطلب من الإدارة').slice(0, 200);
+  const admin = await q.get(`SELECT id,username FROM users WHERE id=?`, req.session.uid);
+  const request = await q.get(`SELECT * FROM service_requests WHERE id=? AND status='pending'`, id);
+  if (!request) return res.status(400).json({ error: 'تمت معالجة هذا الطلب مسبقاً' });
+  await q.run(`UPDATE service_requests SET status='rejected',admin_id=?,admin_name=?,note=?,resolved_at=strftime('%s','now') WHERE id=? AND status='pending'`,
+    admin.id, admin.username, note, id);
+  const text = `${request.request_type === 'verify' ? 'طلب التوثيق' : 'طلب الترقية'}: ${note}`;
+  await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, request.user_id, text, 'xmark_circle_fill');
+  io.to('user_' + request.user_id).emit('notify', { icon: 'xmark_circle_fill', text });
   res.json({ ok: true });
 });
 

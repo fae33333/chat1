@@ -150,6 +150,28 @@ db.serialize(() => {
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
 
+  // ---------- طلبات التوثيق والترقية ----------
+  db.run(`CREATE TABLE IF NOT EXISTS service_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    username TEXT NOT NULL,
+    target_id INTEGER NOT NULL,
+    target_name TEXT NOT NULL,
+    request_type TEXT NOT NULL,            -- verify | upgrade
+    plan TEXT DEFAULT '',                  -- vip | premium | plus
+    months INTEGER DEFAULT 1,
+    suggested_gold INTEGER DEFAULT 0,
+    approved_gold INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'pending',         -- pending | approved | rejected
+    admin_id INTEGER DEFAULT 0,
+    admin_name TEXT DEFAULT '',
+    note TEXT DEFAULT '',
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    resolved_at INTEGER DEFAULT 0
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_service_requests_status ON service_requests (status, created_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_service_requests_user ON service_requests (user_id, status)`);
+
   // ---------- الإعدادات ----------
   db.run(`CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
