@@ -280,7 +280,7 @@ body { background:#0e1220; display:flex; justify-content:center; }
 }
 #usersList .users-row:not(.muted-user):not(.ignored-user):nth-child(odd) { background:rgb(238,238,238) !important; }
 #usersList .users-row:not(.muted-user):not(.ignored-user):nth-child(even) { background:#ffffff !important; }
-.users-row .ubadge { width:25px; height:25px; object-fit:contain; flex:none; }
+.ubadge { width:42px !important; height:42px !important; margin:-8px !important; object-fit:contain; flex:none; }
 .users-row .uava { width:42px; height:42px; border-radius:50%; background:linear-gradient(150deg,var(--orange1),var(--orange3)); color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; position:relative; flex:none; }
 .users-row .uava img { width:42px; height:42px; border-radius:50%; object-fit:cover; }
 .users-row .uava .dot { position:absolute; bottom:0; right:0; width:11px; height:11px; border:2px solid #fff; }
