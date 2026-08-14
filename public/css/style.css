@@ -1,7 +1,7 @@
 /* =====================================================
    شات نجوم العرب - تصميم دردشتي (مثل الفيديو تماما)
 ===================================================== */
-* { margin:0; padding:0; box-sizing:border-box; font-family:"SF Arabic","SF Pro Text","SF UI Text",Arial,sans-serif !important; -webkit-tap-highlight-color:transparent; }
+* { margin:0; padding:0; box-sizing:border-box; font-family:"Noto Sans Arabic","SF Arabic","SF Pro Text",Arial,sans-serif !important; -webkit-tap-highlight-color:transparent; }
 .f7-icons,.framework7-icons { font-family:"Framework7 Icons" !important; }
 :root {
   --main: #1479f2;                 /* الأزرق الأساسي */
@@ -1350,7 +1350,7 @@ body.lang-en .room-welcome { margin-left:52px; margin-right:0; direction:ltr; }
   margin-right:49px;
   margin-left:49px;
   margin-top:7px;
-  font-family:"SF Arabic","SF Pro Text","SF UI Text",Arial,sans-serif !important;
+  font-family:"Noto Sans Arabic","SF Arabic","SF Pro Text",Arial,sans-serif !important;
   font-size:14px;
   font-weight:bold;
   display:flex;
@@ -1379,7 +1379,7 @@ body.lang-en .room-welcome { margin-left:52px; margin-right:0; direction:ltr; }
   unicode-bidi:embed;
   margin:0 4px 5px;
   margin-left:54px;
-  font-family:"SF Arabic","SF Pro Text","SF UI Text",Arial,sans-serif !important;
+  font-family:"Noto Sans Arabic","SF Arabic","SF Pro Text",Arial,sans-serif !important;
   font-size:14px;
 }
 .system-event-message {

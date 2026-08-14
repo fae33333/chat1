@@ -1,7 +1,7 @@
 /* =====================================================
    لوحة التحكم - نفس تصميم Flash Chat 123
 ===================================================== */
-* { margin:0; padding:0; box-sizing:border-box; font-family:"SF Arabic","SF Pro Text","SF UI Text",Arial,sans-serif !important; }
+* { margin:0; padding:0; box-sizing:border-box; font-family:"Noto Sans Arabic","SF Arabic","SF Pro Text",Arial,sans-serif !important; }
 .f7-icons,.framework7-icons { font-family:"Framework7 Icons" !important; }
 :root {
   --sb-bg: #252c3f;
