@@ -25,6 +25,7 @@ let NOTIFS = [], CURRENT_NOTIFICATIONS = [], CURRENT_ANNOUNCEMENT = null;
 let READ_NOTIFS = new Set(), NOTIF_UNREAD = 0, STATUS_UNREAD = 0;
 let SEL_AVATAR = null, AVA_CAT = 'def';
 let STATUSES = [], STATUS_GROUP = [], STATUS_INDEX = 0, CURRENT_STATUS = null;
+let WALL_POSTS = [], WALL_VIDEO_PATH = '';
 let CUSTOM_EMOJIS = [];
 // قائمة التجاهل تُحمّل من الخادم وتبقى مرتبطة بالحساب.
 let IGNORED_USERS = new Set();
@@ -115,9 +116,14 @@ Object.assign(I18N_EN, {
   'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available', 'إلغاء تجاهل': 'Unignore', 'الهدية من': 'Gift from', 'كمية:': 'Quantity:', 'صورة المستخدم': 'User photo',
   'طريقة دخول الغرفة': 'Room entry mode', 'اختر طريقة دخولك إلى غرفة': 'Choose how to enter room', 'دخول ظاهر': 'Visible entry', 'دخول مخفي': 'Hidden entry',
   'تم الدخول إلى الغرفة بشكل مخفي': 'You entered the room invisibly', 'تم إيقاف الدخول المخفي من لوحة الإدارة': 'Hidden entry was disabled by the administration',
-  'إعلان عام': 'General announcement', 'بواسطة:': 'By:', 'الإدارة': 'Administration', 'حسناً': 'OK', 'إشعار': 'Notification'
+  'إعلان عام': 'General announcement', 'بواسطة:': 'By:', 'الإدارة': 'Administration', 'حسناً': 'OK', 'إشعار': 'Notification',
+  'الحائط': 'Wall', 'تحديث الحائط': 'Refresh wall', 'اكتب منشورك هنا...': 'Write your post...', 'ضع رابط YouTube هنا': 'Paste a YouTube link here',
+  'يوتيوب': 'YouTube', 'رفع فيديو': 'Upload video', 'نشر': 'Publish', 'جاري تحميل المنشورات...': 'Loading posts...', 'تعذر تحميل الحائط': 'Could not load wall',
+  'إعجاب': 'Like', 'سمايل': 'React', 'تعليق': 'Comment', 'اكتب تعليقاً...': 'Write a comment...', 'لا توجد منشورات بعد، كن أول من ينشر على الحائط': 'No posts yet. Be the first to post.',
+  'حذف المنشور': 'Delete post', 'حذف هذا المنشور؟': 'Delete this post?', 'جاري رفع الفيديو...': 'Uploading video...', 'تم رفع الفيديو بنجاح': 'Video uploaded successfully',
+  'تم نشر المنشور': 'Post published', 'تعذر نشر المنشور': 'Could not publish post'
 });
-const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,#announcementText,#announcementSender,.notif-preview,.notif-sender,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
+const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,#announcementText,#announcementSender,.notif-preview,.notif-sender,.wall-post-text,.wall-post-who b,.wall-comment-bubble b,.wall-comment-bubble p,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
 function translateDynamicText(text) {
   if (I18N_EN[text]) return I18N_EN[text];
   let match = text.match(/^مرحباً بـ (.+) في غرفة (.+)$/);
@@ -132,6 +138,8 @@ function translateDynamicText(text) {
   if (match) return `${match[1]} was ignored and private messages were disabled`;
   match = text.match(/^الاسم (.+) مسجل، تم دخولك كزائر باسم (.+)$/);
   if (match) return `${match[1]} is registered; you joined as guest ${match[2]}`;
+  match = text.match(/^(\d+) تفاعل • (\d+) تعليق$/);
+  if (match) return `${match[1]} reactions • ${match[2]} comments`;
   if (text.startsWith('الكمية: ')) return 'Quantity: ' + text.slice('الكمية: '.length);
   if (text.startsWith('اليوم الساعة ')) return 'Today at ' + text.slice('اليوم الساعة '.length);
   if (text.startsWith('أمس الساعة ')) return 'Yesterday at ' + text.slice('أمس الساعة '.length);
@@ -234,7 +242,7 @@ function toast(msg, ok = true) {
 function openOv(id) { $('#' + id).classList.add('open'); refreshNav(); }
 function closeOv(id) { $('#' + id).classList.remove('open'); refreshNav(); }
 function refreshNav() {
-  const navPages = { menuOv: 'menu', notifOv: 'notifs', privOv: 'private' };
+  const navPages = { menuOv: 'menu', notifOv: 'notifs', privOv: 'private', wallOv: 'wall' };
   let openNav = null;
   for (const id in navPages) if (document.getElementById(id) && document.getElementById(id).classList.contains('open')) openNav = navPages[id];
   const inChat = $('#chatScreen').classList.contains('active');
@@ -436,6 +444,9 @@ function connectSocket() {
     beep(660, .2);
   });
   SOCKET.on('membership_changed', ({ plan }) => { if (ME) { ME.membership = plan; MYBADGE = badgeOf(ME); } });
+  SOCKET.on('wall_changed', () => {
+    if ($('#wallOv').classList.contains('open')) loadWallPosts(false);
+  });
   SOCKET.on('statuses_changed', change => {
     const statusPageOpen = $('#statusOv').classList.contains('open');
     if (change && change.action === 'created' && ME && +change.userId !== +ME.id && !statusPageOpen) {
@@ -1848,6 +1859,156 @@ $('#avaSave').onclick = async () => {
 };
 
 // =====================================================
+//  الحائط
+// =====================================================
+function wallTime(timestamp) {
+  const date = new Date((+timestamp || Date.now() / 1000) * 1000);
+  return date.toLocaleString(APP_LANG === 'en' ? 'en-US' : 'ar-JO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+}
+async function openWall() {
+  if (!ME) return openLogin();
+  $('#wallComposeAvatar').innerHTML = avatarHtml(ME.avatar);
+  openOv('wallOv');
+  await loadWallPosts(true);
+}
+async function loadWallPosts(showLoading = true) {
+  if (!ME) return;
+  if (showLoading) $('#wallList').innerHTML = '<div class="wall-loading"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل المنشورات...</div>';
+  try {
+    WALL_POSTS = await api('/api/wall');
+    renderWallPosts();
+  } catch (e) {
+    $('#wallList').innerHTML = '<div class="wall-empty"><i class="f7-icons">exclamationmark_circle</i>تعذر تحميل الحائط</div>';
+  }
+}
+async function refreshWallKeepingPosition() {
+  const scroll = $('#wallScroll');
+  const top = scroll.scrollTop;
+  await loadWallPosts(false);
+  scroll.scrollTop = top;
+}
+function renderWallPosts() {
+  const reactionsOrder = ['👍', '❤️', '😂', '😍', '😮'];
+  $('#wallList').innerHTML = WALL_POSTS.length ? WALL_POSTS.map(post => {
+    const user = post.user || { username: post.username, avatar: '', badge: 'register.png' };
+    const reactions = reactionsOrder.filter(icon => post.reactions && post.reactions[icon])
+      .map(icon => `<span>${icon}<b>${post.reactions[icon]}</b></span>`).join('');
+    const comments = (post.comments || []).map(comment => {
+      const commenter = comment.user || { username: comment.username, avatar: '' };
+      return `<div class="wall-comment">
+        <span class="wall-comment-avatar">${avatarHtml(commenter.avatar)}</span>
+        <div class="wall-comment-bubble"><b>${esc(commenter.username || comment.username)}</b><p>${esc(comment.text)}</p></div>
+      </div>`;
+    }).join('');
+    const media = post.youtube_url
+      ? `<div class="wall-media"><iframe src="${esc(post.youtube_url)}" title="YouTube" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`
+      : (post.video ? `<div class="wall-media"><video src="${esc(post.video)}" controls playsinline preload="metadata"></video></div>` : '');
+    const myReaction = post.my_reaction || '';
+    return `<article class="wall-post" data-id="${post.id}">
+      <div class="wall-post-head">
+        <span class="wall-post-avatar">${avatarHtml(user.avatar)}</span>
+        <span class="wall-post-who"><b>${esc(user.username || post.username)}${user.verified ? ' <i class="f7-icons">checkmark_seal_fill</i>' : ''}</b><small>${esc(wallTime(post.created_at))}</small></span>
+        ${(user.badge && !['guest.png', 'register.png'].includes(user.badge)) ? `<img class="wall-post-badge" src="/badges/${esc(user.badge)}" alt="">` : ''}
+        ${post.can_delete ? '<button class="wall-post-delete" type="button" title="حذف المنشور"><i class="f7-icons">trash_fill</i></button>' : ''}
+      </div>
+      ${post.text ? `<div class="wall-post-text">${esc(post.text)}</div>` : ''}
+      ${media}
+      <div class="wall-reaction-summary"><span class="wall-reaction-emojis">${reactions}</span><span>${post.reaction_count || 0} تفاعل • ${(post.comments || []).length} تعليق</span></div>
+      <div class="wall-post-actions">
+        <button class="wall-action wall-like${myReaction === '👍' ? ' active' : ''}" type="button"><i class="f7-icons">hand_thumbsup_fill</i><span>إعجاب</span></button>
+        <div class="wall-action wall-react-action${myReaction && myReaction !== '👍' ? ' active' : ''}" role="button" tabindex="0"><i class="f7-icons">smiley_fill</i><span>${myReaction && myReaction !== '👍' ? myReaction : 'سمايل'}</span><div class="wall-reaction-picker">${reactionsOrder.map(icon => `<span data-reaction="${icon}">${icon}</span>`).join('')}</div></div>
+        <button class="wall-action wall-comment-focus" type="button"><i class="f7-icons">chat_bubble_fill</i><span>تعليق</span></button>
+      </div>
+      <div class="wall-comments">
+        <div class="wall-comment-list">${comments}</div>
+        <div class="wall-comment-form"><input maxlength="500" placeholder="اكتب تعليقاً..."><button type="button"><i class="f7-icons">paperplane_fill</i></button></div>
+      </div>
+    </article>`;
+  }).join('') : '<div class="wall-empty"><i class="f7-icons">doc_text_fill</i>لا توجد منشورات بعد، كن أول من ينشر على الحائط</div>';
+
+  $$('#wallList .wall-post').forEach(card => {
+    const postId = +card.dataset.id;
+    card.querySelector('.wall-like').onclick = async () => {
+      await api(`/api/wall/${postId}/reaction`, 'POST', { reaction: '👍' });
+      await refreshWallKeepingPosition();
+    };
+    const reactAction = card.querySelector('.wall-react-action');
+    reactAction.onclick = event => {
+      const choice = event.target.closest('[data-reaction]');
+      if (choice) return;
+      $$('.wall-react-action').forEach(item => { if (item !== reactAction) item.classList.remove('show-picker'); });
+      reactAction.classList.toggle('show-picker');
+    };
+    card.querySelectorAll('[data-reaction]').forEach(choice => choice.onclick = async event => {
+      event.stopPropagation();
+      await api(`/api/wall/${postId}/reaction`, 'POST', { reaction: choice.dataset.reaction });
+      await refreshWallKeepingPosition();
+    });
+    const input = card.querySelector('.wall-comment-form input');
+    const sendComment = async () => {
+      const text = input.value.trim(); if (!text) return;
+      await api(`/api/wall/${postId}/comments`, 'POST', { text });
+      await refreshWallKeepingPosition();
+    };
+    card.querySelector('.wall-comment-form button').onclick = sendComment;
+    input.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); sendComment(); } };
+    card.querySelector('.wall-comment-focus').onclick = () => input.focus();
+    const remove = card.querySelector('.wall-post-delete');
+    if (remove) remove.onclick = async () => {
+      if (!confirm('حذف هذا المنشور؟')) return;
+      await api('/api/wall/' + postId, 'DELETE');
+      await refreshWallKeepingPosition();
+    };
+  });
+}
+$('#wallRefresh').onclick = () => loadWallPosts(true);
+$('#wallAddYoutube').onclick = () => { $('#wallYoutubeRow').hidden = false; $('#wallYoutubeUrl').focus(); };
+$('#wallYoutubeClose').onclick = () => { $('#wallYoutubeUrl').value = ''; $('#wallYoutubeRow').hidden = true; };
+$('#wallAddVideo').onclick = () => $('#wallVideoFile').click();
+$('#wallVideoFile').onchange = async () => {
+  const file = $('#wallVideoFile').files[0]; if (!file) return;
+  const form = new FormData(); form.append('video', file);
+  $('#wallAddVideo').disabled = true;
+  try {
+    toast('جاري رفع الفيديو...');
+    const uploaded = await api('/api/wall/upload-video', 'POST', form, true);
+    WALL_VIDEO_PATH = uploaded.path;
+    $('#wallVideoElement').src = uploaded.path;
+    $('#wallVideoPreview').hidden = false;
+    toast('تم رفع الفيديو بنجاح');
+  } catch (e) { toast(e.error || 'تعذر رفع الفيديو', false); }
+  finally { $('#wallAddVideo').disabled = false; }
+};
+$('#wallVideoRemove').onclick = () => {
+  WALL_VIDEO_PATH = '';
+  $('#wallVideoElement').removeAttribute('src');
+  $('#wallVideoPreview').hidden = true;
+  $('#wallVideoFile').value = '';
+};
+$('#wallPublish').onclick = async () => {
+  const button = $('#wallPublish');
+  button.disabled = true;
+  try {
+    await api('/api/wall', 'POST', {
+      text: $('#wallPostText').value,
+      youtube_url: $('#wallYoutubeUrl').value,
+      video: WALL_VIDEO_PATH
+    });
+    $('#wallPostText').value = '';
+    $('#wallYoutubeUrl').value = '';
+    $('#wallYoutubeRow').hidden = true;
+    WALL_VIDEO_PATH = '';
+    $('#wallVideoElement').removeAttribute('src');
+    $('#wallVideoPreview').hidden = true;
+    $('#wallVideoFile').value = '';
+    toast('تم نشر المنشور');
+    await loadWallPosts(false);
+    $('#wallScroll').scrollTop = 0;
+  } catch (e) { toast(e.error || 'تعذر نشر المنشور', false); }
+  finally { button.disabled = false; }
+};
+
+// =====================================================
 //  الإشعارات
 // =====================================================
 $('#notifSettings').onclick = () => toast('إعدادات الإشعارات');
@@ -2019,7 +2180,7 @@ function showScreen(name) {
   document.querySelector('.bottomnav').classList.toggle('show', name === 'chat');
 }
 // إغلاق صفحات التنقل الأخرى عدا المطلوبة (التبديل بينها دون تراكم)
-function closeNavPages(except) { ['privOv', 'notifOv', 'menuOv'].forEach(id => { if (id !== except) closeOv(id); }); }
+function closeNavPages(except) { ['privOv', 'notifOv', 'wallOv', 'menuOv'].forEach(id => { if (id !== except) closeOv(id); }); }
 $$('.bn-item').forEach(b => b.onclick = () => {
   const nav = b.dataset.nav;
   if (nav === 'rooms') {           // «الغرف» = العودة إلى العامة (الدردشة الحالية)
@@ -2028,6 +2189,7 @@ $$('.bn-item').forEach(b => b.onclick = () => {
   }
   else if (nav === 'private') { closeNavPages('privOv'); PRIV_UNREAD = 0; updatePrivBadge(); openPrivateList(); }
   else if (nav === 'notifs') { closeNavPages('notifOv'); openNotifs(); }
+  else if (nav === 'wall') { closeNavPages('wallOv'); openWall(); }
   else if (nav === 'menu') { closeNavPages('menuOv'); openMenu(); }
 });
 $('#chatBack').onclick = () => { openOv('exitOv'); };

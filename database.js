@@ -202,6 +202,36 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_service_requests_status ON service_requests (status, created_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_service_requests_user ON service_requests (user_id, status)`);
 
+  // ---------- الحائط والمنشورات والتعليقات والتفاعلات ----------
+  db.run(`CREATE TABLE IF NOT EXISTS wall_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    username TEXT NOT NULL,
+    text TEXT DEFAULT '',
+    youtube_url TEXT DEFAULT '',
+    video TEXT DEFAULT '',
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_wall_posts_created ON wall_posts (created_at DESC)`);
+  db.run(`CREATE TABLE IF NOT EXISTS wall_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    username TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_wall_comments_post ON wall_comments (post_id, id)`);
+  db.run(`CREATE TABLE IF NOT EXISTS wall_reactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    reaction TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(post_id, user_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_wall_reactions_post ON wall_reactions (post_id)`);
+
   // ---------- الإعدادات ----------
   db.run(`CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,

@@ -154,6 +154,7 @@
     <button class="bn-item active" data-nav="rooms"><i class="f7-icons">house_fill</i><span>الغرف</span></button>
     <button class="bn-item" data-nav="private"><i class="f7-icons">bubble_left_fill</i><span>الخاص</span><em class="bn-badge" id="privBadge" style="display:none">0</em></button>
     <button class="bn-item" data-nav="notifs"><i class="f7-icons">bell_fill</i><span>الإشعارات</span><em class="bn-badge" id="notifBadge" style="display:none">0</em></button>
+    <button class="bn-item" data-nav="wall"><i class="f7-icons">doc_text_fill</i><span>الحائط</span></button>
     <button class="bn-item" data-nav="menu" id="bnMenu"><i class="f7-icons" id="bnMenuIcon">square_grid2x2_fill</i><span>القائمة</span></button>
   </nav>
 
@@ -638,6 +639,43 @@
         <i class="f7-icons ph-icon" id="notifSettings">gear_alt_fill</i>
       </div>
       <div class="pv-list" id="notifList"></div>
+    </div>
+  </div>
+
+  <!-- الحائط -->
+  <div class="overlay full withnav" id="wallOv">
+    <div class="wall-page">
+      <div class="wall-head">
+        <button class="wall-back" data-close="wallOv" type="button"><i class="f7-icons">chevron_right</i><span>عودة</span></button>
+        <b>الحائط</b>
+        <button class="wall-refresh" id="wallRefresh" type="button" aria-label="تحديث الحائط"><i class="f7-icons">arrow_clockwise</i></button>
+      </div>
+      <div class="wall-scroll" id="wallScroll">
+        <div class="wall-composer">
+          <div class="wall-compose-main">
+            <span class="wall-compose-avatar" id="wallComposeAvatar"></span>
+            <textarea id="wallPostText" maxlength="2000" rows="3" placeholder="اكتب منشورك هنا..."></textarea>
+          </div>
+          <div class="wall-youtube-row" id="wallYoutubeRow" hidden>
+            <i class="f7-icons">play_rectangle_fill</i>
+            <input id="wallYoutubeUrl" type="url" dir="ltr" placeholder="ضع رابط YouTube هنا">
+            <button id="wallYoutubeClose" type="button"><i class="f7-icons">xmark_circle_fill</i></button>
+          </div>
+          <div class="wall-video-preview" id="wallVideoPreview" hidden>
+            <video id="wallVideoElement" controls playsinline preload="metadata"></video>
+            <button id="wallVideoRemove" type="button"><i class="f7-icons">xmark_circle_fill</i></button>
+          </div>
+          <div class="wall-compose-actions">
+            <span class="wall-media-actions">
+              <button id="wallAddYoutube" type="button"><i class="f7-icons">play_rectangle_fill</i><span>يوتيوب</span></button>
+              <button id="wallAddVideo" type="button"><i class="f7-icons">videocam_fill</i><span>رفع فيديو</span></button>
+              <input id="wallVideoFile" type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v" hidden>
+            </span>
+            <button class="wall-publish" id="wallPublish" type="button"><i class="f7-icons">paperplane_fill</i><span>نشر</span></button>
+          </div>
+        </div>
+        <div class="wall-list" id="wallList"><div class="wall-loading"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل المنشورات...</div></div>
+      </div>
     </div>
   </div>
 
