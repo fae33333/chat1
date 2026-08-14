@@ -1401,3 +1401,44 @@ body.lang-en .robot-system-message { direction:ltr; }
 .room-welcome-content { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .room-welcome-title { color:var(--main); font-size:13px; font-weight:900; line-height:1.35; }
 .supervision-welcome .room-welcome-text { color:#111827; font-size:14px; }
+
+/* ===== صفحة هدايا حسابي ===== */
+.my-gifts-page { background:#f4f6fb; }
+.my-gifts-summary { direction:rtl; display:flex; align-items:center; gap:11px; background:linear-gradient(135deg,#fff7ed,#fffbeb); border:1px solid #fde7bd; border-radius:15px; padding:13px; margin-bottom:14px; }
+.mgs-icon { width:46px; height:46px; border-radius:14px; background:#f59e0b; color:#fff; display:flex; align-items:center; justify-content:center; flex:none; }
+.mgs-icon i { font-size:23px; }
+.my-gifts-summary > div { flex:1; display:flex; flex-direction:column; gap:3px; }
+.my-gifts-summary b { color:#3f3527; font-size:14px; }
+.my-gifts-summary span:not(.mgs-icon) { color:#8c7a62; font-size:11px; }
+.my-gifts-summary em { min-width:32px; height:32px; border-radius:16px; background:#fff; color:#d97706; display:flex; align-items:center; justify-content:center; font-size:13px; font-style:normal; font-weight:900; }
+.my-gifts-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding-bottom:12px; }
+.my-gift-card { background:#fff; border:1px solid #e6eaf1; border-radius:15px; padding:12px; text-align:center; box-shadow:0 2px 6px rgba(20,30,60,.05); }
+.my-gift-media { width:64px; height:64px; margin:0 auto 7px; display:flex; align-items:center; justify-content:center; font-size:43px; }
+.my-gift-media img { width:64px; height:64px; object-fit:contain; }
+.my-gift-card h4 { color:#273043; font-size:13px; margin:0 0 5px; }
+.my-gift-card p { color:#7b8495; font-size:10.5px; margin:2px 0; }
+.my-gift-card .gift-qty { color:#16a34a; font-weight:900; }
+.my-gifts-empty { grid-column:1/-1; text-align:center; padding:70px 15px; color:#8b93a3; font-size:13px; font-weight:800; }
+.my-gifts-empty i { display:block; color:#d2d7e1; font-size:58px; margin-bottom:12px; }
+
+/* ===== قائمة التجاهل ===== */
+.blocks-hint { display:flex; align-items:center; gap:8px; background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:12px; padding:11px 13px; margin-bottom:12px; font-size:11.5px; font-weight:800; }
+.blocks-hint i { font-size:18px; flex:none; }
+.blocked-user-row { direction:rtl; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #e7eaf0; border-radius:13px; padding:10px 11px; margin-bottom:8px; }
+.blocked-user-avatar { width:44px; height:44px; border-radius:50%; overflow:hidden; flex:none; display:flex; }
+.blocked-user-avatar img,.blocked-user-avatar > span { width:100%; height:100%; border-radius:50%; object-fit:cover; display:flex; align-items:center; justify-content:center; }
+.blocked-user-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+.blocked-user-info b { color:#273043; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.blocked-user-info span { color:#e11d48; font-size:10.5px; font-weight:800; }
+.blocked-user-remove { border:0; border-radius:9px; background:#fee2e2; color:#dc2626; padding:8px 11px; font-family:inherit; font-size:11px; font-weight:900; cursor:pointer; }
+.blocks-empty { text-align:center; padding:75px 15px; color:#8b93a3; font-size:13px; font-weight:800; }
+.blocks-empty i { display:block; color:#d2d7e1; font-size:58px; margin-bottom:12px; }
+
+/* شكل المستخدم المتجاهَل داخل قائمة المتصلين */
+.users-row.ignored-user { background-color:#f0f0f0 !important; opacity:1; transition:opacity .3s ease; position:relative; }
+.users-row.ignored-user .ubadge { opacity:.4; }
+.users-row.ignored-user .uava { opacity:.58; filter:grayscale(.25); }
+.users-row.ignored-user .ugender { opacity:.4; }
+.ignored-user-tag { color:#999; margin-inline-start:5px; font-size:10px; font-weight:700; white-space:nowrap; }
+body.lang-en .my-gifts-summary,body.lang-en .blocked-user-row { direction:ltr; text-align:left; }
+body.lang-en .blocks-hint { direction:ltr; }

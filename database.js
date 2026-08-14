@@ -92,6 +92,16 @@ db.serialize(() => {
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
 
+  // ---------- قائمة التجاهل بين المستخدمين ----------
+  db.run(`CREATE TABLE IF NOT EXISTS user_ignores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    ignored_id INTEGER NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(user_id, ignored_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_ignores_pair ON user_ignores (user_id, ignored_id)`);
+
   // ---------- حالات المستخدمين (تختفي بعد 24 ساعة) ----------
   db.run(`CREATE TABLE IF NOT EXISTS statuses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

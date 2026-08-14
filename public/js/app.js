@@ -22,10 +22,8 @@ let PM_WITH = null, PRIV_UNREAD = 0, PRIV_TAB = 'members';
 let NOTIFS = [];
 let SEL_AVATAR = null, AVA_CAT = 'def';
 let STATUSES = [], STATUS_GROUP = [], STATUS_INDEX = 0, CURRENT_STATUS = null;
-// قائمة التجاهل محلية لكل متصفح؛ نستخدم المعرّفات حتى لا تتأثر بتغيير الاسم.
+// قائمة التجاهل تُحمّل من الخادم وتبقى مرتبطة بالحساب.
 let IGNORED_USERS = new Set();
-try { IGNORED_USERS = new Set(JSON.parse(localStorage.getItem('ignored_users') || '[]').map(Number)); } catch (e) { }
-function saveIgnoredUsers() { localStorage.setItem('ignored_users', JSON.stringify([...IGNORED_USERS])); }
 
 // =====================================================
 //  ترجمة واجهة الشات (العربية / English)
@@ -104,9 +102,14 @@ Object.assign(I18N_EN, {
   'التكلفة المقترحة :': 'Suggested cost:', 'إرسال طلب الترقية': 'Send upgrade request', 'الموافقة والرسوم': 'Approval and fees',
   'الإدارة تحدد مقدار الذهب النهائي عند الموافقة • رصيدك الحالي :': 'The administration sets the final Gold amount upon approval • Current balance:',
   'التكلفة المقترحة': 'Suggested cost', 'وتستطيع الإدارة تحديد مقدار الذهب النهائي عند الموافقة': 'and the administration may set the final Gold amount upon approval', '، وتستطيع الإدارة تحديد مقدار الذهب النهائي عند الموافقة': ', and the administration may set the final Gold amount upon approval',
-  'لن يتم خصم أي ذهب عند إرسال الطلب. يصل اسمك إلى لوحة الإدارة، وبعد مراجعة الطلب تختار الإدارة مقدار الذهب ثم توافق على التوثيق أو ترفضه، وسيصلك إشعار بالنتيجة.': 'No Gold is deducted when submitting. The administration reviews your request, chooses the Gold amount, and then approves or rejects it. You will be notified of the result.'
+  'لن يتم خصم أي ذهب عند إرسال الطلب. يصل اسمك إلى لوحة الإدارة، وبعد مراجعة الطلب تختار الإدارة مقدار الذهب ثم توافق على التوثيق أو ترفضه، وسيصلك إشعار بالنتيجة.': 'No Gold is deducted when submitting. The administration reviews your request, chooses the Gold amount, and then approves or rejects it. You will be notified of the result.',
+  'الهدايا المستلمة': 'Received gifts', 'جميع الهدايا التي أرسلها الأعضاء إلى حسابك': 'All gifts members sent to your account',
+  'قائمة التجاهل': 'Ignore list', 'لا يمكن تبادل الرسائل الخاصة بينك وبين الأشخاص المتجاهلين.': 'Private messages are disabled between you and ignored users.',
+  'إلغاء التجاهل': 'Unignore', 'قائمة التجاهل فارغة': 'Your ignore list is empty', 'جاري تحميل قائمة التجاهل...': 'Loading ignore list...',
+  'جاري تحميل الهدايا...': 'Loading gifts...', 'لم تستلم أي هدايا بعد': 'You have not received any gifts yet', 'تعذر تحميل الهدايا': 'Could not load gifts',
+  'من:': 'From:', 'متجاهل • الرسائل الخاصة متوقفة': 'Ignored • private messages disabled', 'تم إغلاق المحادثة بسبب التجاهل': 'The conversation was closed because of the ignore setting'
 });
-const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text';
+const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
 function translateDynamicText(text) {
   if (I18N_EN[text]) return I18N_EN[text];
   let match = text.match(/^مرحباً بـ (.+) في غرفة (.+)$/);
@@ -117,6 +120,9 @@ function translateDynamicText(text) {
   if (match) return `${match[1]} was muted by ${match[2]}`;
   match = text.match(/^تم إلغاء كتم (.+) بواسطة (.+)$/);
   if (match) return `${match[1]} was unmuted by ${match[2]}`;
+  match = text.match(/^تم تجاهل (.+) ومنع الرسائل الخاصة بينكما$/);
+  if (match) return `${match[1]} was ignored and private messages were disabled`;
+  if (text.startsWith('الكمية: ')) return 'Quantity: ' + text.slice('الكمية: '.length);
   if (text.startsWith('اليوم الساعة ')) return 'Today at ' + text.slice('اليوم الساعة '.length);
   if (text.startsWith('أمس الساعة ')) return 'Yesterday at ' + text.slice('أمس الساعة '.length);
   if (text.startsWith('آخر تحديث ')) return 'Last update ' + translateDynamicText(text.slice('آخر تحديث '.length));
@@ -252,6 +258,18 @@ function avatarHtml(avatar, cls = '') {
 }
 function statusDot(st) { return st === 'busy' ? 'red' : st === 'away' ? 'orange' : 'green'; }
 function statusName(st) { return st === 'busy' ? 'مشغول' : st === 'away' ? 'بالخارج' : 'متصل'; }
+async function loadIgnoredUsers() {
+  if (!ME || !CHAT_TOKEN) return [];
+  try {
+    const list = await api('/api/ignores');
+    IGNORED_USERS = new Set(list.map(u => +u.id));
+    if (CUR_ROOM) renderUsers();
+    return list;
+  } catch (e) {
+    IGNORED_USERS = new Set();
+    return [];
+  }
+}
 // وقت بصيغة 12 ساعة: 05:58 PM
 function timeHm(ts) {
   const d = new Date(ts * 1000);
@@ -356,7 +374,7 @@ function connectSocket() {
   });
   SOCKET.on('roomCounts', (c) => { ROOM_COUNTS = c; renderRooms(); });
   SOCKET.on('private', (p) => {
-    // لا نعرض رسائل المستخدم الموجود في قائمة التجاهل المحلية.
+    // حماية إضافية للواجهة؛ المنع الأساسي والمتبادل مطبق على الخادم.
     if (p.from_id !== ME.id && IGNORED_USERS.has(+p.from_id)) return;
     if (PM_WITH && (p.from_id === PM_WITH.id || p.from_id === ME.id)) {
       renderPm(p); scrollPm();
@@ -365,6 +383,16 @@ function connectSocket() {
       updatePrivBadge();
       if (PREFS.pm_recv) beep(880, .15);
       pushNotif('chat_bubble2_fill', `رسالة خاصة من ${p.from_name}`);
+    }
+    if ($('#privOv').classList.contains('open')) renderPrivConvs(PRIV_TAB);
+  });
+  SOCKET.on('ignore_changed', async change => {
+    if (!ME) return;
+    if (change.ignored !== undefined) await loadIgnoredUsers();
+    if ((change.ignored || change.ignoredByOther) && PM_WITH && +PM_WITH.id === +change.otherId) {
+      closeOv('pmOv');
+      PM_WITH = null;
+      toast('تم إغلاق المحادثة بسبب التجاهل', false);
     }
     if ($('#privOv').classList.contains('open')) renderPrivConvs(PRIV_TAB);
   });
@@ -669,14 +697,17 @@ function renderUsers() {
   $('#onlineCount').textContent = ROOM_USERS.length;
   const list = ROOM_USERS.filter(u => !q || u.username.includes(q))
     .sort((a, b) => rankWeight(b) - rankWeight(a) || String(a.username).localeCompare(String(b.username), 'ar'));
-  $('#usersList').innerHTML = list.length ? list.map(u => `
-    <div class="users-row${u.muted ? ' muted-user' : ''}" data-id="${u.id}">
+  $('#usersList').innerHTML = list.length ? list.map(u => {
+    const ignored = IGNORED_USERS.has(+u.id);
+    return `
+    <div class="users-row${u.muted ? ' muted-user' : ''}${ignored ? ' ignored-user' : ''}" data-id="${u.id}">
       <img class="ubadge" src="/badges/${badgeOf(u)}" alt="">
       <div class="uava">${avatarHtml(u.avatar)}<span class="dot ${statusDot(u.status)}"></span></div>
-      <div class="uname" style="color:${userColor(u)};font-weight:${userWeight(u)}">${esc(u.username)}${u.verified ? ' <i class="f7-icons vcheck">checkmark_seal_fill</i>' : ''}</div>
+      <div class="uname" style="color:${userColor(u)};font-weight:${userWeight(u)}">${esc(u.username)}${u.verified ? ' <i class="f7-icons vcheck">checkmark_seal_fill</i>' : ''}${ignored ? `<span class="ignored-user-tag">${APP_LANG === 'en' ? '(Ignored)' : '(متجاهل)'}</span>` : ''}</div>
       ${u.muted ? '<i class="f7-icons muted-user-mark">mic_slash_fill</i>' : ''}
       <img class="ugender" src="/badges/${GENDER_IMG[u.gender] || 'secret.png'}" alt="">
-    </div>`).join('') : '<div class="pv-empty"><div>لا يوجد متصلون</div></div>';
+    </div>`;
+  }).join('') : '<div class="pv-empty"><div>لا يوجد متصلون</div></div>';
   $$('#usersList .users-row').forEach(r => r.onclick = () => openUserSheet(+r.dataset.id));
 }
 
@@ -728,18 +759,26 @@ $('#usReply').onclick = () => { closeOv('userSheet'); if (US_MSG) setReply(US_MS
 $('#usPrivate').onclick = () => { closeOv('userSheet'); openPrivateWith(CUR_TARGET); };
 $('#usGift').onclick = () => { closeOv('userSheet'); if (!ME.registered) return openOv('needRegOv'); openGifts(CUR_TARGET); };
 $('#usUpgrade').onclick = () => { closeOv('userSheet'); if (!ME.registered) return openOv('needRegOv'); openUpgrade(CUR_TARGET); };
-$('#usIgnore').onclick = () => {
+$('#usIgnore').onclick = async () => {
   if (!CUR_TARGET) return;
-  const uid = +CUR_TARGET.id;
-  if (IGNORED_USERS.has(uid)) {
-    IGNORED_USERS.delete(uid);
-    toast('تم إلغاء تجاهل ' + CUR_TARGET.username);
-  } else {
-    IGNORED_USERS.add(uid);
-    toast('تم تجاهل ' + CUR_TARGET.username);
-  }
-  saveIgnoredUsers();
-  syncUserActionSheet();
+  const target = CUR_TARGET;
+  const uid = +target.id;
+  const nextIgnored = !IGNORED_USERS.has(uid);
+  const button = $('#usIgnore');
+  button.disabled = true;
+  try {
+    await api('/api/ignore/' + uid, 'POST', { ignored: nextIgnored });
+    if (nextIgnored) {
+      IGNORED_USERS.add(uid);
+      toast('تم تجاهل ' + target.username + ' ومنع الرسائل الخاصة بينكما');
+    } else {
+      IGNORED_USERS.delete(uid);
+      toast('تم إلغاء تجاهل ' + target.username);
+    }
+    syncUserActionSheet();
+    renderUsers();
+  } catch (e) { toast(e.error || 'تعذر تحديث قائمة التجاهل', false); }
+  finally { button.disabled = false; }
 };
 $('#usMute').onclick = async () => {
   if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية الكتم', false);
@@ -1074,6 +1113,7 @@ async function renderPrivConvs(tab = 'members') {
 }
 $$('.pv-tab').forEach(t => t.onclick = () => renderPrivConvs(t.dataset.ptab));
 async function openPrivateWith(u) {
+  if (IGNORED_USERS.has(+u.id)) return toast('لا يمكن فتح الخاص مع مستخدم متجاهَل', false);
   try { const d = await api('/api/user/' + u.id); if (d && d.user) u = d.user; } catch (e) { }  // أحدث صورة وبيانات الطرف الآخر
   PM_WITH = u;
   $('#pmPeer').innerHTML = `<span class="pm-peer-ava">${avatarHtml(u.avatar)}</span><b>${esc(u.username)}</b>${u.verified ? '<i class="f7-icons pm-vrf">checkmark_seal_fill</i>' : ''}`;
@@ -1085,9 +1125,15 @@ async function openPrivateWith(u) {
     </div>`;
   closeOv('privOv');
   openOv('pmOv');
-  const msgs = await api('/api/private/' + u.id);
-  msgs.forEach(renderPm);
-  scrollPm();
+  try {
+    const msgs = await api('/api/private/' + u.id);
+    msgs.forEach(renderPm);
+    scrollPm();
+  } catch (e) {
+    closeOv('pmOv');
+    PM_WITH = null;
+    toast(e.error || 'المحادثة الخاصة غير متاحة', false);
+  }
 }
 function renderPm(p) {
   const mine = p.from_id === ME.id;
@@ -1370,6 +1416,56 @@ $('#statusDelete').onclick = async () => {
 };
 
 // =====================================================
+//  هدايا حسابي وقائمة التجاهل
+// =====================================================
+async function openMyGifts() {
+  if (!ME) return openLogin();
+  if (!ME.registered) return openOv('needRegOv');
+  $('#myGiftsList').innerHTML = '<div class="my-gifts-empty"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل الهدايا...</div>';
+  openOv('myGiftsOv');
+  try {
+    const data = await api('/api/user/' + ME.id);
+    const gifts = data.gifts || [];
+    $('#myGiftsCount').textContent = gifts.reduce((sum, gift) => sum + (+gift.qty || 1), 0);
+    $('#myGiftsList').innerHTML = gifts.length ? gifts.map(gift => {
+      const media = gift.gift_img || '🎁';
+      const visual = String(media).startsWith('/') ? `<img src="${esc(media)}" alt="">` : esc(media);
+      return `<div class="my-gift-card">
+        <div class="my-gift-media">${visual}</div>
+        <h4>${esc(gift.gift_name || 'هدية')}</h4>
+        <p>من: <b>${esc(gift.from_name || '-')}</b></p>
+        <p>${new Date(gift.created_at * 1000).toLocaleDateString(APP_LANG === 'en' ? 'en-US' : 'ar-JO')}</p>
+        <p class="gift-qty">الكمية: ${gift.qty || 1}</p>
+      </div>`;
+    }).join('') : '<div class="my-gifts-empty"><i class="f7-icons">gift_fill</i>لم تستلم أي هدايا بعد</div>';
+  } catch (e) {
+    $('#myGiftsList').innerHTML = '<div class="my-gifts-empty"><i class="f7-icons">exclamationmark_circle</i>تعذر تحميل الهدايا</div>';
+  }
+}
+
+async function openBlocksList() {
+  if (!ME) return openLogin();
+  $('#blocksList').innerHTML = '<div class="blocks-empty"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل قائمة التجاهل...</div>';
+  openOv('blocksOv');
+  const list = await loadIgnoredUsers();
+  $('#blocksList').innerHTML = list.length ? list.map(user => `
+    <div class="blocked-user-row" data-id="${user.id}">
+      <span class="blocked-user-avatar">${avatarHtml(user.avatar)}</span>
+      <span class="blocked-user-info"><b>${esc(user.username)}</b><span>متجاهل • الرسائل الخاصة متوقفة</span></span>
+      <button class="blocked-user-remove" data-id="${user.id}" type="button">إلغاء التجاهل</button>
+    </div>`).join('') : '<div class="blocks-empty"><i class="f7-icons">slash_circle_fill</i>قائمة التجاهل فارغة</div>';
+  $$('#blocksList .blocked-user-remove').forEach(button => button.onclick = async () => {
+    try {
+      await api('/api/ignore/' + button.dataset.id, 'POST', { ignored: false });
+      IGNORED_USERS.delete(+button.dataset.id);
+      renderUsers();
+      toast('تم إلغاء التجاهل');
+      openBlocksList();
+    } catch (e) { toast(e.error || 'تعذر إلغاء التجاهل', false); }
+  });
+}
+
+// =====================================================
 //  القائمة / الحالة / الصورة
 // =====================================================
 function openMenu() {
@@ -1409,8 +1505,8 @@ $('#mnVerify').onclick = () => {
 };
 $('#mnUpgrade').onclick = () => { closeOv('menuOv'); if (!ME.registered) return openOv('needRegOv'); openUpgrade(ME); };
 $('#mnAvatar').onclick = () => { closeOv('menuOv'); if (!ME.registered) return openOv('needRegOv'); openAvatars(); };
-$('#mnMyGifts').onclick = () => { closeOv('menuOv'); if (!ME.registered) return openOv('needRegOv'); openProfile(ME.id); };
-$('#mnBlocks').onclick = () => { toast('لا توجد أسماء في قائمة حظرك'); };
+$('#mnMyGifts').onclick = () => { closeOv('menuOv'); openMyGifts(); };
+$('#mnBlocks').onclick = () => { closeOv('menuOv'); openBlocksList(); };
 $('#mnSettings').onclick = () => { closeOv('menuOv'); applyPrefsToSwitches(); openOv('setOv'); };
 $('#mnLogout').onclick = async () => { await api('/api/logout', 'POST'); location.reload(); };
 
@@ -1634,6 +1730,7 @@ function onLoggedIn() {
   $('#headAva').innerHTML = avatarHtml(ME.avatar);
   $('#headName').textContent = ME.username;
   $('#menuBal').textContent = ME.balance;
+  loadIgnoredUsers();
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو (استبدال كامل لتجنب التداخل)
   const bm = $('#bnMenu');

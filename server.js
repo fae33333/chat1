@@ -412,6 +412,35 @@ app.get('/api/user/:id', requireUser, async (req, res) => {
   res.json({ user: pubUser(u), badge: badgeOf(u), gifts });
 });
 
+async function usersIgnoreEachOther(firstId, secondId) {
+  return q.get(`
+    SELECT id FROM user_ignores
+    WHERE (user_id=? AND ignored_id=?) OR (user_id=? AND ignored_id=?)
+    LIMIT 1`, firstId, secondId, secondId, firstId);
+}
+
+app.get('/api/ignores', requireUser, async (req, res) => {
+  const rows = await q.all(`
+    SELECT u.* FROM user_ignores i
+    JOIN users u ON u.id=i.ignored_id
+    WHERE i.user_id=? ORDER BY i.created_at DESC`, req.authUid);
+  res.json(rows.map(u => ({ ...pubUser(u), badge: badgeOf(u) })));
+});
+
+app.post('/api/ignore/:id', requireUser, async (req, res) => {
+  const ignoredId = +req.params.id;
+  if (!ignoredId) return res.status(400).json({ error: 'المستخدم غير صالح' });
+  if (ignoredId === +req.authUid) return res.status(400).json({ error: 'لا يمكنك تجاهل نفسك' });
+  const target = await q.get(`SELECT id FROM users WHERE id=?`, ignoredId);
+  if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  const ignored = req.body && req.body.ignored ? 1 : 0;
+  if (ignored) await q.run(`INSERT OR IGNORE INTO user_ignores (user_id,ignored_id) VALUES (?,?)`, req.authUid, ignoredId);
+  else await q.run(`DELETE FROM user_ignores WHERE user_id=? AND ignored_id=?`, req.authUid, ignoredId);
+  io.to('user_' + req.authUid).emit('ignore_changed', { otherId: ignoredId, ignored: !!ignored });
+  io.to('user_' + ignoredId).emit('ignore_changed', { otherId: +req.authUid, ignoredByOther: !!ignored });
+  res.json({ ok: true, ignored });
+});
+
 // الرسائل الخاصة
 app.get('/api/private', requireUser, async (req, res) => {
   const uid = req.authUid;
@@ -420,11 +449,13 @@ app.get('/api/private', requireUser, async (req, res) => {
            u.membership other_mem, u.rank other_rank, u.registered other_registered, u.id other_id
     FROM private_messages p JOIN users u ON (u.id = CASE WHEN p.from_id=? THEN p.to_id ELSE p.from_id END)
     WHERE p.from_id=? OR p.to_id=? ORDER BY p.id DESC`, uid, uid, uid);
+  const ignoreRows = await q.all(`SELECT user_id,ignored_id FROM user_ignores WHERE user_id=? OR ignored_id=?`, uid, uid);
+  const hiddenPrivateUsers = new Set(ignoreRows.map(i => +(i.user_id === uid ? i.ignored_id : i.user_id)));
   const seen = {};
   const convs = [];
   for (const r of rows) {
     const oid = r.from_id === uid ? r.to_id : r.from_id;
-    if (seen[oid]) continue;
+    if (hiddenPrivateUsers.has(+oid) || seen[oid]) continue;
     seen[oid] = 1;
     convs.push({
       id: oid, username: r.other_name, avatar: r.other_avatar, gender: r.other_gender,
@@ -436,7 +467,10 @@ app.get('/api/private', requireUser, async (req, res) => {
 });
 
 app.get('/api/private/:uid', requireUser, async (req, res) => {
-  const uid = req.authUid, other = req.params.uid;
+  const uid = req.authUid, other = +req.params.uid;
+  if (!other) return res.status(400).json({ error: 'المستخدم غير صالح' });
+  if (await usersIgnoreEachOther(uid, other))
+    return res.status(403).json({ error: 'المحادثة الخاصة غير متاحة بسبب التجاهل' });
   const rows = await q.all(`SELECT * FROM private_messages WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?) ORDER BY id LIMIT 100`,
     uid, other, other, uid);
   await q.run(`UPDATE private_messages SET read=1 WHERE from_id=? AND to_id=?`, other, uid);
@@ -1388,6 +1422,8 @@ io.on('connection', async (socket) => {
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
     const recipient = await q.get(`SELECT id FROM users WHERE id=?`, +toId);
     if (!recipient) return socket.emit('err', 'المستخدم غير موجود');
+    if (await usersIgnoreEachOther(uid, +toId))
+      return socket.emit('err', 'لا يمكن تبادل الرسائل الخاصة بسبب التجاهل بين الحسابين');
     const ins = await q.run(`INSERT INTO private_messages (from_id,to_id,from_name,text) VALUES (?,?,?,?)`, uid, toId, me.username, text);
     const payload = {
       id: ins.lastID, from_id: uid, to_id: +toId, from_name: me.username,
