@@ -22,6 +22,7 @@ let PM_WITH = null, PRIV_UNREAD = 0, PRIV_TAB = 'members';
 let NOTIFS = [];
 let SEL_AVATAR = null, AVA_CAT = 'def';
 let STATUSES = [], STATUS_GROUP = [], STATUS_INDEX = 0, CURRENT_STATUS = null;
+let CUSTOM_EMOJIS = [];
 // قائمة التجاهل تُحمّل من الخادم وتبقى مرتبطة بالحساب.
 let IGNORED_USERS = new Set();
 
@@ -108,7 +109,7 @@ Object.assign(I18N_EN, {
   'إلغاء التجاهل': 'Unignore', 'قائمة التجاهل فارغة': 'Your ignore list is empty', 'جاري تحميل قائمة التجاهل...': 'Loading ignore list...',
   'جاري تحميل الهدايا...': 'Loading gifts...', 'لم تستلم أي هدايا بعد': 'You have not received any gifts yet', 'تعذر تحميل الهدايا': 'Could not load gifts',
   'من:': 'From:', 'متجاهل • الرسائل الخاصة متوقفة': 'Ignored • private messages disabled', 'تم إغلاق المحادثة بسبب التجاهل': 'The conversation was closed because of the ignore setting',
-  'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available', 'إزالة الإيموجي': 'Remove emoji'
+  'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available'
 });
 const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
 function translateDynamicText(text) {
@@ -583,6 +584,21 @@ function scrollBottom() { const a = $('#msgArea'); a.scrollTop = a.scrollHeight;
 // =====================================================
 //  عرض الرسائل
 // =====================================================
+// يحول الرمز الرقمي مثل (1) إلى صورة الإيموجي المرفوع، مع إبقاء النص المجاور له.
+function messageTextWithCustomEmojis(text) {
+  const source = String(text || '');
+  const emojisById = new Map(CUSTOM_EMOJIS.map(emoji => [String(emoji.id), emoji]));
+  const tokenPattern = /\((\d+)\)/g;
+  let html = '', cursor = 0, match;
+  while ((match = tokenPattern.exec(source))) {
+    const emoji = emojisById.get(match[1]);
+    if (!emoji) continue;
+    html += esc(source.slice(cursor, match.index));
+    html += `<img class="minline-emoji" src="${esc(emoji.img)}" alt="${esc(match[0])}">`;
+    cursor = tokenPattern.lastIndex;
+  }
+  return html + esc(source.slice(cursor));
+}
 function renderMsg(m) {
   const area = $('#msgArea');
   const senderId = +(m.user_id || (m.user && m.user.id) || 0);
@@ -612,7 +628,7 @@ function renderMsg(m) {
           ${(badge && badge !== 'register.png' && badge !== 'guest.png') ? `<img class="mmark" src="/badges/${badge}" alt="">` : ''}
           ${isCustomEmoji
             ? `<img class="mcustom-emoji" src="${esc(m.text.slice(4))}" alt="emoji">`
-            : `<span class="mtext" style="color:${tcol || color};font-size:${tsize || SETTINGS.font_size || 14}px">${esc(m.text)}</span>`}
+            : `<span class="mtext message-content" style="color:${tcol || color};font-size:${tsize || SETTINGS.font_size || 14}px">${messageTextWithCustomEmojis(m.text)}</span>`}
         </div>
       </div>`;
     // النقر على صورة الرسالة يفتح ورقة المستخدم (ومن بينها «الرد على الرسالة»)
@@ -1827,36 +1843,26 @@ $('#roomSearch').oninput = renderRooms;
 $('#roomSearch2').oninput = renderRoomsPanel;
 
 // الإرسال
-let CUSTOM_EMOJI_DRAFT = '';
-function clearCustomEmojiDraft(focusInput = false) {
-  CUSTOM_EMOJI_DRAFT = '';
-  $('#customEmojiDraftImg').removeAttribute('src');
-  $('#customEmojiDraft').classList.remove('show');
-  $('#inputBar').classList.remove('custom-emoji-selected');
-  if (focusInput) $('#msgInput').focus();
-}
-function selectCustomEmojiDraft(src) {
-  CUSTOM_EMOJI_DRAFT = src;
-  $('#msgInput').value = '';
-  $('#customEmojiDraftImg').src = src;
-  $('#customEmojiDraft').classList.add('show');
-  $('#inputBar').classList.add('custom-emoji-selected');
-}
-$('#customEmojiDraftRemove').onclick = () => clearCustomEmojiDraft(true);
 $('#btnSend').onclick = sendMsg;
 $('#msgInput').onkeydown = e => { if (e.key === 'Enter') sendMsg(); };
 function sendMsg() {
   if (!ME) return openLogin();
   if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
-  const t = CUSTOM_EMOJI_DRAFT ? 'em::' + CUSTOM_EMOJI_DRAFT : $('#msgInput').value.trim();
+  const t = $('#msgInput').value.trim();
   if (!t) return;
   SOCKET.emit('msg', { roomId: CUR_ROOM.id, text: t, reply: REPLY_TO, color: MY_COLOR || null });
   setReply(null);
   $('#msgInput').value = '';
-  clearCustomEmojiDraft();
 }
 // الإيموجي المصور المرفوع من لوحة الإدارة فقط
-let CUSTOM_EMOJIS = [];
+function insertCustomEmojiToken(id) {
+  const input = $('#msgInput');
+  const token = `(${id})`;
+  const start = Number.isInteger(input.selectionStart) ? input.selectionStart : input.value.length;
+  const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : start;
+  input.setRangeText(token, start, end, 'end');
+  input.focus();
+}
 function renderEmojiPicker() {
   $('#emojiGrid').innerHTML = CUSTOM_EMOJIS.length
     ? CUSTOM_EMOJIS.map(e => `<img class="custom-emoji-choice" src="${esc(e.img)}" data-id="${e.id}" alt="emoji">`).join('')
@@ -1864,7 +1870,7 @@ function renderEmojiPicker() {
   $$('#emojiGrid .custom-emoji-choice').forEach(im => im.onclick = () => {
     if (!ME) return openLogin();
     if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
-    selectCustomEmojiDraft(im.getAttribute('src'));
+    insertCustomEmojiToken(im.dataset.id);
     $('#emojiPanel').classList.remove('open');
   });
 }
