@@ -21,7 +21,8 @@ let ROOM_USERS = [], CUR_TARGET = null;
 let GIFTS = [], SEL_GIFT = null, G_QTY = 1;
 let UP_PLAN = 'vip', UP_MONTHS = 1, UP_TARGET = null;
 let PM_WITH = null, PRIV_UNREAD = 0, PRIV_TAB = 'members';
-let NOTIFS = [];
+let NOTIFS = [], CURRENT_NOTIFICATIONS = [], CURRENT_ANNOUNCEMENT = null;
+let READ_NOTIFS = new Set();
 let SEL_AVATAR = null, AVA_CAT = 'def';
 let STATUSES = [], STATUS_GROUP = [], STATUS_INDEX = 0, CURRENT_STATUS = null;
 let CUSTOM_EMOJIS = [];
@@ -113,9 +114,10 @@ Object.assign(I18N_EN, {
   'من:': 'From:', 'متجاهل • الرسائل الخاصة متوقفة': 'Ignored • private messages disabled', 'تم إغلاق المحادثة بسبب التجاهل': 'The conversation was closed because of the ignore setting',
   'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available', 'إلغاء تجاهل': 'Unignore', 'الهدية من': 'Gift from', 'كمية:': 'Quantity:', 'صورة المستخدم': 'User photo',
   'طريقة دخول الغرفة': 'Room entry mode', 'اختر طريقة دخولك إلى غرفة': 'Choose how to enter room', 'دخول ظاهر': 'Visible entry', 'دخول مخفي': 'Hidden entry',
-  'تم الدخول إلى الغرفة بشكل مخفي': 'You entered the room invisibly', 'تم إيقاف الدخول المخفي من لوحة الإدارة': 'Hidden entry was disabled by the administration'
+  'تم الدخول إلى الغرفة بشكل مخفي': 'You entered the room invisibly', 'تم إيقاف الدخول المخفي من لوحة الإدارة': 'Hidden entry was disabled by the administration',
+  'إعلان عام': 'General announcement', 'بواسطة:': 'By:', 'الإدارة': 'Administration', 'حسناً': 'OK', 'إشعار': 'Notification'
 });
-const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
+const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,#announcementText,#announcementSender,.notif-preview,.notif-sender,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
 function translateDynamicText(text) {
   if (I18N_EN[text]) return I18N_EN[text];
   let match = text.match(/^مرحباً بـ (.+) في غرفة (.+)$/);
@@ -426,9 +428,10 @@ function connectSocket() {
     loadRooms();          // تحديث قائمة الغرف واللوحة المضغوطة داخل الغرفة
     if (typeof renderRoomsPanel === 'function') renderRoomsPanel();
   });
-  SOCKET.on('announce', (a) => {
-    pushNotif('bolt_badge_a_fill', '📢 ' + a.text);
-    showAnnounce(a.text);
+  SOCKET.on('announce', announcement => {
+    const a = normalizeAnnouncement(announcement);
+    pushNotif('announcement', a.text, a);
+    openAnnouncementPopup(a);
     beep(660, .2);
   });
   SOCKET.on('membership_changed', ({ plan }) => { if (ME) { ME.membership = plan; MYBADGE = badgeOf(ME); } });
@@ -476,15 +479,34 @@ function connectSocket() {
   });
   SOCKET.on('err', (t) => toast(t, false));
 }
-function showAnnounce(text) {
-  const b = $('#announceBar');
-  b.textContent = '📢 ' + text;
-  b.style.display = 'block';
-  clearTimeout(b._tm);
-  b._tm = setTimeout(() => b.style.display = 'none', 6000);
+function normalizeAnnouncement(announcement) {
+  const a = announcement || {};
+  return {
+    id: +a.id || 0,
+    kind: 'announcement',
+    icon: 'announcement',
+    title: a.title || 'إعلان عام',
+    text: String(a.text || ''),
+    sender_name: a.sender_name || 'الإدارة',
+    image: a.image || '/img/announcement.png',
+    created_at: +a.created_at || Math.floor((+a.at || Date.now()) / 1000)
+  };
 }
-function pushNotif(icon, text) {
-  NOTIFS.unshift({ icon, text, at: Date.now() });
+function openAnnouncementPopup(announcement) {
+  const a = normalizeAnnouncement(announcement);
+  CURRENT_ANNOUNCEMENT = a;
+  $('#announcementTitle').textContent = a.title;
+  $('#announcementSender').textContent = a.sender_name;
+  $('#announcementText').textContent = a.text;
+  const image = $('#announcementImage');
+  image.src = a.image;
+  image.onerror = () => { image.onerror = null; image.src = '/img/announcement.png'; };
+  if (a.id) READ_NOTIFS.add('announcement:' + a.id);
+  openOv('announcementOverlay');
+}
+$('#announcementOk').onclick = () => closeOv('announcementOverlay');
+function pushNotif(icon, text, extra = {}) {
+  NOTIFS.unshift({ icon, text, at: Date.now(), ...extra });
 }
 
 // =====================================================
@@ -1748,13 +1770,45 @@ async function openNotifs() {
   openOv('notifOv');
   let server = [];
   if (ME.registered) { try { server = await api('/api/notifications'); } catch (e) { } }
-  const all = [...NOTIFS.map(n => ({ icon: n.icon, text: n.text, created_at: n.at / 1000 })), ...server];
-  $('#notifList').innerHTML = all.length ? all.map(n => `
-    <div class="pv-row">
-      <div class="uava" style="background:var(--main)"><i class="f7-icons" style="font-size:18px">${n.icon || 'bell_fill'}</i></div>
-      <div class="ptxt"><div class="plast" style="white-space:normal;font-size:12.5px;color:#374151">${esc(n.text)}</div>
-      <div class="ptime">${new Date(n.created_at * 1000).toLocaleString('ar')}</div></div>
-    </div>`).join('') : '<div class="pv-empty"><span class="empty-img"><img src="/img/notif_empty.png" alt=""></span><div>لا يوجد إشعارات بعد</div></div>';
+  const local = NOTIFS.map(n => ({ ...n, created_at: +n.created_at || n.at / 1000 }));
+  const merged = [...local, ...server].sort((a, b) => (+b.created_at || 0) - (+a.created_at || 0));
+  const seenAnnouncements = new Set();
+  CURRENT_NOTIFICATIONS = merged.filter(n => {
+    if (n.kind !== 'announcement' || !n.id) return true;
+    const key = 'announcement:' + n.id;
+    if (seenAnnouncements.has(key)) return false;
+    seenAnnouncements.add(key);
+    return true;
+  });
+  $('#notifList').innerHTML = CURRENT_NOTIFICATIONS.length ? CURRENT_NOTIFICATIONS.map((notification, index) => {
+    const isAnnouncement = notification.kind === 'announcement' || notification.icon === 'announcement';
+    const a = isAnnouncement ? normalizeAnnouncement(notification) : null;
+    const readKey = a && a.id ? 'announcement:' + a.id : '';
+    const isRead = !!notification.read || (readKey && READ_NOTIFS.has(readKey));
+    const time = new Date((+notification.created_at || Date.now() / 1000) * 1000)
+      .toLocaleTimeString(APP_LANG === 'en' ? 'en-US' : 'ar-JO', { hour: '2-digit', minute: '2-digit' });
+    return `<div class="notif-row${isAnnouncement ? ' announcement' : ''}${isRead ? ' read' : ''}" data-index="${index}">
+      <div class="notif-image">${isAnnouncement
+        ? `<img src="${esc(a.image)}" alt="إعلان عام">`
+        : `<i class="f7-icons">${esc(notification.icon || 'bell_fill')}</i>`}</div>
+      <div class="notif-info">
+        <div class="notif-title">${isAnnouncement ? '<i class="f7-icons">speaker_3_fill</i> إعلان عام' : 'إشعار'}</div>
+        ${isAnnouncement ? `<div class="notif-sender">${APP_LANG === 'en' ? 'By:' : 'بواسطة:'} ${esc(a.sender_name)}</div>` : ''}
+        <div class="notif-preview">${esc(notification.text)}</div>
+      </div>
+      <time class="notif-time">${esc(time)}</time>
+      ${isAnnouncement && !isRead ? '<span class="notif-unread"></span>' : ''}
+    </div>`;
+  }).join('') : '<div class="pv-empty"><span class="empty-img"><img src="/img/notif_empty.png" alt=""></span><div>لا يوجد إشعارات بعد</div></div>';
+  $$('#notifList .notif-row.announcement').forEach(row => row.onclick = () => {
+    const notification = CURRENT_NOTIFICATIONS[+row.dataset.index];
+    if (!notification) return;
+    const a = normalizeAnnouncement(notification);
+    if (a.id) READ_NOTIFS.add('announcement:' + a.id);
+    row.classList.add('read');
+    const dot = row.querySelector('.notif-unread'); if (dot) dot.remove();
+    openAnnouncementPopup(a);
+  });
 }
 
 // =====================================================

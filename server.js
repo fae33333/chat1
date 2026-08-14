@@ -1259,14 +1259,24 @@ app.delete('/api/admin/verified/:id', requireAdmin, async (req, res) => {
 
 // ---- إرسال إعلان للجميع ----
 app.post('/api/admin/broadcast', requireAdmin, async (req, res) => {
-  const { text } = req.body;
-  if (!text || !text.trim()) return res.status(400).json({ error: 'اكتب نص الإعلان' });
-  const msg = { type: 'announce', text: text.trim(), at: Date.now() };
+  const text = String(req.body.text || '').trim().slice(0, 500);
+  if (!text) return res.status(400).json({ error: 'اكتب نص الإعلان' });
+  const admin = await q.get(`SELECT username FROM users WHERE id=?`, req.session.uid);
+  const senderName = admin ? admin.username : 'الإدارة';
+  const createdAt = Math.floor(Date.now() / 1000);
+  // إشعار عام دائم ليظهر للمسجلين في القائمة حتى بعد عودتهم لاحقاً.
+  const notification = await q.run(`
+    INSERT INTO notifications (user_id,text,icon,kind,sender_name,image,created_at)
+    VALUES (NULL,?,'announcement','announcement',?,'/img/announcement.png',?)`, text, senderName, createdAt);
+  const msg = {
+    id: notification.lastID, type: 'announcement', kind: 'announcement', title: 'إعلان عام',
+    text, sender_name: senderName, image: '/img/announcement.png', created_at: createdAt, at: createdAt * 1000
+  };
   io.emit('announce', msg);
   for (const rid of Object.keys(roomUsers)) {
-    await q.run(`INSERT INTO messages (room_id,user_id,username,text,type) VALUES (?,0,'رسالة النظام',?,'announce')`, rid, text.trim());
+    await q.run(`INSERT INTO messages (room_id,user_id,username,text,type) VALUES (?,0,'رسالة النظام',?,'announce')`, rid, text);
   }
-  res.json({ ok: true });
+  res.json({ ok: true, announcement: msg });
 });
 
 // ---- الشعار ----

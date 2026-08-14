@@ -675,13 +675,6 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .switch.on { background:var(--main); }
 .switch.on em { left:calc(100% - 25px); }
 
-/* إعلان عام */
-.announce {
-  position:absolute; top:8px; right:8px; left:8px; z-index:60; background:#f0f7ff; border:1.5px solid var(--main2);
-  color:#0c4fd1; border-radius:12px; padding:10px 14px; font-size:13px; font-weight:800; text-align:center;
-  box-shadow:0 10px 30px rgba(20,121,242,.25); animation:sheetUp .3s;
-}
-
 /* إشعار سفلي — يستوعب الرسائل الطويلة ويصعد بسلاسة من أسفل الشاشة */
 .toast {
   position:absolute;
@@ -836,6 +829,38 @@ body.lang-en .toast { direction:ltr; }
 .debit-btn i { font-size:17px; }
 .powered { text-align:center; color:#6b7280; font-size:11px; font-weight:700; margin-top:10px; }
 .powered i { font-style:italic; font-weight:900; }
+
+/* ============ قالب الإعلان العام وقائمة إشعاراته ============ */
+.announcement-overlay { position:absolute; inset:0; z-index:999999; padding:14px; background:rgba(0,0,0,.6); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+.announcement-popup { position:relative; width:320px; max-width:90%; padding:20px; border-radius:20px; background:#fff; box-shadow:0 20px 35px rgba(0,0,0,.2); text-align:center; transform:scale(1); animation:announcementFadeIn .3s ease; }
+@keyframes announcementFadeIn { from { opacity:0; transform:scale(.88) translateY(12px); } to { opacity:1; transform:scale(1) translateY(0); } }
+.announcement-close { position:absolute; top:10px; left:10px; z-index:1; width:30px; height:30px; padding:0; border:0; border-radius:50%; background:#f1f3f7; color:#697184; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.announcement-close i { font-size:17px; }
+.announcement-popup h3 { margin:0 0 2px; color:#333; font-size:20px; line-height:1.55; font-weight:700; }
+.announcement-image { width:70px; height:70px; margin-bottom:0; border:3px solid #e0e0e0; border-radius:50%; object-fit:cover; }
+.announcement-sender { margin-top:2px; color:#8a91a2; font-size:10.5px; }
+.announcement-sender b { color:#4f5769; }
+.announcement-text { max-height:42vh; overflow-y:auto; margin-top:12px; padding:12px 10px; border-radius:12px; background:#f5f7fb; color:#202534; direction:rtl; text-align:center; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.8; font-weight:500; }
+.announcement-ok { width:100%; margin-top:14px; padding:10px; border:0; border-radius:11px; background:#1685f5; color:#fff; cursor:pointer; font-size:13px; font-weight:700; }
+body.lang-en .announcement-text,body.lang-en .announcement-sender { direction:ltr; }
+.notifications-page { padding:12px 8px 20px; background:#e9edf5; }
+.notifications-page .pg-head.bar { margin:-12px -8px 12px; }
+.notifications-page .page-heading { padding:1px 5px 9px; }
+.notifications-page #notifList { display:flex; flex-direction:column; gap:3px; }
+.notif-row { position:relative; direction:ltr; min-height:61px; padding:7px 34px 7px 9px; border-radius:10px; background:#f8faff; display:flex; align-items:center; gap:8px; cursor:default; }
+.notif-row.announcement { background:#e3ecfb; cursor:pointer; }
+.notif-image { width:46px; height:46px; border-radius:50%; overflow:hidden; flex:none; background:#17285f; display:flex; align-items:center; justify-content:center; }
+.notif-image img { width:100%; height:100%; object-fit:cover; }
+.notif-image i { color:#fff; font-size:20px; }
+.notif-info { min-width:0; flex:1; direction:rtl; text-align:left; }
+.notif-title { color:#1685f5; font-size:10.5px; line-height:14px; font-weight:700; display:flex; align-items:center; justify-content:flex-start; gap:3px; }
+.notif-title i { color:#ef4b85; font-size:12px; }
+.notif-sender { color:#555d70; font-size:8.5px; line-height:12px; }
+.notif-preview { overflow:hidden; color:#202534; font-size:9px; line-height:13px; text-overflow:ellipsis; white-space:nowrap; }
+.notif-time { position:absolute; top:9px; right:5px; color:#9ca3b2; direction:ltr; font-size:7.5px; }
+.notif-unread { position:absolute; right:8px; top:50%; width:8px; height:8px; margin-top:-4px; border-radius:50%; background:#ff3855; box-shadow:0 0 0 2px #e3ecfb; }
+.notif-row.read .notif-unread { display:none; }
+body.lang-en .notif-info { direction:ltr; text-align:left; }
 
 /* ============ نافذة تأكيد الخروج ============ */
 .overlay.center { align-items:center; justify-content:center; }

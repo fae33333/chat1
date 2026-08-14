@@ -627,10 +627,10 @@
 
   <!-- الإشعارات -->
   <div class="overlay full withnav" id="notifOv">
-    <div class="pvpage">
+    <div class="pvpage notifications-page">
       <div class="pg-head bar mid">
         <span class="pg-close back" data-close="notifOv"><i class="f7-icons">chevron_left</i> عودة</span>
-        <span class="pg-title">إشعارات</span>
+        <span class="pg-title">الإشعارات</span>
       </div>
       <div class="page-heading">
         <span class="ph-title">إشعارات</span>
@@ -686,6 +686,18 @@
       <button class="paypal-btn" id="buyPaypal">Pay with <i>PayPal</i></button>
       <button class="debit-btn" id="buyDebit"><i class="f7-icons">creditcard_fill</i> Debit or Credit Card</button>
       <div class="powered">Powered by <i>PayPal</i></div>
+    </div>
+  </div>
+
+  <!-- قالب الإعلان العام -->
+  <div class="overlay center announcement-overlay" id="announcementOverlay">
+    <div class="announcement-popup" role="dialog" aria-modal="true" aria-labelledby="announcementTitle">
+      <button class="announcement-close" type="button" data-close="announcementOverlay" aria-label="إغلاق"><i class="f7-icons">xmark</i></button>
+      <h3 id="announcementTitle">إعلان عام</h3>
+      <img class="announcement-image" id="announcementImage" src="/img/announcement.png" alt="إعلان عام">
+      <div class="announcement-sender">بواسطة: <b id="announcementSender">الإدارة</b></div>
+      <div class="announcement-text" id="announcementText"></div>
+      <button class="announcement-ok" id="announcementOk" type="button">حسناً</button>
     </div>
   </div>
 
@@ -745,7 +757,6 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <div id="announceBar" class="announce" style="display:none"></div>
 </div>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/app.js"></script>

@@ -239,9 +239,16 @@ db.serialize(() => {
     user_id INTEGER,
     text TEXT NOT NULL,
     icon TEXT DEFAULT 'bell',
+    kind TEXT DEFAULT 'general',
+    sender_name TEXT DEFAULT '',
+    image TEXT DEFAULT '',
     read INTEGER DEFAULT 0,
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+  // ترقية قواعد البيانات السابقة لدعم قالب الإعلان داخل قائمة الإشعارات.
+  db.run(`ALTER TABLE notifications ADD COLUMN kind TEXT DEFAULT 'general'`, () => { });
+  db.run(`ALTER TABLE notifications ADD COLUMN sender_name TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE notifications ADD COLUMN image TEXT DEFAULT ''`, () => { });
 
   // ---------- الشكاوى ----------
   db.run(`CREATE TABLE IF NOT EXISTS complaints (
