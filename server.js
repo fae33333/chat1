@@ -523,6 +523,12 @@ const GIFT_LIST = [
 app.get('/api/gifts', async (req, res) => res.json(await q.all(`SELECT * FROM gifts WHERE active=1 ORDER BY id`)));
 app.get('/api/emojis', async (req, res) => res.json(await q.all(`SELECT * FROM custom_emojis ORDER BY id DESC`)));
 
+async function createUserNotification(userId, text, icon) {
+  const createdAt = Math.floor(Date.now() / 1000);
+  const out = await q.run(`INSERT INTO notifications (user_id,text,icon,created_at) VALUES (?,?,?,?)`, userId, text, icon, createdAt);
+  return { id: out.lastID, user_id: +userId, text, icon, kind: 'general', created_at: createdAt };
+}
+
 app.post('/api/gifts/send', requireUser, async (req, res) => {
   const { to_id, gift_id, qty, room_id } = req.body;
   const gift = await q.get(`SELECT * FROM gifts WHERE id=? AND active=1`, +gift_id);
@@ -551,16 +557,16 @@ app.post('/api/gifts/send', requireUser, async (req, res) => {
   }
   const vis = gift.img && !gift.img.startsWith('/') ? gift.img + ' ' : '';
   const toFresh = await q.get(`SELECT balance FROM users WHERE id=?`, to_id);
-  io.to('user_' + to_id).emit('notify', { icon: 'gift_fill', text: `وصلتك هدية ${vis}${gift.name} من ${me.username} وربحت ${gain} ذهب 🪙`, balance: toFresh.balance });
-  await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, to_id, `وصلتك هدية ${vis}${gift.name} من ${me.username} وربحت ${gain} ذهب`, 'gift_fill');
+  const notification = await createUserNotification(to_id, `وصلتك هدية ${vis}${gift.name} من ${me.username} وربحت ${gain} ذهب`, 'gift_fill');
+  io.to('user_' + to_id).emit('notify', { ...notification, text: notification.text + ' 🪙', balance: toFresh.balance });
   res.json({ ok: true, balance: me.balance - amount });
 });
 
 async function notifyAdminAccounts(text) {
   const admins = await q.all(`SELECT id FROM users WHERE rank IN ('admin','superadmin')`);
   for (const admin of admins) {
-    await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, admin.id, text, 'bell_badge_fill');
-    io.to('user_' + admin.id).emit('notify', { icon: 'bell_badge_fill', text });
+    const notification = await createUserNotification(admin.id, text, 'bell_badge_fill');
+    io.to('user_' + admin.id).emit('notify', notification);
   }
   io.emit('service_request_created');
 }
@@ -813,8 +819,8 @@ app.post('/api/buy-gold', requireUser, async (req, res) => {
   const gold = Math.min(10000, Math.max(0, parseInt(req.body.gold) || 0));
   if (!gold) return res.status(400).json({ error: 'كمية غير صالحة' });
   await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, gold, me.id);
-  await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, me.id, `تمت إضافة ${gold} ذهب افتراضي الى رصيدك`, 'creditcard_fill');
-  res.json({ ok: true, balance: me.balance + gold });
+  const notification = await createUserNotification(me.id, `تمت إضافة ${gold} ذهب افتراضي الى رصيدك`, 'creditcard_fill');
+  res.json({ ok: true, balance: me.balance + gold, notification_id: notification.id, notification_created_at: notification.created_at });
 });
 
 // الشكاوى
@@ -962,6 +968,36 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   const msgs = await q.get(`SELECT COUNT(*) c FROM messages`);
   const bans = await q.get(`SELECT COUNT(*) c FROM bans`);
   res.json({ users: users.c, guests: guests.c, rooms: rooms.c, messages: msgs.c, bans: bans.c, online: Object.keys(onlineUsers).length });
+});
+app.get('/api/admin/monitor', requireAdmin, async (req, res) => {
+  const userRows = await q.all(`SELECT id,username,registered FROM users`);
+  const roomRows = await q.all(`SELECT id,name FROM rooms`);
+  const usersById = new Map(userRows.map(user => [+user.id, user]));
+  const roomsById = new Map(roomRows.map(room => [+room.id, room.name]));
+  const groups = new Map();
+  for (const activeSocket of io.sockets.sockets.values()) {
+    const uid = +activeSocket.data.userId;
+    if (!uid) continue;
+    const ip = normalizeIp(activeSocket.data.clientIp || activeSocket.handshake.address || '') || 'غير معروف';
+    if (!groups.has(ip)) groups.set(ip, {
+      ip, online: true, connections: 0, connected_at: +activeSocket.data.connectedAt || Date.now(), users: new Map(), rooms: new Set()
+    });
+    const group = groups.get(ip);
+    group.connections++;
+    group.connected_at = Math.min(group.connected_at, +activeSocket.data.connectedAt || Date.now());
+    const user = usersById.get(uid);
+    if (user) group.users.set(uid, { id: uid, username: user.username, registered: user.registered ? 1 : 0 });
+    for (const roomId of (activeSocket.data.joinedRooms || [])) group.rooms.add(+roomId);
+  }
+  const result = [...groups.values()].map(group => ({
+    ip: group.ip,
+    online: true,
+    connections: group.connections,
+    connected_at: group.connected_at,
+    users: [...group.users.values()],
+    rooms: [...group.rooms].map(id => ({ id, name: roomsById.get(id) || `غرفة #${id}` }))
+  })).sort((a, b) => a.ip.localeCompare(b.ip));
+  res.json(result);
 });
 
 // ---- الغرف ----
@@ -1245,12 +1281,12 @@ app.post('/api/admin/service-requests/:id/approve', requireAdmin, async (req, re
   const actionText = request.request_type === 'verify'
     ? `تمت الموافقة على توثيق حسابك وخصم ${gold} ذهب`
     : `تمت الموافقة على طلب ترقية ${target.username} إلى ${request.plan.toUpperCase()} وخصم ${gold} ذهب`;
-  await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, requester.id, actionText, request.request_type === 'verify' ? 'checkmark_seal_fill' : 'crown_fill');
-  io.to('user_' + requester.id).emit('notify', { icon: request.request_type === 'verify' ? 'checkmark_seal_fill' : 'crown_fill', text: actionText, balance: freshRequester.balance });
+  const requesterNotification = await createUserNotification(requester.id, actionText, request.request_type === 'verify' ? 'checkmark_seal_fill' : 'crown_fill');
+  io.to('user_' + requester.id).emit('notify', { ...requesterNotification, balance: freshRequester.balance });
   if (target.id !== requester.id) {
     const targetText = `تمت ترقية عضويتك إلى ${request.plan.toUpperCase()} بواسطة طلب من ${requester.username}`;
-    await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, target.id, targetText, 'crown_fill');
-    io.to('user_' + target.id).emit('notify', { icon: 'crown_fill', text: targetText });
+    const targetNotification = await createUserNotification(target.id, targetText, 'crown_fill');
+    io.to('user_' + target.id).emit('notify', targetNotification);
   }
   res.json({ ok: true, approved_gold: gold, balance: freshRequester.balance });
 });
@@ -1264,8 +1300,8 @@ app.post('/api/admin/service-requests/:id/reject', requireAdmin, async (req, res
   await q.run(`UPDATE service_requests SET status='rejected',admin_id=?,admin_name=?,note=?,resolved_at=strftime('%s','now') WHERE id=? AND status='pending'`,
     admin.id, admin.username, note, id);
   const text = `${request.request_type === 'verify' ? 'طلب التوثيق' : 'طلب الترقية'}: ${note}`;
-  await q.run(`INSERT INTO notifications (user_id,text,icon) VALUES (?,?,?)`, request.user_id, text, 'xmark_circle_fill');
-  io.to('user_' + request.user_id).emit('notify', { icon: 'xmark_circle_fill', text });
+  const notification = await createUserNotification(request.user_id, text, 'xmark_circle_fill');
+  io.to('user_' + request.user_id).emit('notify', notification);
   res.json({ ok: true });
 });
 
@@ -1418,6 +1454,7 @@ io.on('connection', async (socket) => {
   socket.data.userId = uid;
   socket.data.registered = me.registered ? 1 : 0;
   socket.data.clientIp = clientIp;
+  socket.data.connectedAt = Date.now();
   socket.data.joinedRooms = new Set();
   socket.data.hiddenRooms = new Set();
 

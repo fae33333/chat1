@@ -419,7 +419,7 @@ function connectSocket() {
   });
   SOCKET.on('notify', (n) => {
     if (ME && typeof n.balance === 'number') { ME.balance = n.balance; $('#menuBal').textContent = n.balance; }
-    pushNotif(n.icon, n.text); toast(n.text); beep(880, .15);
+    pushNotif(n.icon, n.text, n); toast(n.text); beep(880, .15);
   });
   // مزامنة فورية: أي تعديل من لوحة الإدارة يطبَّق مباشرة دون تحديث الصفحة
   SOCKET.on('sync', async () => {
@@ -1773,7 +1773,9 @@ async function buyGold() {
     $('#menuBal').textContent = d.balance;
     closeOv('buyOv');
     toast(`تمت إضافة ${SEL_GOLD} ذهب الى رصيدك 💰`);
-    pushNotif('creditcard_fill', `تمت إضافة ${SEL_GOLD} ذهب افتراضي الى رصيدك`);
+    pushNotif('creditcard_fill', `تمت إضافة ${SEL_GOLD} ذهب افتراضي الى رصيدك`, {
+      id: d.notification_id, created_at: d.notification_created_at
+    });
   } catch (e) { toast(e.error || 'تعذر الشراء', false); }
 }
 $('#buyPaypal').onclick = buyGold;
@@ -1863,12 +1865,13 @@ async function openNotifs() {
   }
   const local = NOTIFS.map(n => ({ ...n, created_at: +n.created_at || n.at / 1000 }));
   const merged = [...local, ...server].sort((a, b) => (+b.created_at || 0) - (+a.created_at || 0));
-  const seenAnnouncements = new Set();
+  // الإشعار الفوري والمحفوظ يحملان المعرّف نفسه؛ نعرض بطاقة واحدة فقط لكل معرّف.
+  const seenNotificationIds = new Set();
   CURRENT_NOTIFICATIONS = merged.filter(n => {
-    if (n.kind !== 'announcement' || !n.id) return true;
-    const key = 'announcement:' + n.id;
-    if (seenAnnouncements.has(key)) return false;
-    seenAnnouncements.add(key);
+    if (!n.id) return true;
+    const key = String(n.id);
+    if (seenNotificationIds.has(key)) return false;
+    seenNotificationIds.add(key);
     return true;
   });
   $('#notifList').innerHTML = CURRENT_NOTIFICATIONS.length ? CURRENT_NOTIFICATIONS.map((notification, index) => {

@@ -7,6 +7,7 @@ let ME = null;
 let SETTINGS = {};
 let ROOMS_CACHE = [];
 let editingRoom = null, editingUser = null, editingWord = null;
+let MONITOR_TIMER = null;
 
 // ---------- أدوات ----------
 async function api(url, method = 'GET', body, isForm = false) {
@@ -147,6 +148,49 @@ async function renderAdminGifts() {
     renderAdminGifts();
   });
 }
+function updateTeamMonitor(items) {
+  const list = $('#teamMonitorList');
+  if (!list) return;
+  const existing = new Map([...list.querySelectorAll('.monitor-item')].map(card => [card.dataset.ip, card]));
+  if (!items.length) {
+    list.innerHTML = '<div class="empty monitor-empty">لا توجد اتصالات دردشة نشطة الآن</div>';
+    return;
+  }
+  const empty = list.querySelector('.monitor-empty'); if (empty) empty.remove();
+  for (const item of items) {
+    let card = existing.get(item.ip);
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'monitor-item';
+      card.dataset.ip = item.ip;
+      list.appendChild(card);
+    }
+    existing.delete(item.ip);
+    const userBadges = (item.users || []).map(user => `<span class="monitor-user">👤 ${esc(user.username)}</span>`).join('');
+    const rooms = (item.rooms || []).map(room => esc(room.name)).join('، ') || 'لم يدخل غرفة بعد';
+    const since = new Date(item.connected_at || Date.now()).toLocaleTimeString('ar', { hour: 'numeric', minute: '2-digit' });
+    card.innerHTML = `
+      <div class="monitor-card-head">
+        <div class="monitor-badges"><span class="monitor-online">🟢 متصل</span>${userBadges}</div>
+        <span class="monitor-since">منذ ${esc(since)}</span>
+      </div>
+      <div class="monitor-details">
+        <span dir="ltr">IP: ${esc(item.ip)}</span>
+        <span>🏠 ${rooms}</span>
+        <span>📱 الاتصالات: ${item.connections || 1}</span>
+      </div>`;
+  }
+  existing.forEach(card => card.remove());
+  // ترتيب ثابت حسب IP؛ البطاقة الموجودة تُنقل ولا تُنشأ نسخة مكررة.
+  items.forEach(item => {
+    const card = [...list.querySelectorAll('.monitor-item')].find(node => node.dataset.ip === item.ip);
+    if (card) list.appendChild(card);
+  });
+}
+async function refreshTeamMonitor() {
+  try { updateTeamMonitor(await api('/api/admin/monitor')); } catch (e) { }
+}
+
 async function renderAdminBots() {
   const list = await api('/api/admin/bots');
   $('#botList').innerHTML = list.map(b => `
@@ -955,7 +999,11 @@ const PAGES = {
           ${card('house_fill', '#ec4899', 'عدد الغرف', s.rooms)}
           ${card('chat_bubble2_fill', '#38bdf8', 'مجموع الرسائل', s.messages)}
           ${card('slash_circle_fill', '#dc2626', 'المحظورون', s.bans)}
-        </div>`;
+        </div>
+        <div class="section-title monitor-title"><i class="f7-icons">dot_radiowaves_left_right</i> الاتصالات حسب عنوان IP</div>
+        <div id="teamMonitorList" class="team-monitor-list"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري الرصد...</div></div>`;
+      await refreshTeamMonitor();
+      MONITOR_TIMER = setInterval(refreshTeamMonitor, 2000);
     }
   },
 
@@ -1143,6 +1191,7 @@ async function saveSwitches() {
 
 // ---------- تحميل صفحة ----------
 async function loadPage(id) {
+  if (MONITOR_TIMER) { clearInterval(MONITOR_TIMER); MONITOR_TIMER = null; }
   editingWord = null;
   if (id !== 'roomAdd') editingRoom = null;
   const p = PAGES[id];
