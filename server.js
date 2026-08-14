@@ -873,9 +873,14 @@ app.post('/api/chat/upload-media', requireUser, (req, res) => {
   uploadChatMedia.single('media')(req, res, async (err) => {
     if (err || !req.file) return res.status(400).json({ error: err ? err.message : 'اختر الملف' });
     const type = CHAT_AUDIO_EXTENSIONS.has(path.extname(req.file.originalname || '').toLowerCase()) ? 'audio' : 'image';
-    if (type === 'audio' && !await canUseMembershipFeature(req.authUid, 'voice_allowed_memberships')) {
+    const settingKey = type === 'audio' ? 'voice_allowed_memberships' : 'public_image_allowed_memberships';
+    if (!await canUseMembershipFeature(req.authUid, settingKey)) {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
-      return res.status(403).json({ error: 'عضويتك غير مسموح لها بإرسال المقاطع الصوتية' });
+      return res.status(403).json({
+        error: type === 'audio'
+          ? 'عضويتك غير مسموح لها بإرسال المقاطع الصوتية'
+          : 'عضويتك غير مسموح لها بإرسال الصور في العام'
+      });
     }
     res.json({ ok: true, type, path: '/uploads/chat/' + req.file.filename });
   });
@@ -1790,6 +1795,9 @@ app.get('/api/public-settings', async (req, res) => {
     wall_allowed_memberships: s.wall_allowed_memberships,
     status_allowed_memberships: s.status_allowed_memberships,
     voice_allowed_memberships: s.voice_allowed_memberships,
+    public_message_allowed_memberships: s.public_message_allowed_memberships,
+    private_message_allowed_memberships: s.private_message_allowed_memberships,
+    public_image_allowed_memberships: s.public_image_allowed_memberships,
     snd_join: s.snd_join, snd_msg: s.snd_msg, snd_leave: s.snd_leave,
     msg_max: +s.msg_max || 500,
     vip_cost: +s.vip_cost, premium_cost: +s.premium_cost, plus_cost: +s.plus_cost
@@ -2020,9 +2028,13 @@ io.on('connection', async (socket) => {
       || (mediaType === 'audio' && CHAT_AUDIO_EXTENSIONS.has(mediaExt));
     const mediaFileExists = validMediaPath && fs.existsSync(path.join(__dirname, 'public/uploads/chat', path.basename(requestedMediaPath)));
     const cleanMedia = mediaFileExists && matchingMediaType ? { type: mediaType, path: requestedMediaPath } : null;
+    if (!text && !cleanMedia) return;
+    if (text && !await canUseMembershipFeature(uid, 'public_message_allowed_memberships'))
+      return socket.emit('err', 'عضويتك غير مسموح لها بإرسال الرسائل في العام');
+    if (cleanMedia && cleanMedia.type === 'image' && !await canUseMembershipFeature(uid, 'public_image_allowed_memberships'))
+      return socket.emit('err', 'عضويتك غير مسموح لها بإرسال الصور في العام');
     if (cleanMedia && cleanMedia.type === 'audio' && !await canUseMembershipFeature(uid, 'voice_allowed_memberships'))
       return socket.emit('err', 'عضويتك غير مسموح لها بإرسال المقاطع الصوتية');
-    if (!text && !cleanMedia) return;
     // فلترة الكلمات (لا تطبق على رابط الإيموجي المصور)
     if (text && !text.startsWith('em::')) {
       const words = await q.all(`SELECT word FROM banned_words`);
@@ -2049,6 +2061,8 @@ io.on('connection', async (socket) => {
     text = String(text || '').slice(0, 500).trim();
     if (!text) return;
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
+    if (!await canUseMembershipFeature(uid, 'private_message_allowed_memberships'))
+      return socket.emit('err', 'عضويتك غير مسموح لها بإرسال الرسائل الخاصة');
     const recipient = await q.get(`SELECT id FROM users WHERE id=?`, +toId);
     if (!recipient) return socket.emit('err', 'المستخدم غير موجود');
     if (await usersIgnoreEachOther(uid, +toId))

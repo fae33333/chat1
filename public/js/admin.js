@@ -355,14 +355,21 @@ const PAGES = {
     build: () => `
       <div class="page-title"><i class="f7-icons mi" style="color:#6366f1">checkmark_shield_fill</i> صلاحيات العضويات</div>
       <div style="background:#eef2ff;border:1px solid #c7d2fe;color:#4f46e5;border-radius:12px;padding:13px 16px;margin-bottom:18px;font-size:13.5px;font-weight:700">حدد العضويات المسموح لها باستخدام كل ميزة. حسابات الإدارة ومشرفو الغرف مسموح لهم دائماً.</div>
+      ${membershipAccessCard('chat_bubble_fill', '#2563eb', 'إرسال الرسائل في العام', 'public_message_allowed_memberships', 'كتابة وإرسال الرسائل النصية والإيموجي داخل الغرف العامة.')}
+      ${membershipAccessCard('bubble_left_bubble_right_fill', '#14b8a6', 'إرسال الرسائل الخاصة', 'private_message_allowed_memberships', 'إرسال رسالة نصية مباشرة إلى مستخدم آخر في الخاص.')}
+      ${membershipAccessCard('photo_fill', '#22c55e', 'إرسال الصور في العام', 'public_image_allowed_memberships', 'رفع صورة من زر الكاميرا وإرسالها داخل الغرفة العامة.')}
+      ${membershipAccessCard('mic_fill', '#ec4899', 'إرسال مقطع صوتي في العام', 'voice_allowed_memberships', 'رفع ملف صوتي وإرساله داخل الغرفة العامة.')}
       ${membershipAccessCard('rectangle_and_pencil_and_ellipsis', '#8b5cf6', 'النشر في الحائط', 'wall_allowed_memberships', 'إنشاء منشور نصي أو صورة أو فيديو أو فيديو YouTube.')}
       ${membershipAccessCard('circle_grid_hex_fill', '#0ea5e9', 'النشر في الحالة', 'status_allowed_memberships', 'نشر حالات النص والصورة والفيديو والصوت.')}
-      ${membershipAccessCard('mic_fill', '#ec4899', 'إرسال مقطع صوتي في العام', 'voice_allowed_memberships', 'رفع ملف صوتي وإرساله داخل الغرفة العامة.')}
       <div class="btn-row" style="justify-content:flex-start"><button class="btn btn-purple" id="saveFeatureAccess"><i class="f7-icons">square_arrow_down_fill</i> حفظ صلاحيات العضويات</button></div>`,
     bind: () => {
       $('#saveFeatureAccess').onclick = async () => {
         const body = {};
-        ['wall_allowed_memberships', 'status_allowed_memberships', 'voice_allowed_memberships'].forEach(key => {
+        [
+          'public_message_allowed_memberships', 'private_message_allowed_memberships',
+          'public_image_allowed_memberships', 'voice_allowed_memberships',
+          'wall_allowed_memberships', 'status_allowed_memberships'
+        ].forEach(key => {
           body[key] = [...document.querySelectorAll(`input[data-access-key="${key}"]:checked`)].map(input => input.value).join(',');
           SETTINGS[key] = body[key];
         });

@@ -7,7 +7,7 @@ let ME = null, MYBADGE = 'guest.png', SOCKET = null;
 // رمز هوية خاص بهذه الصفحة فقط؛ لا يُحفظ في localStorage أو sessionStorage.
 // عند التحديث أو فتح تبويب جديد يجب إدخال الاسم من جديد.
 let CHAT_TOKEN = '';
-let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip' };
+let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip' };
 let PREFS = { snd_all: 1, snd_msg: 0, snd_join: 1, show_time: 1, pm_recv: 1 };
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
@@ -74,7 +74,12 @@ const I18N_EN = {
   'الحالة السابقة': 'Previous status', 'الحالة التالية': 'Next status',
   'اضغط هنا لفتح الصورة': 'Tap here to open the image', 'عضويتك غير مسموح لها بإرسال المقاطع الصوتية': 'Your membership cannot send audio clips',
   'عضويتك غير مسموح لها بنشر الحالات': 'Your membership cannot publish statuses', 'عضويتك غير مسموح لها بالنشر على الحائط': 'Your membership cannot post on the wall',
+  'عضويتك غير مسموح لها بإرسال الرسائل في العام': 'Your membership cannot send public messages', 'عضويتك غير مسموح لها بإرسال الرسائل الخاصة': 'Your membership cannot send private messages',
+  'عضويتك غير مسموح لها بإرسال الصور في العام': 'Your membership cannot send images publicly',
   'ادخل إلى غرفة أولاً': 'Join a room first', 'جاري رفع الملف...': 'Uploading file...', 'تعذر إرسال الملف': 'Could not send the file',
+  'جاري رفع الحالة...': 'Uploading status...', 'جاري رفع الصورة الشخصية...': 'Uploading profile image...', 'جاري رفع صورة الحائط...': 'Uploading wall image...',
+  'جاري رفع فيديو الحائط...': 'Uploading wall video...', 'جاري نشر المنشور على الحائط...': 'Publishing wall post...',
+  'جاري رفع الصورة إلى العام...': 'Uploading image to public chat...', 'جاري رفع المقطع الصوتي...': 'Uploading audio clip...',
   'قسم الشكاوي': 'Complaints', 'إرسال الشكوى': 'Send complaint', 'رسالة النظام': 'System message', 'إعلان من الإدارة': 'Admin announcement', 'نظام الهدايا': 'Gift system',
   'لا توجد غرف هنا': 'No rooms here', 'لا يوجد متصلون': 'No users online', 'لا توجد حالات حديثة بعد': 'No recent updates', 'تعذر تحميل الحالات': 'Could not load statuses',
   'لا توجد رسائل من الزوار': 'No messages from guests', 'لا توجد محادثات مع أعضاء مسجلين': 'No conversations with registered members',
@@ -234,6 +239,60 @@ async function api(url, method = 'GET', body, isForm = false) {
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw d;
   return d;
+}
+let ACTIVE_UPLOAD_ID = 0, UPLOAD_HIDE_TIMER = null;
+function updateUploadProgress(uploadId, label, percent) {
+  if (uploadId !== ACTIVE_UPLOAD_ID) return;
+  const box = $('#uploadProgress');
+  const value = Math.max(0, Math.min(100, Math.round(percent || 0)));
+  clearTimeout(UPLOAD_HIDE_TIMER);
+  $('#uploadProgressLabel').textContent = label || 'جاري رفع الملف...';
+  $('#uploadProgressPercent').textContent = value + '%';
+  $('#uploadProgressFill').style.width = value + '%';
+  box.setAttribute('aria-valuenow', String(value));
+  box.setAttribute('aria-hidden', 'false');
+  box.classList.remove('hidden');
+}
+function finishUploadProgress(uploadId, success) {
+  if (uploadId !== ACTIVE_UPLOAD_ID) return;
+  if (success) updateUploadProgress(uploadId, $('#uploadProgressLabel').textContent, 100);
+  UPLOAD_HIDE_TIMER = setTimeout(() => {
+    if (uploadId !== ACTIVE_UPLOAD_ID) return;
+    $('#uploadProgress').classList.add('hidden');
+    $('#uploadProgress').setAttribute('aria-hidden', 'true');
+  }, success ? 550 : 250);
+}
+function beginOperationProgress(label) {
+  const uploadId = ++ACTIVE_UPLOAD_ID;
+  updateUploadProgress(uploadId, label, 8);
+  return uploadId;
+}
+function uploadFormWithProgress(url, formData, label) {
+  const uploadId = ++ACTIVE_UPLOAD_ID;
+  updateUploadProgress(uploadId, label, 1);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.withCredentials = true;
+    xhr.timeout = 5 * 60 * 1000;
+    xhr.setRequestHeader('X-Chat-Client', '1');
+    if (CHAT_TOKEN) xhr.setRequestHeader('X-Chat-Token', CHAT_TOKEN);
+    xhr.upload.onprogress = event => {
+      if (!event.lengthComputable) return;
+      updateUploadProgress(uploadId, label, Math.min(99, (event.loaded / event.total) * 100));
+    };
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText || '{}'); } catch (e) { }
+      const ok = xhr.status >= 200 && xhr.status < 300;
+      finishUploadProgress(uploadId, ok);
+      if (ok) resolve(data); else reject(data.error ? data : { error: 'تعذر رفع الملف' });
+    };
+    xhr.onerror = () => { finishUploadProgress(uploadId, false); reject({ error: 'تعذر الاتصال أثناء رفع الملف' }); };
+    xhr.ontimeout = () => { finishUploadProgress(uploadId, false); reject({ error: 'انتهت مهلة رفع الملف' }); };
+    xhr.onabort = () => { finishUploadProgress(uploadId, false); reject({ error: 'تم إلغاء رفع الملف' }); };
+    xhr.send(formData);
+  });
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function toast(msg, ok = true) {
@@ -1413,6 +1472,8 @@ $('#pmInput').onkeydown = e => { if (e.key === 'Enter') sendPm(); };
 function sendPm() {
   const t = $('#pmInput').value.trim();
   if (!t || !PM_WITH) return;
+  if (!canUseMembershipFeature('private_message_allowed_memberships'))
+    return toast('عضويتك غير مسموح لها بإرسال الرسائل الخاصة', false);
   SOCKET.emit('private', { toId: PM_WITH.id, text: t });
   $('#pmInput').value = '';
 }
@@ -1527,7 +1588,7 @@ function openTextStatusComposer() {
 async function publishStatusForm(fd) {
   try {
     toast('جاري نشر الحالة...');
-    const added = await api('/api/statuses', 'POST', fd, true);
+    const added = await uploadFormWithProgress('/api/statuses', fd, 'جاري رفع الحالة...');
     closeOv('statusTextOv');
     await loadStatuses();
     toast('تم نشر حالتك لمدة 24 ساعة ✓');
@@ -1894,7 +1955,7 @@ $('#avaFile').onchange = async () => {
     if (!f) return;
     const fd = new FormData();
     fd.append('avatar', f);
-    const d = await api('/api/avatar', 'POST', fd, true);
+    const d = await uploadFormWithProgress('/api/avatar', fd, 'جاري رفع الصورة الشخصية...');
     SEL_AVATAR = d.avatar;
     ME.avatar = d.avatar;
     closeOv('avaOv');
@@ -2160,7 +2221,7 @@ $('#wallImageFile').onchange = async () => {
   $('#wallAddImage').disabled = true;
   try {
     toast('جاري رفع الصورة...');
-    const uploaded = await api('/api/wall/upload-image', 'POST', form, true);
+    const uploaded = await uploadFormWithProgress('/api/wall/upload-image', form, 'جاري رفع صورة الحائط...');
     WALL_IMAGE_PATH = uploaded.path;
     $('#wallImageElement').src = uploaded.path;
     $('#wallImagePreview').hidden = false;
@@ -2181,7 +2242,7 @@ $('#wallVideoFile').onchange = async () => {
   $('#wallAddVideo').disabled = true;
   try {
     toast('جاري رفع الفيديو...');
-    const uploaded = await api('/api/wall/upload-video', 'POST', form, true);
+    const uploaded = await uploadFormWithProgress('/api/wall/upload-video', form, 'جاري رفع فيديو الحائط...');
     WALL_VIDEO_PATH = uploaded.path;
     WALL_YOUTUBE_URL = '';
     $('#wallYoutubeSelected').hidden = true;
@@ -2202,6 +2263,7 @@ $('#wallVideoRemove').onclick = () => {
 $('#wallPublish').onclick = async () => {
   const button = $('#wallPublish');
   button.disabled = true;
+  const progressId = beginOperationProgress('جاري نشر المنشور على الحائط...');
   try {
     const created = await api('/api/wall', 'POST', {
       text: $('#wallPostText').value,
@@ -2215,7 +2277,11 @@ $('#wallPublish').onclick = async () => {
     toast('تم نشر المنشور');
     await fetchAndInsertWallPost(created.id);
     $('#wallScroll').scrollTop = 0;
-  } catch (e) { toast(e.error || 'تعذر نشر المنشور', false); }
+    finishUploadProgress(progressId, true);
+  } catch (e) {
+    finishUploadProgress(progressId, false);
+    toast(e.error || 'تعذر نشر المنشور', false);
+  }
   finally { button.disabled = false; }
 };
 
@@ -2480,6 +2546,8 @@ function sendMsg() {
   if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
   const t = $('#msgInput').value.trim();
   if (!t) return;
+  if (!canUseMembershipFeature('public_message_allowed_memberships'))
+    return toast('عضويتك غير مسموح لها بإرسال الرسائل في العام', false);
   SOCKET.emit('msg', { roomId: CUR_ROOM.id, text: t, reply: REPLY_TO, color: MY_COLOR || null });
   setReply(null);
   $('#msgInput').value = '';
@@ -2542,7 +2610,11 @@ async function sendPublicMedia(file) {
   fd.append('media', file);
   try {
     toast('جاري رفع الملف...');
-    const uploaded = await api('/api/chat/upload-media', 'POST', fd, true);
+    const isAudio = String(file.type || '').startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|opus)$/i.test(file.name || '');
+    const uploaded = await uploadFormWithProgress(
+      '/api/chat/upload-media', fd,
+      isAudio ? 'جاري رفع المقطع الصوتي...' : 'جاري رفع الصورة إلى العام...'
+    );
     SOCKET.emit('msg', { roomId: CUR_ROOM.id, text: '', media: { type: uploaded.type, path: uploaded.path }, color: MY_COLOR });
   } catch (error) {
     toast(error.error || 'تعذر إرسال الملف', false);
@@ -2567,7 +2639,11 @@ $('#btnMic').onclick = () => {
     return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
   choosePublicMedia('audio/*,.mp3,.wav,.ogg,.m4a,.aac,.opus');
 };
-$('#btnCam').onclick = () => choosePublicMedia('image/*');
+$('#btnCam').onclick = () => {
+  if (!canUseMembershipFeature('public_image_allowed_memberships'))
+    return toast('عضويتك غير مسموح لها بإرسال الصور في العام', false);
+  choosePublicMedia('image/*');
+};
 $('#privSettings').onclick = () => toast('اعدادات الخاص : استقبال الرسائل من الجميع');
 
 // إغلاق اللوحات عند الضغط خارجها
