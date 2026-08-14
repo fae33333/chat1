@@ -107,7 +107,8 @@ Object.assign(I18N_EN, {
   'قائمة التجاهل': 'Ignore list', 'لا يمكن تبادل الرسائل الخاصة بينك وبين الأشخاص المتجاهلين.': 'Private messages are disabled between you and ignored users.',
   'إلغاء التجاهل': 'Unignore', 'قائمة التجاهل فارغة': 'Your ignore list is empty', 'جاري تحميل قائمة التجاهل...': 'Loading ignore list...',
   'جاري تحميل الهدايا...': 'Loading gifts...', 'لم تستلم أي هدايا بعد': 'You have not received any gifts yet', 'تعذر تحميل الهدايا': 'Could not load gifts',
-  'من:': 'From:', 'متجاهل • الرسائل الخاصة متوقفة': 'Ignored • private messages disabled', 'تم إغلاق المحادثة بسبب التجاهل': 'The conversation was closed because of the ignore setting'
+  'من:': 'From:', 'متجاهل • الرسائل الخاصة متوقفة': 'Ignored • private messages disabled', 'تم إغلاق المحادثة بسبب التجاهل': 'The conversation was closed because of the ignore setting',
+  'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available', 'إزالة الإيموجي': 'Remove emoji'
 });
 const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
 function translateDynamicText(text) {
@@ -1826,32 +1827,44 @@ $('#roomSearch').oninput = renderRooms;
 $('#roomSearch2').oninput = renderRoomsPanel;
 
 // الإرسال
+let CUSTOM_EMOJI_DRAFT = '';
+function clearCustomEmojiDraft(focusInput = false) {
+  CUSTOM_EMOJI_DRAFT = '';
+  $('#customEmojiDraftImg').removeAttribute('src');
+  $('#customEmojiDraft').classList.remove('show');
+  $('#inputBar').classList.remove('custom-emoji-selected');
+  if (focusInput) $('#msgInput').focus();
+}
+function selectCustomEmojiDraft(src) {
+  CUSTOM_EMOJI_DRAFT = src;
+  $('#msgInput').value = '';
+  $('#customEmojiDraftImg').src = src;
+  $('#customEmojiDraft').classList.add('show');
+  $('#inputBar').classList.add('custom-emoji-selected');
+}
+$('#customEmojiDraftRemove').onclick = () => clearCustomEmojiDraft(true);
 $('#btnSend').onclick = sendMsg;
 $('#msgInput').onkeydown = e => { if (e.key === 'Enter') sendMsg(); };
 function sendMsg() {
   if (!ME) return openLogin();
   if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
-  const t = $('#msgInput').value.trim();
+  const t = CUSTOM_EMOJI_DRAFT ? 'em::' + CUSTOM_EMOJI_DRAFT : $('#msgInput').value.trim();
   if (!t) return;
   SOCKET.emit('msg', { roomId: CUR_ROOM.id, text: t, reply: REPLY_TO, color: MY_COLOR || null });
   setReply(null);
   $('#msgInput').value = '';
+  clearCustomEmojiDraft();
 }
-// الإيموجي النصي والمصور المرفوع من لوحة الإدارة
-const EMOJIS = '😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 😝 😜 🤪 🤨 🧐 🤓 😎 🥸 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🤭 🤫 🤥 😶 😐 😑 😬 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕 🤑 🤠 😈 👿 👹 👺 🤡 💩 👻 💀 👽 👾 🤖 🎃 😺 😸 😹 😻 😼 😽 🙀 😿 😾 👍 👎 👏 🙌 👐 🤲 🤝 🙏 ✌️ 🤞 🤟 🤘 👌 👈 👉 👆 👇 ☝️ ✋ 🤚 🖐 🖖 👋 🤙 💪 ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 🌹 🌺 🌸 🌼 🌻 🔥 ✨ ⭐ 🌟 💫 💥 💢 💦 💨 🕊️ 🎁 🎂 🎈 🎉 🎊 ☕ 🍫 🍬 🍭 🚗 ⚽ 🏆 🎯 🎤 🎵 🎶 👑 💎 💍'.split(' ');
+// الإيموجي المصور المرفوع من لوحة الإدارة فقط
 let CUSTOM_EMOJIS = [];
 function renderEmojiPicker() {
-  $('#emojiGrid').innerHTML = EMOJIS.map(e => `<span>${e}</span>`).join('') +
-    CUSTOM_EMOJIS.map(e => `<img class="custom-emoji-choice" src="${esc(e.img)}" data-id="${e.id}" alt="emoji">`).join('');
-  $$('#emojiGrid span').forEach(s => s.onclick = () => {
-    const inp = $('#msgInput');
-    inp.value += s.textContent;
-    inp.focus();
-  });
+  $('#emojiGrid').innerHTML = CUSTOM_EMOJIS.length
+    ? CUSTOM_EMOJIS.map(e => `<img class="custom-emoji-choice" src="${esc(e.img)}" data-id="${e.id}" alt="emoji">`).join('')
+    : '<div class="custom-emoji-empty">لا توجد إيموجيات مرفوعة حالياً</div>';
   $$('#emojiGrid .custom-emoji-choice').forEach(im => im.onclick = () => {
     if (!ME) return openLogin();
     if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
-    SOCKET.emit('msg', { roomId: CUR_ROOM.id, text: 'em::' + im.getAttribute('src') });
+    selectCustomEmojiDraft(im.getAttribute('src'));
     $('#emojiPanel').classList.remove('open');
   });
 }
