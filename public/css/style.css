@@ -1,7 +1,8 @@
 /* =====================================================
    شات نجوم العرب - تصميم دردشتي (مثل الفيديو تماما)
 ===================================================== */
-* { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI', Tahoma, Arial, sans-serif; -webkit-tap-highlight-color:transparent; }
+* { margin:0; padding:0; box-sizing:border-box; font-family:"SF Arabic","SF Pro Text","SF UI Text",Arial,sans-serif !important; -webkit-tap-highlight-color:transparent; }
+.f7-icons,.framework7-icons { font-family:"Framework7 Icons" !important; }
 :root {
   --main: #1479f2;                 /* الأزرق الأساسي */
   --main2: #3b8cff;
@@ -681,13 +682,47 @@ body { background:#0e1220; display:flex; justify-content:center; }
   box-shadow:0 10px 30px rgba(20,121,242,.25); animation:sheetUp .3s;
 }
 
-/* توست */
+/* إشعار سفلي — يستوعب الرسائل الطويلة ويصعد بسلاسة من أسفل الشاشة */
 .toast {
-  position:absolute; bottom:130px; right:50%; transform:translateX(50%) translateY(30px); background:#111827e6; color:#fff;
-  padding:10px 20px; border-radius:11px; font-size:12.5px; font-weight:800; z-index:99; opacity:0; transition:.25s;
-  pointer-events:none; white-space:nowrap; max-width:92%;
+  position:absolute;
+  z-index:99;
+  left:50%;
+  bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+  width:calc(100% - 28px);
+  max-width:380px;
+  min-height:48px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:11px 16px 12px;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:16px;
+  background:rgba(17,24,39,.94);
+  color:#fff;
+  box-shadow:0 14px 36px rgba(0,0,0,.32),0 2px 8px rgba(0,0,0,.18);
+  -webkit-backdrop-filter:blur(14px) saturate(135%);
+  backdrop-filter:blur(14px) saturate(135%);
+  direction:rtl;
+  text-align:center;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  font-size:13px;
+  font-weight:700;
+  line-height:1.65;
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transform:translate(-50%,calc(100% + 30px)) scale(.96);
+  transform-origin:center bottom;
+  transition:opacity .24s ease,visibility .24s ease,transform .36s cubic-bezier(.2,.85,.25,1.12);
 }
-.toast.show { opacity:1; transform:translateX(50%) translateY(0); }
+.toast.show {
+  opacity:1;
+  visibility:visible;
+  transform:translate(-50%,0) scale(1);
+}
+body.lang-en .toast { direction:ltr; }
 
 ::-webkit-scrollbar { width:6px; height:6px; }
 ::-webkit-scrollbar-thumb { background:#c3c8d8; border-radius:5px; }
@@ -1315,7 +1350,7 @@ body.lang-en .room-welcome { margin-left:52px; margin-right:0; direction:ltr; }
   margin-right:49px;
   margin-left:49px;
   margin-top:7px;
-  font-family:'SF Arabic','Segoe UI',Tahoma,Arial,sans-serif !important;
+  font-family:"SF Arabic","SF Pro Text","SF UI Text",Arial,sans-serif !important;
   font-size:14px;
   font-weight:bold;
   display:flex;
@@ -1344,7 +1379,7 @@ body.lang-en .room-welcome { margin-left:52px; margin-right:0; direction:ltr; }
   unicode-bidi:embed;
   margin:0 4px 5px;
   margin-left:54px;
-  font-family:'SF Arabic','Segoe UI',Tahoma,Arial,sans-serif !important;
+  font-family:"SF Arabic","SF Pro Text","SF UI Text",Arial,sans-serif !important;
   font-size:14px;
 }
 .system-event-message {

@@ -20,9 +20,13 @@ async function api(url, method = 'GET', body, isForm = false) {
 }
 function toast(msg, ok = true) {
   const t = $('#toast');
-  t.innerHTML = `<i class="f7-icons">${ok ? 'checkmark_circle_fill' : 'xmark_circle_fill'}</i> ${msg}`;
+  const text = String(msg || '');
+  t.innerHTML = `<i class="f7-icons">${ok ? 'checkmark_circle_fill' : 'xmark_circle_fill'}</i><span></span>`;
+  t.querySelector('span').textContent = text;
   t.className = 'toast show ' + (ok ? 'ok' : 'err');
-  setTimeout(() => t.classList.remove('show'), 2600);
+  clearTimeout(t._tm);
+  const duration = Math.min(6000, Math.max(2600, text.length * 45));
+  t._tm = setTimeout(() => t.classList.remove('show'), duration);
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 

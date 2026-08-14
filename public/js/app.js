@@ -216,11 +216,14 @@ async function api(url, method = 'GET', body, isForm = false) {
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function toast(msg, ok = true) {
   const t = $('#toast');
-  t.textContent = msg;
-  t.style.background = ok ? '#111827e6' : '#dc2626e6';
+  const text = String(msg || '');
+  t.textContent = text;
+  t.style.background = ok ? 'rgba(17,24,39,.94)' : 'rgba(220,38,38,.90)';
   t.classList.add('show');
   clearTimeout(t._tm);
-  t._tm = setTimeout(() => t.classList.remove('show'), 2400);
+  // الرسائل الطويلة تبقى مدة أطول حتى يمكن قراءة جميع كلماتها.
+  const duration = Math.min(6000, Math.max(2600, text.length * 45));
+  t._tm = setTimeout(() => t.classList.remove('show'), duration);
 }
 function openOv(id) { $('#' + id).classList.add('open'); refreshNav(); }
 function closeOv(id) { $('#' + id).classList.remove('open'); refreshNav(); }

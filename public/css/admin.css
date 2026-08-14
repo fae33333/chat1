@@ -1,7 +1,8 @@
 /* =====================================================
    لوحة التحكم - نفس تصميم Flash Chat 123
 ===================================================== */
-* { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI', Tahoma, Arial, sans-serif; }
+* { margin:0; padding:0; box-sizing:border-box; font-family:"SF Arabic","SF Pro Text","SF UI Text",Arial,sans-serif !important; }
+.f7-icons,.framework7-icons { font-family:"Framework7 Icons" !important; }
 :root {
   --sb-bg: #252c3f;
   --sb-bg2: #1b2133;
@@ -237,13 +238,20 @@ select.inp { cursor:pointer; }
 .loading i { font-size:26px; color:#8b8fd9; animation:spin 1.2s linear infinite; display:block; margin-bottom:10px; }
 @keyframes spin { to { transform:rotate(360deg); } }
 
-/* توست */
+/* إشعار سفلي */
 .toast {
-  position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(90px); background:#111827;
-  color:#fff; padding:13px 26px; border-radius:12px; font-size:14px; font-weight:700; z-index:999;
-  transition:.3s; box-shadow:0 10px 30px rgba(0,0,0,.3); display:flex; gap:8px; align-items:center;
+  position:fixed; bottom:calc(18px + env(safe-area-inset-bottom, 0px)); left:50%;
+  width:calc(100% - 30px); max-width:520px; min-height:50px;
+  transform:translate(-50%,calc(100% + 40px)) scale(.96); background:rgba(17,24,39,.95);
+  color:#fff; padding:12px 22px; border:1px solid rgba(255,255,255,.15); border-radius:16px;
+  font-size:14px; font-weight:700; line-height:1.65; text-align:center; white-space:normal; overflow-wrap:anywhere; word-break:break-word;
+  z-index:999; opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .24s ease,visibility .24s ease,transform .36s cubic-bezier(.2,.85,.25,1.12);
+  box-shadow:0 14px 36px rgba(0,0,0,.32); display:flex; gap:8px; align-items:center; justify-content:center;
 }
-.toast.show { transform:translateX(-50%) translateY(0); }
+.toast.show { opacity:1; visibility:visible; transform:translate(-50%,0) scale(1); }
+.toast i { flex:none; }
+.toast span { min-width:0; overflow-wrap:anywhere; }
 .toast.ok { background:linear-gradient(90deg,#059669,#10b981); }
 .toast.err { background:linear-gradient(90deg,#dc2626,#ef4444); }
 
