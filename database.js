@@ -35,6 +35,8 @@ db.serialize(() => {
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
 
+  db.run(`ALTER TABLE users ADD COLUMN is_bot INTEGER DEFAULT 0`, () => { });
+
   // ---------- الغرف ----------
   db.run(`CREATE TABLE IF NOT EXISTS rooms (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,6 +58,16 @@ db.serialize(() => {
   )`);
   // ترقية: كلمة مرور الغرفة (تُضاف للقواعد القديمة فقط)
   db.run(`ALTER TABLE rooms ADD COLUMN password TEXT DEFAULT ''`, () => { });
+
+  // ---------- روبوتات المستخدمين الافتراضيون داخل الغرف ----------
+  db.run(`CREATE TABLE IF NOT EXISTS room_bots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER UNIQUE NOT NULL,
+    room_id INTEGER NOT NULL,
+    active INTEGER DEFAULT 1,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_room_bots_room ON room_bots (room_id, active)`);
 
   // ---------- رسائل الروبوت المجدولة ----------
   db.run(`CREATE TABLE IF NOT EXISTS bots (

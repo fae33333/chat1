@@ -1543,5 +1543,6 @@ body.lang-en .robot-system-message { direction:ltr; }
 .users-row.ignored-user .uava { opacity:.58; filter:grayscale(.25); }
 .users-row.ignored-user .ugender { opacity:.4; }
 .ignored-user-tag { color:#999; margin-inline-start:5px; font-size:10px; font-weight:700; white-space:nowrap; }
+.room-bot-tag { margin-inline-start:4px; padding:1px 5px; border-radius:5px; background:#ede9fe; color:#7c3aed; font-size:8px; line-height:14px; font-weight:700; }
 body.lang-en .my-gifts-summary,body.lang-en .blocked-user-row { direction:ltr; text-align:left; }
 body.lang-en .blocks-hint { direction:ltr; }

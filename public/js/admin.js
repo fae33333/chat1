@@ -6,7 +6,7 @@ const $$ = s => document.querySelectorAll(s);
 let ME = null;
 let SETTINGS = {};
 let ROOMS_CACHE = [];
-let editingRoom = null, editingUser = null, editingWord = null;
+let editingRoom = null, editingUser = null, editingWord = null, EDIT_ROOM_BOT = null;
 let MONITOR_TIMER = null;
 
 // ---------- أدوات ----------
@@ -43,7 +43,8 @@ const MENU = [
   { icon: 'house_fill', color: '#fb923c', label: 'اعدادات الغرف', subs: [
     { id: 'rooms', icon: 'list_bullet', label: 'قائمة الغرف' },
     { id: 'roomAdd', icon: 'plus_square_fill', label: 'اضافة غرفة' },
-    { id: 'bots', icon: 'wand_stars', label: 'رسائل الروبوت' }]},
+    { id: 'bots', icon: 'wand_stars', label: 'رسائل الروبوت' },
+    { id: 'roomBots', icon: 'person_badge_plus_fill', label: 'توليد روبوت غرفة' }]},
   { icon: 'desktopcomputer', color: '#38bdf8', label: 'اعدادات النظام', subs: [
     { id: 'system', icon: 'wrench_fill', label: 'اعدادات النظام الاساسي' }]},
   { icon: 'person2_fill', color: '#818cf8', label: 'ادارة المستخدمين', subs: [
@@ -206,6 +207,47 @@ function updateTeamMonitor(items) {
 }
 async function refreshTeamMonitor() {
   try { updateTeamMonitor(await api('/api/admin/monitor')); } catch (e) { }
+}
+
+async function renderRoomBots() {
+  const bots = await api('/api/admin/room-bots');
+  const rankNames = { user: 'مستخدم', roomadmin: 'أدمن غرفة', admin: 'أدمن', superadmin: 'سوبر أدمن' };
+  const membershipNames = { none: 'بدون عضوية', mmez: 'مميز', plus: 'Plus', premium: 'Premium', vip: 'VIP' };
+  $('#roomBotList').innerHTML = bots.length ? bots.map(bot => `
+    <div class="room-bot-card${bot.active ? '' : ' inactive'}">
+      <img class="room-bot-avatar" src="${esc(bot.avatar)}" alt="">
+      <div class="room-bot-info">
+        <b>${esc(bot.username)} ${bot.verified ? '<i class="f7-icons room-bot-verified">checkmark_seal_fill</i>' : ''}</b>
+        <span>🏠 ${esc(bot.room_name || 'غرفة محذوفة')} • ${rankNames[bot.rank] || bot.rank} • ${membershipNames[bot.membership] || bot.membership}</span>
+        <small>${bot.active ? '🟢 موجود داخل الغرفة' : '⚪ متوقف وغير ظاهر'}</small>
+      </div>
+      <div class="room-bot-actions">
+        <button class="btn btn-gray rb-toggle" data-id="${bot.id}">${bot.active ? 'إيقاف' : 'تشغيل'}</button>
+        <button class="btn btn-yellow rb-edit" data-id="${bot.id}"><i class="f7-icons">pencil</i> تعديل</button>
+        <button class="btn btn-red rb-delete" data-id="${bot.id}"><i class="f7-icons">trash</i> حذف</button>
+      </div>
+    </div>`).join('') : '<div class="empty">لم يتم إنشاء روبوتات غرف بعد</div>';
+  $$('.rb-edit').forEach(button => button.onclick = () => {
+    EDIT_ROOM_BOT = bots.find(bot => bot.id === +button.dataset.id) || null;
+    loadPage('roomBots');
+  });
+  $$('.rb-toggle').forEach(button => button.onclick = async () => {
+    const bot = bots.find(item => item.id === +button.dataset.id);
+    if (!bot) return;
+    await api('/api/admin/room-bots', 'POST', {
+      id: bot.id, username: bot.username, avatar: bot.avatar, room_id: bot.room_id,
+      rank: bot.rank, membership: bot.membership, verified: !!bot.verified, active: !bot.active
+    });
+    toast(bot.active ? 'تم إيقاف الروبوت' : 'تم إدخال الروبوت إلى الغرفة');
+    await renderRoomBots();
+  });
+  $$('.rb-delete').forEach(button => button.onclick = async () => {
+    if (!confirm('حذف هذا الروبوت نهائياً؟')) return;
+    await api('/api/admin/room-bots/' + button.dataset.id, 'DELETE');
+    toast('تم حذف الروبوت');
+    EDIT_ROOM_BOT = null;
+    await renderRoomBots();
+  });
 }
 
 async function renderAdminBots() {
@@ -672,6 +714,88 @@ const PAGES = {
           loadPage('bots');
         } catch (e) { toast(e.error || 'تعذر الحفظ', false); }
       };
+    }
+  },
+
+  // ====== توليد روبوت مستخدم داخل غرفة ======
+  roomBots: {
+    build: () => {
+      const bot = EDIT_ROOM_BOT || {};
+      return `
+      <div class="page-title"><i class="f7-icons mi" style="color:#7c3aed">person_badge_plus_fill</i> توليد روبوت غرفة</div>
+      <div class="room-bot-form">
+        <div class="room-bot-form-head">
+          <div class="room-bot-preview" id="roomBotPreview">${bot.avatar ? `<img src="${esc(bot.avatar)}" alt="">` : '<i class="f7-icons">person_crop_circle_fill</i>'}</div>
+          <div style="flex:1;min-width:0">
+            <button class="btn btn-purple" id="roomBotUpload"><i class="f7-icons">photo_fill</i> رفع صورة الروبوت</button>
+            <input id="roomBotFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+            <div class="room-bot-path" id="roomBotAvatarPath">${esc(bot.avatar || 'لم تُرفع صورة بعد')}</div>
+          </div>
+        </div>
+        <div class="inp-row"><label>اسم الروبوت</label><input class="inp" id="roomBotName" maxlength="20" value="${esc(bot.username || '')}" placeholder="مثال: مساعد الغرفة"></div>
+        <div class="inp-row"><label>الغرفة التي يدخل إليها</label><select class="inp" id="roomBotRoom"><option value="">جاري تحميل الغرف...</option></select></div>
+        <div class="grid2">
+          <div class="inp-row"><label>نوع الصلاحية</label><select class="inp" id="roomBotRank">
+            <option value="user" ${(!bot.rank || bot.rank === 'user') ? 'selected' : ''}>مستخدم عادي</option>
+            <option value="roomadmin" ${bot.rank === 'roomadmin' ? 'selected' : ''}>أدمن غرفة</option>
+            <option value="admin" ${bot.rank === 'admin' ? 'selected' : ''}>أدمن</option>
+            <option value="superadmin" ${bot.rank === 'superadmin' ? 'selected' : ''}>سوبر أدمن</option>
+          </select></div>
+          <div class="inp-row"><label>نوع العضوية</label><select class="inp" id="roomBotMembership">
+            <option value="none" ${(!bot.membership || bot.membership === 'none') ? 'selected' : ''}>بدون عضوية</option>
+            <option value="mmez" ${bot.membership === 'mmez' ? 'selected' : ''}>مميز</option>
+            <option value="plus" ${bot.membership === 'plus' ? 'selected' : ''}>Plus</option>
+            <option value="premium" ${bot.membership === 'premium' ? 'selected' : ''}>Premium</option>
+            <option value="vip" ${bot.membership === 'vip' ? 'selected' : ''}>VIP</option>
+          </select></div>
+        </div>
+        <div class="room-bot-checks">
+          <label><input type="checkbox" id="roomBotVerified" ${bot.verified ? 'checked' : ''}><span>حساب موثق</span><i class="f7-icons">checkmark_seal_fill</i></label>
+          <label><input type="checkbox" id="roomBotActive" ${bot.active === 0 ? '' : 'checked'}><span>يدخل الغرفة مباشرة</span><i class="f7-icons">antenna_radiowaves_left_right</i></label>
+        </div>
+        <div class="btn-row" style="justify-content:flex-start">
+          <button class="btn btn-purple" id="roomBotSave"><i class="f7-icons">wand_stars</i> ${bot.id ? 'حفظ تعديل الروبوت' : 'توليد الروبوت وإدخاله'}</button>
+          ${bot.id ? '<button class="btn btn-gray" id="roomBotCancel">إلغاء التعديل</button>' : ''}
+        </div>
+      </div>
+      <div class="section-title"><i class="f7-icons mi" style="color:#8b5cf6">person_2_fill</i> روبوتات الغرف الحالية</div>
+      <div id="roomBotList" class="room-bot-list"></div>`;
+    },
+    bind: async () => {
+      const rooms = await api('/api/admin/rooms');
+      const current = EDIT_ROOM_BOT ? +EDIT_ROOM_BOT.room_id : 0;
+      $('#roomBotRoom').innerHTML = rooms.map(room => `<option value="${room.id}" ${+room.id === current ? 'selected' : ''}>${esc(room.name)}</option>`).join('');
+      await renderRoomBots();
+      $('#roomBotUpload').onclick = () => $('#roomBotFile').click();
+      $('#roomBotFile').onchange = async () => {
+        const file = $('#roomBotFile').files[0]; if (!file) return;
+        const fd = new FormData(); fd.append('file', file);
+        try {
+          const uploaded = await api('/api/admin/upload/bot-avatar', 'POST', fd, true);
+          $('#roomBotAvatarPath').textContent = uploaded.path;
+          $('#roomBotPreview').innerHTML = `<img src="${esc(uploaded.path)}" alt="">`;
+          toast('تم رفع صورة الروبوت');
+        } catch (e) { toast(e.error || 'تعذر رفع الصورة', false); }
+      };
+      $('#roomBotSave').onclick = async () => {
+        try {
+          const avatarText = $('#roomBotAvatarPath').textContent.trim();
+          await api('/api/admin/room-bots', 'POST', {
+            id: EDIT_ROOM_BOT && EDIT_ROOM_BOT.id,
+            username: $('#roomBotName').value,
+            avatar: avatarText.startsWith('/') ? avatarText : ((EDIT_ROOM_BOT && EDIT_ROOM_BOT.avatar) || ''),
+            room_id: +$('#roomBotRoom').value,
+            rank: $('#roomBotRank').value,
+            membership: $('#roomBotMembership').value,
+            verified: $('#roomBotVerified').checked,
+            active: $('#roomBotActive').checked
+          });
+          EDIT_ROOM_BOT = null;
+          toast('تم توليد الروبوت وتحديث قائمة الغرفة فوراً');
+          loadPage('roomBots');
+        } catch (e) { toast(e.error || 'تعذر إنشاء الروبوت', false); }
+      };
+      const cancel = $('#roomBotCancel'); if (cancel) cancel.onclick = () => { EDIT_ROOM_BOT = null; loadPage('roomBots'); };
     }
   },
 
@@ -1195,6 +1319,7 @@ async function loadPage(id) {
   if (MONITOR_TIMER) { clearInterval(MONITOR_TIMER); MONITOR_TIMER = null; }
   editingWord = null;
   if (id !== 'roomAdd') editingRoom = null;
+  if (id !== 'roomBots') EDIT_ROOM_BOT = null;
   const p = PAGES[id];
   if (!p) return;
   // حقول الأرقام تُحفظ عند الكتابة في SETTINGS المحلي

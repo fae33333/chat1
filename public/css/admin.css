@@ -285,3 +285,27 @@ select.inp { cursor:pointer; }
 .monitor-room b { color:#0f172a; }
 .monitor-tabs { color:#7c3aed; font-weight:700; }
 @media(max-width:700px) { .team-monitor-list { max-height:none; } .monitor-card-head,.monitor-head-actions { align-items:stretch; } }
+
+/* توليد روبوت مستخدم داخل الغرفة */
+.room-bot-form { background:#fff; border:1px solid #e7eaf5; border-radius:14px; padding:16px; margin-bottom:22px; }
+.room-bot-form-head { display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+.room-bot-preview { width:78px; height:78px; overflow:hidden; border:2px solid #ddd6fe; border-radius:50%; flex:none; background:#f5f3ff; color:#8b5cf6; display:flex; align-items:center; justify-content:center; }
+.room-bot-preview img { width:100%; height:100%; object-fit:cover; }
+.room-bot-preview i { font-size:43px; }
+.room-bot-path { margin-top:6px; overflow:hidden; color:#8a91a4; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.room-bot-checks { display:flex; gap:12px; flex-wrap:wrap; margin:5px 0 16px; }
+.room-bot-checks label { min-width:190px; padding:10px 12px; border:1px solid #e5e7f0; border-radius:10px; background:#fafbff; cursor:pointer; display:flex; align-items:center; gap:8px; color:#374151; font-size:13px; font-weight:700; }
+.room-bot-checks input { width:17px; height:17px; accent-color:#7c3aed; }
+.room-bot-checks i { margin-inline-start:auto; color:#7c3aed; font-size:18px; }
+.room-bot-list { display:grid; gap:9px; }
+.room-bot-card { display:flex; align-items:center; gap:12px; padding:11px 13px; border:1px solid #e5e7f0; border-right:4px solid #22c55e; border-radius:13px; background:#fff; }
+.room-bot-card.inactive { opacity:.68; border-right-color:#9ca3af; }
+.room-bot-avatar { width:50px; height:50px; border:2px solid #ddd6fe; border-radius:50%; object-fit:cover; flex:none; }
+.room-bot-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.room-bot-info b { color:#252a40; font-size:14px; }
+.room-bot-info span { overflow:hidden; color:#697186; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.room-bot-info small { color:#8b5cf6; font-size:10.5px; font-weight:700; }
+.room-bot-verified { color:#1685f5; font-size:15px; vertical-align:-2px; }
+.room-bot-actions { display:flex; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
+.room-bot-actions .btn { padding:7px 10px; font-size:11px; }
+@media(max-width:760px) { .room-bot-card { align-items:flex-start; flex-wrap:wrap; } .room-bot-info { min-width:calc(100% - 66px); } .room-bot-actions { width:100%; } }

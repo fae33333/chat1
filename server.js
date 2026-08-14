@@ -49,6 +49,7 @@ fs.mkdirSync(path.join(__dirname, 'public/uploads'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/gifts'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/emojis'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/rooms'), { recursive: true });
+fs.mkdirSync(path.join(__dirname, 'public/uploads/bots'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/statuses'), { recursive: true });
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, 'public/uploads')),
@@ -61,7 +62,7 @@ const upload = multer({ storage, limits: { fileSize: 8 * 1024 * 1024 } });
 // رفع الهدايا/الإيموجي من لوحة الإدارة (مجلدات فرعية)
 const storageMedia = multer.diskStorage({
   destination: (req, file, cb) => {
-    const sub = req.path.includes('emoji') ? 'emojis' : (req.path.includes('room') ? 'rooms' : 'gifts');
+    const sub = req.path.includes('emoji') ? 'emojis' : (req.path.includes('bot-avatar') ? 'bots' : (req.path.includes('room') ? 'rooms' : 'gifts'));
     cb(null, path.join(__dirname, 'public/uploads', sub));
   },
   filename: (req, file, cb) => cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 8) + path.extname(file.originalname).toLowerCase())
@@ -164,7 +165,7 @@ function pubUser(u) {
     id: u.id, username: u.username, gender: u.gender, age: u.age, country: u.country,
     balance: u.balance, membership: u.membership, rank: u.rank, registered: u.registered,
     avatar: u.avatar, status: u.status, email: u.email || '', bio: u.bio || '',
-    muted: u.muted ? 1 : 0,
+    muted: u.muted ? 1 : 0, is_bot: u.is_bot ? 1 : 0,
     verified: VERIFIED_SET.has(u.username) ? 1 : 0
   };
 }
@@ -933,6 +934,91 @@ app.post('/api/admin/upload/room', requireAdmin, (req, res) => {
   });
 });
 
+// ---- رفع صورة روبوت الغرفة ----
+app.post('/api/admin/upload/bot-avatar', requireAdmin, (req, res) => {
+  uploadMedia.single('file')(req, res, (err) => {
+    if (err || !req.file) return res.status(500).json({ error: 'تعذر رفع الصورة: ' + (err ? err.message : 'لا يوجد ملف') });
+    if (!String(req.file.mimetype || '').startsWith('image/')) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      return res.status(400).json({ error: 'صورة الروبوت يجب أن تكون ملف صورة' });
+    }
+    res.json({ ok: true, path: '/uploads/bots/' + req.file.filename });
+  });
+});
+
+// ---- روبوتات افتراضية تظهر كمستخدمين داخل الغرف ----
+app.get('/api/admin/room-bots', requireAdmin, async (req, res) => {
+  const rows = await q.all(`
+    SELECT rb.id,rb.room_id,rb.active,rb.created_at,r.name room_name,
+      u.id user_id,u.username,u.avatar,u.rank,u.membership,u.gender,
+      EXISTS(SELECT 1 FROM verified v WHERE v.username=u.username) verified
+    FROM room_bots rb JOIN users u ON u.id=rb.user_id
+    LEFT JOIN rooms r ON r.id=rb.room_id ORDER BY rb.id DESC`);
+  res.json(rows);
+});
+app.post('/api/admin/room-bots', requireAdmin, async (req, res) => {
+  const body = req.body || {};
+  const id = +body.id || 0;
+  const username = String(body.username || '').trim().slice(0, 20);
+  const roomId = +body.room_id;
+  const avatar = String(body.avatar || '').slice(0, 180);
+  const rank = ['user', 'roomadmin', 'admin', 'superadmin'].includes(body.rank) ? body.rank : 'user';
+  const membership = ['none', 'mmez', 'plus', 'premium', 'vip'].includes(body.membership) ? body.membership : 'none';
+  const active = body.active === false || body.active === 0 ? 0 : 1;
+  const verified = body.verified ? 1 : 0;
+  if (!username) return res.status(400).json({ error: 'اكتب اسم الروبوت' });
+  if (!avatar) return res.status(400).json({ error: 'ارفع صورة الروبوت' });
+  const room = await q.get(`SELECT id FROM rooms WHERE id=?`, roomId);
+  if (!room) return res.status(400).json({ error: 'اختر غرفة صحيحة' });
+
+  let userId, oldUsername = '', oldAvatar = '';
+  if (id) {
+    const bot = await q.get(`SELECT rb.user_id,u.username,u.avatar FROM room_bots rb JOIN users u ON u.id=rb.user_id WHERE rb.id=?`, id);
+    if (!bot) return res.status(404).json({ error: 'الروبوت غير موجود' });
+    const duplicate = await q.get(`SELECT id FROM users WHERE username=? AND id<>?`, username, bot.user_id);
+    if (duplicate) return res.status(400).json({ error: 'اسم الروبوت مستخدم مسبقاً' });
+    userId = +bot.user_id; oldUsername = bot.username; oldAvatar = bot.avatar || '';
+    await q.run(`UPDATE users SET username=?,avatar=?,rank=?,membership=?,registered=1,is_bot=1,status='online' WHERE id=?`,
+      username, avatar, rank, membership, userId);
+    await q.run(`UPDATE room_bots SET room_id=?,active=? WHERE id=?`, roomId, active, id);
+  } else {
+    if (await q.get(`SELECT id FROM users WHERE username=?`, username))
+      return res.status(400).json({ error: 'اسم الروبوت مستخدم مسبقاً' });
+    const user = await q.run(`
+      INSERT INTO users (username,password,gender,age,balance,membership,rank,registered,avatar,status,is_bot)
+      VALUES (?,NULL,'secret',25,0,?,?,1,?,'online',1)`, username, membership, rank, avatar);
+    userId = user.lastID;
+    await q.run(`INSERT INTO room_bots (user_id,room_id,active) VALUES (?,?,?)`, userId, roomId, active);
+  }
+
+  if (oldUsername) await q.run(`DELETE FROM verified WHERE username=?`, oldUsername);
+  if (verified) await q.run(`INSERT OR IGNORE INTO verified (username) VALUES (?)`, username);
+  else await q.run(`DELETE FROM verified WHERE username=?`, username);
+  if (oldAvatar && oldAvatar !== avatar && oldAvatar.startsWith('/uploads/bots/')) {
+    try { fs.unlinkSync(path.join(__dirname, 'public/uploads/bots', path.basename(oldAvatar))); } catch (e) { }
+  }
+  await refreshVerified();
+  await syncRoomBots();
+  io.emit('sync');
+  res.json({ ok: true, user_id: userId });
+});
+app.delete('/api/admin/room-bots/:id', requireAdmin, async (req, res) => {
+  const bot = await q.get(`SELECT rb.user_id,u.username,u.avatar FROM room_bots rb JOIN users u ON u.id=rb.user_id WHERE rb.id=?`, +req.params.id);
+  if (!bot) return res.status(404).json({ error: 'الروبوت غير موجود' });
+  await q.run(`DELETE FROM room_bots WHERE id=?`, +req.params.id);
+  await q.run(`DELETE FROM verified WHERE username=?`, bot.username);
+  await q.run(`DELETE FROM user_ignores WHERE user_id=? OR ignored_id=?`, bot.user_id, bot.user_id);
+  await q.run(`DELETE FROM private_messages WHERE from_id=? OR to_id=?`, bot.user_id, bot.user_id);
+  await q.run(`DELETE FROM users WHERE id=? AND is_bot=1`, bot.user_id);
+  if (bot.avatar && bot.avatar.startsWith('/uploads/bots/')) {
+    try { fs.unlinkSync(path.join(__dirname, 'public/uploads/bots', path.basename(bot.avatar))); } catch (e) { }
+  }
+  await refreshVerified();
+  await syncRoomBots();
+  io.emit('sync');
+  res.json({ ok: true });
+});
+
 // ---- رسائل الروبوت المجدولة ----
 app.get('/api/admin/bots', requireAdmin, async (req, res) => {
   const bots = await q.all(`SELECT b.*, COALESCE(r.name,'كل الغرف') room_name FROM bots b LEFT JOIN rooms r ON r.id=b.room_id ORDER BY b.id DESC`);
@@ -964,7 +1050,7 @@ app.post('/api/admin/bots/:id/del', requireAdmin, async (req, res) => {
 
 // إحصائيات
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
-  const users = await q.get(`SELECT COUNT(*) c FROM users WHERE registered=1`);
+  const users = await q.get(`SELECT COUNT(*) c FROM users WHERE registered=1 AND COALESCE(is_bot,0)=0`);
   const guests = await q.get(`SELECT COUNT(*) c FROM users WHERE registered=0`);
   const rooms = await q.get(`SELECT COUNT(*) c FROM rooms`);
   const msgs = await q.get(`SELECT COUNT(*) c FROM messages`);
@@ -1053,8 +1139,10 @@ app.post('/api/admin/rooms', requireAdmin, async (req, res) => {
   res.json({ ok: true, id: out.lastID });
 });
 app.delete('/api/admin/rooms/:id', requireAdmin, async (req, res) => {
+  await q.run(`UPDATE room_bots SET active=0 WHERE room_id=?`, req.params.id);
   await q.run(`DELETE FROM rooms WHERE id=?`, req.params.id);
   await q.run(`DELETE FROM messages WHERE room_id=?`, req.params.id);
+  await syncRoomBots();
   io.emit('sync');
   res.json({ ok: true });
 });
@@ -1436,6 +1524,28 @@ app.get('/api/admin/license', requireAdmin, async (req, res) => {
 const onlineUsers = {};   // uid -> pubUser(+badge)
 const userSockets = {};   // uid -> [socketId]
 const roomUsers = {};     // roomId -> Set(uid)
+let ACTIVE_ROOM_BOT_IDS = new Set();
+
+async function syncRoomBots() {
+  const affectedRooms = new Set(Object.keys(roomUsers).map(Number));
+  for (const set of Object.values(roomUsers)) for (const botId of ACTIVE_ROOM_BOT_IDS) set.delete(botId);
+  for (const botId of ACTIVE_ROOM_BOT_IDS) delete onlineUsers[botId];
+  ACTIVE_ROOM_BOT_IDS = new Set();
+  const bots = await q.all(`
+    SELECT rb.room_id,u.* FROM room_bots rb
+    JOIN users u ON u.id=rb.user_id
+    JOIN rooms r ON r.id=rb.room_id
+    WHERE rb.active=1 ORDER BY rb.id`);
+  for (const bot of bots) {
+    const uid = +bot.id, roomId = +bot.room_id;
+    ACTIVE_ROOM_BOT_IDS.add(uid);
+    affectedRooms.add(roomId);
+    onlineUsers[uid] = { ...pubUser(bot), status: 'online', badge: badgeOf(bot) };
+    (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(uid);
+  }
+  for (const roomId of affectedRooms) await emitRoomUsers(roomId);
+  await emitRoomCounts();
+}
 
 function userStillHasVisibleSocketInRoom(uid, roomId, excludedSocketId = '') {
   roomId = +roomId;
@@ -1684,6 +1794,7 @@ async function sendBotMsg(b) {
   }
 }
 reloadBots();
+setTimeout(() => syncRoomBots().catch(() => { }), 500);
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`★ شات نجوم العرب يعمل على http://0.0.0.0:${PORT}`);
