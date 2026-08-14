@@ -299,6 +299,8 @@ app.post('/api/login', async (req, res) => {
   const u = await q.get(`SELECT * FROM users WHERE username=?`, username);
   if (!u || !u.password || !bcrypt.compareSync(password, u.password))
     return res.status(400).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+  const ipBan = await guestIpBan(requestIp(req));
+  if (ipBan) return res.status(403).json({ error: 'عنوان IP الخاص بك محظور' + (ipBan.reason ? ': ' + ipBan.reason : '') });
   if (u.banned) return res.status(403).json({ error: 'هذا الحساب محظور' });
   await finishAuthentication(req, res, u);
 });
@@ -980,24 +982,52 @@ app.get('/api/admin/monitor', requireAdmin, async (req, res) => {
     if (!uid) continue;
     const ip = normalizeIp(activeSocket.data.clientIp || activeSocket.handshake.address || '') || 'غير معروف';
     if (!groups.has(ip)) groups.set(ip, {
-      ip, online: true, connections: 0, connected_at: +activeSocket.data.connectedAt || Date.now(), users: new Map(), rooms: new Set()
+      ip, online: true, connections: 0, connected_at: +activeSocket.data.connectedAt || Date.now(), users: new Map()
     });
     const group = groups.get(ip);
     group.connections++;
     group.connected_at = Math.min(group.connected_at, +activeSocket.data.connectedAt || Date.now());
     const user = usersById.get(uid);
-    if (user) group.users.set(uid, { id: uid, username: user.username, registered: user.registered ? 1 : 0 });
-    for (const roomId of (activeSocket.data.joinedRooms || [])) group.rooms.add(+roomId);
+    if (user) {
+      if (!group.users.has(uid)) group.users.set(uid, {
+        id: uid, username: user.username, registered: user.registered ? 1 : 0, connections: 0, rooms: new Set()
+      });
+      const monitoredUser = group.users.get(uid);
+      monitoredUser.connections++;
+      for (const roomId of (activeSocket.data.joinedRooms || [])) monitoredUser.rooms.add(+roomId);
+    }
   }
   const result = [...groups.values()].map(group => ({
     ip: group.ip,
     online: true,
     connections: group.connections,
     connected_at: group.connected_at,
-    users: [...group.users.values()],
-    rooms: [...group.rooms].map(id => ({ id, name: roomsById.get(id) || `غرفة #${id}` }))
+    users: [...group.users.values()].map(user => ({
+      id: user.id, username: user.username, registered: user.registered, connections: user.connections,
+      rooms: [...user.rooms].map(id => ({ id, name: roomsById.get(id) || `غرفة #${id}` }))
+    }))
   })).sort((a, b) => a.ip.localeCompare(b.ip));
   res.json(result);
+});
+app.post('/api/admin/ip/ban', requireAdmin, async (req, res) => {
+  const ip = normalizeIp(req.body.ip || '');
+  if (!ip || ip === 'غير معروف') return res.status(400).json({ error: 'عنوان IP غير صالح' });
+  const reason = String(req.body.reason || 'حظر من صفحة الرصد').slice(0, 150);
+  let ban = await q.get(`SELECT id FROM bans WHERE ip=? LIMIT 1`, ip);
+  if (!ban) {
+    const out = await q.run(`INSERT INTO bans (username,ip,reason) VALUES ('حظر IP',?,?)`, ip, reason);
+    ban = { id: out.lastID };
+  }
+  await q.run(`UPDATE users SET banned=1 WHERE registered=0 AND ip=?`, ip);
+  for (const [token, auth] of CHAT_TOKENS) {
+    if (normalizeIp(auth.ip) === ip) CHAT_TOKENS.delete(token);
+  }
+  for (const activeSocket of [...io.sockets.sockets.values()]) {
+    if (normalizeIp(activeSocket.data.clientIp) !== ip) continue;
+    activeSocket.emit('banned', { text: 'تم حظر عنوان IP الخاص بك بواسطة الإدارة' });
+    activeSocket.disconnect(true);
+  }
+  res.json({ ok: true, id: ban.id, ip });
 });
 
 // ---- الغرف ----
@@ -1448,7 +1478,7 @@ io.on('connection', async (socket) => {
   let me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
   if (!me) { socket.disconnect(); return; }
   const clientIp = normalizeIp((tokenAuth && tokenAuth.ip) || socket.handshake.address || '');
-  if (me.banned || (!me.registered && await guestIpBan(clientIp))) { socket.disconnect(); return; }
+  if (me.banned || await guestIpBan(clientIp)) { socket.disconnect(); return; }
   if (tokenAuth && CHAT_TOKENS.has(socketToken)) CHAT_TOKENS.get(socketToken).rank = me.rank;
   socket.data.chatToken = socketToken;
   socket.data.userId = uid;

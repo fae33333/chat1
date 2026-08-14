@@ -166,25 +166,42 @@ function updateTeamMonitor(items) {
       list.appendChild(card);
     }
     existing.delete(item.ip);
-    const userBadges = (item.users || []).map(user => `<span class="monitor-user">👤 ${esc(user.username)}</span>`).join('');
-    const rooms = (item.rooms || []).map(room => esc(room.name)).join('، ') || 'لم يدخل غرفة بعد';
     const since = new Date(item.connected_at || Date.now()).toLocaleTimeString('ar', { hour: 'numeric', minute: '2-digit' });
+    const people = (item.users || []).map(user => {
+      const rooms = (user.rooms || []).map(room => esc(room.name)).join('، ') || 'لم يدخل غرفة بعد';
+      return `<div class="monitor-person">
+        <span class="monitor-user">👤 ${esc(user.username)}</span>
+        <span class="monitor-room">🏠 الغرفة: <b>${rooms}</b></span>
+        ${user.connections > 1 ? `<span class="monitor-tabs">📱 ${user.connections} اتصالات</span>` : ''}
+      </div>`;
+    }).join('');
     card.innerHTML = `
       <div class="monitor-card-head">
-        <div class="monitor-badges"><span class="monitor-online">🟢 متصل</span>${userBadges}</div>
-        <span class="monitor-since">منذ ${esc(since)}</span>
+        <div class="monitor-badges">
+          <span class="monitor-online">🟢 متصل</span>
+          <span class="monitor-ip" dir="ltr">IP: ${esc(item.ip)}</span>
+        </div>
+        <div class="monitor-head-actions">
+          <span class="monitor-since">منذ ${esc(since)}</span>
+          <button class="monitor-ban" type="button" data-ip="${esc(item.ip)}"><i class="f7-icons">nosign</i> حظر IP</button>
+        </div>
       </div>
-      <div class="monitor-details">
-        <span dir="ltr">IP: ${esc(item.ip)}</span>
-        <span>🏠 ${rooms}</span>
-        <span>📱 الاتصالات: ${item.connections || 1}</span>
-      </div>`;
+      <div class="monitor-people">${people}</div>`;
   }
   existing.forEach(card => card.remove());
   // ترتيب ثابت حسب IP؛ البطاقة الموجودة تُنقل ولا تُنشأ نسخة مكررة.
   items.forEach(item => {
     const card = [...list.querySelectorAll('.monitor-item')].find(node => node.dataset.ip === item.ip);
     if (card) list.appendChild(card);
+  });
+  list.querySelectorAll('.monitor-ban').forEach(button => button.onclick = async () => {
+    const ip = button.dataset.ip;
+    if (!confirm(`حظر جميع الاتصالات من عنوان IP ${ip}؟`)) return;
+    try {
+      await api('/api/admin/ip/ban', 'POST', { ip, reason: 'حظر من صفحة الرصد' });
+      toast('تم حظر عنوان IP وفصل اتصالاته');
+      await refreshTeamMonitor();
+    } catch (e) { toast(e.error || 'تعذر حظر عنوان IP', false); }
   });
 }
 async function refreshTeamMonitor() {
@@ -982,26 +999,10 @@ const PAGES = {
   monitor: {
     build: () => `
       <div class="page-title"><i class="f7-icons mi" style="color:#f472b6">eye_fill</i> رصد فريق</div>
-      <div id="statsArea"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري التحميل...</div></div>`,
+      <div class="monitor-note"><i class="f7-icons">info_circle_fill</i> بطاقة واحدة لكل عنوان IP، وبداخلها أسماء الأشخاص والغرف التي دخلوها.</div>
+      <div class="section-title monitor-title"><i class="f7-icons">dot_radiowaves_left_right</i> الاتصالات النشطة حسب عنوان IP</div>
+      <div id="teamMonitorList" class="team-monitor-list"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري الرصد...</div></div>`,
     bind: async () => {
-      const s = await api('/api/admin/stats');
-      const card = (icon, color, label, val) => `
-        <div class="section" style="text-align:center;padding:24px 10px">
-          <i class="f7-icons" style="font-size:34px;color:${color}">${icon}</i>
-          <div style="font-size:26px;font-weight:800;color:#1f2937;margin-top:8px">${val}</div>
-          <div style="color:#6b7280;font-size:13px;font-weight:700">${label}</div>
-        </div>`;
-      $('#statsArea').innerHTML = `
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
-          ${card('person2_fill', '#6366f1', 'الأعضاء المسجلون', s.users)}
-          ${card('person_fill', '#f59e0b', 'الزوار', s.guests)}
-          ${card('antenna_radiowaves_left_right', '#059669', 'متصل الآن', s.online)}
-          ${card('house_fill', '#ec4899', 'عدد الغرف', s.rooms)}
-          ${card('chat_bubble2_fill', '#38bdf8', 'مجموع الرسائل', s.messages)}
-          ${card('slash_circle_fill', '#dc2626', 'المحظورون', s.bans)}
-        </div>
-        <div class="section-title monitor-title"><i class="f7-icons">dot_radiowaves_left_right</i> الاتصالات حسب عنوان IP</div>
-        <div id="teamMonitorList" class="team-monitor-list"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري الرصد...</div></div>`;
       await refreshTeamMonitor();
       MONITOR_TIMER = setInterval(refreshTeamMonitor, 2000);
     }
