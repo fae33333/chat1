@@ -270,7 +270,7 @@ async function guestIpMute(ip) {
   if (!ip) return null;
   return q.get(`SELECT id FROM ip_mutes WHERE ip=? LIMIT 1`, ip);
 }
-async function finishAuthentication(req, res, user) {
+async function finishAuthentication(req, res, user, extraPayload = {}) {
   const ip = requestIp(req);
   let fresh = user;
   if (ip) {
@@ -282,7 +282,7 @@ async function finishAuthentication(req, res, user) {
     }
     fresh = await q.get(`SELECT * FROM users WHERE id=?`, user.id);
   }
-  const payload = { user: pubUser(fresh), badge: badgeOf(fresh) };
+  const payload = { user: pubUser(fresh), badge: badgeOf(fresh), ...extraPayload };
   if (req.get('x-chat-client') === '1') {
     const previousToken = chatTokenFromRequest(req);
     if (previousToken) CHAT_TOKENS.delete(previousToken);
@@ -311,14 +311,28 @@ app.post('/api/guest', async (req, res) => {
   const ipBan = await guestIpBan(ip);
   if (ipBan) return res.status(403).json({ error: 'عنوان IP الخاص بك محظور' + (ipBan.reason ? ': ' + ipBan.reason : '') });
   let u = await q.get(`SELECT * FROM users WHERE username=?`, username);
-  if (u && u.registered) return res.status(400).json({ error: 'هذا الاسم مسجل، قم بتسجيل الدخول' });
+  let renamedFrom = '';
+  // إذا كان الاسم محجوزاً لحساب مسجل ندخل الزائر تلقائياً بالاسم نفسه مع أربعة أرقام عشوائية.
+  if (u && u.registered) {
+    renamedFrom = username;
+    const stem = username.slice(0, 16);
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const candidate = stem + crypto.randomInt(1000, 10000);
+      if (!await q.get(`SELECT id FROM users WHERE username=?`, candidate)) {
+        username = candidate;
+        u = null;
+        break;
+      }
+    }
+    if (u) return res.status(500).json({ error: 'تعذر إنشاء اسم زائر بديل، حاول مرة أخرى' });
+  }
   if (!u) {
     const r = await q.run(`INSERT INTO users (username,gender,registered,membership,rank) VALUES (?,?,0,'none','user')`, username, gender || 'secret');
     u = await q.get(`SELECT * FROM users WHERE id=?`, r.lastID);
   }
   // حظر الزائر مرتبط بالـ IP الحالي لا بالاسم الذي قد يُعاد استخدامه من شبكة أخرى.
   if (u.banned) { await q.run(`UPDATE users SET banned=0 WHERE id=?`, u.id); u.banned = 0; }
-  await finishAuthentication(req, res, u);
+  await finishAuthentication(req, res, u, renamedFrom ? { guest_name_changed: true, requested_username: renamedFrom } : {});
 });
 
 app.post('/api/register', async (req, res) => {

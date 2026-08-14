@@ -109,9 +109,9 @@ Object.assign(I18N_EN, {
   'إلغاء التجاهل': 'Unignore', 'قائمة التجاهل فارغة': 'Your ignore list is empty', 'جاري تحميل قائمة التجاهل...': 'Loading ignore list...',
   'جاري تحميل الهدايا...': 'Loading gifts...', 'لم تستلم أي هدايا بعد': 'You have not received any gifts yet', 'تعذر تحميل الهدايا': 'Could not load gifts',
   'من:': 'From:', 'متجاهل • الرسائل الخاصة متوقفة': 'Ignored • private messages disabled', 'تم إغلاق المحادثة بسبب التجاهل': 'The conversation was closed because of the ignore setting',
-  'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available', 'إلغاء تجاهل': 'Unignore', 'الهدية من': 'Gift from', 'كمية:': 'Quantity:'
+  'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available', 'إلغاء تجاهل': 'Unignore', 'الهدية من': 'Gift from', 'كمية:': 'Quantity:', 'صورة المستخدم': 'User photo'
 });
-const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
+const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
 function translateDynamicText(text) {
   if (I18N_EN[text]) return I18N_EN[text];
   let match = text.match(/^مرحباً بـ (.+) في غرفة (.+)$/);
@@ -124,6 +124,8 @@ function translateDynamicText(text) {
   if (match) return `${match[1]} was unmuted by ${match[2]}`;
   match = text.match(/^تم تجاهل (.+) ومنع الرسائل الخاصة بينكما$/);
   if (match) return `${match[1]} was ignored and private messages were disabled`;
+  match = text.match(/^الاسم (.+) مسجل، تم دخولك كزائر باسم (.+)$/);
+  if (match) return `${match[1]} is registered; you joined as guest ${match[2]}`;
   if (text.startsWith('الكمية: ')) return 'Quantity: ' + text.slice('الكمية: '.length);
   if (text.startsWith('اليوم الساعة ')) return 'Today at ' + text.slice('اليوم الساعة '.length);
   if (text.startsWith('أمس الساعة ')) return 'Yesterday at ' + text.slice('أمس الساعة '.length);
@@ -236,6 +238,7 @@ const GENDER_IMG = { boy: 'boy.png', girl: 'girl.png', secret: 'secret.png' };
 const MEM_NAMES = { vip: 'عضوية النخبة', premium: 'عضوية Premium', plus: 'عضوية Plus', mmez: 'عضوية مميز', none: 'عضو مسجل' };
 const MEM_COLORS = { vip: '#b8860b', premium: '#d63384', plus: '#16a34a', mmez: '#dc2626', none: '#c2185b' };
 const RANK_NAMES = { superadmin: 'سوبر ادمين', admin: 'ادمن', roomadmin: 'ادمن غرفة', user: '' };
+const RANK_COLORS = { superadmin: '#7c3aed', admin: '#ea580c', roomadmin: '#0e9fdd' };
 function badgeOf(u) {
   if (!u) return 'guest.png';
   if (u.badge) return u.badge;
@@ -735,11 +738,17 @@ function userSheetMembership(u) {
   if (u.membership && u.membership !== 'none') return MEM_NAMES[u.membership] || u.membership;
   return u.registered ? 'عضو مسجل' : 'زائر';
 }
+function userSheetMembershipColor(u) {
+  if (u.rank && u.rank !== 'user') return RANK_COLORS[u.rank] || '#7c3aed';
+  if (u.membership && u.membership !== 'none') return MEM_COLORS[u.membership] || '#c2185b';
+  return u.registered ? MEM_COLORS.none : '#6b7280';
+}
 function syncUserActionSheet() {
   if (!CUR_TARGET) return;
   $('#usAvatar').innerHTML = avatarHtml(CUR_TARGET.avatar);
   $('#usName').textContent = CUR_TARGET.username;
   $('#usMembership').textContent = userSheetMembership(CUR_TARGET);
+  $('#usMembership').style.color = userSheetMembershipColor(CUR_TARGET);
   $('#usIgnoreLabel').textContent = IGNORED_USERS.has(+CUR_TARGET.id) ? 'إلغاء التجاهل' : 'تجاهل';
   $('#usMuteLabel').textContent = CUR_TARGET.muted ? 'إلغاء الكتم' : 'كتم المستخدم';
   $('#usMuteIcon').textContent = CUR_TARGET.muted ? 'mic_fill' : 'mic_slash_fill';
@@ -764,6 +773,17 @@ function openUserSheet(uid, msg) {
     syncUserActionSheet();
   }).catch(() => { });
 }
+function openAvatarViewer(user) {
+  if (!user) return;
+  $('#avatarViewName').textContent = user.username || 'صورة المستخدم';
+  $('#avatarViewMedia').innerHTML = avatarHtml(user.avatar);
+  openOv('avatarViewOv');
+}
+$('#usAvatar').onclick = event => {
+  event.preventDefault();
+  event.stopPropagation();
+  openAvatarViewer(CUR_TARGET);
+};
 // الرد على الرسالة: شريط وردي فوق حقل الكتابة (الاسم + اقتباس + زر إلغاء)
 let REPLY_TO = null;
 function setReply(m) {
@@ -945,7 +965,7 @@ async function openProfile(uid) {
     $('#profName').textContent = u.username;
     $('#profAva').innerHTML = avatarHtml(u.avatar) + `<span class="dot ${statusDot(u.status)}"></span>`;
     let memText, memColor;
-    if (u.rank !== 'user') { memText = RANK_NAMES[u.rank]; memColor = { superadmin: '#7c3aed', admin: '#ea580c', roomadmin: '#0e9fdd' }[u.rank]; }
+    if (u.rank !== 'user') { memText = RANK_NAMES[u.rank]; memColor = RANK_COLORS[u.rank] || '#7c3aed'; }
     else if (u.membership !== 'none') { memText = MEM_NAMES[u.membership]; memColor = MEM_COLORS[u.membership]; }
     else { memText = u.registered ? 'عضو مسجل' : 'زائر'; memColor = u.registered ? '#c2185b' : '#6b7280'; }
     $('#profMem').innerHTML = `<img src="/badges/${d.badge}"> <span style="color:${memColor}">${memText}</span>`;
@@ -1030,6 +1050,8 @@ function renderVisitorProfile(u, d) {
   };
   renderGiftCards();
 
+  const profileAvatar = $('#profBody .vp-ava');
+  if (profileAvatar) profileAvatar.onclick = () => openAvatarViewer(u);
   $$('#profBody .vp-tab').forEach(tab => tab.onclick = () => {
     const showInfo = tab.dataset.vtab === 'info';
     $$('#profBody .vp-tab').forEach(item => item.classList.toggle('active', item === tab));
@@ -1753,7 +1775,9 @@ $('#doGuest').onclick = async () => {
     closeOv('loginOv');
     onLoggedIn();
     connectSocketRetry();
-    toast('أهلا بك كزائر ' + ME.username);
+    toast(d.guest_name_changed
+      ? `الاسم ${d.requested_username} مسجل، تم دخولك كزائر باسم ${ME.username}`
+      : 'أهلا بك كزائر ' + ME.username);
   } catch (e) { $('#loginErr').textContent = e.error || 'فشل الدخول'; }
 };
 $('#goRegister').onclick = () => { closeOv('loginOv'); openOv('regOv'); };
