@@ -812,6 +812,17 @@
     <div class="upload-progress-head"><span id="uploadProgressLabel">جاري رفع الملف...</span><b id="uploadProgressPercent">0%</b></div>
     <div class="upload-progress-track"><span id="uploadProgressFill"></span></div>
   </div>
+
+  <!-- استعادة اتصال WebSocket دون فقد الغرفة أو هوية هذه الصفحة -->
+  <div class="connection-overlay hidden" id="connectionOverlay" role="alertdialog" aria-modal="true" aria-hidden="true">
+    <div class="connection-card">
+      <div class="connection-icon"><i class="f7-icons">wifi_slash</i></div>
+      <h3>تم قطع الاتصال</h3>
+      <div class="connection-loading" id="connectionLoading"><span></span><span></span><span></span></div>
+      <p id="connectionStatus">جارٍ إعادة الاتصال...</p>
+      <button type="button" id="reconnectBtn"><i class="f7-icons">arrow_clockwise</i><span>اتصال</span></button>
+    </div>
+  </div>
   <div class="gift-celebration-layer" id="giftCelebrationLayer" aria-hidden="true"></div>
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 </div>

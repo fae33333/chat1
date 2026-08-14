@@ -1824,6 +1824,19 @@ app.get('/api/admin/license', requireAdmin, async (req, res) => {
 const onlineUsers = {};   // uid -> pubUser(+badge)
 const userSockets = {};   // uid -> [socketId]
 const roomUsers = {};     // roomId -> Set(uid)
+// مهلة قصيرة قبل إعلان الخروج تسمح لاتصال WebSocket المنقطع بالعودة إلى الغرفة
+// نفسها دون رسالة خروج/دخول جديدة أو قفزة في عداد الغرفة.
+const PENDING_ROOM_LEAVES = new Map();
+const ROOM_RECONNECT_GRACE_MS = 8000;
+const roomLeaveKey = (uid, roomId) => `${+uid}:${+roomId}`;
+function cancelPendingRoomLeave(uid, roomId) {
+  const key = roomLeaveKey(uid, roomId);
+  const pending = PENDING_ROOM_LEAVES.get(key);
+  if (!pending) return false;
+  clearTimeout(pending);
+  PENDING_ROOM_LEAVES.delete(key);
+  return true;
+}
 let ACTIVE_ROOM_BOTS = new Map();   // userId -> { roomId, username, roomName }
 
 async function syncRoomBots(announceChanges = true) {
@@ -1976,24 +1989,25 @@ io.on('connection', async (socket) => {
       if (String(pwd) !== String(room.password)) return done({ ok: false, reason: 'wrong_pass' });   // خاطئة — لا يدخل
     }
     roomId = +roomId;
+    const restoredConnection = cancelPendingRoomLeave(uid, roomId);
     if (socket.data.joinedRooms.has(roomId))
-      return done({ ok: true, hidden: socket.data.hiddenRooms.has(roomId) });
+      return done({ ok: true, hidden: socket.data.hiddenRooms.has(roomId), restored: restoredConnection });
     socket.join('room_' + roomId);
     socket.data.joinedRooms.add(roomId);
     if (enterHidden) socket.data.hiddenRooms.add(roomId);
     else (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(uid);
 
-    // لا نعلن دخول الإدارة المخفية ولا نضيفها إلى قائمة مستخدمي الغرفة.
-    if (!enterHidden) emitRoomSystemEvent(roomId, 'join', `مرحباً بـ ${me.username} في غرفة ${room.name}`);
-    // ترحيب الإدارة الاختياري يظهر للداخل فقط بعد رسالة الدخول.
+    // عند استعادة اتصال منقطع لا نرسل دخولاً أو ترحيباً جديداً؛ الجلسة نفسها مستمرة.
+    if (!enterHidden && !restoredConnection) emitRoomSystemEvent(roomId, 'join', `مرحباً بـ ${me.username} في غرفة ${room.name}`);
+    // ترحيب الإدارة الاختياري يظهر في الدخول الجديد فقط، وليس عند استعادة WebSocket.
     const welcome = String(room.welcome || '').trim();
-    if (welcome) socket.emit('msg', {
+    if (welcome && !restoredConnection) socket.emit('msg', {
       id: Date.now(), room_id: +roomId, username: 'رسالة النظام',
       text: welcome, type: 'welcome', created_at: Math.floor(Date.now() / 1000)
     });
     emitRoomUsers(roomId);
     emitRoomCounts();
-    done({ ok: true, hidden: enterHidden });
+    done({ ok: true, hidden: enterHidden, restored: restoredConnection });
   });
 
   // مغادرة غرفة
@@ -2089,10 +2103,18 @@ io.on('connection', async (socket) => {
     for (const roomId of joinedRooms) {
       // خروج الجلسة المخفية لا يظهر كرسالة نظام ولا يغيّر قائمة المتصلين.
       if (!hiddenRooms.has(+roomId) && !userStillHasVisibleSocketInRoom(uid, roomId)) {
-        if (roomUsers[roomId]) roomUsers[roomId].delete(uid);
-        emitRoomSystemEvent(roomId, 'leave', `${me.username} خرج من الغرفة`);
-        emitRoomUsers(roomId);
-        emitRoomCounts();
+        cancelPendingRoomLeave(uid, roomId);
+        const key = roomLeaveKey(uid, roomId);
+        const timer = setTimeout(() => {
+          if (PENDING_ROOM_LEAVES.get(key) !== timer) return;
+          PENDING_ROOM_LEAVES.delete(key);
+          if (userStillHasVisibleSocketInRoom(uid, roomId)) return;
+          if (roomUsers[roomId]) roomUsers[roomId].delete(uid);
+          emitRoomSystemEvent(roomId, 'leave', `${me.username} خرج من الغرفة`);
+          emitRoomUsers(roomId);
+          emitRoomCounts();
+        }, ROOM_RECONNECT_GRACE_MS);
+        PENDING_ROOM_LEAVES.set(key, timer);
       }
     }
     if (userSockets[uid].length === 0) delete onlineUsers[uid];

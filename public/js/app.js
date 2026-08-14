@@ -80,6 +80,9 @@ const I18N_EN = {
   'جاري رفع الحالة...': 'Uploading status...', 'جاري رفع الصورة الشخصية...': 'Uploading profile image...', 'جاري رفع صورة الحائط...': 'Uploading wall image...',
   'جاري رفع فيديو الحائط...': 'Uploading wall video...', 'جاري نشر المنشور على الحائط...': 'Publishing wall post...',
   'جاري رفع الصورة إلى العام...': 'Uploading image to public chat...', 'جاري رفع المقطع الصوتي...': 'Uploading audio clip...',
+  'تم قطع الاتصال': 'Connection lost', 'جارٍ إعادة الاتصال...': 'Reconnecting...', 'اتصال': 'Connect',
+  'بانتظار عودة اتصال الإنترنت...': 'Waiting for the internet connection...', 'تعذر الاتصال، اضغط على زر اتصال للمحاولة مجددًا': 'Could not connect. Tap Connect to try again.',
+  'تم استعادة الاتصال والغرفة': 'Connection and room restored', 'تم استعادة الاتصال': 'Connection restored', 'محاولة إعادة الاتصال رقم': 'Reconnection attempt',
   'قسم الشكاوي': 'Complaints', 'إرسال الشكوى': 'Send complaint', 'رسالة النظام': 'System message', 'إعلان من الإدارة': 'Admin announcement', 'نظام الهدايا': 'Gift system',
   'لا توجد غرف هنا': 'No rooms here', 'لا يوجد متصلون': 'No users online', 'لا توجد حالات حديثة بعد': 'No recent updates', 'تعذر تحميل الحالات': 'Could not load statuses',
   'لا توجد رسائل من الزوار': 'No messages from guests', 'لا توجد محادثات مع أعضاء مسجلين': 'No conversations with registered members',
@@ -444,14 +447,99 @@ function applyPrefsToSwitches() {
   });
 }
 
+let CONNECTION_INTERRUPTED = false;
+function showConnectionOverlay(status, loading = true) {
+  if (!ME || !CHAT_TOKEN) return;
+  const overlay = $('#connectionOverlay');
+  const statusText = status || (navigator.onLine ? 'جارٍ إعادة الاتصال...' : 'بانتظار عودة اتصال الإنترنت...');
+  $('#connectionStatus').textContent = APP_LANG === 'en' ? translateDynamicText(statusText) : statusText;
+  $('#connectionLoading').classList.toggle('stopped', !loading);
+  overlay.classList.remove('hidden');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+function hideConnectionOverlay() {
+  const overlay = $('#connectionOverlay');
+  overlay.classList.add('hidden');
+  overlay.setAttribute('aria-hidden', 'true');
+  $('#connectionLoading').classList.remove('stopped');
+}
+function finishSocketRestore(socket, restoredRoom) {
+  if (socket !== SOCKET) return;
+  const wasInterrupted = CONNECTION_INTERRUPTED;
+  CONNECTION_INTERRUPTED = false;
+  hideConnectionOverlay();
+  if (wasInterrupted) toast(restoredRoom ? 'تم استعادة الاتصال والغرفة' : 'تم استعادة الاتصال');
+}
+function restoreCurrentRoom(socket, attempt = 0) {
+  if (socket !== SOCKET || !socket.connected) return;
+  const room = CUR_ROOM;
+  if (!room) return finishSocketRestore(socket, false);
+  const roomId = +room.id;
+  if (attempt) {
+    const status = APP_LANG === 'en' ? `Reconnection attempt ${attempt + 1}...` : `محاولة إعادة الاتصال رقم ${attempt + 1}...`;
+    showConnectionOverlay(status, true);
+  }
+  // timeout + إعادة المحاولة يعالجان وصول connect قبل انتهاء تهيئة مستمعي الخادم.
+  socket.timeout(2600).emit('join', roomId, ROOM_PWD[roomId] || '', { hidden: !!ROOM_HIDDEN[roomId] }, (error, result) => {
+    if (socket !== SOCKET || !socket.connected || !CUR_ROOM || +CUR_ROOM.id !== roomId) return;
+    if (error) {
+      if (attempt < 5) return setTimeout(() => restoreCurrentRoom(socket, attempt + 1), Math.min(2000, 350 + attempt * 300));
+      return showConnectionOverlay('تعذر الاتصال، اضغط على زر اتصال للمحاولة مجددًا', false);
+    }
+    if (result && result.ok) {
+      ROOM_HIDDEN[roomId] = !!result.hidden;
+      api('/api/rooms/' + roomId + '/users').then(users => {
+        if (CUR_ROOM && +CUR_ROOM.id === roomId) { ROOM_USERS = users; renderUsers(); }
+      }).catch(() => { });
+      return finishSocketRestore(socket, true);
+    }
+    hideConnectionOverlay();
+    CONNECTION_INTERRUPTED = false;
+    delete ROOM_PWD[roomId];
+    delete ROOM_HIDDEN[roomId];
+    leaveRoom();
+    showScreen('rooms');
+    if (result && result.reason === 'password') openPassOv(room, false);
+    else if (result && result.reason === 'wrong_pass') openPassOv(room, true);
+    else toast((result && result.text) || 'تعذر استعادة دخول الغرفة', false);
+  });
+}
+function requestSocketReconnect() {
+  if (!ME || !CHAT_TOKEN) return;
+  CONNECTION_INTERRUPTED = true;
+  if (!navigator.onLine) return showConnectionOverlay('بانتظار عودة اتصال الإنترنت...', true);
+  showConnectionOverlay('جارٍ إعادة الاتصال...', true);
+  if (!SOCKET) return connectSocketRetry();
+  SOCKET.auth = { client: 'chat', token: CHAT_TOKEN };
+  if (SOCKET.connected) return restoreCurrentRoom(SOCKET);
+  SOCKET.connect();
+}
+$('#reconnectBtn').onclick = requestSocketReconnect;
+window.addEventListener('offline', () => {
+  if (!ME || !CHAT_TOKEN) return;
+  CONNECTION_INTERRUPTED = true;
+  showConnectionOverlay('بانتظار عودة اتصال الإنترنت...', true);
+});
+window.addEventListener('online', () => {
+  if (CONNECTION_INTERRUPTED && ME && CHAT_TOKEN) requestSocketReconnect();
+});
+
 function connectSocket() {
   if (!ME || !CHAT_TOKEN) return;
   // هوية هذه الصفحة تنتقل إلى الخادم عبر WebSocket ولا تعتمد على كوكي مشترك بين التبويبات.
-  SOCKET = io({ auth: { client: 'chat', token: CHAT_TOKEN } });
-  // عند إعادة الاتصال (مثل بعد تسجيل اسم جديد) نعود للغرفة الحالية مباشرة فيُحدَّث الاسم للجميع
-  SOCKET.on('connect', () => {
-    if (CUR_ROOM) SOCKET.emit('join', CUR_ROOM.id, ROOM_PWD[CUR_ROOM.id] || '', { hidden: !!ROOM_HIDDEN[CUR_ROOM.id] });
+  // إعادة الاتصال غير محدودة مع تدرج زمني، مع بقاء الرمز في ذاكرة هذه الصفحة فقط.
+  const socket = io({
+    auth: { client: 'chat', token: CHAT_TOKEN },
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 800,
+    reconnectionDelayMax: 7000,
+    randomizationFactor: .35,
+    timeout: 10000
   });
+  SOCKET = socket;
+  // بعد كل اتصال نعيد الانضمام للغرفة نفسها ثم نخفي إشعار الانقطاع.
+  socket.on('connect', () => restoreCurrentRoom(socket));
   SOCKET.on('msg', (m) => {
     if (CUR_ROOM && m.room_id === CUR_ROOM.id) {
       renderMsg(m);
@@ -567,7 +655,32 @@ function connectSocket() {
   SOCKET.on('banned', ({ text }) => {
     toast(text || 'تم حظرك بواسطة الإدارة', false);
     CHAT_TOKEN = '';
+    hideConnectionOverlay();
     setTimeout(() => location.reload(), 2200);
+  });
+  socket.on('disconnect', reason => {
+    if (socket !== SOCKET || !ME || !CHAT_TOKEN || reason === 'io client disconnect') return;
+    CONNECTION_INTERRUPTED = true;
+    showConnectionOverlay(navigator.onLine ? 'جارٍ إعادة الاتصال...' : 'بانتظار عودة اتصال الإنترنت...', true);
+    // فصل الخادم لا يعاد تلقائياً بواسطة Socket.IO، لذا نشغّل المحاولة يدوياً.
+    if (reason === 'io server disconnect') setTimeout(() => {
+      if (socket === SOCKET && ME && CHAT_TOKEN && !socket.connected) socket.connect();
+    }, 900);
+  });
+  socket.on('connect_error', () => {
+    if (socket !== SOCKET || !ME || !CHAT_TOKEN) return;
+    CONNECTION_INTERRUPTED = true;
+    showConnectionOverlay(navigator.onLine ? 'جارٍ إعادة الاتصال...' : 'بانتظار عودة اتصال الإنترنت...', true);
+  });
+  socket.io.on('reconnect_attempt', attempt => {
+    if (socket !== SOCKET || !ME || !CHAT_TOKEN) return;
+    CONNECTION_INTERRUPTED = true;
+    const status = APP_LANG === 'en' ? `Reconnection attempt ${attempt}...` : `محاولة إعادة الاتصال رقم ${attempt}...`;
+    showConnectionOverlay(status, true);
+  });
+  socket.io.on('reconnect_failed', () => {
+    if (socket === SOCKET && ME && CHAT_TOKEN)
+      showConnectionOverlay('تعذر الاتصال، اضغط على زر اتصال للمحاولة مجددًا', false);
   });
   SOCKET.on('err', (t) => toast(t, false));
 }
@@ -1834,6 +1947,8 @@ async function logoutWithoutReload() {
     await api('/api/logout', 'POST');
   } catch (e) { }
   if (SOCKET) { try { SOCKET.disconnect(); } catch (e) { } }
+  CONNECTION_INTERRUPTED = false;
+  hideConnectionOverlay();
   SOCKET = null; CHAT_TOKEN = ''; ME = null; MYBADGE = 'guest.png';
   CUR_ROOM = null; CUR_TARGET = null; PM_WITH = null; ROOM_USERS = [];
   IGNORED_USERS = new Set(); STATUSES = []; NOTIFS = []; CURRENT_NOTIFICATIONS = [];
