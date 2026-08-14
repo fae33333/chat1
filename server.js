@@ -810,6 +810,7 @@ app.get('/api/admin/settings', requireAdmin, async (req, res) => res.json(await 
 app.post('/api/admin/settings', requireAdmin, async (req, res) => {
   const entries = Object.entries(req.body);
   for (const [k, v] of entries) await q.run(`INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, String(v));
+  if (req.body.hidden_super !== undefined && String(req.body.hidden_super) !== '1') await revealHiddenAdmins();
   reloadBots();      // قد يكون تبديل «تفعيل الروبوت» تغيّر
   io.emit('sync');   // تطبيق فوري على صفحات الدردشة
   res.json({ ok: true });
@@ -1285,6 +1286,7 @@ app.get('/api/public-settings', async (req, res) => {
   res.json({
     site_name: s.site_name, logo_url: s.logo_url, skin: s.skin, font_size: s.font_size,
     show_smiles: s.show_smiles, show_voice: s.show_voice, show_image: s.show_image, show_time: s.show_time,
+    hidden_super: s.hidden_super,
     snd_join: s.snd_join, snd_msg: s.snd_msg, snd_leave: s.snd_leave,
     msg_max: +s.msg_max || 500,
     vip_cost: +s.vip_cost, premium_cost: +s.premium_cost, plus_cost: +s.plus_cost
@@ -1312,12 +1314,28 @@ const onlineUsers = {};   // uid -> pubUser(+badge)
 const userSockets = {};   // uid -> [socketId]
 const roomUsers = {};     // roomId -> Set(uid)
 
-function userStillHasSocketInRoom(uid, roomId, excludedSocketId = '') {
+function userStillHasVisibleSocketInRoom(uid, roomId, excludedSocketId = '') {
+  roomId = +roomId;
   return (userSockets[uid] || []).some(socketId => {
     if (socketId === excludedSocketId) return false;
     const activeSocket = io.sockets.sockets.get(socketId);
-    return !!(activeSocket && activeSocket.rooms.has('room_' + roomId));
+    return !!(activeSocket && activeSocket.rooms.has('room_' + roomId)
+      && !(activeSocket.data.hiddenRooms || new Set()).has(roomId));
   });
+}
+async function revealHiddenAdmins() {
+  const affectedRooms = new Set();
+  for (const activeSocket of io.sockets.sockets.values()) {
+    const hiddenRooms = [...(activeSocket.data.hiddenRooms || [])];
+    for (const roomId of hiddenRooms) {
+      activeSocket.data.hiddenRooms.delete(+roomId);
+      activeSocket.emit('hidden_mode_changed', { roomId: +roomId, hidden: false });
+      (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(+activeSocket.data.userId);
+      affectedRooms.add(+roomId);
+    }
+  }
+  for (const roomId of affectedRooms) await emitRoomUsers(roomId);
+  if (affectedRooms.size) await emitRoomCounts();
 }
 function emitRoomSystemEvent(roomId, type, text, extra = {}) {
   io.to('room_' + roomId).emit('msg', {
@@ -1344,6 +1362,7 @@ io.on('connection', async (socket) => {
   socket.data.registered = me.registered ? 1 : 0;
   socket.data.clientIp = clientIp;
   socket.data.joinedRooms = new Set();
+  socket.data.hiddenRooms = new Set();
 
   const mePub = { ...pubUser(me), badge: badgeOf(me) };
   onlineUsers[uid] = mePub;
@@ -1351,9 +1370,10 @@ io.on('connection', async (socket) => {
   socket.join('user_' + uid);
 
   // دخول غرفة (مع فحص الإغلاق وكلمة المرور) — الرد عبر ack حتى يعرف العميل السبب
-  socket.on('join', async (roomId, pwd, cb) => {
-    const ack = (typeof cb === 'function') ? cb : (typeof pwd === 'function' ? pwd : null);
+  socket.on('join', async (roomId, pwd, options, cb) => {
+    const ack = typeof cb === 'function' ? cb : (typeof options === 'function' ? options : (typeof pwd === 'function' ? pwd : null));
     if (typeof pwd === 'function') pwd = '';
+    if (!options || typeof options !== 'object') options = {};
     const done = (o) => { if (ack) ack(o); };
     const room = await q.get(`SELECT * FROM rooms WHERE id=?`, roomId);
     if (!room) return done({ ok: false, reason: 'missing', text: 'الغرفة غير موجودة' });
@@ -1366,19 +1386,24 @@ io.on('connection', async (socket) => {
       text: '🚫 أنت مطرود من هذه الغرفة' + (kick.reason ? ': ' + kick.reason : '') + ' — تواصل مع الإدارة لفك الطرد'
     });
     const isAdm = me.rank === 'superadmin' || me.rank === 'admin';
+    const hiddenSetting = (await getSettings()).hidden_super === '1';
+    const enterHidden = !!options.hidden && isAdm && hiddenSetting;
     if (room.status !== 'open' && !isAdm)
       return done({ ok: false, reason: 'closed', text: '🔒 هذه الغرفة مغلقة حالياً من الإدارة' });
     if (room.password && !isAdm) {
       if (!pwd) return done({ ok: false, reason: 'password' });                 // يتطلب كلمة مرور
       if (String(pwd) !== String(room.password)) return done({ ok: false, reason: 'wrong_pass' });   // خاطئة — لا يدخل
     }
-    if (socket.data.joinedRooms.has(+roomId)) return done({ ok: true });
+    roomId = +roomId;
+    if (socket.data.joinedRooms.has(roomId))
+      return done({ ok: true, hidden: socket.data.hiddenRooms.has(roomId) });
     socket.join('room_' + roomId);
-    socket.data.joinedRooms.add(+roomId);
-    (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(uid);
+    socket.data.joinedRooms.add(roomId);
+    if (enterHidden) socket.data.hiddenRooms.add(roomId);
+    else (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(uid);
 
-    // رسالة دخول ظاهرة للجميع بالشكل المرجعي، مع إبقاء السجل القديم غير محمّل.
-    emitRoomSystemEvent(roomId, 'join', `مرحباً بـ ${me.username} في غرفة ${room.name}`);
+    // لا نعلن دخول الإدارة المخفية ولا نضيفها إلى قائمة مستخدمي الغرفة.
+    if (!enterHidden) emitRoomSystemEvent(roomId, 'join', `مرحباً بـ ${me.username} في غرفة ${room.name}`);
     // ترحيب الإدارة الاختياري يظهر للداخل فقط بعد رسالة الدخول.
     const welcome = String(room.welcome || '').trim();
     if (welcome) socket.emit('msg', {
@@ -1387,16 +1412,18 @@ io.on('connection', async (socket) => {
     });
     emitRoomUsers(roomId);
     emitRoomCounts();
-    done({ ok: true });
+    done({ ok: true, hidden: enterHidden });
   });
 
   // مغادرة غرفة
   socket.on('leave', async (roomId) => {
     roomId = +roomId;
     if (!socket.data.joinedRooms.has(roomId)) return;
+    const wasHidden = socket.data.hiddenRooms.has(roomId);
     socket.data.joinedRooms.delete(roomId);
+    socket.data.hiddenRooms.delete(roomId);
     socket.leave('room_' + roomId);
-    if (!userStillHasSocketInRoom(uid, roomId, socket.id)) {
+    if (!wasHidden && !userStillHasVisibleSocketInRoom(uid, roomId, socket.id)) {
       if (roomUsers[roomId]) roomUsers[roomId].delete(uid);
       emitRoomSystemEvent(roomId, 'leave', `${me.username} خرج من الغرفة`);
     }
@@ -1406,8 +1433,11 @@ io.on('connection', async (socket) => {
 
   // رسالة عامة
   socket.on('msg', async ({ roomId, text, reply, color }) => {
+    roomId = +roomId;
+    if (!socket.data.joinedRooms.has(roomId)) return socket.emit('err', 'يجب دخول الغرفة قبل الكتابة');
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
     if (me.muted) return socket.emit('err', 'أنت مكتوم ولا يمكنك الكتابة');
+    const hiddenAdmin = socket.data.hiddenRooms.has(roomId) && (me.rank === 'superadmin' || me.rank === 'admin');
     text = String(text || '').slice(0, 500).trim();
     if (!text) return;
     // فلترة الكلمات (لا تطبق على رابط الإيموجي المصور)
@@ -1419,12 +1449,13 @@ io.on('connection', async (socket) => {
     onlineUsers[uid] = freshPub;
     const rp = reply && reply.name ? { name: String(reply.name).slice(0, 40), text: String(reply.text || '').slice(0, 90) } : null;   // الرد على الرسالة
     const col = /^#[0-9a-fA-F]{6}$/.test(String(color || '')) ? String(color) : null;   // لون الخط من قائمة الألوان
-    const extra = JSON.stringify({ badge: freshPub.badge, gender: me.gender, rank: me.rank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, verified: VERIFIED_SET.has(me.username) ? 1 : 0 });
+    const messageUser = hiddenAdmin ? { ...freshPub, hidden_admin: 1 } : freshPub;
+    const extra = JSON.stringify({ badge: freshPub.badge, gender: me.gender, rank: me.rank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, verified: VERIFIED_SET.has(me.username) ? 1 : 0, hidden_admin: hiddenAdmin ? 1 : 0 });
     const ins = await q.run(`INSERT INTO messages (room_id,user_id,username,text,type,extra) VALUES (?,?,?,?,'msg',?)`, roomId, uid, me.username, text, extra);
     const msg = {
-      id: ins.lastID, room_id: +roomId, text, type: 'msg',
+      id: ins.lastID, room_id: roomId, text, type: 'msg', hidden_admin: hiddenAdmin ? 1 : 0,
       created_at: Math.floor(Date.now() / 1000),
-      user: freshPub, reply: rp, color: col
+      user: messageUser, reply: rp, color: col
     };
     io.to('room_' + roomId).emit('msg', msg);
   });
@@ -1455,9 +1486,11 @@ io.on('connection', async (socket) => {
 
   socket.on('disconnect', () => {
     const joinedRooms = [...(socket.data.joinedRooms || [])];
+    const hiddenRooms = new Set(socket.data.hiddenRooms || []);
     userSockets[uid] = (userSockets[uid] || []).filter(s => s !== socket.id);
     for (const roomId of joinedRooms) {
-      if (!userStillHasSocketInRoom(uid, roomId)) {
+      // خروج الجلسة المخفية لا يظهر كرسالة نظام ولا يغيّر قائمة المتصلين.
+      if (!hiddenRooms.has(+roomId) && !userStillHasVisibleSocketInRoom(uid, roomId)) {
         if (roomUsers[roomId]) roomUsers[roomId].delete(uid);
         emitRoomSystemEvent(roomId, 'leave', `${me.username} خرج من الغرفة`);
         emitRoomUsers(roomId);

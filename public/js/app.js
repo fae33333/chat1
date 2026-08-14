@@ -7,12 +7,14 @@ let ME = null, MYBADGE = 'guest.png', SOCKET = null;
 // رمز هوية خاص بهذه الصفحة فقط؛ لا يُحفظ في localStorage أو sessionStorage.
 // عند التحديث أو فتح تبويب جديد يجب إدخال الاسم من جديد.
 let CHAT_TOKEN = '';
-let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1' };
+let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1' };
 let PREFS = { snd_all: 1, snd_msg: 0, snd_join: 1, show_time: 1, pm_recv: 1 };
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
 let ROOMS = [], ROOM_COUNTS = {}, CUR_ROOM = null, CUR_TAB = 'default';
 let ROOM_PWD = {};                       // كلمات مرور الغرف الصحيحة لهذه الجلسة (لا تُعاد كتابتها)
+let ROOM_HIDDEN = {};                    // اختيار الدخول المخفي لكل غرفة في هذه الصفحة فقط
+let HIDDEN_ENTRY_PENDING = null;
 const isAdmRank = () => ME && (ME.rank === 'superadmin' || ME.rank === 'admin');
 const canModerateRank = () => ME && ['superadmin', 'admin', 'roomadmin'].includes(ME.rank);
 let ROOM_USERS = [], CUR_TARGET = null;
@@ -109,7 +111,9 @@ Object.assign(I18N_EN, {
   'إلغاء التجاهل': 'Unignore', 'قائمة التجاهل فارغة': 'Your ignore list is empty', 'جاري تحميل قائمة التجاهل...': 'Loading ignore list...',
   'جاري تحميل الهدايا...': 'Loading gifts...', 'لم تستلم أي هدايا بعد': 'You have not received any gifts yet', 'تعذر تحميل الهدايا': 'Could not load gifts',
   'من:': 'From:', 'متجاهل • الرسائل الخاصة متوقفة': 'Ignored • private messages disabled', 'تم إغلاق المحادثة بسبب التجاهل': 'The conversation was closed because of the ignore setting',
-  'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available', 'إلغاء تجاهل': 'Unignore', 'الهدية من': 'Gift from', 'كمية:': 'Quantity:', 'صورة المستخدم': 'User photo'
+  'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available', 'إلغاء تجاهل': 'Unignore', 'الهدية من': 'Gift from', 'كمية:': 'Quantity:', 'صورة المستخدم': 'User photo',
+  'طريقة دخول الغرفة': 'Room entry mode', 'اختر طريقة دخولك إلى غرفة': 'Choose how to enter room', 'دخول ظاهر': 'Visible entry', 'دخول مخفي': 'Hidden entry',
+  'تم الدخول إلى الغرفة بشكل مخفي': 'You entered the room invisibly', 'تم إيقاف الدخول المخفي من لوحة الإدارة': 'Hidden entry was disabled by the administration'
 });
 const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
 function translateDynamicText(text) {
@@ -368,7 +372,9 @@ function connectSocket() {
   // هوية هذه الصفحة تنتقل إلى الخادم عبر WebSocket ولا تعتمد على كوكي مشترك بين التبويبات.
   SOCKET = io({ auth: { client: 'chat', token: CHAT_TOKEN } });
   // عند إعادة الاتصال (مثل بعد تسجيل اسم جديد) نعود للغرفة الحالية مباشرة فيُحدَّث الاسم للجميع
-  SOCKET.on('connect', () => { if (CUR_ROOM) SOCKET.emit('join', CUR_ROOM.id, ROOM_PWD[CUR_ROOM.id] || ''); });
+  SOCKET.on('connect', () => {
+    if (CUR_ROOM) SOCKET.emit('join', CUR_ROOM.id, ROOM_PWD[CUR_ROOM.id] || '', { hidden: !!ROOM_HIDDEN[CUR_ROOM.id] });
+  });
   SOCKET.on('msg', (m) => {
     if (CUR_ROOM && m.room_id === CUR_ROOM.id) {
       renderMsg(m);
@@ -379,6 +385,10 @@ function connectSocket() {
   });
   SOCKET.on('roomUsers', ({ roomId, users, count }) => {
     if (CUR_ROOM && roomId === CUR_ROOM.id) { ROOM_USERS = users; renderUsers(); }
+  });
+  SOCKET.on('hidden_mode_changed', ({ roomId, hidden }) => {
+    ROOM_HIDDEN[+roomId] = !!hidden;
+    if (!hidden && CUR_ROOM && +roomId === CUR_ROOM.id) toast('تم إيقاف الدخول المخفي من لوحة الإدارة');
   });
   SOCKET.on('roomCounts', (c) => { ROOM_COUNTS = c; renderRooms(); });
   SOCKET.on('private', (p) => {
@@ -538,15 +548,24 @@ function renderRooms() {
   $$('#roomsList .room-row').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
   renderRoomsPanel();
 }
-function enterRoom(id, pwd) {
+function enterRoom(id, pwd, hiddenChoice) {
   if (!ME) { openLogin(); return; }
   const r = ROOMS.find(x => x.id === id);
   if (!r) return;
   if (r.status !== 'open' && !isAdmRank()) return toast('🔒 هذه الغرفة مغلقة حالياً');
   const adm = isAdmRank();
+  // عند تفعيل الميزة، يختار السوبر أدمن أو الأدمن طريقة الدخول قبل فتح الغرفة.
+  if (adm && SETTINGS.hidden_super === '1' && hiddenChoice === undefined) {
+    HIDDEN_ENTRY_PENDING = { id, pwd: pwd || '' };
+    $('#hiddenEntryRoomName').textContent = r.name;
+    openOv('hiddenEntryOv');
+    return;
+  }
+  const hidden = adm && SETTINGS.hidden_super === '1' && hiddenChoice === true;
   const pass = adm ? '' : (pwd || ROOM_PWD[id] || '');
   if (r.locked && !adm && !pass) { openPassOv(r); return; }   // اطلب كلمة السر قبل الدخول
   if (pass) ROOM_PWD[id] = pass;
+  ROOM_HIDDEN[id] = hidden;
   CUR_ROOM = r;
   $('#chatRoomName').textContent = r.name;
   $('#roomNotice').textContent = 'لا يوجد احد في البث المباشر حي الان';
@@ -554,14 +573,17 @@ function enterRoom(id, pwd) {
   showScreen('chat');
   setRoomsPanel(false);
   $('#roomsVeil').style.display = 'none';
-  SOCKET.emit('join', id, pass, (res) => {
+  SOCKET.emit('join', id, pass, { hidden }, (res) => {
     if (res && res.ok) {
+      ROOM_HIDDEN[id] = !!res.hidden;
       // لا نحمّل سجل الرسائل القديم؛ العام يبدأ فارغاً ويظهر فقط ترحيب الغرفة من الإدارة.
       api('/api/rooms/' + id + '/users').then(u => { ROOM_USERS = u; renderUsers(); });
+      if (res.hidden) toast('تم الدخول إلى الغرفة بشكل مخفي');
       return;
     }
     // رُفض الدخول (كلمة مرور خاطئة/غرفة مغلقة/مطرود) — نرجع لقائمة الغرف
     delete ROOM_PWD[id];
+    delete ROOM_HIDDEN[id];
     leaveRoom();
     showScreen('rooms');
     if (res.reason === 'password') openPassOv(r, false);
@@ -570,6 +592,20 @@ function enterRoom(id, pwd) {
     else toast(res.text || 'تعذر الدخول للغرفة', false);
   });
 }
+$('#hiddenEntryVisible').onclick = () => {
+  const pending = HIDDEN_ENTRY_PENDING;
+  HIDDEN_ENTRY_PENDING = null;
+  closeOv('hiddenEntryOv');
+  if (pending) enterRoom(pending.id, pending.pwd, false);
+};
+$('#hiddenEntryHidden').onclick = () => {
+  const pending = HIDDEN_ENTRY_PENDING;
+  HIDDEN_ENTRY_PENDING = null;
+  closeOv('hiddenEntryOv');
+  if (pending) enterRoom(pending.id, pending.pwd, true);
+};
+$('.hidden-entry-close').addEventListener('click', () => { HIDDEN_ENTRY_PENDING = null; });
+$('#hiddenEntryOv').addEventListener('click', event => { if (event.target === $('#hiddenEntryOv')) HIDDEN_ENTRY_PENDING = null; });
 // نافذة كلمة مرور الغرفة المحمية
 let PASS_ROOM = null;
 function openPassOv(r, wrong) {
@@ -621,7 +657,8 @@ function renderMsg(m) {
     const tcol = m.color || u.color || null;  // لون خط مخصص من قائمة الألوان
     const tsize = Math.min(40, Math.max(12, +(m.size || u.size || 0))) || null;   // حجم خط مخصص (الروبوت)
     const isCustomEmoji = typeof m.text === 'string' && m.text.startsWith('em::');
-    el.className = 'msg';
+    const hiddenAdmin = !!(m.hidden_admin || u.hidden_admin);
+    el.className = 'msg' + (hiddenAdmin ? ' hidden-admin-msg' : '');
     el.innerHTML = `
       <div class="mava">${avatarHtml(u.avatar)}</div>
       <div class="mbody">
@@ -631,14 +668,16 @@ function renderMsg(m) {
         </div>
         ${rp ? `<span class="mrply" dir="rtl"><i class="f7-icons">arrowshape_turn_up_left_fill</i>${esc(rp.name)}: ${esc(rp.text)}</span>` : ''}
         <div class="mline2">
-          ${(badge && badge !== 'register.png' && badge !== 'guest.png') ? `<img class="mmark" src="/badges/${badge}" alt="">` : ''}
+          ${hiddenAdmin
+            ? '<img class="hidden-admin-badge" src="/img/mgfi.png" alt="دخول مخفي">'
+            : ((badge && badge !== 'register.png' && badge !== 'guest.png') ? `<img class="mmark" src="/badges/${badge}" alt="">` : '')}
           ${isCustomEmoji
             ? `<img class="mcustom-emoji" src="${esc(m.text.slice(4))}" alt="emoji">`
             : `<span class="mtext message-content" style="color:${tcol || color};font-size:${tsize || SETTINGS.font_size || 14}px">${messageTextWithCustomEmojis(m.text)}</span>`}
         </div>
       </div>`;
-    // النقر على صورة الرسالة يفتح ورقة المستخدم (ومن بينها «الرد على الرسالة»)
-    el.querySelector('.mava').onclick = () => {
+    // الإدارة المخفية لا يمكن فتح بطاقتها أو إرسال شيء لها بالنقر على رسالتها.
+    if (!hiddenAdmin) el.querySelector('.mava').onclick = () => {
       const uid = m.user_id || (m.user && m.user.id);
       if (uid) openUserSheet(+uid, { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted });
     };
@@ -1870,7 +1909,10 @@ function setUsersPanel(open) {
 }
 $('#usersPanelX').onclick = () => setUsersPanel(false);
 function leaveRoom() {
-  if (CUR_ROOM) SOCKET.emit('leave', CUR_ROOM.id);
+  if (CUR_ROOM) {
+    SOCKET.emit('leave', CUR_ROOM.id);
+    delete ROOM_HIDDEN[CUR_ROOM.id];
+  }
   CUR_ROOM = null;
   ROOM_USERS = [];
   closeOv('usersPanel');

@@ -689,6 +689,20 @@
     </div>
   </div>
 
+  <!-- اختيار دخول الإدارة إلى الغرفة: ظاهر أو مخفي -->
+  <div class="overlay center hidden-entry-overlay" id="hiddenEntryOv">
+    <div class="hidden-entry-dialog">
+      <button class="hidden-entry-close" type="button" data-close="hiddenEntryOv" aria-label="إغلاق"><i class="f7-icons">xmark</i></button>
+      <img class="hidden-entry-logo" src="/img/mgfi.png" alt="دخول مخفي">
+      <h3>طريقة دخول الغرفة</h3>
+      <p>اختر طريقة دخولك إلى غرفة <b id="hiddenEntryRoomName">-</b></p>
+      <div class="hidden-entry-actions">
+        <button class="hidden-entry-visible" id="hiddenEntryVisible" type="button"><i class="f7-icons">eye_fill</i><span>دخول ظاهر</span></button>
+        <button class="hidden-entry-hidden" id="hiddenEntryHidden" type="button"><img src="/img/mgfi.png" alt=""><span>دخول مخفي</span></button>
+      </div>
+    </div>
+  </div>
+
   <!-- تأكيد الخروج من الغرفة -->
   <div class="overlay center" id="exitOv">
     <div class="dialog">

@@ -839,6 +839,22 @@ body.lang-en .toast { direction:ltr; }
 
 /* ============ نافذة تأكيد الخروج ============ */
 .overlay.center { align-items:center; justify-content:center; }
+.hidden-entry-overlay { padding:16px; }
+.hidden-entry-dialog { position:relative; width:min(100%,340px); padding:20px 18px 18px; border-radius:22px; background:#fff; text-align:center; box-shadow:0 24px 70px rgba(11,16,35,.38); animation:pop .22s; }
+.hidden-entry-close { position:absolute; top:10px; left:10px; width:30px; height:30px; padding:0; border:0; border-radius:50%; background:#f0f2f7; color:#687086; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.hidden-entry-close i { font-size:17px; }
+.hidden-entry-logo { width:64px; height:60px; object-fit:contain; display:block; margin:0 auto 8px; }
+.hidden-entry-dialog h3 { color:#171b2f; font-size:17px; font-weight:700; }
+.hidden-entry-dialog p { margin-top:5px; color:#757d90; font-size:12px; line-height:1.7; }
+.hidden-entry-dialog p b { color:#343a50; }
+.hidden-entry-actions { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:17px; }
+.hidden-entry-actions button { min-height:76px; padding:9px 6px; border-radius:14px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; font-size:12px; font-weight:700; }
+.hidden-entry-visible { border:1.5px solid #dce2ee; background:#f8f9fc; color:#343a50; }
+.hidden-entry-visible i { color:#1685f5; font-size:27px; }
+.hidden-entry-hidden { border:1.5px solid #8b5cf6; background:#f3edff; color:#6d39cb; }
+.hidden-entry-hidden img { width:38px; height:35px; object-fit:contain; }
+.hidden-admin-msg .mava,.hidden-admin-msg .mname { cursor:default !important; pointer-events:none; }
+.msg .hidden-admin-badge { width:28px; height:27px; object-fit:contain; flex:none; }
 .dialog { background:#fff; border-radius:14px; width:78%; max-width:320px; overflow:hidden; animation:pop .2s; }
 .dlg-title { text-align:center; font-size:15px; font-weight:900; color:var(--navy); padding:14px 12px 4px; }
 .dlg-body { text-align:center; font-size:12.5px; font-weight:700; color:#565d77; padding:4px 16px 16px; }
