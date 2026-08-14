@@ -137,11 +137,13 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     img TEXT DEFAULT '',                 -- مسار صورة مرفوعة أو إيموجي
+    audio TEXT DEFAULT '',               -- ملف صوت الهدية
     price INTEGER DEFAULT 1,             -- قيمة الهدية (تُخصم من المُرسِل)
     payout INTEGER DEFAULT 0,            -- ربح المستقبِل من الهدية (ذهب)
     cat TEXT DEFAULT 'افتراضي',
     active INTEGER DEFAULT 1
   )`);
+  db.run(`ALTER TABLE gifts ADD COLUMN audio TEXT DEFAULT ''`, () => { });
   db.run(`CREATE TABLE IF NOT EXISTS custom_emojis (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     img TEXT NOT NULL,
@@ -155,10 +157,12 @@ db.serialize(() => {
     to_name TEXT,
     gift_name TEXT,
     gift_img TEXT,
+    gift_audio TEXT DEFAULT '',
     price INTEGER DEFAULT 0,
     qty INTEGER DEFAULT 1,
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+  db.run(`ALTER TABLE gifts_log ADD COLUMN gift_audio TEXT DEFAULT ''`, () => { });
 
   // ---------- طلبات التوثيق والترقية ----------
   db.run(`CREATE TABLE IF NOT EXISTS service_requests (

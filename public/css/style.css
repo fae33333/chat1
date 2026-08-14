@@ -1046,6 +1046,16 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
 .gm-sb { color:#98a0b3; font-size:11.5px; font-weight:800; text-align:right; margin-top:1px; }
 .gift-msg .ge img, .ge-img { width:40px; height:40px; object-fit:contain; }
 .gift-cell .ge img { width:44px; height:44px; object-fit:contain; }
+/* مؤثرات الهدية: مفرقعات وقصاصات تغطي شاشة الشات بالكامل */
+.gift-celebration-layer { position:absolute; inset:0; z-index:99998; overflow:hidden; pointer-events:none; }
+.gift-confetti { position:absolute; top:-22px; left:var(--left); width:var(--w); height:var(--h); border-radius:2px; background:var(--color); opacity:.98; transform:rotate(var(--rotate)); animation:giftConfettiFall var(--duration) cubic-bezier(.2,.7,.35,1) var(--delay) forwards; }
+@keyframes giftConfettiFall { 0% { transform:translate3d(0,-20px,0) rotate(var(--rotate)); } 100% { transform:translate3d(var(--drift),110dvh,0) rotate(calc(var(--rotate) + 760deg)); opacity:.75; } }
+.gift-firework { position:absolute; left:var(--x); top:var(--y); width:4px; height:4px; }
+.gift-firework-spark { position:absolute; left:0; top:0; width:5px; height:5px; border-radius:50%; background:var(--color); box-shadow:0 0 7px var(--color); animation:giftFireworkBurst 1.05s ease-out var(--delay) forwards; }
+@keyframes giftFireworkBurst { 0% { transform:translate(0,0) scale(.3); opacity:1; } 75% { opacity:1; } 100% { transform:translate(var(--tx),var(--ty)) scale(.8); opacity:0; } }
+.gift-celebration-glow { position:absolute; left:50%; top:48%; width:28px; height:28px; margin:-14px; border-radius:50%; border:4px solid rgba(255,215,64,.92); box-shadow:0 0 25px #ffcf40; animation:giftGlow 1s ease-out forwards; }
+@keyframes giftGlow { from { transform:scale(.2); opacity:1; } to { transform:scale(9); opacity:0; } }
+@media (prefers-reduced-motion:reduce) { .gift-confetti,.gift-firework-spark,.gift-celebration-glow { animation-duration:.01ms !important; } }
 
 /* ============ حالات المستخدمين ============ */
 .status-cbtn { position:relative; }

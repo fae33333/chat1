@@ -119,17 +119,26 @@ const inpRow = (icon, color, label, key, type = 'number', suffix = 'رصيد') =
 //  الصفحات
 // =====================================================
 // ---- مساعدا قسمَي الهدايا والإيموجي ----
-let ED_GIFT = null;
+let ED_GIFT = null, ADMIN_GIFT_AUDIO = null;
 async function renderAdminGifts() {
   const list = await api('/api/admin/gifts');
   $('#gAdminList').innerHTML = list.map(g => `
     <div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e7eaf5;border-radius:12px;padding:10px 14px">
       ${g.img && g.img.startsWith('/') ? `<img src="${esc(g.img)}" style="width:46px;height:46px;object-fit:contain;background:#f6f7fc;border-radius:10px;padding:4px">` : `<span style="font-size:32px;width:46px;text-align:center">${esc(g.img || '🎁')}</span>`}
       <div style="flex:1"><b style="font-size:13.5px;color:#2c3154">${esc(g.name)}</b>
-        <div style="font-size:11.5px;color:#98a0b3;font-weight:700">القيمة: ${g.price} 🪙 ← يربح المستقبل: ${g.payout} 🪙 • ${esc(g.cat)}</div></div>
+        <div style="font-size:11.5px;color:#98a0b3;font-weight:700">القيمة: ${g.price} 🪙 ← يربح المستقبل: ${g.payout} 🪙 • ${esc(g.cat)}</div>
+        <div style="font-size:10.5px;color:${g.audio ? '#16a34a' : '#9ca3af'};font-weight:700;margin-top:3px">${g.audio ? '🔊 صوت الهدية مرفق' : '🔇 بدون صوت'}</div></div>
+      ${g.audio ? `<button class="btn btn-gray g-audio-play" data-src="${esc(g.audio)}" style="padding:7px 10px"><i class="f7-icons">play_fill</i> تجربة</button>` : ''}
       <button class="btn btn-gray g-edit" data-id="${g.id}" style="padding:7px 13px"><i class="f7-icons">pencil</i> تعديل</button>
       <button class="btn btn-red g-del" data-id="${g.id}" style="padding:7px 13px"><i class="f7-icons">trash</i> حذف</button>
     </div>`).join('') || '<div style="color:#9aa0b5;font-weight:800;text-align:center;padding:18px">لا توجد هدايا</div>';
+  $$('.g-audio-play').forEach(button => button.onclick = async () => {
+    try {
+      if (ADMIN_GIFT_AUDIO) { ADMIN_GIFT_AUDIO.pause(); ADMIN_GIFT_AUDIO.currentTime = 0; }
+      ADMIN_GIFT_AUDIO = new Audio(button.dataset.src);
+      await ADMIN_GIFT_AUDIO.play();
+    } catch (e) { toast('تعذر تشغيل صوت الهدية', false); }
+  });
   $$('.g-edit').forEach(b => b.onclick = () => { ED_GIFT = list.find(x => x.id === +b.dataset.id); loadPage('gifts'); });
   $$('.g-del').forEach(b => b.onclick = async () => {
     if (!confirm('حذف هذه الهدية نهائياً؟')) return;
@@ -311,6 +320,15 @@ const PAGES = {
             <div style="font-size:11px;color:#9aa0b5;margin-top:6px" id="gImgPath">${esc(ge.img || 'لم تُرفع صورة بعد')}</div>
           </div>
         </div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;padding:12px;border-radius:12px;background:#f8f5ff;border:1px solid #e9ddff">
+          <div style="width:54px;height:54px;border-radius:50%;background:#7c3aed;color:#fff;display:flex;align-items:center;justify-content:center"><i class="f7-icons" style="font-size:25px">music_note_2</i></div>
+          <div style="flex:1;min-width:0">
+            <button class="btn btn-purple" id="gAudioUpBtn"><i class="f7-icons">waveform</i> رفع صوت الهدية</button>
+            <input type="file" id="gAudioFile" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/aac,audio/opus,audio/webm,.mp3,.wav,.ogg,.m4a,.aac,.opus,.webm" style="display:none">
+            <div style="font-size:11px;color:#7b8495;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="gAudioPath">${esc(ge.audio || 'لم يُرفع صوت بعد')}</div>
+            <audio id="gAudioPreview" src="${esc(ge.audio || '')}" controls style="${ge.audio ? '' : 'display:none;'}width:100%;height:30px;margin-top:7px"></audio>
+          </div>
+        </div>
         <div class="inp-row"><label>اسم الهدية</label><input class="inp" id="gName" value="${esc(ge.name || '')}" placeholder="مثال: أسد"></div>
         <div class="inp-row"><label>قيمة الهدية بالذهب (تُخصم من مُرسِل الهدية)</label><input class="inp" id="gPrice" type="number" min="0" value="${ge.price ?? 10}"></div>
         <div class="inp-row"><label>كم يربح مستقبِل الهدية منها (ذهب) — مثال: قيمتها 10 يربح 4</label><input class="inp" id="gPayout" type="number" min="0" value="${ge.payout ?? 4}"></div>
@@ -334,6 +352,18 @@ const PAGES = {
         $('#gPrev').innerHTML = `<img src="${esc(d.path)}" style="width:54px;height:54px;object-fit:contain">`;
         toast('تم رفع الصورة');
       };
+      $('#gAudioUpBtn').onclick = () => $('#gAudioFile').click();
+      $('#gAudioFile').onchange = async () => {
+        if (!$('#gAudioFile').files[0]) return;
+        const fd = new FormData(); fd.append('file', $('#gAudioFile').files[0]);
+        try {
+          const d = await api('/api/admin/upload/gift-audio', 'POST', fd, true);
+          $('#gAudioPath').textContent = d.path;
+          $('#gAudioPreview').src = d.path;
+          $('#gAudioPreview').style.display = '';
+          toast('تم رفع صوت الهدية');
+        } catch (e) { toast(e.error || 'تعذر رفع صوت الهدية', false); }
+      };
       $('#gSave').onclick = async () => {
         try {
           const pathTxt = $('#gImgPath').textContent.trim();
@@ -341,6 +371,7 @@ const PAGES = {
             id: ED_GIFT && ED_GIFT.id,
             name: $('#gName').value,
             img: pathTxt.startsWith('/') ? pathTxt : ((ED_GIFT && ED_GIFT.img) || ''),
+            audio: $('#gAudioPath').textContent.trim().startsWith('/') ? $('#gAudioPath').textContent.trim() : ((ED_GIFT && ED_GIFT.audio) || ''),
             price: $('#gPrice').value, payout: $('#gPayout').value, cat: $('#gCat').value
           });
           ED_GIFT = null;

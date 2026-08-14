@@ -381,7 +381,8 @@ function connectSocket() {
     if (CUR_ROOM && m.room_id === CUR_ROOM.id) {
       renderMsg(m);
       scrollBottom();
-      if (m.type === 'join' && PREFS.snd_join && SETTINGS.snd_join === '1') beep(520, .1);
+      if (m.type === 'gift') triggerGiftCelebration(parseExtra(m));
+      else if (m.type === 'join' && PREFS.snd_join && SETTINGS.snd_join === '1') beep(520, .1);
       else if (m.type === 'msg' && PREFS.snd_msg && SETTINGS.snd_msg === '1') beep(740, .07);
     }
   });
@@ -803,6 +804,55 @@ function renderMsg(m) {
 }
 function parseExtra(m) {
   try { return JSON.parse(m.extra || '{}'); } catch (e) { return {}; }
+}
+let GIFT_AUDIO_PLAYER = null, GIFT_EFFECT_TIMER = null;
+function triggerGiftCelebration(gift) {
+  const details = gift || {};
+  const layer = $('#giftCelebrationLayer');
+  if (!layer) return;
+  clearTimeout(GIFT_EFFECT_TIMER);
+  layer.innerHTML = '<span class="gift-celebration-glow"></span>';
+  const colors = ['#ff315f', '#ffcf33', '#16c784', '#1685f5', '#8b5cf6', '#ff7a18', '#ffffff'];
+  for (let i = 0; i < 110; i++) {
+    const piece = document.createElement('i');
+    piece.className = 'gift-confetti';
+    piece.style.setProperty('--left', Math.random() * 100 + '%');
+    piece.style.setProperty('--w', (5 + Math.random() * 7) + 'px');
+    piece.style.setProperty('--h', (8 + Math.random() * 11) + 'px');
+    piece.style.setProperty('--color', colors[i % colors.length]);
+    piece.style.setProperty('--rotate', Math.floor(Math.random() * 360) + 'deg');
+    piece.style.setProperty('--drift', (-90 + Math.random() * 180) + 'px');
+    piece.style.setProperty('--duration', (2.7 + Math.random() * 1.5) + 's');
+    piece.style.setProperty('--delay', (Math.random() * .65) + 's');
+    layer.appendChild(piece);
+  }
+  for (let burst = 0; burst < 5; burst++) {
+    const firework = document.createElement('span');
+    firework.className = 'gift-firework';
+    firework.style.setProperty('--x', (12 + Math.random() * 76) + '%');
+    firework.style.setProperty('--y', (14 + Math.random() * 52) + '%');
+    for (let spark = 0; spark < 14; spark++) {
+      const particle = document.createElement('i');
+      const angle = Math.PI * 2 * spark / 14;
+      const distance = 42 + Math.random() * 42;
+      particle.className = 'gift-firework-spark';
+      particle.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
+      particle.style.setProperty('--ty', Math.sin(angle) * distance + 'px');
+      particle.style.setProperty('--color', colors[(burst + spark) % colors.length]);
+      particle.style.setProperty('--delay', (burst * .22) + 's');
+      firework.appendChild(particle);
+    }
+    layer.appendChild(firework);
+  }
+  GIFT_EFFECT_TIMER = setTimeout(() => { layer.innerHTML = ''; }, 4600);
+  if (details.audio && String(details.audio).startsWith('/')) {
+    try {
+      if (GIFT_AUDIO_PLAYER) { GIFT_AUDIO_PLAYER.pause(); GIFT_AUDIO_PLAYER.currentTime = 0; }
+      GIFT_AUDIO_PLAYER = new Audio(details.audio);
+      GIFT_AUDIO_PLAYER.volume = .9;
+      GIFT_AUDIO_PLAYER.play().catch(() => { });
+    } catch (e) { }
+  }
 }
 
 // =====================================================

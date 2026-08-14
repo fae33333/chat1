@@ -536,10 +536,10 @@ app.post('/api/gifts/send', requireUser, async (req, res) => {
   if (!to) return res.status(404).json({ error: 'المستخدم غير موجود' });
   await q.run(`UPDATE users SET balance=balance-? WHERE id=?`, amount, me.id);
   await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, gain, to.id);
-  await q.run(`INSERT INTO gifts_log (from_id,from_name,to_id,to_name,gift_name,gift_img,price,qty) VALUES (?,?,?,?,?,?,?,?)`,
-    me.id, me.username, to.id, to.username, gift.name, gift.img, gift.price, qtyN);
-  // بث رسالة الهدية داخل الغرفة
-  const gExtra = JSON.stringify({ img: gift.img, name: gift.name, qty: qtyN, to: to.username, from: me.username });
+  await q.run(`INSERT INTO gifts_log (from_id,from_name,to_id,to_name,gift_name,gift_img,gift_audio,price,qty) VALUES (?,?,?,?,?,?,?,?,?)`,
+    me.id, me.username, to.id, to.username, gift.name, gift.img, gift.audio || '', gift.price, qtyN);
+  // بث رسالة الهدية داخل الغرفة مع صوتها حتى تعمل المؤثرات لدى جميع الموجودين.
+  const gExtra = JSON.stringify({ img: gift.img, audio: gift.audio || '', name: gift.name, qty: qtyN, to: to.username, from: me.username });
   if (room_id) {
     const ins = await q.run(`INSERT INTO messages (room_id,user_id,username,text,type,extra) VALUES (?,?,?,?,'gift',?)`,
       room_id, me.id, me.username, `هدية ${gift.name}`, gExtra);
@@ -843,25 +843,48 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
 // ---- إدارة الهدايا (رفع صورة + قيمة + ربح المستقبل) ----
 app.get('/api/admin/gifts', requireAdmin, async (req, res) => res.json(await q.all(`SELECT * FROM gifts ORDER BY id DESC`)));
 app.post('/api/admin/gifts', requireAdmin, async (req, res) => {
-  const { id, name, img, price, payout, cat } = req.body || {};
+  const { id, name, img, audio, price, payout, cat } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'اكتب اسم الهدية' });
   if (!img) return res.status(400).json({ error: 'ارفع صورة الهدية أولاً' });
-  const n = String(name).slice(0, 40).trim(), im = String(img).slice(0, 150), ct = String(cat || 'افتراضي').slice(0, 20);
+  const n = String(name).slice(0, 40).trim();
+  const im = String(img).slice(0, 150), au = String(audio || '').slice(0, 150), ct = String(cat || 'افتراضي').slice(0, 20);
   const pr = Math.min(100000, Math.max(0, parseInt(price) || 0));
   const py = Math.min(pr, Math.max(0, parseInt(payout) || 0));
-  if (id) await q.run(`UPDATE gifts SET name=?, img=?, price=?, payout=?, cat=? WHERE id=?`, n, im, pr, py, ct, +id);
-  else await q.run(`INSERT INTO gifts (name,img,price,payout,cat) VALUES (?,?,?,?,?)`, n, im, pr, py, ct);
+  if (id) await q.run(`UPDATE gifts SET name=?, img=?, audio=?, price=?, payout=?, cat=? WHERE id=?`, n, im, au, pr, py, ct, +id);
+  else await q.run(`INSERT INTO gifts (name,img,audio,price,payout,cat) VALUES (?,?,?,?,?,?)`, n, im, au, pr, py, ct);
   io.emit('sync');
   res.json({ ok: true });
 });
 app.post('/api/admin/gifts/:id/del', requireAdmin, async (req, res) => {
+  const gift = await q.get(`SELECT img,audio FROM gifts WHERE id=?`, +req.params.id);
   await q.run(`DELETE FROM gifts WHERE id=?`, +req.params.id);
+  for (const media of [gift && gift.img, gift && gift.audio]) {
+    if (media && String(media).startsWith('/uploads/gifts/')) {
+      try { fs.unlinkSync(path.join(__dirname, 'public/uploads/gifts', path.basename(media))); } catch (e) { }
+    }
+  }
   io.emit('sync');
   res.json({ ok: true });
 });
 app.post('/api/admin/upload/gift', requireAdmin, (req, res) => {
   uploadMedia.single('file')(req, res, (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر الرفع: ' + (err ? err.message : 'لا يوجد ملف') });
+    if (!String(req.file.mimetype || '').startsWith('image/')) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      return res.status(400).json({ error: 'ملف الهدية يجب أن يكون صورة' });
+    }
+    res.json({ ok: true, path: '/uploads/gifts/' + req.file.filename });
+  });
+});
+app.post('/api/admin/upload/gift-audio', requireAdmin, (req, res) => {
+  uploadMedia.single('file')(req, res, (err) => {
+    if (err || !req.file) return res.status(500).json({ error: 'تعذر رفع الصوت: ' + (err ? err.message : 'لا يوجد ملف') });
+    const ext = path.extname(req.file.originalname || '').toLowerCase();
+    const allowed = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.webm']);
+    if (!String(req.file.mimetype || '').startsWith('audio/') && !allowed.has(ext)) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      return res.status(400).json({ error: 'اختر ملفاً صوتياً صالحاً' });
+    }
     res.json({ ok: true, path: '/uploads/gifts/' + req.file.filename });
   });
 });
