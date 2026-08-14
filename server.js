@@ -66,6 +66,7 @@ fs.mkdirSync(path.join(__dirname, 'public/uploads/rooms'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/bots'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/statuses'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/wall'), { recursive: true });
+fs.mkdirSync(path.join(__dirname, 'public/uploads/chat'), { recursive: true });
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, 'public/uploads')),
   filename: (req, file, cb) => {
@@ -128,6 +129,23 @@ const uploadWallVideo = multer({
     cb(allowed ? null : new Error('يمكن رفع ملف فيديو MP4 أو WEBM أو MOV فقط'), allowed);
   }
 });
+const chatMediaStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, 'public/uploads/chat')),
+  filename: (req, file, cb) => cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 10) + path.extname(file.originalname).toLowerCase())
+});
+const CHAT_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+const CHAT_AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.opus']);
+const uploadChatMedia = multer({
+  storage: chatMediaStorage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const mime = String(file.mimetype || '');
+    const allowed = (CHAT_IMAGE_EXTENSIONS.has(ext) && (mime.startsWith('image/') || mime === 'application/octet-stream'))
+      || (CHAT_AUDIO_EXTENSIONS.has(ext) && (mime.startsWith('audio/') || mime === 'application/octet-stream'));
+    cb(allowed ? null : new Error('يمكن رفع صورة أو مقطع صوت فقط'), allowed);
+  }
+});
 
 // ====== أدوات مساعدة ======
 const q = {
@@ -178,6 +196,19 @@ async function getSettings() {
   const s = {};
   rows.forEach(r => s[r.key] = r.value);
   return s;
+}
+function membershipAccessKey(user) {
+  if (!user || !user.registered) return 'guest';
+  if (user.membership && user.membership !== 'none') return user.membership;
+  return 'registered';
+}
+async function canUseMembershipFeature(userId, settingKey) {
+  const user = await q.get(`SELECT registered,membership,rank FROM users WHERE id=?`, +userId);
+  if (!user) return false;
+  if (['roomadmin', 'admin', 'superadmin'].includes(user.rank)) return true;
+  const settings = await getSettings();
+  const allowed = String(settings[settingKey] || '').split(',').map(value => value.trim()).filter(Boolean);
+  return allowed.includes(membershipAccessKey(user));
 }
 // مجموعة الموثقين (شارة ✓ الزرقاء)
 let VERIFIED_SET = new Set();
@@ -709,14 +740,16 @@ app.get('/api/statuses', requireUser, async (req, res) => {
   }));
 });
 
-app.post('/api/statuses', requireUser, (req, res) => {
+app.post('/api/statuses', requireUser, async (req, res) => {
+  if (!await canUseMembershipFeature(req.authUid, 'status_allowed_memberships'))
+    return res.status(403).json({ error: 'عضويتك غير مسموح لها بنشر الحالات حسب إعدادات الإدارة' });
   uploadStatus.single('status')(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'حجم الملف أكبر من 50MB' : err.message });
     try {
-      const me = await q.get(`SELECT id,registered FROM users WHERE id=?`, req.authUid);
-      if (!me || !me.registered) {
+      const me = await q.get(`SELECT id FROM users WHERE id=?`, req.authUid);
+      if (!me) {
         if (req.file) { try { fs.unlinkSync(req.file.path); } catch (e) { } }
-        return res.status(403).json({ error: 'رفع الحالة متاح للأعضاء المسجلين فقط' });
+        return res.status(401).json({ error: 'المستخدم غير موجود' });
       }
       await cleanupExpiredStatuses();
       const requestedType = String((req.body && req.body.media_type) || '').toLowerCase();
@@ -794,6 +827,19 @@ app.delete('/api/statuses/:id', requireUser, async (req, res) => {
   res.json({ ok: true });
 });
 
+// رفع صورة أو مقطع صوت لإرساله في الرسائل العامة.
+app.post('/api/chat/upload-media', requireUser, (req, res) => {
+  uploadChatMedia.single('media')(req, res, async (err) => {
+    if (err || !req.file) return res.status(400).json({ error: err ? err.message : 'اختر الملف' });
+    const type = CHAT_AUDIO_EXTENSIONS.has(path.extname(req.file.originalname || '').toLowerCase()) ? 'audio' : 'image';
+    if (type === 'audio' && !await canUseMembershipFeature(req.authUid, 'voice_allowed_memberships')) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      return res.status(403).json({ error: 'عضويتك غير مسموح لها بإرسال المقاطع الصوتية' });
+    }
+    res.json({ ok: true, type, path: '/uploads/chat/' + req.file.filename });
+  });
+});
+
 // =====================================================
 //  الحائط: منشورات + يوتيوب/فيديو + تعليقات وتفاعلات
 // =====================================================
@@ -841,47 +887,61 @@ app.get('/api/wall/youtube-search', requireUser, async (req, res) => {
     res.json(videos);
   } catch (e) { res.status(502).json({ error: 'تعذر البحث في YouTube حالياً' }); }
 });
-app.post('/api/wall/upload-image', requireUser, (req, res) => {
+app.post('/api/wall/upload-image', requireUser, async (req, res) => {
+  if (!await canUseMembershipFeature(req.authUid, 'wall_allowed_memberships'))
+    return res.status(403).json({ error: 'عضويتك غير مسموح لها بالنشر على الحائط' });
   uploadWallImage.single('image')(req, res, (err) => {
     if (err || !req.file) return res.status(400).json({ error: err ? err.message : 'اختر ملف الصورة' });
     res.json({ ok: true, path: '/uploads/wall/' + req.file.filename });
   });
 });
-app.post('/api/wall/upload-video', requireUser, (req, res) => {
+app.post('/api/wall/upload-video', requireUser, async (req, res) => {
+  if (!await canUseMembershipFeature(req.authUid, 'wall_allowed_memberships'))
+    return res.status(403).json({ error: 'عضويتك غير مسموح لها بالنشر على الحائط' });
   uploadWallVideo.single('video')(req, res, (err) => {
     if (err || !req.file) return res.status(400).json({ error: err ? err.message : 'اختر ملف الفيديو' });
     res.json({ ok: true, path: '/uploads/wall/' + req.file.filename });
   });
 });
+async function wallPostPayload(post, viewerId, viewerRank) {
+  if (!post) return null;
+  const author = await q.get(`SELECT * FROM users WHERE id=?`, post.user_id);
+  const comments = await q.all(`SELECT * FROM wall_comments WHERE post_id=? ORDER BY id ASC LIMIT 100`, post.id);
+  const commentData = [];
+  for (const comment of comments) {
+    const user = await q.get(`SELECT * FROM users WHERE id=?`, comment.user_id);
+    commentData.push({ ...comment, user: user ? { ...pubUser(user), badge: badgeOf(user) } : null });
+  }
+  const reactionRows = await q.all(`SELECT reaction,COUNT(*) count FROM wall_reactions WHERE post_id=? GROUP BY reaction`, post.id);
+  const myReaction = await q.get(`SELECT reaction FROM wall_reactions WHERE post_id=? AND user_id=?`, post.id, viewerId);
+  const reactions = {};
+  reactionRows.forEach(row => { reactions[row.reaction] = +row.count; });
+  return {
+    ...post,
+    user: author ? { ...pubUser(author), badge: badgeOf(author) } : null,
+    comments: commentData,
+    reactions,
+    reaction_count: reactionRows.reduce((sum, row) => sum + +row.count, 0),
+    my_reaction: myReaction ? myReaction.reaction : '',
+    can_delete: +post.user_id === +viewerId || ['admin', 'superadmin'].includes(viewerRank) ? 1 : 0
+  };
+}
 app.get('/api/wall', requireUser, async (req, res) => {
   const posts = await q.all(`SELECT * FROM wall_posts ORDER BY id DESC LIMIT 50`);
   const me = await q.get(`SELECT rank FROM users WHERE id=?`, req.authUid);
   const result = [];
-  for (const post of posts) {
-    const author = await q.get(`SELECT * FROM users WHERE id=?`, post.user_id);
-    const comments = await q.all(`SELECT * FROM wall_comments WHERE post_id=? ORDER BY id ASC LIMIT 100`, post.id);
-    const commentData = [];
-    for (const comment of comments) {
-      const user = await q.get(`SELECT * FROM users WHERE id=?`, comment.user_id);
-      commentData.push({ ...comment, user: user ? { ...pubUser(user), badge: badgeOf(user) } : null });
-    }
-    const reactionRows = await q.all(`SELECT reaction,COUNT(*) count FROM wall_reactions WHERE post_id=? GROUP BY reaction`, post.id);
-    const myReaction = await q.get(`SELECT reaction FROM wall_reactions WHERE post_id=? AND user_id=?`, post.id, req.authUid);
-    const reactions = {};
-    reactionRows.forEach(row => { reactions[row.reaction] = +row.count; });
-    result.push({
-      ...post,
-      user: author ? { ...pubUser(author), badge: badgeOf(author) } : null,
-      comments: commentData,
-      reactions,
-      reaction_count: reactionRows.reduce((sum, row) => sum + +row.count, 0),
-      my_reaction: myReaction ? myReaction.reaction : '',
-      can_delete: +post.user_id === +req.authUid || (me && ['admin', 'superadmin'].includes(me.rank)) ? 1 : 0
-    });
-  }
+  for (const post of posts) result.push(await wallPostPayload(post, req.authUid, me && me.rank));
   res.json(result);
 });
+app.get('/api/wall/:id', requireUser, async (req, res) => {
+  const post = await q.get(`SELECT * FROM wall_posts WHERE id=?`, +req.params.id);
+  if (!post) return res.status(404).json({ error: 'المنشور غير موجود' });
+  const me = await q.get(`SELECT rank FROM users WHERE id=?`, req.authUid);
+  res.json(await wallPostPayload(post, req.authUid, me && me.rank));
+});
 app.post('/api/wall', requireUser, async (req, res) => {
+  if (!await canUseMembershipFeature(req.authUid, 'wall_allowed_memberships'))
+    return res.status(403).json({ error: 'عضويتك غير مسموح لها بالنشر على الحائط' });
   const text = String(req.body.text || '').trim().slice(0, 2000);
   const rawYoutube = String(req.body.youtube_url || '').trim();
   const youtube = normalizeYoutubeEmbed(rawYoutube);
@@ -1686,6 +1746,9 @@ app.get('/api/public-settings', async (req, res) => {
     site_name: s.site_name, logo_url: s.logo_url, skin: s.skin, font_size: s.font_size,
     show_smiles: s.show_smiles, show_voice: s.show_voice, show_image: s.show_image, show_time: s.show_time,
     hidden_super: s.hidden_super,
+    wall_allowed_memberships: s.wall_allowed_memberships,
+    status_allowed_memberships: s.status_allowed_memberships,
+    voice_allowed_memberships: s.voice_allowed_memberships,
     snd_join: s.snd_join, snd_msg: s.snd_msg, snd_leave: s.snd_leave,
     msg_max: +s.msg_max || 500,
     vip_cost: +s.vip_cost, premium_cost: +s.premium_cost, plus_cost: +s.plus_cost
@@ -1898,16 +1961,26 @@ io.on('connection', async (socket) => {
   });
 
   // رسالة عامة
-  socket.on('msg', async ({ roomId, text, reply, color }) => {
+  socket.on('msg', async ({ roomId, text, reply, color, media }) => {
     roomId = +roomId;
     if (!socket.data.joinedRooms.has(roomId)) return socket.emit('err', 'يجب دخول الغرفة قبل الكتابة');
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
     if (me.muted) return socket.emit('err', 'أنت مكتوم ولا يمكنك الكتابة');
     const hiddenAdmin = socket.data.hiddenRooms.has(roomId) && (me.rank === 'superadmin' || me.rank === 'admin');
     text = String(text || '').slice(0, 500).trim();
-    if (!text) return;
+    const mediaType = media && ['image', 'audio'].includes(media.type) ? media.type : '';
+    const requestedMediaPath = String((media && media.path) || '').slice(0, 180);
+    const mediaExt = path.extname(requestedMediaPath).toLowerCase();
+    const validMediaPath = /^\/uploads\/chat\/[a-zA-Z0-9_.-]+$/.test(requestedMediaPath);
+    const matchingMediaType = (mediaType === 'image' && CHAT_IMAGE_EXTENSIONS.has(mediaExt))
+      || (mediaType === 'audio' && CHAT_AUDIO_EXTENSIONS.has(mediaExt));
+    const mediaFileExists = validMediaPath && fs.existsSync(path.join(__dirname, 'public/uploads/chat', path.basename(requestedMediaPath)));
+    const cleanMedia = mediaFileExists && matchingMediaType ? { type: mediaType, path: requestedMediaPath } : null;
+    if (cleanMedia && cleanMedia.type === 'audio' && !await canUseMembershipFeature(uid, 'voice_allowed_memberships'))
+      return socket.emit('err', 'عضويتك غير مسموح لها بإرسال المقاطع الصوتية');
+    if (!text && !cleanMedia) return;
     // فلترة الكلمات (لا تطبق على رابط الإيموجي المصور)
-    if (!text.startsWith('em::')) {
+    if (text && !text.startsWith('em::')) {
       const words = await q.all(`SELECT word FROM banned_words`);
       for (const w of words) if (text.includes(w.word)) text = text.split(w.word).join('**');
     }
@@ -1916,15 +1989,15 @@ io.on('connection', async (socket) => {
     const rp = reply && reply.name ? { name: String(reply.name).slice(0, 40), text: String(reply.text || '').slice(0, 90) } : null;   // الرد على الرسالة
     const col = /^#[0-9a-fA-F]{6}$/.test(String(color || '')) ? String(color) : null;   // لون الخط من قائمة الألوان
     const messageUser = hiddenAdmin ? { ...freshPub, hidden_admin: 1 } : freshPub;
-    const extra = JSON.stringify({ badge: freshPub.badge, gender: me.gender, rank: me.rank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, verified: VERIFIED_SET.has(me.username) ? 1 : 0, hidden_admin: hiddenAdmin ? 1 : 0 });
+    const extra = JSON.stringify({ badge: freshPub.badge, gender: me.gender, rank: me.rank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, media: cleanMedia, verified: VERIFIED_SET.has(me.username) ? 1 : 0, hidden_admin: hiddenAdmin ? 1 : 0 });
     const ins = await q.run(`INSERT INTO messages (room_id,user_id,username,text,type,extra) VALUES (?,?,?,?,'msg',?)`, roomId, uid, me.username, text, extra);
     const msg = {
       id: ins.lastID, room_id: roomId, text, type: 'msg', hidden_admin: hiddenAdmin ? 1 : 0,
       created_at: Math.floor(Date.now() / 1000),
-      user: messageUser, reply: rp, color: col
+      user: messageUser, reply: rp, color: col, media: cleanMedia
     };
     io.to('room_' + roomId).emit('msg', msg);
-    maybeReplyWithRoomBot(roomId, text, me, text).catch(() => { });
+    if (text) maybeReplyWithRoomBot(roomId, text, me, text).catch(() => { });
   });
 
   // رسالة خاصة

@@ -36,6 +36,7 @@ const MENU = [
   { icon: 'money_dollar_circle_fill', color: '#fbbf24', label: 'رصيد العضويات', subs: [{ id: 'memberships', icon: 'money_dollar_circle_fill', label: 'رصيد العضويات' }] },
   { icon: 'gear_alt_fill', color: '#94a3b8', label: 'الاعدادات الاساسيه', subs: [
     { id: 'general', icon: 'wrench_fill', label: 'ضبط الاعدادات' },
+    { id: 'featureAccess', icon: 'person_badge_key_fill', label: 'صلاحيات العضويات' },
     { id: 'msgSettings', icon: 'chat_bubble_fill', label: 'اعدادات الرسائل' },
     { id: 'logo', icon: 'paintbrush_fill', label: 'وضع الشعار' },
     { id: 'skin', icon: 'paintbrush_fill', label: 'وضع الجلد' },
@@ -116,6 +117,20 @@ const inpRow = (icon, color, label, key, type = 'number', suffix = 'رصيد') =
       ${suffix ? `<span class="suffix">${suffix}</span>` : ''}
     </span>
   </div>`;
+const ACCESS_MEMBERSHIPS = [
+  ['guest', 'الزائر'], ['registered', 'عضو مسجل'], ['mmez', 'مميز'],
+  ['plus', 'Plus'], ['premium', 'Premium'], ['vip', 'VIP']
+];
+const membershipAccessCard = (icon, color, title, key, description) => {
+  const selected = new Set(String(SETTINGS[key] || '').split(',').filter(Boolean));
+  return `<div class="section" style="margin-bottom:16px">
+    <div class="section-title"><i class="f7-icons mi" style="color:${color}">${icon}</i> ${title}</div>
+    <div style="color:#73798d;font-size:13px;margin:-3px 0 15px">${description}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px">
+      ${ACCESS_MEMBERSHIPS.map(([value, label]) => `<label style="display:flex;align-items:center;gap:8px;background:#f7f8fc;border:1px solid #e5e7ef;border-radius:10px;padding:11px 12px;font-weight:800;color:#3d435b;cursor:pointer"><input type="checkbox" data-access-key="${key}" value="${value}" ${selected.has(value) ? 'checked' : ''}> ${label}</label>`).join('')}
+    </div>
+  </div>`;
+};
 
 // =====================================================
 //  الصفحات
@@ -333,6 +348,28 @@ const PAGES = {
         <button class="btn btn-purple" id="saveGen"><i class="f7-icons">square_arrow_down_fill</i> حفظ الاعدادات</button>
       </div>`,
     bind: () => { $('#saveGen').onclick = async () => { await saveSwitches(); toast('تم حفظ الاعدادات بنجاح'); }; }
+  },
+
+  // ====== صلاحيات الميزات حسب العضوية ======
+  featureAccess: {
+    build: () => `
+      <div class="page-title"><i class="f7-icons mi" style="color:#6366f1">checkmark_shield_fill</i> صلاحيات العضويات</div>
+      <div style="background:#eef2ff;border:1px solid #c7d2fe;color:#4f46e5;border-radius:12px;padding:13px 16px;margin-bottom:18px;font-size:13.5px;font-weight:700">حدد العضويات المسموح لها باستخدام كل ميزة. حسابات الإدارة ومشرفو الغرف مسموح لهم دائماً.</div>
+      ${membershipAccessCard('rectangle_and_pencil_and_ellipsis', '#8b5cf6', 'النشر في الحائط', 'wall_allowed_memberships', 'إنشاء منشور نصي أو صورة أو فيديو أو فيديو YouTube.')}
+      ${membershipAccessCard('circle_grid_hex_fill', '#0ea5e9', 'النشر في الحالة', 'status_allowed_memberships', 'نشر حالات النص والصورة والفيديو والصوت.')}
+      ${membershipAccessCard('mic_fill', '#ec4899', 'إرسال مقطع صوتي في العام', 'voice_allowed_memberships', 'رفع ملف صوتي وإرساله داخل الغرفة العامة.')}
+      <div class="btn-row" style="justify-content:flex-start"><button class="btn btn-purple" id="saveFeatureAccess"><i class="f7-icons">square_arrow_down_fill</i> حفظ صلاحيات العضويات</button></div>`,
+    bind: () => {
+      $('#saveFeatureAccess').onclick = async () => {
+        const body = {};
+        ['wall_allowed_memberships', 'status_allowed_memberships', 'voice_allowed_memberships'].forEach(key => {
+          body[key] = [...document.querySelectorAll(`input[data-access-key="${key}"]:checked`)].map(input => input.value).join(',');
+          SETTINGS[key] = body[key];
+        });
+        await api('/api/admin/settings', 'POST', body);
+        toast('تم حفظ صلاحيات العضويات بنجاح');
+      };
+    }
   },
 
   // ====== اعدادات الرسائل ======
