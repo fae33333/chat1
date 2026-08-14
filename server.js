@@ -693,7 +693,7 @@ app.post('/api/statuses', requireUser, (req, res) => {
         INSERT INTO statuses (user_id,image,media_type,media,text_content,background,caption,created_at,expires_at)
         VALUES (?,?,?,?,?,?,?,?,?)`,
         me.id, media, mediaType, media, textContent, background, caption, now, now + 24 * 60 * 60);
-      io.emit('statuses_changed');
+      io.emit('statuses_changed', { action: 'created', userId: me.id, statusId: out.lastID });
       res.json({ ok: true, id: out.lastID, image: media, media_type: mediaType, media, text_content: textContent, background, caption, created_at: now, expires_at: now + 86400 });
     } catch (e) {
       if (req.file) { try { fs.unlinkSync(req.file.path); } catch (x) { } }
@@ -742,13 +742,37 @@ app.delete('/api/statuses/:id', requireUser, async (req, res) => {
   await q.run(`DELETE FROM status_views WHERE status_id=?`, status.id);
   await q.run(`DELETE FROM statuses WHERE id=?`, status.id);
   deleteStatusMedia(status);
-  io.emit('statuses_changed');
+  io.emit('statuses_changed', { action: 'deleted', userId: status.user_id, statusId: status.id });
   res.json({ ok: true });
 });
 
 // الإشعارات
 app.get('/api/notifications', requireUser, async (req, res) => {
-  res.json(await q.all(`SELECT * FROM notifications WHERE user_id=? OR user_id IS NULL ORDER BY id DESC LIMIT 60`, req.authUid));
+  const rows = await q.all(`
+    SELECT n.*,
+      CASE WHEN n.user_id IS NULL
+        THEN EXISTS(SELECT 1 FROM notification_reads nr WHERE nr.notification_id=n.id AND nr.user_id=?)
+        ELSE n.read END AS read
+    FROM notifications n
+    WHERE n.user_id=? OR n.user_id IS NULL
+    ORDER BY n.id DESC LIMIT 60`, req.authUid, req.authUid);
+  res.json(rows);
+});
+app.get('/api/notifications/unread-count', requireUser, async (req, res) => {
+  const row = await q.get(`
+    SELECT COUNT(*) c FROM notifications n
+    WHERE (n.user_id=? AND n.read=0)
+       OR (n.user_id IS NULL AND NOT EXISTS(
+         SELECT 1 FROM notification_reads nr WHERE nr.notification_id=n.id AND nr.user_id=?
+       ))`, req.authUid, req.authUid);
+  res.json({ count: +row.c || 0 });
+});
+app.post('/api/notifications/read-all', requireUser, async (req, res) => {
+  await q.run(`UPDATE notifications SET read=1 WHERE user_id=?`, req.authUid);
+  await q.run(`
+    INSERT OR IGNORE INTO notification_reads (notification_id,user_id)
+    SELECT id,? FROM notifications WHERE user_id IS NULL`, req.authUid);
+  res.json({ ok: true });
 });
 
 // تعديل الملف الشخصي (النوع/العمر/الدولة/البريد)

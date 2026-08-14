@@ -847,17 +847,18 @@ body.lang-en .announcement-text,body.lang-en .announcement-sender { direction:lt
 .notifications-page .pg-head.bar { margin:-12px -8px 12px; }
 .notifications-page .page-heading { padding:1px 5px 9px; }
 .notifications-page #notifList { display:flex; flex-direction:column; gap:3px; }
-.notif-row { position:relative; direction:ltr; min-height:61px; padding:7px 34px 7px 9px; border-radius:10px; background:#f8faff; display:flex; align-items:center; gap:8px; cursor:default; }
-.notif-row.announcement { background:#e3ecfb; cursor:pointer; }
+.notif-row { position:relative; direction:ltr; width:100%; min-height:61px; padding:7px 34px 7px 9px; border-radius:10px; background:#f8faff; display:flex; align-items:center; gap:8px; cursor:default; }
+.notif-row.announcement { background:#e7f0fd; cursor:pointer; }
 .notif-image { width:46px; height:46px; border-radius:50%; overflow:hidden; flex:none; background:#17285f; display:flex; align-items:center; justify-content:center; }
 .notif-image img { width:100%; height:100%; object-fit:cover; }
 .notif-image i { color:#fff; font-size:20px; }
-.notif-info { min-width:0; flex:1; direction:rtl; text-align:left; }
-.notif-title { color:#1685f5; font-size:10.5px; line-height:14px; font-weight:700; display:flex; align-items:center; justify-content:flex-start; gap:3px; }
-.notif-title i { color:#ef4b85; font-size:12px; }
-.notif-sender { color:#555d70; font-size:8.5px; line-height:12px; }
-.notif-preview { overflow:hidden; color:#202534; font-size:9px; line-height:13px; text-overflow:ellipsis; white-space:nowrap; }
-.notif-time { position:absolute; top:9px; right:5px; color:#9ca3b2; direction:ltr; font-size:7.5px; }
+.notif-info { min-width:0; flex:1; text-align:left; }
+.notif-title { direction:ltr; color:#087fff; font-size:11.5px; line-height:14px; font-weight:700; display:flex; align-items:center; justify-content:flex-start; gap:2px; }
+.notif-title i { color:#ef4b85; font-size:11px; }
+.notif-sender { direction:rtl; color:#34394a; text-align:left; font-size:8.5px; line-height:12px; }
+.notif-sender b { color:#087fff; font-weight:700; }
+.notif-preview { overflow:hidden; color:#111827; font-size:10.5px; line-height:14px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+.notif-time { position:absolute; top:8px; right:5px; color:#8f97a8; direction:rtl; font-size:7.5px; }
 .notif-unread { position:absolute; right:8px; top:50%; width:8px; height:8px; margin-top:-4px; border-radius:50%; background:#ff3855; box-shadow:0 0 0 2px #e3ecfb; }
 .notif-row.read .notif-unread { display:none; }
 body.lang-en .notif-info { direction:ltr; text-align:left; }
@@ -1047,7 +1048,9 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
 .gift-cell .ge img { width:44px; height:44px; object-fit:contain; }
 
 /* ============ حالات المستخدمين ============ */
+.status-cbtn { position:relative; }
 .status-cbtn svg { display:block; width:20px; height:20px; }
+.status-unread-badge { position:absolute; top:-7px; right:-7px; min-width:16px; height:16px; padding:0 4px; border:1.5px solid #fff; border-radius:9px; background:#ef3340; color:#fff; display:flex; align-items:center; justify-content:center; font-size:8.5px; line-height:1; font-style:normal; font-weight:700; box-shadow:0 2px 5px rgba(239,51,64,.35); }
 .statuses-page {
   padding:0;
   background:#fff;

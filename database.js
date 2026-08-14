@@ -249,6 +249,12 @@ db.serialize(() => {
   db.run(`ALTER TABLE notifications ADD COLUMN kind TEXT DEFAULT 'general'`, () => { });
   db.run(`ALTER TABLE notifications ADD COLUMN sender_name TEXT DEFAULT ''`, () => { });
   db.run(`ALTER TABLE notifications ADD COLUMN image TEXT DEFAULT ''`, () => { });
+  db.run(`CREATE TABLE IF NOT EXISTS notification_reads (
+    notification_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    read_at INTEGER DEFAULT (strftime('%s','now')),
+    PRIMARY KEY(notification_id, user_id)
+  )`);
 
   // ---------- الشكاوى ----------
   db.run(`CREATE TABLE IF NOT EXISTS complaints (

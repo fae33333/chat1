@@ -22,7 +22,7 @@ let GIFTS = [], SEL_GIFT = null, G_QTY = 1;
 let UP_PLAN = 'vip', UP_MONTHS = 1, UP_TARGET = null;
 let PM_WITH = null, PRIV_UNREAD = 0, PRIV_TAB = 'members';
 let NOTIFS = [], CURRENT_NOTIFICATIONS = [], CURRENT_ANNOUNCEMENT = null;
-let READ_NOTIFS = new Set();
+let READ_NOTIFS = new Set(), NOTIF_UNREAD = 0, STATUS_UNREAD = 0;
 let SEL_AVATAR = null, AVA_CAT = 'def';
 let STATUSES = [], STATUS_GROUP = [], STATUS_INDEX = 0, CURRENT_STATUS = null;
 let CUSTOM_EMOJIS = [];
@@ -435,8 +435,13 @@ function connectSocket() {
     beep(660, .2);
   });
   SOCKET.on('membership_changed', ({ plan }) => { if (ME) { ME.membership = plan; MYBADGE = badgeOf(ME); } });
-  SOCKET.on('statuses_changed', () => {
-    if ($('#statusOv').classList.contains('open')) loadStatuses();
+  SOCKET.on('statuses_changed', change => {
+    const statusPageOpen = $('#statusOv').classList.contains('open');
+    if (change && change.action === 'created' && ME && +change.userId !== +ME.id && !statusPageOpen) {
+      STATUS_UNREAD++;
+      updateStatusUnreadBadge();
+    }
+    if (statusPageOpen) loadStatuses();
   });
   SOCKET.on('verification_changed', ({ username, verified }) => {
     ROOM_USERS.forEach(u => { if (u.username === username) u.verified = verified ? 1 : 0; });
@@ -505,8 +510,35 @@ function openAnnouncementPopup(announcement) {
   openOv('announcementOverlay');
 }
 $('#announcementOk').onclick = () => closeOv('announcementOverlay');
+function updateNotifBadge() {
+  const badge = $('#notifBadge');
+  if (NOTIF_UNREAD > 0) {
+    badge.textContent = NOTIF_UNREAD > 99 ? '99+' : NOTIF_UNREAD;
+    badge.style.display = 'flex';
+  } else badge.style.display = 'none';
+}
+function updateStatusUnreadBadge() {
+  const badge = $('#statusUnreadBadge');
+  if (STATUS_UNREAD > 0) {
+    badge.textContent = STATUS_UNREAD > 99 ? '99+' : STATUS_UNREAD;
+    badge.style.display = 'flex';
+  } else badge.style.display = 'none';
+}
+async function loadUnreadNotifCount() {
+  if (!ME || !ME.registered) { NOTIF_UNREAD = 0; updateNotifBadge(); return; }
+  try {
+    const data = await api('/api/notifications/unread-count');
+    NOTIF_UNREAD = +data.count || 0;
+    updateNotifBadge();
+  } catch (e) { }
+}
 function pushNotif(icon, text, extra = {}) {
   NOTIFS.unshift({ icon, text, at: Date.now(), ...extra });
+  if ($('#notifOv').classList.contains('open')) openNotifs();
+  else {
+    NOTIF_UNREAD++;
+    updateNotifBadge();
+  }
 }
 
 // =====================================================
@@ -1328,6 +1360,8 @@ function statusGroups() {
 }
 async function openStatuses() {
   if (!ME) return openLogin();
+  STATUS_UNREAD = 0;
+  updateStatusUnreadBadge();
   openOv('statusOv');
   $('#statusMyAvatar').innerHTML = avatarHtml(ME.avatar);
   await loadStatuses();
@@ -1767,9 +1801,16 @@ $('#avaSave').onclick = async () => {
 $('#notifSettings').onclick = () => toast('إعدادات الإشعارات');
 async function openNotifs() {
   if (!ME) return openLogin();
+  NOTIF_UNREAD = 0;
+  updateNotifBadge();
   openOv('notifOv');
   let server = [];
-  if (ME.registered) { try { server = await api('/api/notifications'); } catch (e) { } }
+  if (ME.registered) {
+    try {
+      server = await api('/api/notifications');
+      await api('/api/notifications/read-all', 'POST');
+    } catch (e) { }
+  }
   const local = NOTIFS.map(n => ({ ...n, created_at: +n.created_at || n.at / 1000 }));
   const merged = [...local, ...server].sort((a, b) => (+b.created_at || 0) - (+a.created_at || 0));
   const seenAnnouncements = new Set();
@@ -1786,14 +1827,14 @@ async function openNotifs() {
     const readKey = a && a.id ? 'announcement:' + a.id : '';
     const isRead = !!notification.read || (readKey && READ_NOTIFS.has(readKey));
     const time = new Date((+notification.created_at || Date.now() / 1000) * 1000)
-      .toLocaleTimeString(APP_LANG === 'en' ? 'en-US' : 'ar-JO', { hour: '2-digit', minute: '2-digit' });
+      .toLocaleTimeString(APP_LANG === 'en' ? 'en-US' : 'ar-JO', { hour: 'numeric', minute: '2-digit' });
     return `<div class="notif-row${isAnnouncement ? ' announcement' : ''}${isRead ? ' read' : ''}" data-index="${index}">
       <div class="notif-image">${isAnnouncement
         ? `<img src="${esc(a.image)}" alt="إعلان عام">`
         : `<i class="f7-icons">${esc(notification.icon || 'bell_fill')}</i>`}</div>
       <div class="notif-info">
-        <div class="notif-title">${isAnnouncement ? '<i class="f7-icons">speaker_3_fill</i> إعلان عام' : 'إشعار'}</div>
-        ${isAnnouncement ? `<div class="notif-sender">${APP_LANG === 'en' ? 'By:' : 'بواسطة:'} ${esc(a.sender_name)}</div>` : ''}
+        <div class="notif-title">${isAnnouncement ? '<span>إعلان عام</span><i class="f7-icons">speaker_3_fill</i>' : '<span>إشعار</span>'}</div>
+        ${isAnnouncement ? `<div class="notif-sender"><span>${APP_LANG === 'en' ? 'By:' : 'بواسطة:'}</span> <b>${esc(a.sender_name)}</b></div>` : ''}
         <div class="notif-preview">${esc(notification.text)}</div>
       </div>
       <time class="notif-time">${esc(time)}</time>
@@ -1902,6 +1943,7 @@ function onLoggedIn() {
   $('#headName').textContent = ME.username;
   $('#menuBal').textContent = ME.balance;
   loadIgnoredUsers();
+  loadUnreadNotifCount();
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو (استبدال كامل لتجنب التداخل)
   const bm = $('#bnMenu');
