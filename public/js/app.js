@@ -124,7 +124,7 @@ Object.assign(I18N_EN, {
   'تم نشر المنشور': 'Post published', 'تعذر نشر المنشور': 'Could not publish post', 'نشر منشور جديد': 'Create a new post', 'منشور جديد': 'New post',
   'ابحث عن فيديو في YouTube': 'Search YouTube videos', 'بحث': 'Search', 'صورة': 'Photo', 'فيديو': 'Video', 'جاري البحث...': 'Searching...', 'لا توجد نتائج': 'No results',
   'اكتب كلمات البحث في YouTube': 'Enter YouTube search terms', 'تعذر البحث في YouTube': 'Could not search YouTube', 'جاري رفع الصورة...': 'Uploading photo...',
-  'تم رفع الصورة بنجاح': 'Photo uploaded successfully', 'تعذر رفع الصورة': 'Could not upload photo', 'إظهار المزيد': 'Show more'
+  'تم رفع الصورة بنجاح': 'Photo uploaded successfully', 'تعذر رفع الصورة': 'Could not upload photo', 'إظهار المزيد': 'Show more', 'تم تسجيل الخروج': 'Logged out'
 });
 const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,#announcementText,#announcementSender,.notif-preview,.notif-sender,.wall-post-text,.wall-post-who b,.wall-comment-bubble b,.wall-comment-bubble p,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
 function translateDynamicText(text) {
@@ -1750,7 +1750,37 @@ $('#mnAvatar').onclick = () => { closeOv('menuOv'); if (!ME.registered) return o
 $('#mnMyGifts').onclick = () => { closeOv('menuOv'); openMyGifts(); };
 $('#mnBlocks').onclick = () => { closeOv('menuOv'); openBlocksList(); };
 $('#mnSettings').onclick = () => { closeOv('menuOv'); applyPrefsToSwitches(); openOv('setOv'); };
-$('#mnLogout').onclick = async () => { await api('/api/logout', 'POST'); location.reload(); };
+async function logoutWithoutReload() {
+  if (!ME) return;
+  try {
+    if (CUR_ROOM && SOCKET) SOCKET.emit('leave', CUR_ROOM.id);
+    await api('/api/logout', 'POST');
+  } catch (e) { }
+  if (SOCKET) { try { SOCKET.disconnect(); } catch (e) { } }
+  SOCKET = null; CHAT_TOKEN = ''; ME = null; MYBADGE = 'guest.png';
+  CUR_ROOM = null; CUR_TARGET = null; PM_WITH = null; ROOM_USERS = [];
+  IGNORED_USERS = new Set(); STATUSES = []; NOTIFS = []; CURRENT_NOTIFICATIONS = [];
+  PRIV_UNREAD = 0; NOTIF_UNREAD = 0; STATUS_UNREAD = 0;
+  updatePrivBadge(); updateNotifBadge(); updateStatusUnreadBadge();
+  try { stopStatusMedia(); } catch (e) { }
+  $$('.overlay.open').forEach(overlay => overlay.classList.remove('open'));
+  closeEnterDrop();
+  $('#headEnterBtn').style.display = '';
+  $('#headUserBox').style.display = 'none';
+  $('#headAva').innerHTML = '';
+  $('#headName').textContent = '';
+  $('#msgArea').innerHTML = '';
+  $('#usersList').innerHTML = '';
+  $('#onlineCount').textContent = '0';
+  const menu = $('#bnMenu');
+  menu.innerHTML = '<i class="f7-icons" id="bnMenuIcon">square_grid2x2_fill</i><span>القائمة</span>';
+  $('#lPass').value = ''; $('#rPass').value = '';
+  showScreen('rooms');
+  renderRooms();
+  refreshNav();
+  toast('تم تسجيل الخروج');
+}
+$('#mnLogout').onclick = logoutWithoutReload;
 
 // =====================================================
 //  توثيق حسابي
@@ -2225,6 +2255,11 @@ $('#gGenderSel').onchange = e => {
   $('#gGenderTxt').textContent = { boy: 'ذكر', girl: 'أنثى', secret: 'مجهول' }[v];
   $('#gSym').textContent = { boy: 'M', girl: 'F', secret: '؟' }[v];
 };
+$('#rGenderSel').onchange = e => {
+  const v = e.target.value;
+  $('#rGenderTxt').textContent = { boy: 'ذكر', girl: 'أنثى', secret: 'مجهول' }[v];
+  $('#rGenderSym').textContent = { boy: 'M', girl: 'F', secret: '؟' }[v];
+};
 // زر الدخول/الاسم فوق قائمة الغرف
 function closeEnterDrop() {
   $('#enterDrop').classList.remove('open');
@@ -2241,7 +2276,7 @@ $('#headEnterBtn').onclick = (e) => { e.stopPropagation(); onEnterBtn(); };
 $('#headUserBox').onclick = (e) => { e.stopPropagation(); onEnterBtn(); };
 $('#enterDropBg').onclick = closeEnterDrop;
 $('#dropRegister').onclick = () => { closeEnterDrop(); openOv('regOv'); };
-$('#dropLogout').onclick = async () => { closeEnterDrop(); await api('/api/logout', 'POST'); location.reload(); };
+$('#dropLogout').onclick = logoutWithoutReload;
 $('#doLogin').onclick = async () => {
   try {
     const d = await api('/api/login', 'POST', { username: $('#lUser').value.trim(), password: $('#lPass').value });
@@ -2274,7 +2309,7 @@ const gr2 = $('#goRegister2'); if (gr2) gr2.onclick = () => { closeOv('loginOv')
 $('#nrGo').onclick = () => { closeOv('needRegOv'); openOv('regOv'); };
 $('#doRegister').onclick = async () => {
   try {
-    const gender = document.querySelector('input[name=rGender]:checked').value;
+    const gender = $('#rGenderSel').value;
     const d = await api('/api/register', 'POST', {
       username: $('#rUser').value.trim(), password: $('#rPass').value,
       gender, age: +$('#rAge').value || 25

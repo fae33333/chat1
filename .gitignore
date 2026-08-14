@@ -2,3 +2,7 @@ node_modules/
 dist/
 .env
 .env.local
+key.pem
+cert.pem
+*.key
+*.pem

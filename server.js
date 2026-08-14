@@ -3,6 +3,7 @@
 // =====================================================
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -13,10 +14,23 @@ const { Server } = require('socket.io');
 const db = require('./database');
 
 const app = express();
-const server = http.createServer(app);
+const HTTPS_KEY_PATH = process.env.HTTPS_KEY || path.join(__dirname, 'key.pem');
+const HTTPS_CERT_PATH = process.env.HTTPS_CERT || path.join(__dirname, 'cert.pem');
+let HTTPS_ENABLED = false;
+let server;
+if (fs.existsSync(HTTPS_KEY_PATH) && fs.existsSync(HTTPS_CERT_PATH)) {
+  try {
+    server = https.createServer({ key: fs.readFileSync(HTTPS_KEY_PATH), cert: fs.readFileSync(HTTPS_CERT_PATH) }, app);
+    HTTPS_ENABLED = true;
+  } catch (error) {
+    console.warn('⚠ تعذر قراءة شهادة HTTPS، سيتم تشغيل HTTP:', error.message);
+  }
+}
+if (!server) server = http.createServer(app);
 const io = new Server(server);
 
-const PORT = process.env.PORT || 3000;
+const PORT = +(process.env.PORT || (HTTPS_ENABLED ? 2083 : 3000));
+const SERVER_PROTOCOL = HTTPS_ENABLED ? 'https' : 'http';
 
 // الاعتماد على عنوان الزائر الذي يمرره البروكسي الموثوق (Nginx/Cloudflare/Arena).
 // لا نثق إلا بوكلاء loopback والشبكات الخاصة حتى لا يستطيع العميل تزوير X-Forwarded-For مباشرة.
@@ -39,7 +53,7 @@ const sessionMw = session({
   secret: 'nujum-chat-secret-2026',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 24 * 30 }
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 30, secure: HTTPS_ENABLED, sameSite: 'lax' }
 });
 app.use(sessionMw);
 io.use((socket, next) => sessionMw(socket.request, {}, next));
@@ -2017,7 +2031,8 @@ reloadBots();
 (async () => {
   await syncRoomBots(false).catch(() => { });
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`★ شات نجوم العرب يعمل على http://0.0.0.0:${PORT}`);
-    console.log(`★ لوحة التحكم: http://localhost:${PORT}/admin.html  (ax / 123456)`);
+    console.log(`★ شات نجوم العرب يعمل على ${SERVER_PROTOCOL}://0.0.0.0:${PORT}`);
+    console.log(`★ لوحة التحكم: ${SERVER_PROTOCOL}://localhost:${PORT}/admin.html  (ax / 123456)`);
+    if (HTTPS_ENABLED) console.log(`★ HTTPS مفعّل باستخدام ${path.basename(HTTPS_CERT_PATH)} و ${path.basename(HTTPS_KEY_PATH)}`);
   });
 })();

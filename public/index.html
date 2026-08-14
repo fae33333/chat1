@@ -341,10 +341,18 @@
         <input id="rPass" type="password" placeholder="الرقم السري">
         <i class="f7-icons fi">lock_fill</i>
       </div>
-      <div class="gender-row">
-        <label><input type="radio" name="rGender" value="boy"><img src="/badges/boy.png" alt=""> ذكر</label>
-        <label><input type="radio" name="rGender" value="girl"><img src="/badges/girl.png" alt=""> أنثى</label>
-        <label><input type="radio" name="rGender" value="secret" checked><img src="/badges/secret.png" alt=""> مجهول</label>
+      <div class="lf-field lf-gender" id="rGenderBox">
+        <small>النوع</small>
+        <div class="lf-grow">
+          <span class="lf-gsym" id="rGenderSym">M</span>
+          <span id="rGenderTxt">ذكر</span>
+          <i class="f7-icons" style="margin-inline-start:auto">arrowtriangle_down_fill</i>
+          <select id="rGenderSel">
+            <option value="boy" selected>ذكر</option>
+            <option value="girl">أنثى</option>
+            <option value="secret">مجهول</option>
+          </select>
+        </div>
       </div>
       <div class="f-input">
         <input id="rAge" type="number" placeholder="العمر" value="25">
