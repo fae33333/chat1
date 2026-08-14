@@ -75,7 +75,7 @@ const I18N_EN = {
   'إلغاء الطرد': 'Remove kick', 'أنت هنا': 'You are here', 'بحث عن غرف': 'Search rooms', 'بحث عن مستخدمين': 'Search users', 'ابحث عن غرفك': 'Search rooms',
   'رسالة عامة': 'Public message', 'رسالة': 'Message', 'اكتب حالتك...': 'Write your status...', 'الأسم المستعار': 'Display name', 'اسم المستعار': 'Display name',
   'الرقم السري': 'Password', 'العمر': 'Age', 'كلمة المرور': 'Password', 'موضوع الشكوى': 'Complaint subject', 'اكتب شكواك هنا...': 'Write your complaint here...',
-  'جاري تحميل قائمة الغرف...': 'Loading rooms...', 'الرسائل': 'Messages', 'معلومات': 'Information', 'الإبلاغ': 'Report', 'إرسل ترقية': 'Send upgrade', 'إرسل هدية': 'Send gift',
+  'جاري تحميل قائمة الغرف...': 'Loading rooms...', 'الرسائل': 'Messages', 'معلومات': 'Information', 'الإبلاغ': 'Report', 'إرسل ترقية': 'Send upgrade', 'إرسل هدية': 'Send gift', 'ارسل ترقية': 'Send upgrade',
   'دردشة': 'Chat', 'يتم عرض الهدايا التي يتلقاها هذا المستخدم هنا': 'Gifts received by this user appear here', 'أظهر المزيد': 'Show more',
   'تنفيذ وحفظ': 'Save changes', 'البريد الالكتروني': 'Email', 'الدولة / بلدة': 'Country / City', 'النبذة': 'Bio', 'حفظ': 'Save',
   'تلقائي': 'Automatic', 'قائمة التجاهل': 'Ignore list', 'إعدادات الإشعارات': 'Notification settings'
@@ -109,9 +109,9 @@ Object.assign(I18N_EN, {
   'إلغاء التجاهل': 'Unignore', 'قائمة التجاهل فارغة': 'Your ignore list is empty', 'جاري تحميل قائمة التجاهل...': 'Loading ignore list...',
   'جاري تحميل الهدايا...': 'Loading gifts...', 'لم تستلم أي هدايا بعد': 'You have not received any gifts yet', 'تعذر تحميل الهدايا': 'Could not load gifts',
   'من:': 'From:', 'متجاهل • الرسائل الخاصة متوقفة': 'Ignored • private messages disabled', 'تم إغلاق المحادثة بسبب التجاهل': 'The conversation was closed because of the ignore setting',
-  'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available'
+  'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available', 'إلغاء تجاهل': 'Unignore', 'الهدية من': 'Gift from', 'كمية:': 'Quantity:'
 });
-const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
+const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
 function translateDynamicText(text) {
   if (I18N_EN[text]) return I18N_EN[text];
   let match = text.match(/^مرحباً بـ (.+) في غرفة (.+)$/);
@@ -964,46 +964,50 @@ async function openProfile(uid) {
     openOv('profOv');
   } catch (e) { toast('تعذر فتح الملف الشخصي', false); }
 }
-// ----- ملف الزائر: مطابق لصورة «الملف الشخصي للزوار» -----
+// ----- ملف المستخدم الآخر: نسخة مطابقة لمرجع الملف الشخصي والهدايا -----
 function renderVisitorProfile(u, d) {
   const stMap = { online: 'متصل', busy: 'مشغول', away: 'بالخارج', offline: 'غير متصل' };
-  const stColor = { online: '#22c55e', busy: '#ef4444', away: '#f59e0b', offline: '#b9c0d2' };
+  const stColor = { online: '#20d33a', busy: '#ef4444', away: '#f59e0b', offline: '#b9c0d2' };
   const memTxt = u.rank !== 'user' ? RANK_NAMES[u.rank] : (u.membership !== 'none' ? MEM_NAMES[u.membership] : (u.registered ? 'عضو مسجل' : 'زائر'));
-  const gifts = (d.gifts || []).slice().sort((a, b) => b.created_at - a.created_at);   // الأحدث أولاً مثل المرجع
-  const gCards = gifts.map(g => {
+  const gifts = (d.gifts || []).slice().sort((a, b) => b.created_at - a.created_at);
+  const giftCard = g => {
     const dt = new Date(g.created_at * 1000);
+    const giftVisual = (g.gift_img || '').startsWith('/')
+      ? `<img src="${esc(g.gift_img)}" alt="${esc(g.gift_name || 'هدية')}">`
+      : esc(g.gift_img || '🎁');
     return `<div class="vg-card">
       <div class="vg-top">
-        <span class="vg-e">${(g.gift_img || '').startsWith('/') ? `<img src="${esc(g.gift_img)}" alt="">` : esc(g.gift_img || '🎁')}</span>
+        <span class="vg-e">${giftVisual}</span>
         <div class="vg-txt">
           <div class="vg-date">${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}</div>
           <div class="vg-fl">الهدية من</div>
-          <div class="vg-from">${esc(g.from_name)}</div>
+          <div class="vg-from">${esc(g.from_name || '-')}</div>
         </div>
       </div>
-      <div class="vg-bot"><span class="vg-name">${esc(g.gift_name)}</span><span class="vg-qty">كمية: <b>${g.qty}</b></span></div>
+      <div class="vg-bot"><span class="vg-name">${esc(g.gift_name || 'هدية')}</span><span class="vg-qty">كمية:<b>${g.qty || 1}</b></span></div>
     </div>`;
-  }).join('');
+  };
+
   $('#profBody').innerHTML = `
   <div class="vp-top">
     <div class="vp-col">
-      <div class="vp-name">${esc(u.username)}</div>
-      <div class="vp-decor"><i class="f7-icons vp-spark">sparkles</i>${u.verified ? '<i class="f7-icons vp-vrf">checkmark_seal_fill</i>' : ''}</div>
-      <div class="vp-status"><span class="vs-dot" style="background:${stColor[u.status] || '#22c55e'}"></span> ${stMap[u.status] || 'متصل'}</div>
-      <span class="vp-pill"><img src="/badges/${d.badge}" alt=""> ${memTxt}</span>
+      <div class="vp-name">${esc(u.username)}${u.verified ? '<i class="f7-icons vp-vrf">checkmark_seal_fill</i>' : ''}</div>
+      <div class="vp-decor" aria-hidden="true"><span>◆</span><span>◆</span></div>
+      <div class="vp-status">${stMap[u.status] || 'متصل'} <span class="vs-dot" style="background:${stColor[u.status] || '#20d33a'}"></span></div>
+      <span class="vp-pill"><img src="/badges/${d.badge}" alt="">${esc(memTxt)}</span>
     </div>
-    <div class="vp-ava">${avatarHtml(u.avatar)}<span class="vs-dot big" style="background:${stColor[u.status] || '#22c55e'}"></span></div>
+    <div class="vp-ava">${avatarHtml(u.avatar)}<span class="vs-dot big" style="background:${stColor[u.status] || '#20d33a'}"></span></div>
   </div>
   <div class="vp-tabs">
     <button class="vp-tab" data-vtab="gifts">الهدايا</button>
     <button class="vp-tab active" data-vtab="info">معلومات</button>
   </div>
-  <div class="vp-acts">
-    <button class="va" id="vaIgnore"><span class="va-ic"><i class="f7-icons">exclamationmark_octagon_fill</i></span>تجاهل</button>
-    <button class="va" id="vaReport"><span class="va-ic"><i class="f7-icons">exclamationmark_triangle_fill</i></span>الإبلاغ</button>
-    <button class="va" id="vaUpgrade"><span class="va-ic"><i class="f7-icons">chart_bar_fill</i></span>إرسل ترقية</button>
-    <button class="va" id="vaGift"><span class="va-ic"><i class="f7-icons">gift_fill</i></span>إرسل هدية</button>
-    <button class="va" id="vaChat"><span class="va-ic"><i class="f7-icons">chat_bubble_fill</i></span>دردشة</button>
+  <div class="vp-acts" id="vpActs">
+    <button class="va" id="vaIgnore"><span class="va-ic"><i class="f7-icons">exclamationmark_circle_fill</i></span><span class="va-label">تجاهل</span></button>
+    <button class="va" id="vaReport"><span class="va-ic"><i class="f7-icons">exclamationmark_triangle_fill</i></span><span class="va-label">الإبلاغ</span></button>
+    <button class="va" id="vaUpgrade"><span class="va-ic"><i class="f7-icons">chart_bar_fill</i></span><span class="va-label">ارسل ترقية</span></button>
+    <button class="va" id="vaGift"><span class="va-ic"><i class="f7-icons">gift_fill</i></span><span class="va-label">ارسل هدية</span></button>
+    <button class="va" id="vaChat"><span class="va-ic"><i class="f7-icons">chat_bubble_fill</i></span><span class="va-label">دردشة</span></button>
   </div>
   <div class="vp-info" id="vpInfo">
     <p class="vp-bio">${esc(u.bio || DEFAULT_BIO)}</p>
@@ -1012,20 +1016,50 @@ function renderVisitorProfile(u, d) {
   </div>
   <div class="vp-gifts" id="vpGifts" style="display:none">
     <div class="vp-gtitle">يتم عرض الهدايا التي يتلقاها هذا المستخدم هنا</div>
-    <div class="vp-ggrid">${gCards || '<div class="pv-empty" style="grid-column:1/3;padding:26px"><div>لا توجد هدايا بعد</div></div>'}</div>
-    ${gifts.length ? '<button class="vp-more" id="vpMore">أظهر المزيد</button>' : ''}
+    <div class="vp-ggrid" id="vpGiftGrid"></div>
+    ${gifts.length > 4 ? '<button class="vp-more" id="vpMore">أظهر المزيد</button>' : ''}
   </div>`;
-  $$('#profBody .vp-tab').forEach(t => t.onclick = () => {
-    $$('#profBody .vp-tab').forEach(x => x.classList.toggle('active', x === t));
-    $('#vpInfo').style.display = t.dataset.vtab === 'info' ? '' : 'none';
-    $('#vpGifts').style.display = t.dataset.vtab === 'gifts' ? '' : 'none';
+
+  let shownGifts = 4;
+  const renderGiftCards = () => {
+    $('#vpGiftGrid').innerHTML = gifts.length
+      ? gifts.slice(0, shownGifts).map(giftCard).join('')
+      : '<div class="vp-gempty">لا توجد هدايا بعد</div>';
+    const more = $('#vpMore');
+    if (more) more.style.display = shownGifts < gifts.length ? '' : 'none';
+  };
+  renderGiftCards();
+
+  $$('#profBody .vp-tab').forEach(tab => tab.onclick = () => {
+    const showInfo = tab.dataset.vtab === 'info';
+    $$('#profBody .vp-tab').forEach(item => item.classList.toggle('active', item === tab));
+    $('#vpActs').style.display = showInfo ? '' : 'none';
+    $('#vpInfo').style.display = showInfo ? '' : 'none';
+    $('#vpGifts').style.display = showInfo ? 'none' : '';
   });
   $('#vaChat').onclick = () => { closeOv('profOv'); openPrivateWith(u); };
   $('#vaGift').onclick = () => { closeOv('profOv'); if (!ME.registered) return openOv('needRegOv'); openGifts(u); };
   $('#vaUpgrade').onclick = () => { closeOv('profOv'); openUpgrade(u); };
   $('#vaReport').onclick = () => { closeOv('profOv'); openOv('compOv'); const s = $('#compSubject'); if (s) s.value = 'إبلاغ عن ' + u.username; };
-  $('#vaIgnore').onclick = () => toast('تمت الإضافة لقائمة التجاهل 🚫');
-  const vm = $('#vpMore'); if (vm) vm.onclick = () => toast('لا توجد هدايا أخرى');
+
+  const ignoreButton = $('#vaIgnore');
+  const syncIgnoreButton = () => {
+    ignoreButton.classList.toggle('active', IGNORED_USERS.has(+u.id));
+    ignoreButton.querySelector('.va-label').textContent = IGNORED_USERS.has(+u.id) ? 'إلغاء تجاهل' : 'تجاهل';
+  };
+  syncIgnoreButton();
+  ignoreButton.onclick = async () => {
+    const ignored = !IGNORED_USERS.has(+u.id);
+    try {
+      await api('/api/ignore/' + u.id, 'POST', { ignored });
+      if (ignored) IGNORED_USERS.add(+u.id); else IGNORED_USERS.delete(+u.id);
+      syncIgnoreButton();
+      renderUsers();
+      toast(ignored ? 'تمت الإضافة لقائمة التجاهل 🚫' : 'تم إلغاء التجاهل');
+    } catch (e) { toast(e.error || 'تعذر تحديث قائمة التجاهل', false); }
+  };
+  const more = $('#vpMore');
+  if (more) more.onclick = () => { shownGifts += 4; renderGiftCards(); };
 }
 function profInfoHtml(u, memText) {
   return `<div class="prof-card">

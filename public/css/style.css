@@ -804,49 +804,55 @@ body { background:#0e1220; display:flex; justify-content:center; }
 #exitNo { color:var(--main); }
 #exitYes { color:#a3b3d8; }
 
-/* ============ ملف الزائر (مطابق للمرجع) ============ */
-.vp-top { direction:ltr; display:flex; align-items:flex-start; padding:14px 14px 6px; gap:10px; }
-.vp-col { flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:9px; padding-top:6px; }
-.vp-name { font-size:16px; font-weight:900; color:var(--navy); display:flex; align-items:center; gap:5px; }
-.vp-name i { color:#1a8cff; font-size:16px; }
-.vp-decor { direction:ltr; display:flex; align-items:center; gap:8px; margin:1px 0 0; }
-.vp-spark { color:#fff; font-size:18px; text-shadow:0 1px 3px rgba(0,0,0,.3); }
-.vp-vrf { color:#2e9bff; font-size:20px; filter:drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
-.vp-status { direction:rtl; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:800; color:#7c86a0; width:fit-content; }
-.vs-dot { width:10px; height:10px; border-radius:50%; display:inline-block; background:#22c55e; border:2px solid #fff; box-shadow:0 0 0 1px #e3e6f0; }
-.vp-pill { direction:rtl; display:inline-flex; align-items:center; gap:5px; background:#eef1fd; color:#7a63e0; font-size:11.5px; font-weight:900; padding:6px 12px; border-radius:20px; }
-.vp-pill i { font-size:13px; }
-.vp-pill img { height:15px; width:auto; display:block; }
-.vp-ava { position:relative; width:92px; height:92px; flex:none; }
-.vp-ava img { width:92px; height:92px; border-radius:16px; object-fit:cover; display:block; }
-.vp-ava .vs-dot.big { position:absolute; left:-2px; bottom:-2px; width:16px; height:16px; border:3px solid #fff; }
-.vp-tabs { direction:ltr; display:flex; gap:0; padding:8px 12px 4px; }
-.vp-tab { flex:1; border:0; cursor:pointer; padding:11px; font-size:14px; font-weight:900; background:#fff; color:#1a8cff; }
-.vp-tab:first-child { border-radius:0 11px 11px 0; }
-.vp-tab:last-child { border-radius:11px 0 0 11px; }
-.vp-tab.active { background:#1a8cff; color:#fff; }
-.vp-acts { direction:ltr; display:flex; justify-content:space-between; padding:14px 16px 4px; }
-.va { background:none; border:0; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:5px; font-size:10px; font-weight:800; color:var(--navy); }
-.va-ic { width:38px; height:38px; border-radius:50%; background:#eceef5; display:flex; align-items:center; justify-content:center; }
-.va-ic i { color:#1a8cff; font-size:19px; }
-.vp-bio { font-size:12px; font-weight:700; color:#5b637d; line-height:2; text-align:right; padding:12px 16px 4px; }
-.vp-irow { display:flex; align-items:center; justify-content:space-between; padding:13px 16px; font-size:13.5px; }
-.vp-irow .vp-k { color:var(--navy); font-weight:900; }
-.vp-irow .vp-v { color:#7c86a0; font-weight:900; }
-.vp-gtitle { text-align:center; font-size:13px; font-weight:900; color:var(--navy); padding:12px 0 10px; }
-.vp-ggrid { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:0 12px; }
-.vg-card { background:linear-gradient(165deg,#34a1ff,#0f6cee); border-radius:16px; padding:12px; color:#fff; }
-.vg-top { direction:ltr; display:flex; gap:8px; align-items:flex-start; }
-.vg-e { font-size:44px; line-height:1; filter:drop-shadow(0 3px 4px rgba(0,0,0,.25)); }
-.vg-txt { flex:1; }
-.vg-date { color:#fff; font-weight:900; font-size:13.5px; direction:ltr; }
-.vg-fl { font-size:10.5px; font-weight:800; margin-top:4px; opacity:.92; }
-.vg-from { font-size:11.5px; font-weight:900; margin-top:1px; text-shadow:0 1px 3px rgba(0,0,0,.25); }
-.vg-bot { direction:ltr; display:flex; align-items:center; justify-content:space-between; margin-top:10px; }
-.vg-name { font-weight:900; font-size:12.5px; color:#fff; }
-.vg-qty { font-size:11px; font-weight:900; color:#c9ff4d; }
-.vg-qty b { background:transparent; color:#c9ff4d; border-radius:0; padding:0; margin-inline-start:2px; font-size:12.5px; }
-.vp-more { display:block; margin:14px auto 8px; background:#eef0f6; border:0; color:#6b7286; font-weight:900; font-size:12.5px; padding:9px 30px; border-radius:20px; cursor:pointer; }
+/* ============ ملف المستخدم الآخر (مطابق لمرجع الملف والهدايا) ============ */
+.vp-top { direction:ltr; height:132px; box-sizing:border-box; display:flex; align-items:flex-start; padding:22px 14px 8px; gap:9px; }
+.vp-col { flex:1; min-width:0; height:96px; display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding-top:5px; }
+.vp-name { width:100%; min-height:20px; font-size:15px; line-height:20px; font-weight:900; color:#fff; display:flex; align-items:center; justify-content:center; gap:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vp-vrf { color:#168dff; font-size:18px; flex:none; filter:drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
+.vp-decor { direction:ltr; width:100%; height:17px; display:flex; align-items:center; justify-content:center; gap:2px; color:#fff; line-height:1; }
+.vp-decor span:first-child { font-size:14px; transform:rotate(12deg); }
+.vp-decor span:last-child { font-size:10px; transform:rotate(-12deg); }
+.vp-status { direction:rtl; width:100%; height:17px; display:flex; align-items:center; justify-content:center; gap:6px; color:#fff; font-size:10px; line-height:17px; font-weight:800; }
+.vs-dot { width:9px; height:9px; border-radius:50%; display:inline-block; flex:none; background:#20d33a; border:1.5px solid rgba(255,255,255,.9); }
+.vp-pill { direction:rtl; width:100%; height:24px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:5px; margin-top:2px; padding:3px 8px; border-radius:7px; background:rgba(255,255,255,.88); color:#8068ef; font-size:9px; line-height:18px; font-weight:900; white-space:nowrap; overflow:hidden; }
+.vp-pill img { width:13px; height:13px; object-fit:contain; display:block; flex:none; }
+.vp-ava { position:relative; width:96px; height:96px; flex:none; }
+.vp-ava > img,.vp-ava > span:not(.vs-dot) { width:96px; height:96px; border-radius:25px; object-fit:cover; display:flex; align-items:center; justify-content:center; }
+.vp-ava .vs-dot.big { position:absolute; left:-2px; bottom:3px; width:13px; height:13px; border:2.5px solid #fff; box-shadow:none; }
+.vp-tabs { direction:ltr; height:30px; box-sizing:border-box; display:flex; gap:0; padding:8px 7px 0; }
+.vp-tab { flex:1; height:22px; border:0; cursor:pointer; padding:0; background:#fff; color:#0785fa; font-family:inherit; font-size:10px; line-height:22px; font-weight:900; }
+.vp-tab:first-child { border-radius:3px 0 0 3px; }
+.vp-tab:last-child { border-radius:0 3px 3px 0; }
+.vp-tab.active { background:#0785fa; color:#fff; }
+.vp-acts { direction:ltr; height:51px; box-sizing:border-box; display:flex; justify-content:space-between; padding:7px 7px 2px; }
+.va { width:20%; min-width:0; padding:0; background:none; border:0; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; color:#111827; font-family:inherit; font-size:8px; line-height:11px; font-weight:800; }
+.va-ic { width:30px; height:30px; border-radius:50%; background:#eef0f5; box-shadow:0 1px 4px rgba(20,35,70,.1); display:flex; align-items:center; justify-content:center; }
+.va-ic i { color:#0785fa; font-size:18px; }
+.va.active .va-ic { background:#e1e4ea; }
+.va.active .va-ic i { color:#7d8492; }
+.va-label { white-space:nowrap; }
+.vp-info { padding-top:5px; }
+.vp-bio { min-height:58px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; margin:0 7px 6px; padding:5px 10px; border-radius:8px; background:rgba(255,255,255,.56); color:#111827; font-size:11.5px; line-height:1.55; font-weight:700; text-align:center; }
+.vp-irow { direction:rtl; width:174px; height:30px; box-sizing:border-box; display:flex; align-items:center; margin:7px auto; padding:0; border-radius:7px; background:rgba(255,255,255,.58); font-size:12px; }
+.vp-irow .vp-k,.vp-irow .vp-v { width:50%; text-align:center; font-weight:800; }
+.vp-irow .vp-k { color:#0785fa; }
+.vp-irow .vp-v { color:#111827; }
+.vp-gtitle { height:34px; box-sizing:border-box; padding:7px 4px 6px; color:#111827; text-align:center; font-size:10.5px; line-height:21px; font-weight:700; }
+.vp-ggrid { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:0 7px; }
+.vg-card { height:74px; box-sizing:border-box; overflow:hidden; padding:4px 6px 3px; border-radius:8px; background:#0785ed; color:#fff; }
+.vg-top { direction:ltr; height:51px; display:flex; gap:5px; align-items:flex-start; }
+.vg-e { width:43px; height:47px; flex:none; display:flex; align-items:center; justify-content:center; color:#fff; font-size:38px; line-height:1; filter:drop-shadow(0 2px 2px rgba(0,0,0,.2)); }
+.vg-e img { width:42px; height:42px; object-fit:contain; display:block; }
+.vg-txt { flex:1; min-width:0; padding-top:0; text-align:center; }
+.vg-date { color:#fff; font-size:9.5px; line-height:13px; font-weight:900; direction:ltr; white-space:nowrap; }
+.vg-fl { margin-top:0; font-size:8px; line-height:11px; font-weight:800; }
+.vg-from { overflow:hidden; margin-top:0; color:#fff; font-size:8.5px; line-height:11px; font-weight:900; text-overflow:ellipsis; white-space:nowrap; }
+.vg-bot { direction:ltr; height:16px; display:flex; align-items:center; justify-content:space-between; gap:3px; }
+.vg-name { max-width:55%; overflow:hidden; color:#fff; font-size:8px; line-height:13px; font-weight:900; text-overflow:ellipsis; white-space:nowrap; }
+.vg-qty { color:#caff28; font-size:8px; line-height:13px; font-weight:900; white-space:nowrap; }
+.vg-qty b { margin-inline-start:1px; padding:0; background:transparent; color:#caff28; font-size:9px; }
+.vp-gempty { grid-column:1/3; padding:28px 10px; color:#7b8495; text-align:center; font-size:11px; font-weight:800; }
+.vp-more { display:block; width:calc(100% - 52px); height:22px; margin:8px auto 0; padding:0; border:0; border-radius:5px; background:#bcbcbc; color:#fff; cursor:pointer; font-family:inherit; font-size:9px; line-height:22px; font-weight:900; }
 
 /* ============ ورقة تسجيل الدخول (زائر/عضوية — مطابقة للمرجع) ============ */
 .lsheet { padding:14px 26px 26px; }
@@ -889,32 +895,30 @@ body { background:#0e1220; display:flex; justify-content:center; }
 }
 .sp-pill textarea, .sp-head textarea { text-align:center; }
 
-/* ============ ملف الزائر: خلفية الصورة الضبابية + تطابق المرجع ============ */
+/* ============ خلفية رأس ملف المستخدم الآخر ============ */
 .pvpage { position:relative; }
+.profpage.visitor { padding:0; background:#f4f4f9; }
 .profpage.visitor::before {
-  content:""; position:absolute; left:0; right:0; top:0; height:290px;
-  background-image:var(--vpava); background-size:cover; background-position:center 18%;
-  filter:blur(20px) brightness(.72); transform:scale(1.28); transform-origin:top center;
+  content:""; position:absolute; z-index:0; top:32px; right:-18px; left:-18px; height:132px;
+  background-color:#121318; background-image:var(--vpava); background-repeat:no-repeat; background-size:cover; background-position:center 24%;
+  filter:blur(13px) brightness(.38); transform:scale(1.12);
 }
 .profpage.visitor::after {
-  content:""; position:absolute; left:0; right:0; top:0; height:290px;
-  background:linear-gradient(180deg, rgba(244,246,251,0) 0%, rgba(244,246,251,.35) 34%, rgba(244,246,251,.94) 72%, #f4f6fb 88%);
+  content:""; position:absolute; z-index:0; top:32px; right:0; left:0; height:132px;
+  background:linear-gradient(90deg,rgba(10,12,18,.55),rgba(10,12,18,.12) 62%,rgba(10,12,18,.3));
 }
-.profpage.visitor .pg-head.bar { background:var(--bg); border-bottom:0; position:relative; z-index:2; }
-.profpage.visitor .pg-head .pg-title { color:#14172e; text-shadow:none; }
-.profpage.visitor .pg-head .pg-title i { color:#14172e; }
-.profpage.visitor .vp-top { position:relative; z-index:1; }
-.profpage.visitor .vp-name { color:#fff; text-shadow:0 1px 6px rgba(10,20,50,.5); }
-.profpage.visitor .vp-chatdot { color:rgba(255,255,255,.85); }
-.profpage.visitor .vp-status { color:#e4e9f5; }
-.profpage.visitor .vp-acts, .profpage.visitor .vp-tabs, .profpage.visitor .vp-info, .profpage.visitor .vp-gifts { position:relative; z-index:1; }
-.vp-ava img { border:3px solid #fff; box-shadow:0 4px 16px rgba(10,25,70,.3); }
-.vp-tabs { gap:8px; padding-top:14px; }
-.vp-tab { border-radius:11px !important; border:1.5px solid #dbe2f0 !important; box-shadow:0 1px 3px rgba(30,45,90,.05); }
-.vp-tab.active { border-color:transparent !important; }
-.vp-irow { background:#eef1f8; border-radius:10px; margin:7px 12px; padding:12px 14px; }
-.vp-more { width:calc(100% - 24px); border-radius:10px; padding:12px; background:#eef0f6; color:#4b5568; }
-.vp-name { font-size:17px; }
+.profpage.visitor .pg-head.bar {
+  position:relative; z-index:2; flex:none; height:32px; box-sizing:border-box; margin:0; padding:0 6px;
+  border:0; background:#f1f1f3;
+}
+.profpage.visitor .pg-head .pg-title { color:#111827; font-size:12px; line-height:32px; text-shadow:none; }
+.profpage.visitor .pg-head .pg-title i { color:#111827; font-size:12px !important; }
+.profpage.visitor .pg-head .pg-close { color:#0785fa; font-size:11px; line-height:32px; font-weight:500; }
+.profpage.visitor #profBody { position:relative; z-index:1; flex:none; }
+.profpage.visitor .vp-name { color:#fff; text-shadow:0 1px 5px rgba(0,0,0,.65); }
+.profpage.visitor .vp-ava > img { border:3px solid #fff; box-sizing:border-box; box-shadow:0 3px 10px rgba(0,0,0,.42); }
+.profpage.visitor .vp-ava > span:not(.vs-dot) { border:3px solid #fff; box-sizing:border-box; background:#fff; box-shadow:0 3px 10px rgba(0,0,0,.42); }
+body.lang-en .profpage.visitor .vp-status,body.lang-en .profpage.visitor .vp-pill,body.lang-en .profpage.visitor .vp-irow { direction:ltr; }
 
 /* خانة النبذة في نموذج حسابي */
 textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-height:74px; }
@@ -952,7 +956,6 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
 .gm-sys { margin-top:4px; }
 .gm-st { color:#e02158; font-weight:900; font-size:12.5px; text-align:right; }
 .gm-sb { color:#98a0b3; font-size:11.5px; font-weight:800; text-align:right; margin-top:1px; }
-.vg-e img { width:56px; height:56px; object-fit:contain; }
 .gift-msg .ge img, .ge-img { width:40px; height:40px; object-fit:contain; }
 .gift-cell .ge img { width:44px; height:44px; object-fit:contain; }
 
