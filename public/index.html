@@ -651,24 +651,29 @@
         <button class="wall-refresh" id="wallRefresh" type="button" aria-label="تحديث الحائط"><i class="f7-icons">arrow_clockwise</i></button>
       </div>
       <div class="wall-scroll" id="wallScroll">
-        <div class="wall-composer">
+        <button class="wall-create-trigger" id="wallCreateTrigger" type="button"><i class="f7-icons">plus_circle_fill</i><span>نشر</span></button>
+        <div class="wall-composer" id="wallComposer" hidden>
+          <div class="wall-composer-title"><b>منشور جديد</b><button id="wallComposerClose" type="button"><i class="f7-icons">xmark</i></button></div>
           <div class="wall-compose-main">
             <span class="wall-compose-avatar" id="wallComposeAvatar"></span>
             <textarea id="wallPostText" maxlength="2000" rows="3" placeholder="اكتب منشورك هنا..."></textarea>
           </div>
           <div class="wall-youtube-row" id="wallYoutubeRow" hidden>
-            <i class="f7-icons">play_rectangle_fill</i>
-            <input id="wallYoutubeUrl" type="url" dir="ltr" placeholder="ضع رابط YouTube هنا">
-            <button id="wallYoutubeClose" type="button"><i class="f7-icons">xmark_circle_fill</i></button>
+            <div class="wall-youtube-search"><i class="f7-icons">search</i><input id="wallYoutubeSearch" type="search" placeholder="ابحث عن فيديو في YouTube"><button id="wallYoutubeSearchBtn" type="button">بحث</button><button id="wallYoutubeClose" type="button"><i class="f7-icons">xmark_circle_fill</i></button></div>
+            <div class="wall-youtube-results" id="wallYoutubeResults"></div>
+            <div class="wall-youtube-selected" id="wallYoutubeSelected" hidden></div>
           </div>
+          <div class="wall-image-preview" id="wallImagePreview" hidden><img id="wallImageElement" alt=""><button id="wallImageRemove" type="button"><i class="f7-icons">xmark_circle_fill</i></button></div>
           <div class="wall-video-preview" id="wallVideoPreview" hidden>
             <video id="wallVideoElement" controls playsinline preload="metadata"></video>
             <button id="wallVideoRemove" type="button"><i class="f7-icons">xmark_circle_fill</i></button>
           </div>
           <div class="wall-compose-actions">
             <span class="wall-media-actions">
+              <button id="wallAddImage" type="button"><i class="f7-icons">photo_fill</i><span>صورة</span></button>
+              <input id="wallImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
               <button id="wallAddYoutube" type="button"><i class="f7-icons">play_rectangle_fill</i><span>يوتيوب</span></button>
-              <button id="wallAddVideo" type="button"><i class="f7-icons">videocam_fill</i><span>رفع فيديو</span></button>
+              <button id="wallAddVideo" type="button"><i class="f7-icons">videocam_fill</i><span>فيديو</span></button>
               <input id="wallVideoFile" type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v" hidden>
             </span>
             <button class="wall-publish" id="wallPublish" type="button"><i class="f7-icons">paperplane_fill</i><span>نشر</span></button>

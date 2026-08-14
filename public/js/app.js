@@ -25,7 +25,7 @@ let NOTIFS = [], CURRENT_NOTIFICATIONS = [], CURRENT_ANNOUNCEMENT = null;
 let READ_NOTIFS = new Set(), NOTIF_UNREAD = 0, STATUS_UNREAD = 0;
 let SEL_AVATAR = null, AVA_CAT = 'def';
 let STATUSES = [], STATUS_GROUP = [], STATUS_INDEX = 0, CURRENT_STATUS = null;
-let WALL_POSTS = [], WALL_VIDEO_PATH = '';
+let WALL_POSTS = [], WALL_VIDEO_PATH = '', WALL_IMAGE_PATH = '', WALL_YOUTUBE_URL = '', WALL_YOUTUBE_RESULTS = [];
 let CUSTOM_EMOJIS = [];
 // قائمة التجاهل تُحمّل من الخادم وتبقى مرتبطة بالحساب.
 let IGNORED_USERS = new Set();
@@ -121,7 +121,10 @@ Object.assign(I18N_EN, {
   'يوتيوب': 'YouTube', 'رفع فيديو': 'Upload video', 'نشر': 'Publish', 'جاري تحميل المنشورات...': 'Loading posts...', 'تعذر تحميل الحائط': 'Could not load wall',
   'إعجاب': 'Like', 'سمايل': 'React', 'تعليق': 'Comment', 'اكتب تعليقاً...': 'Write a comment...', 'لا توجد منشورات بعد، كن أول من ينشر على الحائط': 'No posts yet. Be the first to post.',
   'حذف المنشور': 'Delete post', 'حذف هذا المنشور؟': 'Delete this post?', 'جاري رفع الفيديو...': 'Uploading video...', 'تم رفع الفيديو بنجاح': 'Video uploaded successfully',
-  'تم نشر المنشور': 'Post published', 'تعذر نشر المنشور': 'Could not publish post'
+  'تم نشر المنشور': 'Post published', 'تعذر نشر المنشور': 'Could not publish post', 'نشر منشور جديد': 'Create a new post', 'منشور جديد': 'New post',
+  'ابحث عن فيديو في YouTube': 'Search YouTube videos', 'بحث': 'Search', 'صورة': 'Photo', 'فيديو': 'Video', 'جاري البحث...': 'Searching...', 'لا توجد نتائج': 'No results',
+  'اكتب كلمات البحث في YouTube': 'Enter YouTube search terms', 'تعذر البحث في YouTube': 'Could not search YouTube', 'جاري رفع الصورة...': 'Uploading photo...',
+  'تم رفع الصورة بنجاح': 'Photo uploaded successfully', 'تعذر رفع الصورة': 'Could not upload photo', 'إظهار المزيد': 'Show more'
 });
 const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,#announcementText,#announcementSender,.notif-preview,.notif-sender,.wall-post-text,.wall-post-who b,.wall-comment-bubble b,.wall-comment-bubble p,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
 function translateDynamicText(text) {
@@ -140,6 +143,8 @@ function translateDynamicText(text) {
   if (match) return `${match[1]} is registered; you joined as guest ${match[2]}`;
   match = text.match(/^(\d+) تفاعل • (\d+) تعليق$/);
   if (match) return `${match[1]} reactions • ${match[2]} comments`;
+  match = text.match(/^إظهار المزيد \((\d+)\)$/);
+  if (match) return `Show more (${match[1]})`;
   if (text.startsWith('الكمية: ')) return 'Quantity: ' + text.slice('الكمية: '.length);
   if (text.startsWith('اليوم الساعة ')) return 'Today at ' + text.slice('اليوم الساعة '.length);
   if (text.startsWith('أمس الساعة ')) return 'Yesterday at ' + text.slice('أمس الساعة '.length);
@@ -444,8 +449,13 @@ function connectSocket() {
     beep(660, .2);
   });
   SOCKET.on('membership_changed', ({ plan }) => { if (ME) { ME.membership = plan; MYBADGE = badgeOf(ME); } });
-  SOCKET.on('wall_changed', () => {
-    if ($('#wallOv').classList.contains('open')) loadWallPosts(false);
+  SOCKET.on('wall_changed', change => {
+    if (!$('#wallOv').classList.contains('open')) return;
+    if (change && change.action === 'deleted') {
+      const card = $(`#wallList .wall-post[data-id="${+change.postId}"]`); if (card) card.remove();
+      WALL_POSTS = WALL_POSTS.filter(post => +post.id !== +change.postId);
+    } else if (change && change.action === 'created') $('#wallRefresh').classList.add('has-updates');
+    // التعليقات والتفاعلات لا تعيد بناء القالب حتى يستمر الفيديو دون توقف أو إعادة تشغيل.
   });
   SOCKET.on('statuses_changed', change => {
     const statusPageOpen = $('#statusOv').classList.contains('open');
@@ -1868,6 +1878,8 @@ function wallTime(timestamp) {
 async function openWall() {
   if (!ME) return openLogin();
   $('#wallComposeAvatar').innerHTML = avatarHtml(ME.avatar);
+  $('#wallComposer').hidden = true;
+  $('#wallCreateTrigger').hidden = false;
   openOv('wallOv');
   await loadWallPosts(true);
 }
@@ -1876,16 +1888,52 @@ async function loadWallPosts(showLoading = true) {
   if (showLoading) $('#wallList').innerHTML = '<div class="wall-loading"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل المنشورات...</div>';
   try {
     WALL_POSTS = await api('/api/wall');
+    $('#wallRefresh').classList.remove('has-updates');
     renderWallPosts();
   } catch (e) {
     $('#wallList').innerHTML = '<div class="wall-empty"><i class="f7-icons">exclamationmark_circle</i>تعذر تحميل الحائط</div>';
   }
 }
-async function refreshWallKeepingPosition() {
-  const scroll = $('#wallScroll');
-  const top = scroll.scrollTop;
-  await loadWallPosts(false);
-  scroll.scrollTop = top;
+function bindWallMoreComments(card) {
+  const more = card.querySelector('.wall-comments-more');
+  if (!more) return;
+  more.onclick = () => {
+    card.dataset.commentsExpanded = '1';
+    card.querySelectorAll('.wall-comment-extra').forEach(comment => { comment.hidden = false; });
+    more.remove();
+  };
+}
+function updateWallReactionDisplay(card, post) {
+  const order = ['👍', '❤️', '😂', '😍', '😮'];
+  card.querySelector('.wall-reaction-emojis').innerHTML = order.filter(icon => post.reactions && post.reactions[icon])
+    .map(icon => `<span>${icon}<b>${post.reactions[icon]}</b></span>`).join('');
+  card.querySelector('.wall-reaction-summary > span:last-child').textContent = `${post.reaction_count || 0} تفاعل • ${(post.comments || []).length} تعليق`;
+  card.querySelector('.wall-like').classList.toggle('active', post.my_reaction === '👍');
+  const react = card.querySelector('.wall-react-action');
+  react.classList.toggle('active', !!post.my_reaction && post.my_reaction !== '👍');
+  react.querySelector(':scope > span').textContent = post.my_reaction && post.my_reaction !== '👍' ? post.my_reaction : 'سمايل';
+  react.classList.remove('show-picker');
+}
+function appendWallCommentWithoutMediaReset(card, post, comment) {
+  post.comments = post.comments || [];
+  post.comments.push(comment);
+  const commenter = comment.user || { username: comment.username, avatar: '' };
+  const node = document.createElement('div');
+  const expanded = card.dataset.commentsExpanded === '1';
+  node.className = 'wall-comment' + (post.comments.length > 2 ? ' wall-comment-extra' : '');
+  if (post.comments.length > 2 && !expanded) node.hidden = true;
+  node.innerHTML = `<span class="wall-comment-avatar">${avatarHtml(commenter.avatar)}</span><div class="wall-comment-bubble"><b>${esc(commenter.username || comment.username)}</b><p>${esc(comment.text)}</p></div>`;
+  card.querySelector('.wall-comment-list').appendChild(node);
+  let more = card.querySelector('.wall-comments-more');
+  if (post.comments.length > 2 && !expanded) {
+    if (!more) {
+      more = document.createElement('button'); more.type = 'button'; more.className = 'wall-comments-more';
+      card.querySelector('.wall-comment-form').before(more);
+    }
+    more.textContent = `إظهار المزيد (${post.comments.length - 2})`;
+    bindWallMoreComments(card);
+  }
+  card.querySelector('.wall-reaction-summary > span:last-child').textContent = `${post.reaction_count || 0} تفاعل • ${post.comments.length} تعليق`;
 }
 function renderWallPosts() {
   const reactionsOrder = ['👍', '❤️', '😂', '😍', '😮'];
@@ -1893,13 +1941,15 @@ function renderWallPosts() {
     const user = post.user || { username: post.username, avatar: '', badge: 'register.png' };
     const reactions = reactionsOrder.filter(icon => post.reactions && post.reactions[icon])
       .map(icon => `<span>${icon}<b>${post.reactions[icon]}</b></span>`).join('');
-    const comments = (post.comments || []).map(comment => {
+    const comments = (post.comments || []).map((comment, commentIndex) => {
       const commenter = comment.user || { username: comment.username, avatar: '' };
-      return `<div class="wall-comment">
+      return `<div class="wall-comment${commentIndex >= 2 ? ' wall-comment-extra' : ''}" ${commentIndex >= 2 ? 'hidden' : ''}>
         <span class="wall-comment-avatar">${avatarHtml(commenter.avatar)}</span>
         <div class="wall-comment-bubble"><b>${esc(commenter.username || comment.username)}</b><p>${esc(comment.text)}</p></div>
       </div>`;
     }).join('');
+    const moreComments = (post.comments || []).length > 2 ? `<button class="wall-comments-more" type="button">إظهار المزيد (${(post.comments || []).length - 2})</button>` : '';
+    const image = post.image ? `<div class="wall-post-image"><img src="${esc(post.image)}" loading="lazy" alt=""></div>` : '';
     const media = post.youtube_url
       ? `<div class="wall-media"><iframe src="${esc(post.youtube_url)}" title="YouTube" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`
       : (post.video ? `<div class="wall-media"><video src="${esc(post.video)}" controls playsinline preload="metadata"></video></div>` : '');
@@ -1912,6 +1962,7 @@ function renderWallPosts() {
         ${post.can_delete ? '<button class="wall-post-delete" type="button" title="حذف المنشور"><i class="f7-icons">trash_fill</i></button>' : ''}
       </div>
       ${post.text ? `<div class="wall-post-text">${esc(post.text)}</div>` : ''}
+      ${image}
       ${media}
       <div class="wall-reaction-summary"><span class="wall-reaction-emojis">${reactions}</span><span>${post.reaction_count || 0} تفاعل • ${(post.comments || []).length} تعليق</span></div>
       <div class="wall-post-actions">
@@ -1921,6 +1972,7 @@ function renderWallPosts() {
       </div>
       <div class="wall-comments">
         <div class="wall-comment-list">${comments}</div>
+        ${moreComments}
         <div class="wall-comment-form"><input maxlength="500" placeholder="اكتب تعليقاً..."><button type="button"><i class="f7-icons">paperplane_fill</i></button></div>
       </div>
     </article>`;
@@ -1928,9 +1980,12 @@ function renderWallPosts() {
 
   $$('#wallList .wall-post').forEach(card => {
     const postId = +card.dataset.id;
+    const post = WALL_POSTS.find(item => +item.id === postId);
+    bindWallMoreComments(card);
     card.querySelector('.wall-like').onclick = async () => {
-      await api(`/api/wall/${postId}/reaction`, 'POST', { reaction: '👍' });
-      await refreshWallKeepingPosition();
+      const updated = await api(`/api/wall/${postId}/reaction`, 'POST', { reaction: '👍' });
+      Object.assign(post, updated);
+      updateWallReactionDisplay(card, post);
     };
     const reactAction = card.querySelector('.wall-react-action');
     reactAction.onclick = event => {
@@ -1941,14 +1996,16 @@ function renderWallPosts() {
     };
     card.querySelectorAll('[data-reaction]').forEach(choice => choice.onclick = async event => {
       event.stopPropagation();
-      await api(`/api/wall/${postId}/reaction`, 'POST', { reaction: choice.dataset.reaction });
-      await refreshWallKeepingPosition();
+      const updated = await api(`/api/wall/${postId}/reaction`, 'POST', { reaction: choice.dataset.reaction });
+      Object.assign(post, updated);
+      updateWallReactionDisplay(card, post);
     });
     const input = card.querySelector('.wall-comment-form input');
     const sendComment = async () => {
       const text = input.value.trim(); if (!text) return;
-      await api(`/api/wall/${postId}/comments`, 'POST', { text });
-      await refreshWallKeepingPosition();
+      const result = await api(`/api/wall/${postId}/comments`, 'POST', { text });
+      input.value = '';
+      appendWallCommentWithoutMediaReset(card, post, result.comment);
     };
     card.querySelector('.wall-comment-form button').onclick = sendComment;
     input.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); sendComment(); } };
@@ -1957,13 +2014,93 @@ function renderWallPosts() {
     if (remove) remove.onclick = async () => {
       if (!confirm('حذف هذا المنشور؟')) return;
       await api('/api/wall/' + postId, 'DELETE');
-      await refreshWallKeepingPosition();
+      WALL_POSTS = WALL_POSTS.filter(item => +item.id !== postId);
+      card.remove();
+      if (!WALL_POSTS.length) renderWallPosts();
     };
   });
 }
+function resetWallComposer() {
+  $('#wallPostText').value = '';
+  $('#wallYoutubeSearch').value = '';
+  $('#wallYoutubeResults').innerHTML = '';
+  $('#wallYoutubeRow').hidden = true;
+  $('#wallYoutubeSelected').hidden = true;
+  $('#wallYoutubeSelected').innerHTML = '';
+  WALL_YOUTUBE_URL = ''; WALL_YOUTUBE_RESULTS = [];
+  WALL_IMAGE_PATH = '';
+  $('#wallImageElement').removeAttribute('src');
+  $('#wallImagePreview').hidden = true;
+  $('#wallImageFile').value = '';
+  WALL_VIDEO_PATH = '';
+  $('#wallVideoElement').removeAttribute('src');
+  $('#wallVideoPreview').hidden = true;
+  $('#wallVideoFile').value = '';
+}
 $('#wallRefresh').onclick = () => loadWallPosts(true);
-$('#wallAddYoutube').onclick = () => { $('#wallYoutubeRow').hidden = false; $('#wallYoutubeUrl').focus(); };
-$('#wallYoutubeClose').onclick = () => { $('#wallYoutubeUrl').value = ''; $('#wallYoutubeRow').hidden = true; };
+$('#wallCreateTrigger').onclick = () => {
+  $('#wallCreateTrigger').hidden = true;
+  $('#wallComposer').hidden = false;
+  $('#wallPostText').focus();
+};
+$('#wallComposerClose').onclick = () => {
+  resetWallComposer();
+  $('#wallComposer').hidden = true;
+  $('#wallCreateTrigger').hidden = false;
+};
+$('#wallAddYoutube').onclick = () => { $('#wallYoutubeRow').hidden = false; $('#wallYoutubeSearch').focus(); };
+$('#wallYoutubeClose').onclick = () => {
+  WALL_YOUTUBE_URL = ''; WALL_YOUTUBE_RESULTS = [];
+  $('#wallYoutubeSearch').value = '';
+  $('#wallYoutubeResults').innerHTML = '';
+  $('#wallYoutubeSelected').hidden = true;
+  $('#wallYoutubeRow').hidden = true;
+};
+$('#wallYoutubeSearchBtn').onclick = async () => {
+  const query = $('#wallYoutubeSearch').value.trim();
+  if (!query) return toast('اكتب كلمات البحث في YouTube', false);
+  const button = $('#wallYoutubeSearchBtn'); button.disabled = true;
+  $('#wallYoutubeResults').innerHTML = '<div class="wall-loading" style="grid-column:1/3;padding:15px"><i class="f7-icons">arrow2_circlepath</i>جاري البحث...</div>';
+  try {
+    WALL_YOUTUBE_RESULTS = await api('/api/wall/youtube-search?q=' + encodeURIComponent(query));
+    $('#wallYoutubeResults').innerHTML = WALL_YOUTUBE_RESULTS.length ? WALL_YOUTUBE_RESULTS.map((video, index) => `<button class="wall-youtube-result" type="button" data-index="${index}"><img src="${esc(video.thumbnail)}" alt=""><span>${esc(video.title)}</span></button>`).join('') : '<div class="wall-empty" style="grid-column:1/3;padding:15px">لا توجد نتائج</div>';
+    $$('#wallYoutubeResults .wall-youtube-result').forEach(result => result.onclick = () => {
+      const video = WALL_YOUTUBE_RESULTS[+result.dataset.index]; if (!video) return;
+      WALL_YOUTUBE_URL = video.embed_url;
+      WALL_VIDEO_PATH = '';
+      $('#wallVideoElement').removeAttribute('src');
+      $('#wallVideoPreview').hidden = true;
+      $('#wallVideoFile').value = '';
+      $('#wallYoutubeSelected').innerHTML = `<img src="${esc(video.thumbnail)}" alt=""><span>${esc(video.title)}</span><button type="button"><i class="f7-icons">xmark</i></button>`;
+      $('#wallYoutubeSelected').hidden = false;
+      $('#wallYoutubeResults').innerHTML = '';
+      $('#wallYoutubeSelected button').onclick = () => { WALL_YOUTUBE_URL = ''; $('#wallYoutubeSelected').hidden = true; };
+    });
+  } catch (e) { $('#wallYoutubeResults').innerHTML = ''; toast(e.error || 'تعذر البحث في YouTube', false); }
+  finally { button.disabled = false; }
+};
+$('#wallYoutubeSearch').onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); $('#wallYoutubeSearchBtn').click(); } };
+$('#wallAddImage').onclick = () => $('#wallImageFile').click();
+$('#wallImageFile').onchange = async () => {
+  const file = $('#wallImageFile').files[0]; if (!file) return;
+  const form = new FormData(); form.append('image', file);
+  $('#wallAddImage').disabled = true;
+  try {
+    toast('جاري رفع الصورة...');
+    const uploaded = await api('/api/wall/upload-image', 'POST', form, true);
+    WALL_IMAGE_PATH = uploaded.path;
+    $('#wallImageElement').src = uploaded.path;
+    $('#wallImagePreview').hidden = false;
+    toast('تم رفع الصورة بنجاح');
+  } catch (e) { toast(e.error || 'تعذر رفع الصورة', false); }
+  finally { $('#wallAddImage').disabled = false; }
+};
+$('#wallImageRemove').onclick = () => {
+  WALL_IMAGE_PATH = '';
+  $('#wallImageElement').removeAttribute('src');
+  $('#wallImagePreview').hidden = true;
+  $('#wallImageFile').value = '';
+};
 $('#wallAddVideo').onclick = () => $('#wallVideoFile').click();
 $('#wallVideoFile').onchange = async () => {
   const file = $('#wallVideoFile').files[0]; if (!file) return;
@@ -1973,6 +2110,10 @@ $('#wallVideoFile').onchange = async () => {
     toast('جاري رفع الفيديو...');
     const uploaded = await api('/api/wall/upload-video', 'POST', form, true);
     WALL_VIDEO_PATH = uploaded.path;
+    WALL_YOUTUBE_URL = '';
+    $('#wallYoutubeSelected').hidden = true;
+    $('#wallYoutubeSelected').innerHTML = '';
+    $('#wallYoutubeResults').innerHTML = '';
     $('#wallVideoElement').src = uploaded.path;
     $('#wallVideoPreview').hidden = false;
     toast('تم رفع الفيديو بنجاح');
@@ -1991,16 +2132,13 @@ $('#wallPublish').onclick = async () => {
   try {
     await api('/api/wall', 'POST', {
       text: $('#wallPostText').value,
-      youtube_url: $('#wallYoutubeUrl').value,
+      youtube_url: WALL_YOUTUBE_URL,
+      image: WALL_IMAGE_PATH,
       video: WALL_VIDEO_PATH
     });
-    $('#wallPostText').value = '';
-    $('#wallYoutubeUrl').value = '';
-    $('#wallYoutubeRow').hidden = true;
-    WALL_VIDEO_PATH = '';
-    $('#wallVideoElement').removeAttribute('src');
-    $('#wallVideoPreview').hidden = true;
-    $('#wallVideoFile').value = '';
+    resetWallComposer();
+    $('#wallComposer').hidden = true;
+    $('#wallCreateTrigger').hidden = false;
     toast('تم نشر المنشور');
     await loadWallPosts(false);
     $('#wallScroll').scrollTop = 0;

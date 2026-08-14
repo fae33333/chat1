@@ -94,6 +94,16 @@ const wallStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, 'public/uploads/wall')),
   filename: (req, file, cb) => cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 10) + path.extname(file.originalname).toLowerCase())
 });
+const WALL_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+const uploadWallImage = multer({
+  storage: wallStorage,
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const allowed = WALL_IMAGE_EXTENSIONS.has(ext) && String(file.mimetype || '').startsWith('image/');
+    cb(allowed ? null : new Error('يمكن رفع صورة JPG أو PNG أو WEBP أو GIF فقط'), allowed);
+  }
+});
 const WALL_VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov', '.m4v']);
 const uploadWallVideo = multer({
   storage: wallStorage,
@@ -791,6 +801,38 @@ function normalizeYoutubeEmbed(raw) {
     return /^[A-Za-z0-9_-]{6,20}$/.test(id) ? `https://www.youtube.com/embed/${id}` : '';
   } catch (e) { return ''; }
 }
+app.get('/api/wall/youtube-search', requireUser, async (req, res) => {
+  const query = String(req.query.q || '').trim().slice(0, 80);
+  if (!query) return res.status(400).json({ error: 'اكتب كلمات البحث' });
+  try {
+    const response = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NujumChat/1.0)', 'Accept-Language': 'ar,en;q=0.8' },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) throw new Error('youtube');
+    const html = await response.text();
+    const ids = [];
+    for (const match of html.matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g)) {
+      if (!ids.includes(match[1])) ids.push(match[1]);
+      if (ids.length >= 8) break;
+    }
+    const videos = (await Promise.all(ids.map(async id => {
+      let title = 'فيديو YouTube', author = '';
+      try {
+        const meta = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + id)}&format=json`, { signal: AbortSignal.timeout(6000) });
+        if (meta.ok) { const data = await meta.json(); title = data.title || title; author = data.author_name || ''; }
+      } catch (e) { }
+      return { id, title, author, thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`, embed_url: `https://www.youtube.com/embed/${id}` };
+    }))).filter(Boolean);
+    res.json(videos);
+  } catch (e) { res.status(502).json({ error: 'تعذر البحث في YouTube حالياً' }); }
+});
+app.post('/api/wall/upload-image', requireUser, (req, res) => {
+  uploadWallImage.single('image')(req, res, (err) => {
+    if (err || !req.file) return res.status(400).json({ error: err ? err.message : 'اختر ملف الصورة' });
+    res.json({ ok: true, path: '/uploads/wall/' + req.file.filename });
+  });
+});
 app.post('/api/wall/upload-video', requireUser, (req, res) => {
   uploadWallVideo.single('video')(req, res, (err) => {
     if (err || !req.file) return res.status(400).json({ error: err ? err.message : 'اختر ملف الفيديو' });
@@ -829,12 +871,13 @@ app.post('/api/wall', requireUser, async (req, res) => {
   const text = String(req.body.text || '').trim().slice(0, 2000);
   const rawYoutube = String(req.body.youtube_url || '').trim();
   const youtube = normalizeYoutubeEmbed(rawYoutube);
+  const image = String(req.body.image || '').startsWith('/uploads/wall/') ? String(req.body.image).slice(0, 180) : '';
   const video = String(req.body.video || '').startsWith('/uploads/wall/') ? String(req.body.video).slice(0, 180) : '';
-  if (rawYoutube && !youtube) return res.status(400).json({ error: 'رابط يوتيوب غير صالح' });
-  if (!text && !youtube && !video) return res.status(400).json({ error: 'اكتب منشوراً أو أضف مقطع فيديو' });
+  if (rawYoutube && !youtube) return res.status(400).json({ error: 'فيديو YouTube المختار غير صالح' });
+  if (!text && !youtube && !image && !video) return res.status(400).json({ error: 'اكتب منشوراً أو أضف صورة أو فيديو' });
   const user = await q.get(`SELECT username FROM users WHERE id=?`, req.authUid);
-  const out = await q.run(`INSERT INTO wall_posts (user_id,username,text,youtube_url,video) VALUES (?,?,?,?,?)`,
-    req.authUid, user.username, text, youtube, video);
+  const out = await q.run(`INSERT INTO wall_posts (user_id,username,text,youtube_url,image,video) VALUES (?,?,?,?,?,?)`,
+    req.authUid, user.username, text, youtube, image, video);
   io.emit('wall_changed', { action: 'created', postId: out.lastID });
   res.json({ ok: true, id: out.lastID });
 });
@@ -843,10 +886,11 @@ app.post('/api/wall/:id/comments', requireUser, async (req, res) => {
   const text = String(req.body.text || '').trim().slice(0, 500);
   if (!text) return res.status(400).json({ error: 'اكتب التعليق' });
   if (!await q.get(`SELECT id FROM wall_posts WHERE id=?`, postId)) return res.status(404).json({ error: 'المنشور غير موجود' });
-  const user = await q.get(`SELECT username FROM users WHERE id=?`, req.authUid);
+  const user = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
   const out = await q.run(`INSERT INTO wall_comments (post_id,user_id,username,text) VALUES (?,?,?,?)`, postId, req.authUid, user.username, text);
+  const comment = { id: out.lastID, post_id: postId, user_id: req.authUid, username: user.username, text, created_at: Math.floor(Date.now() / 1000), user: { ...pubUser(user), badge: badgeOf(user) } };
   io.emit('wall_changed', { action: 'commented', postId });
-  res.json({ ok: true, id: out.lastID });
+  res.json({ ok: true, comment });
 });
 app.post('/api/wall/:id/reaction', requireUser, async (req, res) => {
   const postId = +req.params.id;
@@ -855,10 +899,15 @@ app.post('/api/wall/:id/reaction', requireUser, async (req, res) => {
   if (!allowed.has(reaction)) return res.status(400).json({ error: 'تفاعل غير صالح' });
   if (!await q.get(`SELECT id FROM wall_posts WHERE id=?`, postId)) return res.status(404).json({ error: 'المنشور غير موجود' });
   const old = await q.get(`SELECT reaction FROM wall_reactions WHERE post_id=? AND user_id=?`, postId, req.authUid);
-  if (old && old.reaction === reaction) await q.run(`DELETE FROM wall_reactions WHERE post_id=? AND user_id=?`, postId, req.authUid);
-  else await q.run(`INSERT INTO wall_reactions (post_id,user_id,reaction) VALUES (?,?,?) ON CONFLICT(post_id,user_id) DO UPDATE SET reaction=excluded.reaction,created_at=strftime('%s','now')`, postId, req.authUid, reaction);
+  let myReaction = reaction;
+  if (old && old.reaction === reaction) {
+    await q.run(`DELETE FROM wall_reactions WHERE post_id=? AND user_id=?`, postId, req.authUid);
+    myReaction = '';
+  } else await q.run(`INSERT INTO wall_reactions (post_id,user_id,reaction) VALUES (?,?,?) ON CONFLICT(post_id,user_id) DO UPDATE SET reaction=excluded.reaction,created_at=strftime('%s','now')`, postId, req.authUid, reaction);
+  const rows = await q.all(`SELECT reaction,COUNT(*) count FROM wall_reactions WHERE post_id=? GROUP BY reaction`, postId);
+  const reactions = {}; rows.forEach(row => { reactions[row.reaction] = +row.count; });
   io.emit('wall_changed', { action: 'reacted', postId });
-  res.json({ ok: true });
+  res.json({ ok: true, reactions, reaction_count: rows.reduce((sum, row) => sum + +row.count, 0), my_reaction: myReaction });
 });
 app.delete('/api/wall/:id', requireUser, async (req, res) => {
   const post = await q.get(`SELECT * FROM wall_posts WHERE id=?`, +req.params.id);
@@ -869,8 +918,10 @@ app.delete('/api/wall/:id', requireUser, async (req, res) => {
   await q.run(`DELETE FROM wall_comments WHERE post_id=?`, post.id);
   await q.run(`DELETE FROM wall_reactions WHERE post_id=?`, post.id);
   await q.run(`DELETE FROM wall_posts WHERE id=?`, post.id);
-  if (post.video && post.video.startsWith('/uploads/wall/')) {
-    try { fs.unlinkSync(path.join(__dirname, 'public/uploads/wall', path.basename(post.video))); } catch (e) { }
+  for (const media of [post.image, post.video]) {
+    if (media && media.startsWith('/uploads/wall/')) {
+      try { fs.unlinkSync(path.join(__dirname, 'public/uploads/wall', path.basename(media))); } catch (e) { }
+    }
   }
   io.emit('wall_changed', { action: 'deleted', postId: post.id });
   res.json({ ok: true });

@@ -209,9 +209,11 @@ db.serialize(() => {
     username TEXT NOT NULL,
     text TEXT DEFAULT '',
     youtube_url TEXT DEFAULT '',
+    image TEXT DEFAULT '',
     video TEXT DEFAULT '',
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+  db.run(`ALTER TABLE wall_posts ADD COLUMN image TEXT DEFAULT ''`, () => { });
   db.run(`CREATE INDEX IF NOT EXISTS idx_wall_posts_created ON wall_posts (created_at DESC)`);
   db.run(`CREATE TABLE IF NOT EXISTS wall_comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
