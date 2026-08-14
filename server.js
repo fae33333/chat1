@@ -7,6 +7,7 @@ const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const net = require('net');
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
 const multer = require('multer');
@@ -32,17 +33,57 @@ const io = new Server(server);
 const PORT = +(process.env.PORT || (HTTPS_ENABLED ? 2083 : 3000));
 const SERVER_PROTOCOL = HTTPS_ENABLED ? 'https' : 'http';
 
-// الاعتماد على عنوان الزائر الذي يمرره البروكسي الموثوق (Nginx/Cloudflare/Arena).
-// لا نثق إلا بوكلاء loopback والشبكات الخاصة حتى لا يستطيع العميل تزوير X-Forwarded-For مباشرة.
-app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+// عناوين Cloudflare الرسمية الموثوقة. بإضافتها إلى trust proxy يعيد Express عنوان
+// الزائر من X-Forwarded-For بدلاً من عنوان خادم Cloudflare الظاهر للاتصال المباشر.
+const CLOUDFLARE_PROXY_RANGES = [
+  '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+  '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20',
+  '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+  '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
+  '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32',
+  '2405:8100::/32', '2a06:98c0::/29', '2c0f:f248::/32'
+];
+// يشمل البروكسي المحلي (Nginx/Arena) إضافة إلى حواف Cloudflare فقط؛ لا نثق
+// بعناوين عامة عشوائية كي لا يستطيع اتصال مباشر تزوير X-Forwarded-For.
+app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal', ...CLOUDFLARE_PROXY_RANGES]);
 function normalizeIp(value) {
   let ip = String(value || '').split(',')[0].trim();
   if (ip.startsWith('::ffff:')) ip = ip.slice(7);
   if (ip === '::1') ip = '127.0.0.1';
   return ip.slice(0, 80);
 }
+function validIp(value) {
+  const ip = normalizeIp(value);
+  return net.isIP(ip) ? ip : '';
+}
+function requestHeader(req, name) {
+  if (!req) return '';
+  if (typeof req.get === 'function') return req.get(name) || '';
+  return (req.headers && req.headers[String(name).toLowerCase()]) || '';
+}
+function requestComesThroughTrustedProxy(req) {
+  const remote = validIp(req && req.socket && req.socket.remoteAddress);
+  const trust = app.get('trust proxy fn');
+  return !!(remote && typeof trust === 'function' && trust(remote, 0));
+}
 function requestIp(req) {
-  return normalizeIp(req.ip || (req.socket && req.socket.remoteAddress) || '');
+  const trustedProxy = requestComesThroughTrustedProxy(req);
+  if (trustedProxy) {
+    // Cloudflare يكتب هذا الرأس بنفسه عند الحافة؛ وهو أدق مصدر لعنوان الزائر.
+    const cloudflareIp = validIp(requestHeader(req, 'cf-connecting-ip'));
+    if (cloudflareIp) return cloudflareIp;
+    const trueClientIp = validIp(requestHeader(req, 'true-client-ip'));
+    if (trueClientIp) return trueClientIp;
+  }
+  // في طلبات Express يستخدم req.ip سلسلة البروكسي الموثوقة أعلاه. أما طلب
+  // ترقية WebSocket الخام فنستخدم أول X-Forwarded-For فقط إذا كان البروكسي موثوقاً.
+  const expressIp = validIp(req && req.ip);
+  if (expressIp) return expressIp;
+  if (trustedProxy) {
+    const forwardedIp = validIp(requestHeader(req, 'x-forwarded-for'));
+    if (forwardedIp) return forwardedIp;
+  }
+  return validIp(req && req.socket && req.socket.remoteAddress) || 'غير معروف';
 }
 
 app.use(express.json({ limit: '5mb' }));
@@ -1882,7 +1923,10 @@ io.on('connection', async (socket) => {
   if (!uid) { socket.disconnect(); return; }
   let me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
   if (!me) { socket.disconnect(); return; }
-  const clientIp = normalizeIp((tokenAuth && tokenAuth.ip) || socket.handshake.address || '');
+  const clientIp = validIp(tokenAuth && tokenAuth.ip)
+    || validIp(requestIp(socket.request))
+    || validIp(socket.handshake.address)
+    || 'غير معروف';
   if (me.banned || await guestIpBan(clientIp)) { socket.disconnect(); return; }
   if (tokenAuth && CHAT_TOKENS.has(socketToken)) CHAT_TOKENS.get(socketToken).rank = me.rank;
   socket.data.chatToken = socketToken;
