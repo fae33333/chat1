@@ -83,6 +83,10 @@ const I18N_EN = {
   'تم قطع الاتصال': 'Connection lost', 'جارٍ إعادة الاتصال...': 'Reconnecting...', 'اتصال': 'Connect',
   'بانتظار عودة اتصال الإنترنت...': 'Waiting for the internet connection...', 'تعذر الاتصال، اضغط على زر اتصال للمحاولة مجددًا': 'Could not connect. Tap Connect to try again.',
   'تم استعادة الاتصال والغرفة': 'Connection and room restored', 'تم استعادة الاتصال': 'Connection restored', 'محاولة إعادة الاتصال رقم': 'Reconnection attempt',
+  'فحص الملف قبل الإرسال': 'Review file before sending', 'فحص الصورة قبل الإرسال': 'Review image before sending', 'فحص المقطع الصوتي قبل الإرسال': 'Review audio before sending',
+  'جارٍ فحص الملف...': 'Checking file...', 'تم فحص الصورة ويمكن إرسالها': 'Image checked and ready to send', 'تم فحص المقطع ويمكن إرساله': 'Audio checked and ready to send',
+  'تعذر فحص الملف أو أن تنسيقه غير مدعوم': 'The file could not be checked or its format is unsupported', 'فشل فحص الصورة أو أن الملف تالف': 'Image check failed or the file is corrupted',
+  'فشل فحص المقطع الصوتي أو أن الملف تالف': 'Audio check failed or the file is corrupted', 'إرسال إلى العام': 'Send publicly',
   'قسم الشكاوي': 'Complaints', 'إرسال الشكوى': 'Send complaint', 'رسالة النظام': 'System message', 'إعلان من الإدارة': 'Admin announcement', 'نظام الهدايا': 'Gift system',
   'لا توجد غرف هنا': 'No rooms here', 'لا يوجد متصلون': 'No users online', 'لا توجد حالات حديثة بعد': 'No recent updates', 'تعذر تحميل الحالات': 'Could not load statuses',
   'لا توجد رسائل من الزوار': 'No messages from guests', 'لا توجد محادثات مع أعضاء مسجلين': 'No conversations with registered members',
@@ -2735,29 +2739,129 @@ async function sendPublicMedia(file) {
     toast(error.error || 'تعذر إرسال الملف', false);
   }
 }
-function choosePublicMedia(accept) {
+let PUBLIC_MEDIA_REVIEW_FILE = null, PUBLIC_MEDIA_REVIEW_TYPE = '', PUBLIC_MEDIA_REVIEW_URL = '', PUBLIC_MEDIA_REVIEW_ID = 0;
+function publicMediaFileSize(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function closePublicMediaReview() {
+  PUBLIC_MEDIA_REVIEW_ID++;
+  const audio = $('#publicMediaReviewAudio');
+  try { audio.pause(); } catch (e) { }
+  audio.removeAttribute('src'); audio.load(); audio.hidden = true;
+  const image = $('#publicMediaReviewImage'); image.removeAttribute('src'); image.hidden = true;
+  if (PUBLIC_MEDIA_REVIEW_URL) URL.revokeObjectURL(PUBLIC_MEDIA_REVIEW_URL);
+  PUBLIC_MEDIA_REVIEW_URL = '';
+  PUBLIC_MEDIA_REVIEW_FILE = null;
+  PUBLIC_MEDIA_REVIEW_TYPE = '';
+  $('#publicMediaReview').classList.add('hidden');
+  $('#publicMediaReview').setAttribute('aria-hidden', 'true');
+}
+function setPublicMediaReviewResult(ok, text, extraInfo = '') {
+  const status = $('#publicMediaReviewStatus');
+  status.textContent = APP_LANG === 'en' ? translateDynamicText(text) : text;
+  status.className = 'public-media-review-status ' + (ok ? 'ok' : 'error');
+  $('#publicMediaChecking').classList.add('hidden');
+  $('#publicMediaReviewSend').disabled = !ok;
+  if (extraInfo) $('#publicMediaReviewInfo').textContent += ` • ${extraInfo}`;
+}
+async function inspectPublicMedia(file, mediaType) {
+  const reviewId = ++PUBLIC_MEDIA_REVIEW_ID;
+  PUBLIC_MEDIA_REVIEW_FILE = file;
+  PUBLIC_MEDIA_REVIEW_TYPE = mediaType;
+  PUBLIC_MEDIA_REVIEW_URL = URL.createObjectURL(file);
+  const overlay = $('#publicMediaReview');
+  const status = $('#publicMediaReviewStatus');
+  const title = mediaType === 'image' ? 'فحص الصورة قبل الإرسال' : 'فحص المقطع الصوتي قبل الإرسال';
+  $('#publicMediaReviewTitle').textContent = APP_LANG === 'en' ? translateDynamicText(title) : title;
+  status.textContent = APP_LANG === 'en' ? translateDynamicText('جارٍ فحص الملف...') : 'جارٍ فحص الملف...';
+  status.className = 'public-media-review-status';
+  $('#publicMediaReviewInfo').textContent = `${file.name || 'file'} • ${publicMediaFileSize(file.size || 0)}`;
+  $('#publicMediaReviewSend').disabled = true;
+  $('#publicMediaChecking').classList.remove('hidden');
+  $('#publicMediaReviewImage').hidden = true;
+  $('#publicMediaReviewAudio').hidden = true;
+  overlay.classList.remove('hidden');
+  overlay.setAttribute('aria-hidden', 'false');
+
+  const imageNameOk = /\.(jpe?g|png|webp|gif)$/i.test(file.name || '');
+  const audioNameOk = /\.(mp3|wav|ogg|m4a|aac|opus)$/i.test(file.name || '');
+  const mime = String(file.type || '');
+  const mimeOk = !mime || mime === 'application/octet-stream' || mime.startsWith(mediaType + '/');
+  if (!file.size || file.size > 50 * 1024 * 1024 || !mimeOk || (mediaType === 'image' ? !imageNameOk : !audioNameOk))
+    return setPublicMediaReviewResult(false, 'تعذر فحص الملف أو أن تنسيقه غير مدعوم');
+
+  try {
+    if (mediaType === 'image') {
+      const image = $('#publicMediaReviewImage');
+      image.hidden = false;
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('timeout')), 10000);
+        image.onload = () => { clearTimeout(timer); resolve(); };
+        image.onerror = () => { clearTimeout(timer); reject(new Error('invalid image')); };
+        image.src = PUBLIC_MEDIA_REVIEW_URL;
+      });
+      if (reviewId !== PUBLIC_MEDIA_REVIEW_ID || !image.naturalWidth || !image.naturalHeight) return;
+      setPublicMediaReviewResult(true, 'تم فحص الصورة ويمكن إرسالها', `${image.naturalWidth}×${image.naturalHeight}`);
+    } else {
+      const audio = $('#publicMediaReviewAudio');
+      audio.hidden = false;
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('timeout')), 12000);
+        const ready = () => { clearTimeout(timer); resolve(); };
+        audio.onloadedmetadata = ready;
+        audio.oncanplay = ready;
+        audio.onerror = () => { clearTimeout(timer); reject(new Error('invalid audio')); };
+        audio.src = PUBLIC_MEDIA_REVIEW_URL;
+        audio.load();
+      });
+      if (reviewId !== PUBLIC_MEDIA_REVIEW_ID) return;
+      const duration = Number.isFinite(audio.duration) ? `${Math.ceil(audio.duration)} sec` : '';
+      setPublicMediaReviewResult(true, 'تم فحص المقطع ويمكن إرساله', duration);
+    }
+  } catch (e) {
+    if (reviewId === PUBLIC_MEDIA_REVIEW_ID)
+      setPublicMediaReviewResult(false, 'تعذر فحص الملف أو أن تنسيقه غير مدعوم');
+  }
+}
+function choosePublicMedia(accept, mediaType) {
   if (!CUR_ROOM) return toast('ادخل إلى غرفة أولاً', false);
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = accept;
   inp.style.display = 'none';
   document.body.appendChild(inp);
-  inp.onchange = async () => {
+  inp.onchange = () => {
     const file = inp.files && inp.files[0];
-    if (file) await sendPublicMedia(file);
+    if (file) inspectPublicMedia(file, mediaType);
     inp.remove();
   };
+  inp.oncancel = () => inp.remove();
   inp.click();
 }
+$('#publicMediaReviewClose').onclick = closePublicMediaReview;
+$('#publicMediaReviewCancel').onclick = closePublicMediaReview;
+$('#publicMediaReview').onclick = event => { if (event.target === $('#publicMediaReview')) closePublicMediaReview(); };
+$('#publicMediaReviewSend').onclick = async () => {
+  const file = PUBLIC_MEDIA_REVIEW_FILE;
+  const mediaType = PUBLIC_MEDIA_REVIEW_TYPE;
+  if (!file || $('#publicMediaReviewSend').disabled) return;
+  if (mediaType === 'image' && !canUseMembershipFeature('public_image_allowed_memberships'))
+    return toast('عضويتك غير مسموح لها بإرسال الصور في العام', false);
+  if (mediaType === 'audio' && !canUseMembershipFeature('voice_allowed_memberships'))
+    return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
+  closePublicMediaReview();
+  await sendPublicMedia(file);
+};
 $('#btnMic').onclick = () => {
   if (!canUseMembershipFeature('voice_allowed_memberships'))
     return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
-  choosePublicMedia('audio/*,.mp3,.wav,.ogg,.m4a,.aac,.opus');
+  choosePublicMedia('audio/*,.mp3,.wav,.ogg,.m4a,.aac,.opus', 'audio');
 };
 $('#btnCam').onclick = () => {
   if (!canUseMembershipFeature('public_image_allowed_memberships'))
     return toast('عضويتك غير مسموح لها بإرسال الصور في العام', false);
-  choosePublicMedia('image/*');
+  choosePublicMedia('image/*', 'image');
 };
 $('#privSettings').onclick = () => toast('اعدادات الخاص : استقبال الرسائل من الجميع');
 

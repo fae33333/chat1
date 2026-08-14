@@ -813,6 +813,27 @@
     <div class="upload-progress-track"><span id="uploadProgressFill"></span></div>
   </div>
 
+  <!-- فحص ومعاينة صورة/صوت العام قبل الرفع والإرسال -->
+  <div class="public-media-review hidden" id="publicMediaReview" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="public-media-review-card">
+      <div class="public-media-review-head">
+        <h3 id="publicMediaReviewTitle">فحص الملف قبل الإرسال</h3>
+        <button type="button" id="publicMediaReviewClose" aria-label="إغلاق"><i class="f7-icons">xmark</i></button>
+      </div>
+      <div class="public-media-review-body">
+        <img id="publicMediaReviewImage" alt="معاينة الصورة" hidden>
+        <audio id="publicMediaReviewAudio" controls preload="metadata" hidden></audio>
+        <div class="public-media-checking" id="publicMediaChecking"><span></span><span></span><span></span></div>
+        <div class="public-media-review-status" id="publicMediaReviewStatus">جارٍ فحص الملف...</div>
+        <div class="public-media-review-info" id="publicMediaReviewInfo"></div>
+      </div>
+      <div class="public-media-review-actions">
+        <button type="button" class="cancel" id="publicMediaReviewCancel">إلغاء</button>
+        <button type="button" class="send" id="publicMediaReviewSend" disabled><i class="f7-icons">paperplane_fill</i><span>إرسال إلى العام</span></button>
+      </div>
+    </div>
+  </div>
+
   <!-- استعادة اتصال WebSocket دون فقد الغرفة أو هوية هذه الصفحة -->
   <div class="connection-overlay hidden" id="connectionOverlay" role="alertdialog" aria-modal="true" aria-hidden="true">
     <div class="connection-card">

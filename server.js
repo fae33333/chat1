@@ -187,6 +187,34 @@ const uploadChatMedia = multer({
     cb(allowed ? null : new Error('يمكن رفع صورة أو مقطع صوت فقط'), allowed);
   }
 });
+// لا نعتمد على الامتداد وMIME وحدهما: نفحص توقيع الملف الحقيقي قبل إعادته
+// للعميل وقبل السماح بإرساله إلى الغرفة العامة.
+function chatMediaSignatureMatches(filePath, type, extension) {
+  let fd = null;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const head = Buffer.alloc(64);
+    const bytes = fs.readSync(fd, head, 0, head.length, 0);
+    fs.closeSync(fd); fd = null;
+    if (bytes < 4) return false;
+    const ascii = (start, end) => head.subarray(start, end).toString('ascii');
+    if (type === 'image') {
+      if (extension === '.jpg' || extension === '.jpeg') return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+      if (extension === '.png') return head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+      if (extension === '.gif') return ['GIF87a', 'GIF89a'].includes(ascii(0, 6));
+      if (extension === '.webp') return ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP';
+      return false;
+    }
+    if (extension === '.mp3') return ascii(0, 3) === 'ID3' || (head[0] === 0xff && (head[1] & 0xe0) === 0xe0);
+    if (extension === '.wav') return ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WAVE';
+    if (extension === '.ogg') return ascii(0, 4) === 'OggS';
+    if (extension === '.opus') return ascii(0, 4) === 'OggS' || ascii(0, 8) === 'OpusHead';
+    if (extension === '.m4a') return ascii(4, 8) === 'ftyp';
+    if (extension === '.aac') return ascii(0, 3) === 'ID3' || (head[0] === 0xff && (head[1] & 0xf6) === 0xf0);
+    return false;
+  } catch (e) { return false; }
+  finally { if (fd !== null) { try { fs.closeSync(fd); } catch (e) { } } }
+}
 
 // ====== أدوات مساعدة ======
 const q = {
@@ -872,7 +900,12 @@ app.delete('/api/statuses/:id', requireUser, async (req, res) => {
 app.post('/api/chat/upload-media', requireUser, (req, res) => {
   uploadChatMedia.single('media')(req, res, async (err) => {
     if (err || !req.file) return res.status(400).json({ error: err ? err.message : 'اختر الملف' });
-    const type = CHAT_AUDIO_EXTENSIONS.has(path.extname(req.file.originalname || '').toLowerCase()) ? 'audio' : 'image';
+    const extension = path.extname(req.file.originalname || '').toLowerCase();
+    const type = CHAT_AUDIO_EXTENSIONS.has(extension) ? 'audio' : 'image';
+    if (!chatMediaSignatureMatches(req.file.path, type, extension)) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      return res.status(400).json({ error: type === 'audio' ? 'فشل فحص المقطع الصوتي أو أن الملف تالف' : 'فشل فحص الصورة أو أن الملف تالف' });
+    }
     const settingKey = type === 'audio' ? 'voice_allowed_memberships' : 'public_image_allowed_memberships';
     if (!await canUseMembershipFeature(req.authUid, settingKey)) {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
