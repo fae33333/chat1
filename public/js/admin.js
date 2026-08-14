@@ -219,7 +219,7 @@ async function renderRoomBots() {
       <div class="room-bot-info">
         <b>${esc(bot.username)} ${bot.verified ? '<i class="f7-icons room-bot-verified">checkmark_seal_fill</i>' : ''}</b>
         <span>🏠 ${esc(bot.room_name || 'غرفة محذوفة')} • ${rankNames[bot.rank] || bot.rank} • ${membershipNames[bot.membership] || bot.membership}</span>
-        <small>${bot.active ? '🟢 موجود داخل الغرفة' : '⚪ متوقف وغير ظاهر'}</small>
+        <small>${bot.active ? '🟢 موجود داخل الغرفة' : '⚪ متوقف وغير ظاهر'} ${bot.reply_enabled ? `• 💬 يرد: ${esc(bot.reply_text || 'نعم؟')}` : '• لا يرد تلقائياً'}</small>
       </div>
       <div class="room-bot-actions">
         <button class="btn btn-gray rb-toggle" data-id="${bot.id}">${bot.active ? 'إيقاف' : 'تشغيل'}</button>
@@ -236,7 +236,8 @@ async function renderRoomBots() {
     if (!bot) return;
     await api('/api/admin/room-bots', 'POST', {
       id: bot.id, username: bot.username, avatar: bot.avatar, room_id: bot.room_id,
-      rank: bot.rank, membership: bot.membership, verified: !!bot.verified, active: !bot.active
+      rank: bot.rank, membership: bot.membership, verified: !!bot.verified, active: !bot.active,
+      reply_enabled: !!bot.reply_enabled, reply_text: bot.reply_text || 'نعم؟'
     });
     toast(bot.active ? 'تم إيقاف الروبوت' : 'تم إدخال الروبوت إلى الغرفة');
     await renderRoomBots();
@@ -749,9 +750,11 @@ const PAGES = {
             <option value="vip" ${bot.membership === 'vip' ? 'selected' : ''}>VIP</option>
           </select></div>
         </div>
+        <div class="inp-row"><label>الرد المختصر عند ذكر اسم الروبوت</label><input class="inp" id="roomBotReplyText" maxlength="100" value="${esc(bot.reply_text || 'نعم؟')}" placeholder="مثال: نعم؟ أو مرحباً {name}"></div>
         <div class="room-bot-checks">
           <label><input type="checkbox" id="roomBotVerified" ${bot.verified ? 'checked' : ''}><span>حساب موثق</span><i class="f7-icons">checkmark_seal_fill</i></label>
           <label><input type="checkbox" id="roomBotActive" ${bot.active === 0 ? '' : 'checked'}><span>يدخل الغرفة مباشرة</span><i class="f7-icons">antenna_radiowaves_left_right</i></label>
+          <label><input type="checkbox" id="roomBotReplyEnabled" ${bot.reply_enabled ? 'checked' : ''}><span>يرد عند ذكر اسمه</span><i class="f7-icons">chat_bubble_text_fill</i></label>
         </div>
         <div class="btn-row" style="justify-content:flex-start">
           <button class="btn btn-purple" id="roomBotSave"><i class="f7-icons">wand_stars</i> ${bot.id ? 'حفظ تعديل الروبوت' : 'توليد الروبوت وإدخاله'}</button>
@@ -788,7 +791,9 @@ const PAGES = {
             rank: $('#roomBotRank').value,
             membership: $('#roomBotMembership').value,
             verified: $('#roomBotVerified').checked,
-            active: $('#roomBotActive').checked
+            active: $('#roomBotActive').checked,
+            reply_enabled: $('#roomBotReplyEnabled').checked,
+            reply_text: $('#roomBotReplyText').value
           });
           EDIT_ROOM_BOT = null;
           toast('تم توليد الروبوت وتحديث قائمة الغرفة فوراً');

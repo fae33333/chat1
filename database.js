@@ -65,8 +65,12 @@ db.serialize(() => {
     user_id INTEGER UNIQUE NOT NULL,
     room_id INTEGER NOT NULL,
     active INTEGER DEFAULT 1,
+    reply_enabled INTEGER DEFAULT 0,
+    reply_text TEXT DEFAULT 'نعم؟',
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+  db.run(`ALTER TABLE room_bots ADD COLUMN reply_enabled INTEGER DEFAULT 0`, () => { });
+  db.run(`ALTER TABLE room_bots ADD COLUMN reply_text TEXT DEFAULT 'نعم؟'`, () => { });
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_bots_room ON room_bots (room_id, active)`);
 
   // ---------- رسائل الروبوت المجدولة ----------

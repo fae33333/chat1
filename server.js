@@ -949,7 +949,7 @@ app.post('/api/admin/upload/bot-avatar', requireAdmin, (req, res) => {
 // ---- روبوتات افتراضية تظهر كمستخدمين داخل الغرف ----
 app.get('/api/admin/room-bots', requireAdmin, async (req, res) => {
   const rows = await q.all(`
-    SELECT rb.id,rb.room_id,rb.active,rb.created_at,r.name room_name,
+    SELECT rb.id,rb.room_id,rb.active,rb.reply_enabled,rb.reply_text,rb.created_at,r.name room_name,
       u.id user_id,u.username,u.avatar,u.rank,u.membership,u.gender,
       EXISTS(SELECT 1 FROM verified v WHERE v.username=u.username) verified
     FROM room_bots rb JOIN users u ON u.id=rb.user_id
@@ -965,6 +965,8 @@ app.post('/api/admin/room-bots', requireAdmin, async (req, res) => {
   const rank = ['user', 'roomadmin', 'admin', 'superadmin'].includes(body.rank) ? body.rank : 'user';
   const membership = ['none', 'mmez', 'plus', 'premium', 'vip'].includes(body.membership) ? body.membership : 'none';
   const active = body.active === false || body.active === 0 ? 0 : 1;
+  const replyEnabled = body.reply_enabled ? 1 : 0;
+  const replyText = String(body.reply_text || 'نعم؟').trim().slice(0, 100) || 'نعم؟';
   const verified = body.verified ? 1 : 0;
   if (!username) return res.status(400).json({ error: 'اكتب اسم الروبوت' });
   if (!avatar) return res.status(400).json({ error: 'ارفع صورة الروبوت' });
@@ -980,7 +982,7 @@ app.post('/api/admin/room-bots', requireAdmin, async (req, res) => {
     userId = +bot.user_id; oldUsername = bot.username; oldAvatar = bot.avatar || '';
     await q.run(`UPDATE users SET username=?,avatar=?,rank=?,membership=?,registered=1,is_bot=1,status='online' WHERE id=?`,
       username, avatar, rank, membership, userId);
-    await q.run(`UPDATE room_bots SET room_id=?,active=? WHERE id=?`, roomId, active, id);
+    await q.run(`UPDATE room_bots SET room_id=?,active=?,reply_enabled=?,reply_text=? WHERE id=?`, roomId, active, replyEnabled, replyText, id);
   } else {
     if (await q.get(`SELECT id FROM users WHERE username=?`, username))
       return res.status(400).json({ error: 'اسم الروبوت مستخدم مسبقاً' });
@@ -988,7 +990,7 @@ app.post('/api/admin/room-bots', requireAdmin, async (req, res) => {
       INSERT INTO users (username,password,gender,age,balance,membership,rank,registered,avatar,status,is_bot)
       VALUES (?,NULL,'secret',25,0,?,?,1,?,'online',1)`, username, membership, rank, avatar);
     userId = user.lastID;
-    await q.run(`INSERT INTO room_bots (user_id,room_id,active) VALUES (?,?,?)`, userId, roomId, active);
+    await q.run(`INSERT INTO room_bots (user_id,room_id,active,reply_enabled,reply_text) VALUES (?,?,?,?,?)`, userId, roomId, active, replyEnabled, replyText);
   }
 
   if (oldUsername) await q.run(`DELETE FROM verified WHERE username=?`, oldUsername);
@@ -1524,25 +1526,39 @@ app.get('/api/admin/license', requireAdmin, async (req, res) => {
 const onlineUsers = {};   // uid -> pubUser(+badge)
 const userSockets = {};   // uid -> [socketId]
 const roomUsers = {};     // roomId -> Set(uid)
-let ACTIVE_ROOM_BOT_IDS = new Set();
+let ACTIVE_ROOM_BOTS = new Map();   // userId -> { roomId, username, roomName }
 
-async function syncRoomBots() {
+async function syncRoomBots(announceChanges = true) {
+  const previousBots = ACTIVE_ROOM_BOTS;
   const affectedRooms = new Set(Object.keys(roomUsers).map(Number));
-  for (const set of Object.values(roomUsers)) for (const botId of ACTIVE_ROOM_BOT_IDS) set.delete(botId);
-  for (const botId of ACTIVE_ROOM_BOT_IDS) delete onlineUsers[botId];
-  ACTIVE_ROOM_BOT_IDS = new Set();
+  for (const set of Object.values(roomUsers)) for (const botId of previousBots.keys()) set.delete(botId);
+  for (const botId of previousBots.keys()) delete onlineUsers[botId];
+  const nextBots = new Map();
   const bots = await q.all(`
-    SELECT rb.room_id,u.* FROM room_bots rb
+    SELECT rb.room_id,r.name room_name,u.* FROM room_bots rb
     JOIN users u ON u.id=rb.user_id
     JOIN rooms r ON r.id=rb.room_id
     WHERE rb.active=1 ORDER BY rb.id`);
   for (const bot of bots) {
     const uid = +bot.id, roomId = +bot.room_id;
-    ACTIVE_ROOM_BOT_IDS.add(uid);
+    nextBots.set(uid, { roomId, username: bot.username, roomName: bot.room_name });
     affectedRooms.add(roomId);
     onlineUsers[uid] = { ...pubUser(bot), status: 'online', badge: badgeOf(bot) };
     (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(uid);
   }
+  if (announceChanges) {
+    for (const [uid, oldBot] of previousBots) {
+      const next = nextBots.get(uid);
+      if (!next || next.roomId !== oldBot.roomId)
+        emitRoomSystemEvent(oldBot.roomId, 'leave', `${oldBot.username} خرج من الغرفة`);
+    }
+    for (const [uid, nextBot] of nextBots) {
+      const old = previousBots.get(uid);
+      if (!old || old.roomId !== nextBot.roomId)
+        emitRoomSystemEvent(nextBot.roomId, 'join', `مرحباً بـ ${nextBot.username} في غرفة ${nextBot.roomName}`);
+    }
+  }
+  ACTIVE_ROOM_BOTS = nextBots;
   for (const roomId of affectedRooms) await emitRoomUsers(roomId);
   await emitRoomCounts();
 }
@@ -1576,6 +1592,36 @@ function emitRoomSystemEvent(roomId, type, text, extra = {}) {
     username: 'رسالة النظام', text, type,
     created_at: Math.floor(Date.now() / 1000), ...extra
   });
+}
+const ROOM_BOT_REPLY_TIMES = new Map();
+async function maybeReplyWithRoomBot(roomId, text, sender, originalText) {
+  const bots = await q.all(`
+    SELECT rb.id room_bot_id,rb.reply_text,u.* FROM room_bots rb
+    JOIN users u ON u.id=rb.user_id
+    WHERE rb.room_id=? AND rb.active=1 AND rb.reply_enabled=1 ORDER BY rb.id`, +roomId);
+  const normalizedText = String(text || '').toLocaleLowerCase('ar');
+  const bot = bots.find(item => normalizedText.includes(String(item.username || '').toLocaleLowerCase('ar')));
+  if (!bot) return;
+  const lastReply = ROOM_BOT_REPLY_TIMES.get(+bot.room_bot_id) || 0;
+  if (Date.now() - lastReply < 2500) return;
+  ROOM_BOT_REPLY_TIMES.set(+bot.room_bot_id, Date.now());
+  setTimeout(async () => {
+    const stillActive = await q.get(`SELECT id FROM room_bots WHERE id=? AND room_id=? AND active=1 AND reply_enabled=1`, bot.room_bot_id, +roomId);
+    if (!stillActive) return;
+    const replyText = String(bot.reply_text || 'نعم؟').replaceAll('{name}', sender.username).slice(0, 100);
+    const reply = { name: sender.username, text: String(originalText || '').slice(0, 90) };
+    const botPublic = { ...pubUser(bot), status: 'online', badge: badgeOf(bot) };
+    const extra = JSON.stringify({
+      badge: botPublic.badge, gender: bot.gender, rank: bot.rank, membership: bot.membership,
+      avatar: bot.avatar || '', registered: 1, muted: 0, reply, verified: VERIFIED_SET.has(bot.username) ? 1 : 0, is_bot: 1
+    });
+    const inserted = await q.run(`INSERT INTO messages (room_id,user_id,username,text,type,extra) VALUES (?,?,?,?,'msg',?)`,
+      +roomId, bot.id, bot.username, replyText, extra);
+    io.to('room_' + roomId).emit('msg', {
+      id: inserted.lastID, room_id: +roomId, text: replyText, type: 'msg',
+      created_at: Math.floor(Date.now() / 1000), user: botPublic, reply
+    });
+  }, 550 + Math.floor(Math.random() * 450));
 }
 
 io.on('connection', async (socket) => {
@@ -1692,6 +1738,7 @@ io.on('connection', async (socket) => {
       user: messageUser, reply: rp, color: col
     };
     io.to('room_' + roomId).emit('msg', msg);
+    maybeReplyWithRoomBot(roomId, text, me, text).catch(() => { });
   });
 
   // رسالة خاصة
@@ -1794,9 +1841,11 @@ async function sendBotMsg(b) {
   }
 }
 reloadBots();
-setTimeout(() => syncRoomBots().catch(() => { }), 500);
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`★ شات نجوم العرب يعمل على http://0.0.0.0:${PORT}`);
-  console.log(`★ لوحة التحكم: http://localhost:${PORT}/admin.html  (ax / 123456)`);
-});
+(async () => {
+  await syncRoomBots(false).catch(() => { });
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`★ شات نجوم العرب يعمل على http://0.0.0.0:${PORT}`);
+    console.log(`★ لوحة التحكم: http://localhost:${PORT}/admin.html  (ax / 123456)`);
+  });
+})();
