@@ -208,7 +208,15 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .chat-public-image i { font-size:25px; color:#fff; }
 .chat-public-image b { font-size:13px; font-weight:900; color:#fff; }
 .chat-public-image:active { transform:scale(.985); }
-.chat-public-audio { display:block; width:min(100%,300px); height:40px; margin-top:5px; }
+.chat-audio-player {
+  direction:ltr; width:min(100%,300px); min-height:42px; margin-top:5px; padding:5px 7px; border-radius:9px;
+  display:flex; align-items:center; gap:6px; background:#f0f0f0; border:1px solid #dedede; color:#5f6471;
+}
+.chat-audio-play { width:29px; height:29px; flex:none; border:0; border-radius:50%; background:#bd2258; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.chat-audio-play i { font-size:15px; }
+.chat-audio-time { min-width:35px; color:#606573; font-size:10px; font-weight:800; direction:ltr; text-align:center; }
+.chat-audio-seek { flex:1; min-width:52px; }
+.chat-audio-element { display:none; }
 
 .sys {
   background:#fff; border:1px solid #e8ebf4; border-radius:10px; padding:8px 12px; margin-bottom:9px;
@@ -749,6 +757,45 @@ body.lang-en .upload-progress { direction:ltr; }
 .public-media-review-actions .send:disabled { opacity:.45; cursor:not-allowed; }
 .public-media-review-actions .send i { font-size:17px; }
 body.lang-en .public-media-review { direction:ltr; }
+
+/* تسجيل ومعاينة المقطع الصوتي — شريط مطابق لقالب التشغيل المرجعي */
+.voice-recorder-overlay {
+  position:absolute; inset:0; z-index:91; padding:18px; display:flex; align-items:center; justify-content:center;
+  background:rgba(9,14,26,.72); backdrop-filter:blur(7px); direction:rtl;
+}
+.voice-recorder-overlay.hidden { display:none; }
+.voice-recorder-card { width:min(100%,390px); overflow:hidden; border-radius:20px; background:#fff; box-shadow:0 22px 65px rgba(0,0,0,.4); }
+.voice-recorder-head { min-height:54px; padding:10px 15px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #eceef4; }
+.voice-recorder-head h3 { color:#252b42; font-size:15px; font-weight:900; }
+.voice-recorder-head button { width:34px; height:34px; border:0; border-radius:50%; background:#f1f3f8; color:#687087; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.voice-recording-stage { min-height:230px; padding:25px 18px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:#f8f9fc; }
+.voice-recording-mic { width:76px; height:76px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#fee2e2; color:#dc2557; animation:voiceRecordingPulse 1.35s ease-in-out infinite; }
+.voice-recording-mic i { font-size:37px; }
+@keyframes voiceRecordingPulse { 0%,100% { box-shadow:0 0 0 0 rgba(220,37,87,.2); } 50% { box-shadow:0 0 0 13px rgba(220,37,87,0); } }
+.voice-recording-stage b { color:#bd2258; font-size:14px; font-weight:900; }
+#voiceRecordingTime { color:#34394d; font-size:24px; font-weight:900; direction:ltr; }
+#voiceStopBtn { margin-top:7px; min-width:170px; min-height:43px; padding:8px 17px; border:0; border-radius:12px; background:#bd2258; color:#fff; display:flex; align-items:center; justify-content:center; gap:7px; font-family:inherit; font-size:13px; font-weight:900; cursor:pointer; }
+#voiceStopBtn i { font-size:17px; }
+.voice-preview-stage { min-height:180px; padding:28px 13px 22px; background:#f8f9fc; }
+.voice-preview-stage.hidden { display:none; }
+.voice-preview-title { margin-bottom:15px; color:#30364c; font-size:13.5px; font-weight:900; text-align:center; }
+.voice-preview-player { direction:ltr; width:100%; min-height:43px; padding:5px 6px; border:1px solid #d7d7d7; border-radius:8px; background:#f0f0f0; display:flex; align-items:center; gap:6px; }
+.voice-preview-player button { border:0; display:flex; align-items:center; justify-content:center; cursor:pointer; flex:none; }
+.voice-preview-player .voice-play,.voice-preview-player .voice-send { width:29px; height:29px; border-radius:50%; background:#bd2258; color:#fff; }
+.voice-preview-player .voice-play i,.voice-preview-player .voice-send i { font-size:15px; }
+.voice-preview-player .voice-send:disabled { opacity:.45; cursor:not-allowed; }
+.voice-preview-player .voice-delete { width:24px; height:29px; background:transparent; color:#ef3340; }
+.voice-preview-player .voice-delete i { font-size:20px; }
+.voice-preview-player span { min-width:35px; color:#606573; font-size:10px; font-weight:800; direction:ltr; text-align:center; }
+.voice-preview-player input { flex:1; min-width:55px; }
+.voice-preview-hint { margin-top:12px; color:#8a91a4; font-size:11.5px; font-weight:700; text-align:center; }
+.voice-preview-stage audio { display:none; }
+.voice-preview-player input[type=range],.chat-audio-seek {
+  height:4px; padding:0; border:0; border-radius:99px; outline:none; appearance:none; -webkit-appearance:none; background:#cfd2d7; accent-color:#1685f5; cursor:pointer;
+}
+.voice-preview-player input[type=range]::-webkit-slider-thumb,.chat-audio-seek::-webkit-slider-thumb { width:12px; height:12px; border:0; border-radius:50%; appearance:none; -webkit-appearance:none; background:#1685f5; }
+.voice-preview-player input[type=range]::-moz-range-thumb,.chat-audio-seek::-moz-range-thumb { width:12px; height:12px; border:0; border-radius:50%; background:#1685f5; }
+body.lang-en .voice-recorder-overlay { direction:ltr; }
 
 /* شاشة انقطاع الاتصال — تبقي واجهة الغرفة خلفها وتعيد الجلسة عند رجوع WebSocket */
 .connection-overlay {

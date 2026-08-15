@@ -834,6 +834,35 @@
     </div>
   </div>
 
+  <!-- تسجيل صوتي من زر الميكروفون ثم معاينته قبل الإرسال -->
+  <div class="voice-recorder-overlay hidden" id="voiceRecorderOverlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="voice-recorder-card">
+      <div class="voice-recorder-head">
+        <h3>تسجيل مقطع صوتي</h3>
+        <button type="button" id="voiceRecorderClose" aria-label="إغلاق"><i class="f7-icons">xmark</i></button>
+      </div>
+      <div class="voice-recording-stage" id="voiceRecordingStage">
+        <div class="voice-recording-mic"><i class="f7-icons">mic_fill</i></div>
+        <b>جارٍ التسجيل...</b>
+        <span id="voiceRecordingTime">00:00</span>
+        <button type="button" id="voiceStopBtn"><i class="f7-icons">stop_fill</i><span>إيقاف ومعاينة</span></button>
+      </div>
+      <div class="voice-preview-stage hidden" id="voicePreviewStage">
+        <div class="voice-preview-title">معاينة المقطع قبل الإرسال</div>
+        <div class="voice-preview-player">
+          <button type="button" class="voice-play" id="voicePreviewPlay" aria-label="تشغيل"><i class="f7-icons">play_fill</i></button>
+          <span id="voicePreviewCurrent">00:00</span>
+          <input type="range" id="voicePreviewSeek" min="0" max="0" step="0.01" value="0" aria-label="موضع المقطع الصوتي">
+          <span id="voicePreviewDuration">00:00</span>
+          <button type="button" class="voice-delete" id="voicePreviewDelete" aria-label="حذف"><i class="f7-icons">xmark</i></button>
+          <button type="button" class="voice-send" id="voicePreviewSend" aria-label="إرسال" disabled><i class="f7-icons">arrow_up</i></button>
+        </div>
+        <div class="voice-preview-hint">استمع إلى المقطع ثم أرسله أو احذفه</div>
+        <audio id="voicePreviewAudio" preload="metadata" hidden></audio>
+      </div>
+    </div>
+  </div>
+
   <!-- استعادة اتصال WebSocket دون فقد الغرفة أو هوية هذه الصفحة -->
   <div class="connection-overlay hidden" id="connectionOverlay" role="alertdialog" aria-modal="true" aria-hidden="true">
     <div class="connection-card">

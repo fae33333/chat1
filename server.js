@@ -175,7 +175,7 @@ const chatMediaStorage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 10) + path.extname(file.originalname).toLowerCase())
 });
 const CHAT_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
-const CHAT_AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.opus']);
+const CHAT_AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.webm']);
 const uploadChatMedia = multer({
   storage: chatMediaStorage,
   limits: { fileSize: 50 * 1024 * 1024 },
@@ -209,6 +209,7 @@ function chatMediaSignatureMatches(filePath, type, extension) {
     if (extension === '.wav') return ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WAVE';
     if (extension === '.ogg') return ascii(0, 4) === 'OggS';
     if (extension === '.opus') return ascii(0, 4) === 'OggS' || ascii(0, 8) === 'OpusHead';
+    if (extension === '.webm') return head[0] === 0x1a && head[1] === 0x45 && head[2] === 0xdf && head[3] === 0xa3;
     if (extension === '.m4a') return ascii(4, 8) === 'ftyp';
     if (extension === '.aac') return ascii(0, 3) === 'ID3' || (head[0] === 0xff && (head[1] & 0xf6) === 0xf0);
     return false;
@@ -2074,7 +2075,8 @@ io.on('connection', async (socket) => {
     const matchingMediaType = (mediaType === 'image' && CHAT_IMAGE_EXTENSIONS.has(mediaExt))
       || (mediaType === 'audio' && CHAT_AUDIO_EXTENSIONS.has(mediaExt));
     const mediaFileExists = validMediaPath && fs.existsSync(path.join(__dirname, 'public/uploads/chat', path.basename(requestedMediaPath)));
-    const cleanMedia = mediaFileExists && matchingMediaType ? { type: mediaType, path: requestedMediaPath } : null;
+    const mediaDuration = mediaType === 'audio' ? Math.max(0, Math.min(300, +(media && media.duration) || 0)) : 0;
+    const cleanMedia = mediaFileExists && matchingMediaType ? { type: mediaType, path: requestedMediaPath, duration: mediaDuration } : null;
     if (!text && !cleanMedia) return;
     if (text && !await canUseMembershipFeature(uid, 'public_message_allowed_memberships'))
       return socket.emit('err', 'عضويتك غير مسموح لها بإرسال الرسائل في العام');

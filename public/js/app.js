@@ -87,6 +87,11 @@ const I18N_EN = {
   'جارٍ فحص الملف...': 'Checking file...', 'تم فحص الصورة ويمكن إرسالها': 'Image checked and ready to send', 'تم فحص المقطع ويمكن إرساله': 'Audio checked and ready to send',
   'تعذر فحص الملف أو أن تنسيقه غير مدعوم': 'The file could not be checked or its format is unsupported', 'فشل فحص الصورة أو أن الملف تالف': 'Image check failed or the file is corrupted',
   'فشل فحص المقطع الصوتي أو أن الملف تالف': 'Audio check failed or the file is corrupted', 'إرسال إلى العام': 'Send publicly',
+  'تسجيل مقطع صوتي': 'Record audio clip', 'جارٍ التسجيل...': 'Recording...', 'إيقاف ومعاينة': 'Stop and preview',
+  'معاينة المقطع قبل الإرسال': 'Preview before sending', 'استمع إلى المقطع ثم أرسله أو احذفه': 'Listen to the clip, then send or delete it',
+  'المتصفح لا يدعم التسجيل الصوتي': 'This browser does not support audio recording', 'تعذر الوصول إلى الميكروفون، تحقق من الإذن': 'Could not access the microphone. Check permission.',
+  'تعذر إنشاء التسجيل الصوتي': 'Could not create the audio recording', 'التسجيل قصير جداً، حاول مرة أخرى': 'The recording is too short. Try again.',
+  'تعذر تشغيل المقطع الصوتي': 'Could not play the audio clip',
   'قسم الشكاوي': 'Complaints', 'إرسال الشكوى': 'Send complaint', 'رسالة النظام': 'System message', 'إعلان من الإدارة': 'Admin announcement', 'نظام الهدايا': 'Gift system',
   'لا توجد غرف هنا': 'No rooms here', 'لا يوجد متصلون': 'No users online', 'لا توجد حالات حديثة بعد': 'No recent updates', 'تعذر تحميل الحالات': 'Could not load statuses',
   'لا توجد رسائل من الزوار': 'No messages from guests', 'لا توجد محادثات مع أعضاء مسجلين': 'No conversations with registered members',
@@ -899,6 +904,45 @@ function messageTextWithCustomEmojis(text) {
   }
   return html + esc(source.slice(cursor));
 }
+let ACTIVE_CHAT_AUDIO = null;
+function formatAudioTime(seconds) {
+  const value = Math.max(0, Number.isFinite(+seconds) ? Math.floor(+seconds) : 0);
+  return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+}
+function bindChatAudioPlayer(player) {
+  if (!player) return;
+  const audio = player.querySelector('.chat-audio-element');
+  const play = player.querySelector('.chat-audio-play');
+  const seek = player.querySelector('.chat-audio-seek');
+  const current = player.querySelector('.chat-audio-current');
+  const duration = player.querySelector('.chat-audio-duration');
+  const fallbackDuration = Math.max(0, +player.dataset.duration || 0);
+  if (fallbackDuration) { seek.max = fallbackDuration; duration.textContent = formatAudioTime(fallbackDuration); }
+  const setPlayIcon = playing => { play.querySelector('i').textContent = playing ? 'pause_fill' : 'play_fill'; };
+  const audioReady = () => {
+    const value = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : fallbackDuration;
+    seek.max = value || 0;
+    duration.textContent = formatAudioTime(value);
+  };
+  audio.onloadedmetadata = audioReady;
+  audio.oncanplay = audioReady;
+  audio.ontimeupdate = () => {
+    seek.value = audio.currentTime || 0;
+    current.textContent = formatAudioTime(audio.currentTime);
+  };
+  audio.onplay = () => setPlayIcon(true);
+  audio.onpause = () => setPlayIcon(false);
+  audio.onended = () => { audio.currentTime = 0; setPlayIcon(false); };
+  play.onclick = async () => {
+    if (audio.paused) {
+      if (ACTIVE_CHAT_AUDIO && ACTIVE_CHAT_AUDIO !== audio) ACTIVE_CHAT_AUDIO.pause();
+      ACTIVE_CHAT_AUDIO = audio;
+      try { await audio.play(); } catch (e) { toast('تعذر تشغيل المقطع الصوتي', false); }
+    } else audio.pause();
+  };
+  seek.oninput = () => { if (Number.isFinite(audio.duration) || fallbackDuration > 0) audio.currentTime = +seek.value || 0; };
+  audio.load();
+}
 function renderMsg(m) {
   const area = $('#msgArea');
   const senderId = +(m.user_id || (m.user && m.user.id) || 0);
@@ -932,11 +976,12 @@ function renderMsg(m) {
             : ((badge && badge !== 'register.png' && badge !== 'guest.png') ? `<img class="mmark" src="/badges/${badge}" alt="">` : '')}
           ${isCustomEmoji
             ? `<img class="mcustom-emoji" src="${esc(m.text.slice(4))}" alt="emoji">`
-            : `<span class="mtext message-content" style="color:${tcol || color};font-size:${tsize || SETTINGS.font_size || 14}px">${m.text ? messageTextWithCustomEmojis(m.text) : ''}${messageMedia && messageMedia.type === 'image' ? `<button class="chat-public-image" type="button" data-src="${esc(messageMedia.path)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>` : ''}${messageMedia && messageMedia.type === 'audio' ? `<audio class="chat-public-audio" src="${esc(messageMedia.path)}" controls preload="metadata"></audio>` : ''}</span>`}
+            : `<span class="mtext message-content" style="color:${tcol || color};font-size:${tsize || SETTINGS.font_size || 14}px">${m.text ? messageTextWithCustomEmojis(m.text) : ''}${messageMedia && messageMedia.type === 'image' ? `<button class="chat-public-image" type="button" data-src="${esc(messageMedia.path)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>` : ''}${messageMedia && messageMedia.type === 'audio' ? `<span class="chat-audio-player" data-duration="${+messageMedia.duration || 0}"><button class="chat-audio-play" type="button" aria-label="تشغيل"><i class="f7-icons">play_fill</i></button><span class="chat-audio-time chat-audio-current">00:00</span><input class="chat-audio-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="موضع المقطع"><span class="chat-audio-time chat-audio-duration">00:00</span><audio class="chat-audio-element" src="${esc(messageMedia.path)}" preload="metadata"></audio></span>` : ''}</span>`}
         </div>
       </div>`;
     const publicImage = el.querySelector('.chat-public-image');
     if (publicImage) publicImage.onclick = () => openChatImage(publicImage.dataset.src, uname);
+    bindChatAudioPlayer(el.querySelector('.chat-audio-player'));
     // الإدارة المخفية لا يمكن فتح بطاقتها أو إرسال شيء لها بالنقر على رسالتها.
     if (!hiddenAdmin) el.querySelector('.mava').onclick = () => {
       const uid = m.user_id || (m.user && m.user.id);
@@ -1959,6 +2004,7 @@ async function logoutWithoutReload() {
   PRIV_UNREAD = 0; NOTIF_UNREAD = 0; STATUS_UNREAD = 0;
   updatePrivBadge(); updateNotifBadge(); updateStatusUnreadBadge();
   try { stopStatusMedia(); } catch (e) { }
+  try { closeVoiceRecorder(); } catch (e) { }
   $$('.overlay.open').forEach(overlay => overlay.classList.remove('open'));
   closeEnterDrop();
   $('#headEnterBtn').style.display = '';
@@ -2621,6 +2667,7 @@ function setUsersPanel(open) {
 }
 $('#usersPanelX').onclick = () => setUsersPanel(false);
 function leaveRoom() {
+  if (!$('#voiceRecorderOverlay').classList.contains('hidden')) closeVoiceRecorder();
   if (CUR_ROOM) {
     SOCKET.emit('leave', CUR_ROOM.id);
     delete ROOM_HIDDEN[CUR_ROOM.id];
@@ -2723,18 +2770,25 @@ function canUseMembershipFeature(settingKey) {
   if (ME && ['roomadmin', 'admin', 'superadmin'].includes(ME.rank)) return true;
   return String(SETTINGS[settingKey] || '').split(',').map(v => v.trim()).includes(currentMembershipAccessKey());
 }
-async function sendPublicMedia(file) {
+async function sendPublicMedia(file, mediaDuration = 0) {
   if (!file || !CUR_ROOM || !SOCKET) return;
+  mediaDuration = +mediaDuration || +file._duration || 0;
+  const isAudio = String(file.type || '').startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|opus|webm)$/i.test(file.name || '');
+  const fallbackName = isAudio ? `voice_${Date.now()}.webm` : `image_${Date.now()}.png`;
   const fd = new FormData();
-  fd.append('media', file);
+  fd.append('media', file, file.name || file._uploadName || fallbackName);
   try {
     toast('جاري رفع الملف...');
-    const isAudio = String(file.type || '').startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|opus)$/i.test(file.name || '');
     const uploaded = await uploadFormWithProgress(
       '/api/chat/upload-media', fd,
       isAudio ? 'جاري رفع المقطع الصوتي...' : 'جاري رفع الصورة إلى العام...'
     );
-    SOCKET.emit('msg', { roomId: CUR_ROOM.id, text: '', media: { type: uploaded.type, path: uploaded.path }, color: MY_COLOR });
+    SOCKET.emit('msg', {
+      roomId: CUR_ROOM.id,
+      text: '',
+      media: { type: uploaded.type, path: uploaded.path, duration: Math.max(0, Math.min(300, mediaDuration)) },
+      color: MY_COLOR
+    });
   } catch (error) {
     toast(error.error || 'تعذر إرسال الملف', false);
   }
@@ -2785,7 +2839,7 @@ async function inspectPublicMedia(file, mediaType) {
   overlay.setAttribute('aria-hidden', 'false');
 
   const imageNameOk = /\.(jpe?g|png|webp|gif)$/i.test(file.name || '');
-  const audioNameOk = /\.(mp3|wav|ogg|m4a|aac|opus)$/i.test(file.name || '');
+  const audioNameOk = /\.(mp3|wav|ogg|m4a|aac|opus|webm)$/i.test(file.name || '');
   const mime = String(file.type || '');
   const mimeOk = !mime || mime === 'application/octet-stream' || mime.startsWith(mediaType + '/');
   if (!file.size || file.size > 50 * 1024 * 1024 || !mimeOk || (mediaType === 'image' ? !imageNameOk : !audioNameOk))
@@ -2853,10 +2907,173 @@ $('#publicMediaReviewSend').onclick = async () => {
   closePublicMediaReview();
   await sendPublicMedia(file);
 };
+let VOICE_MEDIA_RECORDER = null, VOICE_MEDIA_STREAM = null, VOICE_RECORD_TIMER = null;
+let VOICE_RECORD_CHUNKS = [], VOICE_RECORD_STARTED_AT = 0, VOICE_RECORD_DURATION = 0;
+let VOICE_RECORD_FILE = null, VOICE_RECORD_URL = '', VOICE_RECORD_SESSION = 0;
+function stopVoiceMediaStream() {
+  if (VOICE_MEDIA_STREAM) VOICE_MEDIA_STREAM.getTracks().forEach(track => { try { track.stop(); } catch (e) { } });
+  VOICE_MEDIA_STREAM = null;
+}
+function resetVoicePreviewPlayer() {
+  const audio = $('#voicePreviewAudio');
+  try { audio.pause(); } catch (e) { }
+  if (ACTIVE_CHAT_AUDIO === audio) ACTIVE_CHAT_AUDIO = null;
+  audio.removeAttribute('src'); audio.load();
+  if (VOICE_RECORD_URL) URL.revokeObjectURL(VOICE_RECORD_URL);
+  VOICE_RECORD_URL = '';
+  VOICE_RECORD_FILE = null;
+  $('#voicePreviewSeek').value = 0; $('#voicePreviewSeek').max = 0;
+  $('#voicePreviewCurrent').textContent = '00:00'; $('#voicePreviewDuration').textContent = '00:00';
+  $('#voicePreviewPlay i').textContent = 'play_fill';
+  $('#voicePreviewSend').disabled = true;
+}
+function closeVoiceRecorder() {
+  VOICE_RECORD_SESSION++;
+  clearInterval(VOICE_RECORD_TIMER); VOICE_RECORD_TIMER = null;
+  if (VOICE_MEDIA_RECORDER && VOICE_MEDIA_RECORDER.state !== 'inactive') {
+    try { VOICE_MEDIA_RECORDER.stop(); } catch (e) { }
+  }
+  VOICE_MEDIA_RECORDER = null;
+  stopVoiceMediaStream();
+  resetVoicePreviewPlayer();
+  VOICE_RECORD_CHUNKS = [];
+  VOICE_RECORD_DURATION = 0;
+  $('#voiceRecordingStage').classList.remove('hidden');
+  $('#voicePreviewStage').classList.add('hidden');
+  $('#voiceStopBtn').disabled = false;
+  $('#voiceRecordingTime').textContent = '00:00';
+  $('#voiceRecorderOverlay').classList.add('hidden');
+  $('#voiceRecorderOverlay').setAttribute('aria-hidden', 'true');
+}
+function voiceRecorderMimeType() {
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+  return candidates.find(type => typeof MediaRecorder.isTypeSupported !== 'function' || MediaRecorder.isTypeSupported(type)) || '';
+}
+function voiceFileExtension(mime) {
+  if (/ogg/i.test(mime)) return 'ogg';
+  if (/mp4|m4a/i.test(mime)) return 'm4a';
+  if (/wav/i.test(mime)) return 'wav';
+  return 'webm';
+}
+function showVoiceRecordingPreview(blob, mime, sessionId, recordedDuration) {
+  if (sessionId !== VOICE_RECORD_SESSION || !blob || blob.size < 100 || recordedDuration < .35) {
+    if (sessionId === VOICE_RECORD_SESSION) { closeVoiceRecorder(); toast('التسجيل قصير جداً، حاول مرة أخرى', false); }
+    return;
+  }
+  const extension = voiceFileExtension(mime);
+  try {
+    VOICE_RECORD_FILE = new File([blob], `voice_${Date.now()}.${extension}`, { type: mime || `audio/${extension}`, lastModified: Date.now() });
+  } catch (e) {
+    blob._uploadName = `voice_${Date.now()}.${extension}`;
+    VOICE_RECORD_FILE = blob;
+  }
+  VOICE_RECORD_DURATION = Math.max(.35, +recordedDuration || 0);
+  try { VOICE_RECORD_FILE._duration = VOICE_RECORD_DURATION; } catch (e) { }
+  VOICE_RECORD_URL = URL.createObjectURL(blob);
+  const audio = $('#voicePreviewAudio');
+  const seek = $('#voicePreviewSeek');
+  $('#voiceRecordingStage').classList.add('hidden');
+  $('#voicePreviewStage').classList.remove('hidden');
+  const audioReady = () => {
+    if (sessionId !== VOICE_RECORD_SESSION) return;
+    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : VOICE_RECORD_DURATION;
+    seek.max = duration;
+    $('#voicePreviewDuration').textContent = formatAudioTime(duration);
+    $('#voicePreviewSend').disabled = !(duration > 0);
+  };
+  audio.onloadedmetadata = audioReady;
+  audio.oncanplay = audioReady;
+  audio.ontimeupdate = () => {
+    seek.value = audio.currentTime || 0;
+    $('#voicePreviewCurrent').textContent = formatAudioTime(audio.currentTime);
+  };
+  audio.onplay = () => { $('#voicePreviewPlay i').textContent = 'pause_fill'; };
+  audio.onpause = () => { $('#voicePreviewPlay i').textContent = 'play_fill'; };
+  audio.onended = () => { audio.currentTime = 0; $('#voicePreviewPlay i').textContent = 'play_fill'; };
+  audio.onerror = () => { if (sessionId === VOICE_RECORD_SESSION) { closeVoiceRecorder(); toast('تعذر إنشاء التسجيل الصوتي', false); } };
+  audio.src = VOICE_RECORD_URL;
+  audio.load();
+}
+async function startVoiceRecording() {
+  if (!CUR_ROOM) return toast('ادخل إلى غرفة أولاً', false);
+  if (ACTIVE_CHAT_AUDIO) { try { ACTIVE_CHAT_AUDIO.pause(); } catch (e) { } }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined')
+    return toast('المتصفح لا يدعم التسجيل الصوتي', false);
+  closeVoiceRecorder();
+  const sessionId = ++VOICE_RECORD_SESSION;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    if (sessionId !== VOICE_RECORD_SESSION) { stream.getTracks().forEach(track => track.stop()); return; }
+    VOICE_MEDIA_STREAM = stream;
+    const mimeType = voiceRecorderMimeType();
+    VOICE_MEDIA_RECORDER = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    VOICE_RECORD_CHUNKS = [];
+    VOICE_MEDIA_RECORDER.ondataavailable = event => { if (event.data && event.data.size) VOICE_RECORD_CHUNKS.push(event.data); };
+    VOICE_MEDIA_RECORDER.onerror = () => { if (sessionId === VOICE_RECORD_SESSION) { closeVoiceRecorder(); toast('تعذر إنشاء التسجيل الصوتي', false); } };
+    VOICE_MEDIA_RECORDER.onstop = () => {
+      clearInterval(VOICE_RECORD_TIMER); VOICE_RECORD_TIMER = null;
+      stopVoiceMediaStream();
+      if (sessionId !== VOICE_RECORD_SESSION) return;
+      const mime = VOICE_MEDIA_RECORDER && VOICE_MEDIA_RECORDER.mimeType ? VOICE_MEDIA_RECORDER.mimeType : (mimeType || 'audio/webm');
+      const blob = new Blob(VOICE_RECORD_CHUNKS, { type: mime });
+      const recordedDuration = Math.max(0, (Date.now() - VOICE_RECORD_STARTED_AT) / 1000);
+      VOICE_MEDIA_RECORDER = null;
+      showVoiceRecordingPreview(blob, mime, sessionId, recordedDuration);
+    };
+    $('#voiceRecordingStage').classList.remove('hidden');
+    $('#voicePreviewStage').classList.add('hidden');
+    $('#voiceStopBtn').disabled = false;
+    $('#voiceRecordingTime').textContent = '00:00';
+    $('#voiceRecorderOverlay').classList.remove('hidden');
+    $('#voiceRecorderOverlay').setAttribute('aria-hidden', 'false');
+    VOICE_RECORD_STARTED_AT = Date.now();
+    VOICE_MEDIA_RECORDER.start(500);
+    VOICE_RECORD_TIMER = setInterval(() => {
+      if (sessionId !== VOICE_RECORD_SESSION) return;
+      const seconds = Math.floor((Date.now() - VOICE_RECORD_STARTED_AT) / 1000);
+      $('#voiceRecordingTime').textContent = formatAudioTime(seconds);
+      if (seconds >= 300 && VOICE_MEDIA_RECORDER && VOICE_MEDIA_RECORDER.state === 'recording') VOICE_MEDIA_RECORDER.stop();
+    }, 250);
+  } catch (e) {
+    if (sessionId === VOICE_RECORD_SESSION) {
+      closeVoiceRecorder();
+      toast('تعذر الوصول إلى الميكروفون، تحقق من الإذن', false);
+    }
+  }
+}
+$('#voiceStopBtn').onclick = () => {
+  if (!VOICE_MEDIA_RECORDER || VOICE_MEDIA_RECORDER.state === 'inactive') return;
+  $('#voiceStopBtn').disabled = true;
+  try { VOICE_MEDIA_RECORDER.stop(); } catch (e) { closeVoiceRecorder(); }
+};
+$('#voiceRecorderClose').onclick = closeVoiceRecorder;
+$('#voicePreviewDelete').onclick = closeVoiceRecorder;
+$('#voicePreviewPlay').onclick = async () => {
+  const audio = $('#voicePreviewAudio');
+  try {
+    if (audio.paused) {
+      if (ACTIVE_CHAT_AUDIO && ACTIVE_CHAT_AUDIO !== audio) ACTIVE_CHAT_AUDIO.pause();
+      ACTIVE_CHAT_AUDIO = audio;
+      await audio.play();
+    } else audio.pause();
+  } catch (e) { toast('تعذر تشغيل المقطع الصوتي', false); }
+};
+$('#voicePreviewSeek').oninput = () => {
+  const audio = $('#voicePreviewAudio');
+  if (Number.isFinite(audio.duration) || VOICE_RECORD_DURATION > 0) audio.currentTime = +$('#voicePreviewSeek').value || 0;
+};
+$('#voicePreviewSend').onclick = async () => {
+  const file = VOICE_RECORD_FILE;
+  const duration = VOICE_RECORD_DURATION;
+  if (!file || $('#voicePreviewSend').disabled) return;
+  if (!canUseMembershipFeature('voice_allowed_memberships')) return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
+  closeVoiceRecorder();
+  await sendPublicMedia(file, duration);
+};
 $('#btnMic').onclick = () => {
   if (!canUseMembershipFeature('voice_allowed_memberships'))
     return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
-  choosePublicMedia('audio/*,.mp3,.wav,.ogg,.m4a,.aac,.opus', 'audio');
+  startVoiceRecording();
 };
 $('#btnCam').onclick = () => {
   if (!canUseMembershipFeature('public_image_allowed_memberships'))
