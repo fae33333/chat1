@@ -2169,7 +2169,6 @@ io.on('connection', async (socket) => {
   // ==================== البث المباشر (video + voice) ====================
   // In-memory state per room
   // roomBroadcasts[roomId] = { type: 'video'|'audio', broadcasterId, broadcasterName, approved: Set }
-  const roomBroadcasts = {};
 
   socket.on('start_broadcast', async ({ roomId, type }) => {
     roomId = +roomId;

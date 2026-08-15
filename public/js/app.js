@@ -3154,10 +3154,18 @@ async function startVoiceBroadcast() {
     $('#broadcastAudioWrap').style.display = 'block';
     $('#broadcastStatus').textContent = 'أنت تبث صوتياً • الجميع يسمعك الآن';
 
+    // Self-monitoring: attach local mic to audio element
+    const audioEl = $('#broadcastAudio');
+    if (audioEl) {
+      audioEl.srcObject = BROADCAST_STREAM;
+      audioEl.muted = true; // prevent echo for broadcaster
+      audioEl.play().catch(() => {});
+    }
+
     SOCKET.emit('start_broadcast', { roomId: CUR_ROOM.id, type: 'audio' });
 
-    // Immediately notify voice room that audio is live
-    SOCKET.emit('voice_broadcast_active', { roomId: CUR_ROOM.id });
+    // Immediately notify everyone (including new joiners) that audio is live
+    SOCKET.emit('voice_broadcast_active', { roomId: CUR_ROOM.id, broadcasterId: ME.id });
   } catch (e) {
     toast('تعذر الوصول إلى الميكروفون', false);
   }
@@ -3246,7 +3254,10 @@ async function startWebRTCSendToViewer(viewerId) {
   const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
   BROADCAST_PEERS[viewerId] = pc;
 
-  BROADCAST_STREAM.getTracks().forEach(track => pc.addTrack(track, BROADCAST_STREAM));
+  // Add all tracks from the broadcast stream (video+audio or just audio)
+  BROADCAST_STREAM.getTracks().forEach(track => {
+    pc.addTrack(track, BROADCAST_STREAM);
+  });
 
   pc.onicecandidate = e => {
     if (e.candidate) {
@@ -3254,9 +3265,15 @@ async function startWebRTCSendToViewer(viewerId) {
     }
   };
 
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  SOCKET.emit('webrtc_offer', { roomId: CUR_ROOM.id, to: viewerId, offer });
+  (async () => {
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      SOCKET.emit('webrtc_offer', { roomId: CUR_ROOM.id, to: viewerId, offer });
+    } catch (err) {
+      console.warn('WebRTC offer error', err);
+    }
+  })();
 }
 
 function watchVideoBroadcast(broadcasterId) {
@@ -3279,15 +3296,42 @@ function watchVideoBroadcast(broadcasterId) {
 }
 
 function watchVoiceBroadcast(broadcasterId) {
-  // For voice rooms: just subscribe to audio immediately
+  // Voice rooms: immediate audio — no approval needed
   $('#broadcastContainer').style.display = 'block';
   $('#broadcastVideo').style.display = 'none';
   $('#broadcastAudioWrap').style.display = 'block';
   $('#broadcastStatus').textContent = 'تستمع إلى البث الصوتي المباشر';
 
-  // In a full implementation, the server would relay audio or use WebRTC mesh.
-  // For this version we simply show the UI — real audio requires full WebRTC broadcast.
-  // We'll simulate by emitting a signal that the client is listening.
+  const audioEl = $('#broadcastAudio');
+  if (audioEl) {
+    audioEl.autoplay = true;
+    audioEl.controls = true;
+  }
+
+  // Close any previous peer
+  if (WATCH_PEER) {
+    try { WATCH_PEER.close(); } catch(e){}
+  }
+
+  WATCH_PEER = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+
+  WATCH_PEER.ontrack = (e) => {
+    if (audioEl && e.streams && e.streams[0]) {
+      audioEl.srcObject = e.streams[0];
+      audioEl.play().catch(() => {});
+    }
+  };
+
+  WATCH_PEER.onicecandidate = (e) => {
+    if (e.candidate && broadcasterId) {
+      SOCKET.emit('webrtc_ice', { roomId: CUR_ROOM.id, to: broadcasterId, candidate: e.candidate });
+    }
+  };
+
+  // Ask server/broadcaster to start sending audio (voice rooms auto-approve)
+  SOCKET.emit('request_watch', { roomId: CUR_ROOM.id });
+
+  // Notify we're listening
   SOCKET.emit('listen_voice_broadcast', { roomId: CUR_ROOM.id });
 }
 
@@ -3297,11 +3341,16 @@ function setupBroadcastSocket() {
 
   SOCKET.on('broadcast_started', ({ roomId, type, broadcasterId, broadcasterName }) => {
     if (!CUR_ROOM || +CUR_ROOM.id !== +roomId) return;
+
+    // Don't override broadcaster's own UI
+    if (CURRENT_BROADCAST && CURRENT_BROADCAST.isBroadcaster && CURRENT_BROADCAST.roomId === +roomId) return;
+
     $('#roomNotice').textContent = type === 'video' ? `بث فيديو مباشر من ${broadcasterName}` : `بث صوتي مباشر من ${broadcasterName}`;
     $('#liveBar').style.display = 'flex';
 
-    // Voice rooms: everyone hears immediately (no request)
+    // Voice rooms: everyone hears immediately (no request) — including new joiners
     if (type === 'audio' && isVoiceRoom()) {
+      // Always trigger full watch flow for voice (auto WebRTC audio)
       watchVoiceBroadcast(broadcasterId);
       return;
     }
@@ -3311,7 +3360,6 @@ function setupBroadcastSocket() {
       const bar = $('#liveBar');
       bar.onclick = () => {
         if (CURRENT_BROADCAST && CURRENT_BROADCAST.isBroadcaster) return;
-        // Send watch request
         SOCKET.emit('request_watch', { roomId: CUR_ROOM.id });
         toast('تم إرسال طلب مشاهدة البث...');
       };
@@ -3330,6 +3378,16 @@ function setupBroadcastSocket() {
 
   SOCKET.on('watch_request', ({ fromId, username }) => {
     if (!CURRENT_BROADCAST || !CURRENT_BROADCAST.isBroadcaster) return;
+
+    // Voice rooms: auto approve immediately — no request UI needed
+    if (CURRENT_BROADCAST.type === 'audio' && isVoiceRoom()) {
+      CURRENT_BROADCAST.approved.add(+fromId);
+      startWebRTCSendToViewer(fromId);
+      SOCKET.emit('approve_watch', { roomId: CUR_ROOM.id, viewerId: fromId });
+      return;
+    }
+
+    // Video / default rooms: show pending UI for manual approve/reject
     CURRENT_BROADCAST.pending.set(+fromId, username || 'مستخدم');
     renderBroadcastActions();
     toast(`طلب مشاهدة من ${username}`);
@@ -3338,16 +3396,35 @@ function setupBroadcastSocket() {
   SOCKET.on('watch_approved', ({ broadcasterId }) => {
     if (CURRENT_BROADCAST && CURRENT_BROADCAST.isBroadcaster) return;
     toast('تم قبول طلبك للمشاهدة');
-    // initiate WebRTC viewer
-    if (WATCH_PEER) WATCH_PEER.close();
+
+    if (WATCH_PEER) {
+      try { WATCH_PEER.close(); } catch(e){}
+    }
     WATCH_PEER = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
 
+    const isAudioOnly = isVoiceRoom();
+
     WATCH_PEER.ontrack = e => {
-      const v = $('#broadcastVideo');
-      $('#broadcastContainer').style.display = 'block';
-      v.style.display = 'block';
-      v.srcObject = e.streams[0];
+      const container = $('#broadcastContainer');
+      container.style.display = 'block';
+
+      if (isAudioOnly) {
+        $('#broadcastVideo').style.display = 'none';
+        const audioWrap = $('#broadcastAudioWrap');
+        audioWrap.style.display = 'block';
+        const audioEl = $('#broadcastAudio');
+        if (audioEl && e.streams && e.streams[0]) {
+          audioEl.srcObject = e.streams[0];
+          audioEl.autoplay = true;
+          audioEl.play().catch(() => {});
+        }
+      } else {
+        const v = $('#broadcastVideo');
+        v.style.display = 'block';
+        if (e.streams && e.streams[0]) v.srcObject = e.streams[0];
+      }
     };
+
     WATCH_PEER.onicecandidate = e => {
       if (e.candidate) SOCKET.emit('webrtc_ice', { roomId: CUR_ROOM.id, to: broadcasterId, candidate: e.candidate });
     };
@@ -3378,10 +3455,14 @@ function setupBroadcastSocket() {
   });
 
   // Voice room auto audio (simple notification)
-  SOCKET.on('voice_broadcast_active', ({ roomId }) => {
-    if (CUR_ROOM && +CUR_ROOM.id === +roomId && isVoiceRoom()) {
-      watchVoiceBroadcast(0);
-    }
+  SOCKET.on('voice_broadcast_active', ({ roomId, broadcasterId }) => {
+    if (!CUR_ROOM || +CUR_ROOM.id !== +roomId || !isVoiceRoom()) return;
+
+    // If I am the broadcaster, don't try to watch myself
+    if (CURRENT_BROADCAST && CURRENT_BROADCAST.isBroadcaster) return;
+
+    // Auto start listening for voice room listeners (including new joiners)
+    watchVoiceBroadcast(broadcasterId || 0);
   });
 }
 
