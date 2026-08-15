@@ -1863,6 +1863,9 @@ const roomUsers = {};     // roomId -> Set(uid)
 const PENDING_ROOM_LEAVES = new Map();
 const ROOM_RECONNECT_GRACE_MS = 8000;
 const roomLeaveKey = (uid, roomId) => `${+uid}:${+roomId}`;
+
+// ==================== البث المباشر (مشترك بين كل الاتصالات) ====================
+const roomBroadcasts = {}; // roomId -> { type:'video'|'audio', broadcasterId, broadcasterName, approved:Set }
 function cancelPendingRoomLeave(uid, roomId) {
   const key = roomLeaveKey(uid, roomId);
   const pending = PENDING_ROOM_LEAVES.get(key);
@@ -2042,6 +2045,14 @@ io.on('connection', async (socket) => {
     emitRoomUsers(roomId);
     emitRoomCounts();
     done({ ok: true, hidden: enterHidden, restored: restoredConnection });
+
+    // إذا كان هناك بث صوتي نشط في غرفة صوتية، أخبر الداخل الجديد فوراً
+    const br = roomBroadcasts[roomId];
+    if (br && br.type === 'audio') {
+      setTimeout(() => {
+        socket.emit('voice_broadcast_active', { roomId, broadcasterId: br.broadcasterId });
+      }, 400);
+    }
   });
 
   // مغادرة غرفة
@@ -2153,6 +2164,109 @@ io.on('connection', async (socket) => {
       }
     }
     if (userSockets[uid].length === 0) delete onlineUsers[uid];
+  });
+
+  // ==================== البث المباشر (video + voice) ====================
+  // In-memory state per room
+  // roomBroadcasts[roomId] = { type: 'video'|'audio', broadcasterId, broadcasterName, approved: Set }
+  const roomBroadcasts = {};
+
+  socket.on('start_broadcast', async ({ roomId, type }) => {
+    roomId = +roomId;
+    if (!socket.data.joinedRooms.has(roomId)) return;
+    const me = await q.get(`SELECT id,username FROM users WHERE id=?`, uid);
+    if (!me) return;
+
+    if (roomBroadcasts[roomId]) {
+      socket.emit('err', 'يوجد بث حالياً في الغرفة');
+      return;
+    }
+
+    roomBroadcasts[roomId] = {
+      type: type === 'audio' ? 'audio' : 'video',
+      broadcasterId: uid,
+      broadcasterName: me.username,
+      approved: new Set()
+    };
+
+    io.to('room_' + roomId).emit('broadcast_started', {
+      roomId,
+      type: roomBroadcasts[roomId].type,
+      broadcasterId: uid,
+      broadcasterName: me.username
+    });
+  });
+
+  socket.on('stop_broadcast', ({ roomId }) => {
+    roomId = +roomId;
+    if (roomBroadcasts[roomId] && roomBroadcasts[roomId].broadcasterId === uid) {
+      delete roomBroadcasts[roomId];
+      io.to('room_' + roomId).emit('broadcast_stopped', { roomId });
+    }
+  });
+
+  socket.on('request_watch', async ({ roomId }) => {
+    roomId = +roomId;
+    const br = roomBroadcasts[roomId];
+    if (!br || br.type !== 'video') return;
+    if (br.broadcasterId === uid) return;
+
+    const viewer = await q.get(`SELECT username FROM users WHERE id=?`, uid);
+    io.to('user_' + br.broadcasterId).emit('watch_request', {
+      fromId: uid,
+      username: viewer ? viewer.username : 'مستخدم'
+    });
+  });
+
+  socket.on('approve_watch', ({ roomId, viewerId }) => {
+    roomId = +roomId;
+    const br = roomBroadcasts[roomId];
+    if (!br || br.broadcasterId !== uid) return;
+    br.approved.add(+viewerId);
+    io.to('user_' + viewerId).emit('watch_approved', { broadcasterId: uid });
+  });
+
+  socket.on('reject_watch', ({ roomId, viewerId }) => {
+    roomId = +roomId;
+    const br = roomBroadcasts[roomId];
+    if (!br || br.broadcasterId !== uid) return;
+    io.to('user_' + viewerId).emit('watch_rejected', {});
+  });
+
+  socket.on('webrtc_offer', ({ roomId, to, offer }) => {
+    io.to('user_' + to).emit('webrtc_offer', { from: uid, offer });
+  });
+
+  socket.on('webrtc_answer', ({ roomId, to, answer }) => {
+    io.to('user_' + to).emit('webrtc_answer', { from: uid, answer });
+  });
+
+  socket.on('webrtc_ice', ({ roomId, to, candidate }) => {
+    io.to('user_' + to).emit('webrtc_ice', { from: uid, candidate });
+  });
+
+  socket.on('voice_broadcast_active', ({ roomId }) => {
+    roomId = +roomId;
+    const br = roomBroadcasts[roomId];
+    if (br && br.type === 'audio') {
+      io.to('room_' + roomId).emit('voice_broadcast_active', { roomId, broadcasterId: br.broadcasterId });
+    }
+  });
+
+  socket.on('listen_voice_broadcast', ({ roomId }) => {
+    // client side already shows the UI
+  });
+
+  // Cleanup broadcasts on disconnect
+  const origDisconnect = socket._onDisconnect || (() => {});
+  socket.on('disconnect', () => {
+    Object.keys(roomBroadcasts).forEach(rid => {
+      const br = roomBroadcasts[rid];
+      if (br && br.broadcasterId === uid) {
+        delete roomBroadcasts[rid];
+        io.to('room_' + rid).emit('broadcast_stopped', { roomId: +rid });
+      }
+    });
   });
 });
 
