@@ -2320,7 +2320,7 @@ const PAGES = {
       ${swRow('smiley_fill', '#fbbf24', 'عرض زر الاسمايلات', 'show_smiles')}
       ${swRow('mic_fill', '#f472b6', 'عرض زر تسجيل الصوت', 'show_voice')}
       ${swRow('photo_fill', '#4ade80', 'عرض زر ارسال صورة', 'show_image')}
-      ${swRow('eye_slash_fill', '#c084fc', '(i1) دخول مخفي للسوبر', 'hidden_super')}
+      ${swRow('eye_slash_fill', '#c084fc', 'دخول مخفي للإدمن والسوبر أدمن', 'hidden_super')}
       <div class="section-title" style="margin-top:24px"><i class="f7-icons mi" style="color:#60a5fa">speaker2_fill</i> الإشعارات الصوتية</div>
       ${swRow('person_badge_plus_fill', '#60a5fa', 'صوت عند دخول المستخدم (b1)', 'snd_join')}
       ${swRow('paperplane_fill', '#94a3b8', 'صوت عند ارسال رسالة (b4)', 'snd_msg')}
@@ -4171,7 +4171,7 @@ function userForm(u) {
             <option value="admin" ${u.rank === 'admin' ? 'selected' : ''}>ادمن</option>
             <option value="superadmin" ${u.rank === 'superadmin' ? 'selected' : ''}>سوبر ادمين</option>
           ` : ''}
-          ${(isMaster || u.rank === 'supermaster') ? `<option value="supermaster" ${u.rank === 'supermaster' ? 'selected' : ''}>ملك الدردشة (سوبر ماستر 👑)</option>` : ''}
+          ${isMaster ? `<option value="supermaster" ${u.rank === 'supermaster' ? 'selected' : ''}>ملك الدردشة (سوبر ماستر 👑)</option>` : ''}
         </select></div>
     </div>
     <div class="btn-row">

@@ -436,7 +436,7 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .msg .mname:hover { text-decoration:underline; }
 .msg .mname i.vcheck { color:#1e9bf0; font-size:13px; margin-inline-end:3px; }
 .msg .mtime { font-size:10.5px; color:#a2a7ba; font-weight:700; direction:ltr; }
-.msg .mline2 {display:flex;align-items:center;gap:7px;flex-direction: row-reverse;}
+.msg .mline2 {display:flex;gap:7px;flex-direction: row-reverse;align-items: flex-end;}
 .msg .mmark { width:24px; height:24px; object-fit:contain; flex:none; }
 .msg .mtext { font-weight:800; line-height:1.7; word-break:break-word; flex:1; font-size:var(--msg-font-size, 14px); }
 .chat-public-image {
@@ -780,7 +780,7 @@ body { background:#0e1220; display:flex; justify-content:center; }
   gap:10px;
   color:#333;
   background:#fff;
-  font-size:13.5px;
+  font-size: 15.5px;
   font-weight:500;
   line-height:20px;
   text-align:left;
@@ -1315,7 +1315,7 @@ body.lang-en .announcement-text,body.lang-en .announcement-sender { direction:lt
 .notifications-page .page-heading { padding:1px 5px 9px; }
 .notifications-page #notifList {display:flex;flex-direction:column;gap:3px;align-items: center;}
 .notif-row { position:relative; direction:ltr; width:100%; min-height:61px; padding:7px 34px 7px 9px; border-radius:10px; background:#f8faff; display:flex; align-items:center; gap:8px; cursor:default; }
-.notif-row.announcement { background:#e7f0fd; cursor:pointer; }
+.notif-row.announcement {cursor:pointer;}
 .notif-image { width:46px; height:46px; border-radius:50%; overflow:hidden; flex:none; background:#17285f; display:flex; align-items:center; justify-content:center; }
 .notif-image img { width:100%; height:100%; object-fit:cover; }
 .notif-image i { color:#fff; font-size:20px; }
@@ -1359,7 +1359,7 @@ body.lang-en .notif-info { direction:ltr; text-align:left; }
 #exitYes { color:#a3b3d8; }
 
 /* ============ ملف المستخدم الآخر (مطابق لمرجع الملف والهدايا) ============ */
-.vp-top { direction:ltr; height:132px; box-sizing:border-box; display:flex; align-items:flex-start; padding:22px 14px 8px; gap:9px; }
+.vp-top {direction:ltr;height:132px;box-sizing:border-box;display:flex;align-items:flex-start;padding:22px 14px 8px;gap:9px;}
 .vp-col { flex:1; min-width:0; height:96px; display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding-top:5px; }
 .vp-name { width:100%; min-height:20px; font-size:15px; line-height:20px; font-weight:900; color:#fff; display:flex; align-items:center; justify-content:center; gap:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .vp-vrf { color:#168dff; font-size:18px; flex:none; filter:drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
@@ -1464,13 +1464,34 @@ body.lang-en .notif-info { direction:ltr; text-align:left; }
 }
 .sp-pill textarea, .sp-head textarea { text-align:center; }
 
+body.lang-en .profpage.visitor .profile-main-status,
+body.lang-es .profpage.visitor .profile-main-status,
+body.lang-tr .profpage.visitor .profile-main-status,
+body.lang-en .profpage.visitor .profile-main-pill,
+body.lang-es .profpage.visitor .profile-main-pill,
+body.lang-tr .profpage.visitor .profile-main-pill,
+body.lang-en .profpage.visitor .profile-stat-grid,
+body.lang-es .profpage.visitor .profile-stat-grid,
+body.lang-tr .profpage.visitor .profile-stat-grid { direction:ltr; }
+
 /* ============ خلفية رأس ملف المستخدم الآخر ============ */
 .pvpage { position:relative; }
 .profpage.visitor { padding:0; background:#f4f4f9; }
 .profpage.visitor::before {
-  content:""; position:absolute; z-index:0; top:32px; right:-18px; left:-18px; height:132px;
-  background-color:#121318; background-image:var(--vpava); background-repeat:no-repeat; background-size:cover; background-position:center 24%;
-  filter:blur(13px) brightness(.38); transform:scale(1.12);
+  content:"";
+  position:absolute;
+  z-index:0;
+  top:32px;
+  right: 0px;
+  left: 0px;
+  height:132px;
+  background-color:#121318;
+  background-image:var(--vpava);
+  background-repeat:no-repeat;
+  background-size:cover;
+  background-position:center 24%;
+  /* filter:blur(13px) brightness(.38); */
+  /* transform:scale(1.12); */
 }
 .profpage.visitor::after {
   content:""; position:absolute; z-index:0; top:32px; right:0; left:0; height:132px;
@@ -2164,7 +2185,7 @@ body.lang-en .card-payment-dialog, body.lang-es .card-payment-dialog, body.lang-
   line-height:1.65;
 }
 .room-welcome img { width:20px; height:20px; flex:0 0 20px; object-fit:contain; margin-top:1px; }
-.room-welcome-text { font-weight:700; word-break:break-word; }
+.room-welcome-text {font-weight: 600;word-break:break-word;}
 body.lang-en .room-welcome { margin-left:52px; margin-right:0; direction:ltr; }
 
 /* ===== رسائل دخول/خروج ونظام الكتم ===== */
@@ -2208,19 +2229,20 @@ body.lang-en .room-welcome { margin-left:52px; margin-right:0; direction:ltr; }
   margin-left:54px;
   font-family:"Noto Sans Arabic","SF Arabic","SF Pro Text",Arial,sans-serif !important;
   font-size:14px;
+  /* justify-content: flex-end; */
 }
 .system-event-message {
-  margin-top:3px;
-  margin-right:21px;
   padding:0;
   border-radius:5px;
   color:#000;
   display:flex;
-  flex-wrap:wrap;
-  align-items:center;
+  flex-wrap: nowrap;
   font-size:14px;
   font-weight:700 !important;
   line-height:1.65;
+  justify-content: flex-end;
+  flex-direction: row;
+  direction: rtl;
 }
 .mute-system .system-event-message { border-radius:8px; }
 .users-row.muted-user { background-color:#f0f0f0 !important; opacity:1; transition:opacity .3s ease; position:relative; }
@@ -2275,8 +2297,8 @@ body.lang-en .robot-system-message { direction:ltr; }
 .settings-language-chevron { color:#c3c8d8; font-size:16px; }
 
 .room-welcome-content { display:flex; flex-direction:column; gap:2px; min-width:0; }
-.room-welcome-title { color:var(--main); font-size:13px; font-weight:900; line-height:1.35; }
-.supervision-welcome .room-welcome-text { color:#111827; font-size:14px; }
+.room-welcome-title {color:var(--main);font-size: 14px;font-weight:900;line-height:1.35;}
+.supervision-welcome .room-welcome-text {color:#111827;font-size: 14px;margin: 0px 0px 0px -25px;}
 
 /* ===== صفحة هدايا حسابي ===== */
 .my-gifts-page { background:#f4f6fb; }
@@ -3469,8 +3491,9 @@ body.lang-en .card-payment-dialog {
 }
 
 /* ============ رسالة نظام الترقية بتنسيق أبعاد رسالة النظام (طِبق الصورة المرجعية) ============ */
-.system-event.upgrade-system { width:100%; margin:0; padding:0; }
-.system-event.upgrade-system .system-event-head {
+.system-event.upgrade-system, .system-event.gift-system { width:100%; margin:0; padding:0; }
+.system-event.upgrade-system .system-event-head,
+.system-event.gift-system .system-event-head {
   margin-right:49px;
   margin-left:49px;
   margin-top:7px;
@@ -3482,10 +3505,12 @@ body.lang-en .card-payment-dialog {
   gap:6px;
   color:#be123c !important;
 }
-.system-event.upgrade-system .system-event-head span {
+.system-event.upgrade-system .system-event-head span,
+.system-event.gift-system .system-event-head span {
   color:#be123c !important;
 }
-.system-event.upgrade-system .system-event-icon {
+.system-event.upgrade-system .system-event-icon,
+.system-event.gift-system .system-event-icon {
   font-size:12px !important;
   color:#fff !important;
   background:#be123c !important;
@@ -3498,7 +3523,8 @@ body.lang-en .card-payment-dialog {
   justify-content:center;
   box-shadow:0 2px 6px rgba(190,18,60,.35);
 }
-.system-event.upgrade-system .system-event-body {
+.system-event.upgrade-system .system-event-body,
+.system-event.gift-system .system-event-body {
   flex-flow:wrap;
   display:flex;
   color:#000;
@@ -3510,29 +3536,26 @@ body.lang-en .card-payment-dialog {
   font-family:"Noto Sans Arabic","SF Arabic","SF Pro Text",Arial,sans-serif !important;
   font-size:14px;
 }
-.system-event.upgrade-system .system-event-message {
+.system-event.upgrade-system .system-event-message,
+.system-event.gift-system .system-event-message {
   margin-top:3px;
-  margin-right:21px;
   padding:0;
   border-radius:5px;
   color:#000;
   display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  font-size:14px;
-  font-weight:700 !important;
-  line-height:1.65;
   width:100%;
+  flex-direction: row;
+  flex-wrap: wrap;
 }
-.system-event.upgrade-system .up-msg-card {
+.system-event.upgrade-system .up-msg-card,
+.system-event.gift-system .up-msg-card {
   width:100%;
   max-width:340px;
   background:linear-gradient(135deg, #a21caf 0%, #be123c 45%, #881337 100%);
   border-radius:18px;
   padding:14px 16px;
   display:flex;
-  align-items:center;
-  justify-content:space-between;
+  justify-content: center;
   gap:14px;
   color:#fff;
   box-shadow:0 6px 20px rgba(159, 18, 57, 0.35);
@@ -3540,6 +3563,7 @@ body.lang-en .card-payment-dialog {
   margin-right:21px;
   position:relative;
   overflow:hidden;
+  direction: ltr;
 }
 .up-msg-badge-col {
   display:flex;
@@ -3573,16 +3597,30 @@ body.lang-en .card-payment-dialog {
   margin-top:5px;
   text-shadow:0 1px 4px rgba(0, 0, 0, 0.6);
 }
+.up-msg-plan-txt.gift-name {
+  font-size:13px;
+  letter-spacing:0;
+  line-height:1.2;
+  max-width:84px;
+  text-align:center;
+  word-break:break-word;
+}
+.up-msg-white-box.is-gift { padding:6px; }
+.up-msg-badge-emoji {
+  font-size:40px;
+  line-height:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:52px;
+  height:52px;
+}
 .up-msg-content {
   flex:1;
-  display:flex;
-  flex-direction:column;
   align-items:flex-end;
   text-align:right;
-  gap:2px;
 }
 .up-msg-sender {
-  font-size:13.5px;
   font-weight:800;
   color:#fed7aa;
   display:flex;
@@ -3594,36 +3632,353 @@ body.lang-en .card-payment-dialog {
   color:#fbbf24;
 }
 .up-msg-action {
-  font-size:17px;
   font-weight:900;
   color:#ffffff;
   margin:2px 0 1px;
   text-shadow:0 1px 3px rgba(0,0,0,0.3);
 }
 .up-msg-target {
-  font-size:16px;
   font-weight:900;
   color:#ffffff;
 }
 .up-msg-dur {
-  font-size:13px;
   font-weight:800;
   color:rgba(255, 255, 255, 0.92);
   margin-top:2px;
 }
+/* ============ خلفية رأس ملف المستخدم الآخر ============ */
+.pvpage { position:relative; }
+.profpage.visitor { padding:0; background:#eef1f6; }
+.profpage.visitor::before,
+.profpage.visitor::after { display:none; }
+.profpage.visitor .pg-head.bar { display:none; }
+.profpage.visitor #profBody {position:relative;z-index:1;flex: 1;}
+.profpage.visitor .vp-ava { cursor:zoom-in; }
+.profpage.visitor .vp-ava > img { border:3px solid #fff; box-sizing:border-box; box-shadow:0 3px 10px rgba(0,0,0,.20); }
+.profpage.visitor .vp-ava > span:not(.vs-dot) { border:3px solid #fff; box-sizing:border-box; background:#fff; box-shadow:0 3px 10px rgba(0,0,0,.20); }
+.user-info-container { width:100%; max-width:100%; }
+.visitor-profile-card.profile-card {
+  background:#fff;
+  border-radius:0;
+  overflow:hidden;
+  box-shadow:none;
+  border:0;
+}
+.profile-navbar {
+  height:42px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 12px;
+  background:#ffffff;
+}
+.profile-navbar .title {
+  flex:1;
+  text-align:center;
+  color:#111827;
+  font-size:14px;
+  font-weight:900;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.profile-navbar .close-btn,
+.profile-navbar .profile-navbar-spacer {
+  width:54px;
+  flex:0 0 54px;
+}
+.profile-navbar .close-btn {
+  color:#b6254f;
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+  text-decoration:none;
+}
+.profile-content {
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.profile-cover-block { flex-shrink:0; padding:0; }
+.profile-cover {
+  position:relative;
+  min-height:138px;
+  overflow:hidden;
+  background:linear-gradient(135deg,#8e183f,#be2b59 55%,#d74e7a 100%);
+}
+.profile-cover-bg {
+  position:absolute;
+  inset:-10px;
+  background-size:cover;
+  background-position:center;
+  filter:blur(11px) brightness(.82);
+  transform:scale(1.18);
+}
+.profile-cover-shade {
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.08) 45%,rgba(255,255,255,.14));
+}
+.profile-cover-main {
+  position:relative;
+  z-index:1;
+  min-height:138px;
+  padding:14px 18px 8px;
+}
+.profile-cover-hero {
+  display:flex;
+  flex-direction: row;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap: 0px;
+}
+.profile-main-avatar {
+  position:relative;
+  width:112px;
+  height:112px;
+  flex:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-right:8px;
+}
+.profile-main-avatar::before {
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:35px;
+  background:linear-gradient(180deg,#ffffff,#d7dce6);
+  box-shadow:0 4px 10px rgba(0,0,0,.18);
+}
+.profile-main-avatar::after {
+  content:"";
+  position:absolute;
+  inset:8px;
+  border-radius:30px;
+  background:#fff;
+}
+.profile-main-avatar > img,
+.profile-main-avatar > span:not(.vs-dot) {
+  position:relative;
+  z-index:2;
+  width:90px;
+  height:90px;
+  border-radius:24px;
+  object-fit:cover;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:2px solid #c6ccd8;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.85);
+}
+.profile-main-avatar .vs-dot.big {
+  position:absolute;
+  left:18px;
+  bottom:20px;
+  width:12px;
+  height:12px;
+  border:2px solid #fff;
+  z-index:3;
+}
+.profile-hero-info {
+  flex: 1;
+  min-width: 1px;
+  display:flex;
+  flex-direction: column;
+  padding: 12px;
+  align-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.profile-main-name {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  color:#fff;
+  font-size:17px;
+  font-weight:900;
+  text-shadow:0 1px 4px rgba(0,0,0,.25);
+  line-height:1.1;
+}
+.profile-main-status {
+  display:flex;
+  align-items:center;
+  gap:5px;
+  color:#fff;
+  font-size:11px;
+  font-weight:800;
+  margin-top:3px;
+  line-height:1.1;
+}
+.profile-main-status .vs-dot {
+  width:9px;
+  height:9px;
+  border:1.5px solid rgba(255,255,255,.95);
+}
+.profile-main-pill {
+  margin-top:8px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  padding:4px 12px;
+  border-radius:9px;
+  background:#fff;
+  color:#c52c57;
+  border:1px solid rgba(255,255,255,.95);
+  font-size:11px;
+  font-weight:900;
+  box-shadow:0 4px 10px rgba(0,0,0,.08);
+}
+.profile-main-pill img { width:14px; height:14px; object-fit:contain; display:block; }
+.profile-tabs-shell {
+  padding:0 6px;
+  margin-top:2px;
+}
+.profile-tabs {
+  padding:0;
+  height:30px;
+  background:#ececec;
+  border-radius:3px;
+  overflow:hidden;
+  gap:0;
+}
+.profile-tabs .vp-tab {
+  height:30px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  color:#111827;
+  font-size:12px;
+  font-weight:700;
+  line-height:30px;
+  box-shadow:none;
+}
+.profile-tabs .vp-tab.active {
+  background:#b6254f;
+  color:#fff;
+  box-shadow:none;
+}
+.profile-actions {
+  flex-shrink:0;
+  height:auto;
+  padding:10px 10px 0;
+  gap:0;
+}
+.profile-actions .va {
+  width:20%;
+  font-size:9px;
+  line-height:1.2;
+  gap:4px;
+  color:#111827;
+}
+.profile-actions .va-ic {
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  background:#f7f7f9;
+  border:0;
+  box-shadow:0 4px 10px rgba(15,23,42,.08);
+}
+.profile-actions .va-ic i {
+  color:#b6254f;
+  font-size:17px;
+}
+.profile-actions .va.active .va-ic {
+  background:#eceff4;
+  box-shadow:0 2px 6px rgba(15,23,42,.05);
+}
+.profile-actions .va.active .va-ic i { color:#8d97a8; }
+.profile-actions .va-label { white-space:nowrap; }
+.profile-info-panel,
+.profile-gifts-panel {
+  flex:1;
+  min-height:0;
+  overflow-y:auto;
+  padding:8px 6px 16px;
+}
+.profile-info-panel .vp-bio {
+  min-height:30px;
+  margin:0 0 12px;
+  padding:7px 12px;
+  border-radius:7px;
+  background:#f3f3f4;
+  border:0;
+  color:#616978;
+  font-size:11px;
+  line-height:1.5;
+  font-weight:700;
+  text-align:center;
+  box-shadow:none;
+}
+.profile-stat-stack {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:10px;
+}
+.profile-stat-row {
+  width:170px;
+  height:34px;
+  border-radius:10px;
+  background:#f7f7f8;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 18px;
+  box-sizing:border-box;
+}
+.profile-stat-row span {
+  color:#c52c57;
+  font-size:12px;
+  font-weight:900;
+}
+.profile-stat-row b {
+  color:#111827;
+  font-size:12px;
+  font-weight:800;
+}
+.profile-gifts-panel .vp-gtitle {
+  height:auto;
+  padding:8px 0 10px;
+  color:#6b7280;
+  font-size:11px;
+}
+body.lang-en .profpage.visitor .profile-main-status,
+body.lang-es .profpage.visitor .profile-main-status,
+body.lang-tr .profpage.visitor .profile-main-status,
+body.lang-en .profpage.visitor .profile-main-pill,
+body.lang-es .profpage.visitor .profile-main-pill,
+body.lang-tr .profpage.visitor .profile-main-pill,
+body.lang-en .profpage.visitor .profile-stat-grid,
+body.lang-es .profpage.visitor .profile-stat-grid,
+body.lang-tr .profpage.visitor .profile-stat-grid { direction:ltr; }
 
 body.lang-en .system-event.upgrade-system .system-event-head,
 body.lang-es .system-event.upgrade-system .system-event-head,
-body.lang-tr .system-event.upgrade-system .system-event-head { direction:ltr; }
+body.lang-tr .system-event.upgrade-system .system-event-head,
+body.lang-en .system-event.gift-system .system-event-head,
+body.lang-es .system-event.gift-system .system-event-head,
+body.lang-tr .system-event.gift-system .system-event-head { direction:ltr; }
 body.lang-en .system-event.upgrade-system .system-event-body,
 body.lang-es .system-event.upgrade-system .system-event-body,
-body.lang-tr .system-event.upgrade-system .system-event-body { direction:ltr; text-align:left; padding-right:0; padding-left:15px; }
+body.lang-tr .system-event.upgrade-system .system-event-body,
+body.lang-en .system-event.gift-system .system-event-body,
+body.lang-es .system-event.gift-system .system-event-body,
+body.lang-tr .system-event.gift-system .system-event-body { direction:ltr; text-align:left; padding-right:0; padding-left:15px; }
 body.lang-en .system-event.upgrade-system .system-event-message,
 body.lang-es .system-event.upgrade-system .system-event-message,
-body.lang-tr .system-event.upgrade-system .system-event-message { margin-right:0; margin-left:21px; }
+body.lang-tr .system-event.upgrade-system .system-event-message,
+body.lang-en .system-event.gift-system .system-event-message,
+body.lang-es .system-event.gift-system .system-event-message,
+body.lang-tr .system-event.gift-system .system-event-message { margin-right:0; margin-left:21px; }
 body.lang-en .system-event.upgrade-system .up-msg-card,
 body.lang-es .system-event.upgrade-system .up-msg-card,
-body.lang-tr .system-event.upgrade-system .up-msg-card { margin-right:0; margin-left:21px; }
+body.lang-tr .system-event.upgrade-system .up-msg-card,
+body.lang-en .system-event.gift-system .up-msg-card,
+body.lang-es .system-event.gift-system .up-msg-card,
+body.lang-tr .system-event.gift-system .up-msg-card { margin-right:0; margin-left:21px; }
 
 
 

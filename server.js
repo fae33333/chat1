@@ -221,28 +221,11 @@ function validateAdminTokenRecord(record, req) {
   const currentActive = ADMIN_USER_TOKEN.get(+record.uid);
   if (!currentActive || currentActive.token !== record.token) return false;
 
-  // 1. التحقق الصارم من وجود المدير متصلاً في الدردشة في هذه اللحظة بالذات
-  if (!isUserActiveInChat(record.uid)) {
-    return false;
-  }
-
-  // 2. التحقق من تطابق عنوان الـ IP
-  const reqIp = normalizeIp(requestIp(req));
-  if (record.ip && reqIp && record.ip !== reqIp) {
-    return false;
-  }
-
-  // 3. التحقق من تطابق متصفح وجهاز المصدر (User-Agent)
-  const reqUA = String(req.get('user-agent') || '').trim();
-  if (record.userAgent && reqUA && record.userAgent !== reqUA) {
-    return false;
-  }
-
-  // 4. التحقق من مفتاح الجهاز السري في الكوكي (يضمن عدم فتح الرابط في متصفح أو جهاز آخر)
-  const cookieKey = req.cookies && req.cookies.nujum_adm_device;
-  if (record.deviceKey && (!cookieKey || cookieKey !== record.deviceKey)) {
-    return false;
-  }
+  // الشرط الأساسي: يكون رابط الإدارة هو الرابط النشط الحالي لنفس الحساب،
+  // ويكون صاحب الحساب متواجداً فعلياً داخل الدردشة الآن.
+  // تم تخفيف ربط الـ IP / User-Agent / Cookie لأن بعض البيئات (المعاينة/البروكسي/التطبيقات المدمجة)
+  // تغيّر هذه القيم بين نافذة الدردشة ونافذة لوحة الإدارة رغم أنهما من نفس الجهاز.
+  if (!isUserActiveInChat(record.uid)) return false;
 
   return true;
 }
@@ -692,6 +675,9 @@ function requireSuper(req, res, next) {
   }
   next();
 }
+function isAlwaysHiddenRank(rank) {
+  return String(rank || '') === 'supermaster';
+}
 
 // أيقونة الشارة حسب الرتبة/العضوية
 function badgeOf(u) {
@@ -965,10 +951,24 @@ app.get('/api/rooms/:id/users', requireUser, requireRoomNotKicked, async (req, r
   const roomId = +req.params.id;
   const set = roomUsers[roomId];
   if (!set) return res.json([]);
+  const roomAdmins = await q.all(`SELECT user_id FROM room_admins WHERE room_id=?`, roomId);
+  const roomAdminIds = new Set(roomAdmins.map(ra => +ra.user_id));
   const users = [];
   for (const uid of set) {
-    const u = onlineUsers[uid];
-    if (u) users.push(u);
+    const user = await q.get(`SELECT * FROM users WHERE id=?`, uid);
+    if (!user) continue;
+    const isGlobalStaff = ['admin', 'superadmin', 'supermaster'].includes(user.rank);
+    const isRoomAdminHere = !isGlobalStaff && roomAdminIds.has(+user.id);
+    const pub = pubUser(user);
+    pub.status = (onlineUsers[uid] || {}).status || user.status;
+    if (isRoomAdminHere) {
+      pub.rank = 'roomadmin';
+      pub.badge = 'roomadmin.png';
+    } else if (!isGlobalStaff) {
+      pub.rank = user.rank === 'roomadmin' ? 'user' : user.rank;
+      pub.badge = badgeOf({ ...user, rank: pub.rank });
+    }
+    users.push(pub);
   }
   res.json(users);
 });
@@ -1578,24 +1578,37 @@ app.get('/api/notifications', requireUser, async (req, res) => {
         THEN EXISTS(SELECT 1 FROM notification_reads nr WHERE nr.notification_id=n.id AND nr.user_id=?)
         ELSE n.read END AS read
     FROM notifications n
-    WHERE n.user_id=? OR n.user_id IS NULL
-    ORDER BY n.id DESC LIMIT 60`, req.authUid, req.authUid);
+    WHERE (n.user_id=? OR n.user_id IS NULL)
+      AND NOT EXISTS(
+        SELECT 1 FROM notification_hides nh
+        WHERE nh.notification_id=n.id AND nh.user_id=?
+      )
+    ORDER BY n.id DESC LIMIT 60`, req.authUid, req.authUid, req.authUid);
   res.json(rows);
 });
 app.get('/api/notifications/unread-count', requireUser, async (req, res) => {
   const row = await q.get(`
     SELECT COUNT(*) c FROM notifications n
-    WHERE (n.user_id=? AND n.read=0)
-       OR (n.user_id IS NULL AND NOT EXISTS(
-         SELECT 1 FROM notification_reads nr WHERE nr.notification_id=n.id AND nr.user_id=?
-       ))`, req.authUid, req.authUid);
+    WHERE (
+      (n.user_id=? AND n.read=0)
+      OR (n.user_id IS NULL AND NOT EXISTS(
+        SELECT 1 FROM notification_reads nr WHERE nr.notification_id=n.id AND nr.user_id=?
+      ))
+    )
+    AND NOT EXISTS(
+      SELECT 1 FROM notification_hides nh WHERE nh.notification_id=n.id AND nh.user_id=?
+    )`, req.authUid, req.authUid, req.authUid);
   res.json({ count: +row.c || 0 });
 });
 app.post('/api/notifications/read-all', requireUser, async (req, res) => {
   await q.run(`UPDATE notifications SET read=1 WHERE user_id=?`, req.authUid);
   await q.run(`
     INSERT OR IGNORE INTO notification_reads (notification_id,user_id)
-    SELECT id,? FROM notifications WHERE user_id IS NULL`, req.authUid);
+    SELECT n.id,? FROM notifications n
+    WHERE n.user_id IS NULL
+      AND NOT EXISTS(
+        SELECT 1 FROM notification_hides nh WHERE nh.notification_id=n.id AND nh.user_id=?
+      )`, req.authUid, req.authUid);
   res.json({ ok: true });
 });
 
@@ -1603,6 +1616,9 @@ app.delete('/api/notifications/clear', requireUser, async (req, res) => {
   await q.run(`DELETE FROM notifications WHERE user_id=?`, req.authUid);
   await q.run(`
     INSERT OR IGNORE INTO notification_reads (notification_id,user_id)
+    SELECT id,? FROM notifications WHERE user_id IS NULL`, req.authUid);
+  await q.run(`
+    INSERT OR IGNORE INTO notification_hides (notification_id,user_id)
     SELECT id,? FROM notifications WHERE user_id IS NULL`, req.authUid);
   res.json({ ok: true });
 });
@@ -2159,7 +2175,11 @@ app.delete('/api/admin/rooms/:id', requireSuperAdmin, async (req, res) => {
 // ---- المستخدمون ----
 app.get('/api/admin/users', requireSuperAdmin, async (req, res) => {
   const search = req.query.q || '';
-  const rows = await q.all(`SELECT * FROM users WHERE username LIKE ? ORDER BY id DESC LIMIT 200`, `%${search}%`);
+  const isMaster = req.adminAuth && req.adminAuth.rank === 'supermaster';
+  const sql = isMaster
+    ? `SELECT * FROM users WHERE username LIKE ? ORDER BY id DESC LIMIT 200`
+    : `SELECT * FROM users WHERE username LIKE ? AND rank<>'supermaster' ORDER BY id DESC LIMIT 200`;
+  const rows = await q.all(sql, `%${search}%`);
   res.json(rows.map(u => ({ ...pubUser(u), banned: u.banned, muted: u.muted, ip: u.ip || '', badge: badgeOf(u) })));
 });
 
@@ -2597,6 +2617,21 @@ app.post('/api/admin/broadcast', requireAdmin, async (req, res) => {
     await q.run(`INSERT INTO messages (room_id,user_id,username,text,type) VALUES (?,0,'رسالة النظام',?,'announce')`, rid, text);
   }
   res.json({ ok: true, announcement: msg });
+});
+
+app.post('/api/notifications/:id/read', requireUser, async (req, res) => {
+  const id = +req.params.id;
+  if (!id) return res.status(400).json({ error: 'الإشعار غير صالح' });
+  const notification = await q.get(`SELECT id,user_id FROM notifications WHERE id=?`, id);
+  if (!notification) return res.status(404).json({ error: 'الإشعار غير موجود' });
+  if (notification.user_id === null || notification.user_id === undefined) {
+    await q.run(`INSERT OR IGNORE INTO notification_reads (notification_id,user_id) VALUES (?,?)`, id, req.authUid);
+    return res.json({ ok: true, read: 1, scope: 'global' });
+  }
+  if (+notification.user_id !== +req.authUid)
+    return res.status(403).json({ error: 'لا يمكنك تعديل هذا الإشعار' });
+  await q.run(`UPDATE notifications SET read=1 WHERE id=? AND user_id=?`, id, req.authUid);
+  res.json({ ok: true, read: 1, scope: 'private' });
 });
 
 // ---- الشعار ----
@@ -3052,7 +3087,7 @@ const ALL_BACKUP_TABLES = [
   'settings', 'users', 'rooms', 'room_bots', 'bots', 'messages', 'private_messages',
   'user_ignores', 'statuses', 'status_views', 'gifts', 'custom_emojis', 'gifts_log',
   'service_requests', 'wall_posts', 'wall_comments', 'wall_reactions', 'banned_words',
-  'bans', 'ip_mutes', 'room_kicks', 'verified', 'notifications', 'notification_reads',
+  'bans', 'ip_mutes', 'room_kicks', 'verified', 'notifications', 'notification_reads', 'notification_hides',
   'complaints', 'call_recordings', 'seo_pages', 'gold_packages', 'payment_transactions', 'room_admins'
 ];
 
@@ -3469,11 +3504,13 @@ function userStillHasVisibleSocketInRoom(uid, roomId, excludedSocketId = '') {
 async function revealHiddenAdmins() {
   const affectedRooms = new Set();
   for (const activeSocket of io.sockets.sockets.values()) {
+    const uid = +activeSocket.data.userId;
+    if (isAlwaysHiddenRank((onlineUsers[uid] || {}).rank || activeSocket.data.userRank)) continue;
     const hiddenRooms = [...(activeSocket.data.hiddenRooms || [])];
     for (const roomId of hiddenRooms) {
       activeSocket.data.hiddenRooms.delete(+roomId);
       activeSocket.emit('hidden_mode_changed', { roomId: +roomId, hidden: false });
-      (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(+activeSocket.data.userId);
+      (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(uid);
       affectedRooms.add(+roomId);
     }
   }
@@ -3879,6 +3916,7 @@ io.on('connection', async (socket) => {
   if (tokenAuth && CHAT_TOKENS.has(socketToken)) CHAT_TOKENS.get(socketToken).rank = me.rank;
   socket.data.chatToken = socketToken;
   socket.data.userId = uid;
+  socket.data.userRank = me.rank;
   socket.data.registered = me.registered ? 1 : 0;
   socket.data.clientIp = clientIp;
   socket.data.connectedAt = Date.now();
@@ -3908,7 +3946,9 @@ io.on('connection', async (socket) => {
     });
     const isAdm = me.rank === 'superadmin' || me.rank === 'admin' || me.rank === 'supermaster';
     const hiddenSetting = (await getSettings()).hidden_super === '1';
-    const enterHidden = !!options.hidden && isAdm && hiddenSetting;
+    const alwaysHidden = isAlwaysHiddenRank(me.rank);
+    const canChooseHidden = me.rank === 'superadmin' || me.rank === 'admin';
+    const enterHidden = alwaysHidden || (!!options.hidden && canChooseHidden && hiddenSetting);
     if (room.status !== 'open' && !isAdm)
       return done({ ok: false, reason: 'closed', text: '🔒 هذه الغرفة مغلقة حالياً من الإدارة' });
     if (room.password && !isAdm) {

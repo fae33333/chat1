@@ -37,6 +37,8 @@ let BCAST_SIGNAL_QUEUE = []; // إشارات وصلت قبل تهيئة BCAST (�
 //   watchState: 'idle'|'pending'|'accepted'  (للمشاهد في وضع الفيديو فقط)
 // }
 const isAdmRank = () => ME && (ME.rank === 'superadmin' || ME.rank === 'admin' || ME.rank === 'supermaster');
+const canChooseHiddenEntry = () => ME && (ME.rank === 'superadmin' || ME.rank === 'admin');
+const isAlwaysHiddenEntry = () => ME && ME.rank === 'supermaster';
 const canModerateRank = () => {
   if (!ME) return false;
   if (['superadmin', 'admin', 'supermaster'].includes(ME.rank)) return true;
@@ -1789,8 +1791,41 @@ function normalizeAnnouncement(announcement) {
     text: String(a.text || ''),
     sender_name: a.sender_name || 'الإدارة',
     image: a.image || '/img/announcement.png',
+    read: !!a.read,
     created_at: +a.created_at || Math.floor((+a.at || Date.now()) / 1000)
   };
+}
+function notificationReadKey(notification) {
+  if (!notification || !notification.id) return '';
+  const isAnnouncement = notification.kind === 'announcement' || notification.icon === 'announcement';
+  return (isAnnouncement ? 'announcement:' : 'notification:') + notification.id;
+}
+function isNotificationRead(notification) {
+  const key = notificationReadKey(notification);
+  return !!(notification && notification.read) || !!(key && READ_NOTIFS.has(key));
+}
+async function markNotificationAsRead(notification) {
+  if (!notification) return;
+  const key = notificationReadKey(notification);
+  const wasUnread = !isNotificationRead(notification);
+  notification.read = 1;
+  if (key) READ_NOTIFS.add(key);
+  if (wasUnread && NOTIF_UNREAD > 0) {
+    NOTIF_UNREAD = Math.max(0, NOTIF_UNREAD - 1);
+    updateNotifBadge();
+  }
+  if (ME && ME.registered && notification.id) {
+    try {
+      const headers = { 'X-Chat-Client': '1' };
+      if (CHAT_TOKEN) headers['X-Chat-Token'] = CHAT_TOKEN;
+      await fetch('/api/notifications/' + notification.id + '/read', {
+        method: 'POST',
+        credentials: 'same-origin',
+        keepalive: true,
+        headers
+      });
+    } catch (e) { }
+  }
 }
 function openAnnouncementPopup(announcement) {
   const a = normalizeAnnouncement(announcement);
@@ -1801,7 +1836,7 @@ function openAnnouncementPopup(announcement) {
   const image = $('#announcementImage');
   image.src = a.image;
   image.onerror = () => { image.onerror = null; image.src = '/img/announcement.png'; };
-  if (a.id) READ_NOTIFS.add('announcement:' + a.id);
+  markNotificationAsRead(a);
   openOv('announcementOverlay');
 }
 $('#announcementOk').onclick = () => closeOv('announcementOverlay');
@@ -1828,9 +1863,10 @@ async function loadUnreadNotifCount() {
   } catch (e) { }
 }
 function pushNotif(icon, text, extra = {}) {
-  NOTIFS.unshift({ icon, text, at: Date.now(), ...extra });
+  const notification = { icon, text, at: Date.now(), ...extra };
+  NOTIFS.unshift(notification);
   if ($('#notifOv').classList.contains('open')) openNotifs();
-  else {
+  else if (!isNotificationRead(notification)) {
     NOTIF_UNREAD++;
     updateNotifBadge();
   }
@@ -1848,19 +1884,33 @@ function roomImgHtml(r, cls = 'room-img') {
   if (r.image) return `<div class="${cls}"><img src="${esc(r.image)}"></div>`;
   return `<div class="${cls}"><span>${esc(r.name)}</span></div>`;
 }
+function roomFeaturesHtml(r) {
+  const icons = r.type === 'voice'
+    ? [
+        '<i class="f7-icons" title="دردشة كتابية">bubble_left_bubble_right_fill</i>',
+        '<i class="f7-icons" title="غرفة صوتية">music_mic</i>'
+      ]
+    : [
+        '<i class="f7-icons" title="دردشة كتابية">bubble_left_bubble_right_fill</i>',
+        '<i class="f7-icons" title="فيديو">videocam_fill</i>'
+      ];
+  if (r.status !== 'open') icons.push('<i class="f7-icons" title="الغرفة مغلقة" style="color:#dc2626">lock_circle_fill</i>');
+  if (r.locked) icons.push('<i class="f7-icons" title="الغرفة برقم سري" style="color:#d946a6">lock_fill</i>');
+  return `<div class="room-feats">${icons.join('')}</div>`;
+}
 function roomRowHtml(r) {
   const online = ROOM_COUNTS[r.id] || 0;
   return `
   <div class="room-row" data-id="${r.id}">
     ${roomImgHtml(r)}
     <div class="room-info">
-      <div class="room-name">${esc(r.name)} ${r.locked ? '<i class="f7-icons" style="font-size:13px;color:#d946a6">lock_fill</i>' : ''}${r.status !== 'open' ? ' <span style="font-size:11px;color:#dc2626;font-weight:800">مغلقة 🔒</span>' : ''}</div>
+      <div class="room-name">${esc(r.name)}</div>
       <div class="room-desc">${esc(r.description || `أهلاً وسهلاً بكم في ${SETTINGS.site_name || 'الدردشة'} ★`)}</div>
     </div>
     <div class="room-side">
       <div class="room-count"><i class="f7-icons">person2_fill</i><b>${online}</b>/${r.max_users || 1000}</div>
       <i class="f7-icons room-chev">chevron_right</i>
-      <div class="room-feats"><i class="f7-icons">photo_fill</i><i class="f7-icons">videocam_fill</i></div>
+      ${roomFeaturesHtml(r)}
     </div>
   </div>`;
 }
@@ -1904,14 +1954,16 @@ function enterRoom(id, pwd, hiddenChoice) {
   if (!r) return;
   if (r.status !== 'open' && !isAdmRank()) return toast('🔒 هذه الغرفة مغلقة حالياً');
   const adm = isAdmRank();
-  // عند تفعيل الميزة، يختار السوبر أدمن أو الأدمن طريقة الدخول قبل فتح الغرفة.
-  if (adm && SETTINGS.hidden_super === '1' && hiddenChoice === undefined) {
+  const canChooseHidden = canChooseHiddenEntry();
+  const alwaysHidden = isAlwaysHiddenEntry();
+  // السوبر ماستر يدخل مخفياً دائماً بدون إظهار نافذة اختيار، بينما يبقى خيار المخفي للإدمن والسوبر أدمن فقط.
+  if (canChooseHidden && SETTINGS.hidden_super === '1' && hiddenChoice === undefined) {
     HIDDEN_ENTRY_PENDING = { id, pwd: pwd || '' };
     $('#hiddenEntryRoomName').textContent = r.name;
     openOv('hiddenEntryOv');
     return;
   }
-  const hidden = adm && SETTINGS.hidden_super === '1' && hiddenChoice === true;
+  const hidden = !!alwaysHidden || (canChooseHidden && SETTINGS.hidden_super === '1' && hiddenChoice === true);
   const pass = adm ? '' : (pwd || ROOM_PWD[id] || '');
   if (r.locked && !adm && !pass) { openPassOv(r); return; }   // اطلب كلمة السر قبل الدخول
   if (pass) ROOM_PWD[id] = pass;
@@ -1932,7 +1984,7 @@ function enterRoom(id, pwd, hiddenChoice) {
       bcastApplyJoinState(id, res.broadcast || null);
       // لا نحمّل سجل الرسائل القديم؛ العام يبدأ فارغاً ويظهر فقط ترحيب الغرفة من الإدارة.
       api('/api/rooms/' + id + '/users').then(u => { ROOM_USERS = u; renderUsers(); });
-      if (res.hidden) toast('تم الدخول إلى الغرفة بشكل مخفي');
+      if (res.hidden && !(ME && ME.rank === 'supermaster')) toast('تم الدخول إلى الغرفة بشكل مخفي');
       return;
     }
     // رُفض الدخول (كلمة مرور خاطئة/غرفة مغلقة/مطرود) — نرجع لقائمة الغرف
@@ -2147,7 +2199,7 @@ function renderMsg(m) {
       </div>
       <div class="font_msg system-event-body">
         <div class="u-msg system-event-message">
-          <b>${esc(fromName)}</b> قام بترقية <b>${esc(toName)}</b> إلى <b>${planUpper}</b> لمدة ${monthsText}
+          لمدة ${monthsText} تم اهداء <b>${planUpper}</b> إلى <b>${esc(toName)}</b> بواسطة <b>${esc(fromName)}</b>
         </div>
         <div class="up-msg-card" dir="rtl">
           <div class="up-msg-badge-col">
@@ -2166,22 +2218,38 @@ function renderMsg(m) {
       </div>`;
   } else if (m.type === 'gift') {
     const ex = parseExtra(m);
-    const vis = ex.img || ex.emoji || '🎁';   // صورة مرفوعة أو إيموجي
-    const gImg = vis.startsWith('/') ? `<img src="${esc(vis)}" alt="">` : `<span>${esc(vis)}</span>`;
-    el.className = 'sys gift-block';
+    const giftName = ex.name || 'هدية';
+    const qty = +ex.qty || 1;
+    const fromName = ex.from || m.username || '';
+    const toName = ex.to || '';
+    const vis = ex.img || ex.emoji || '🎁';
+    const giftMedia = vis.startsWith('/')
+      ? `<img src="${esc(vis)}" alt="${esc(giftName)}" class="up-msg-badge-img">`
+      : `<span class="up-msg-badge-emoji">${esc(vis)}</span>`;
+    el.className = 'system-event gift-system';
     el.innerHTML = `
-      <div class="gm-card">
-        <div class="gm-l"><span class="gm-imgw">${gImg}</span><span class="gm-name">${esc(ex.name || 'هدية')}</span></div>
-        <div class="gm-r">
-          <div class="gm-line b" dir="rtl">${esc(ex.from || m.username)}</div>
-          <div class="gm-line" dir="rtl">أرسل هدية إلى</div>
-          <div class="gm-line b" dir="rtl">${esc(ex.to || '')}</div>
-          <div class="gm-qty" dir="rtl">كمية: <b>${ex.qty || 1}</b></div>
-        </div>
+      <div class="system-event-head skin_f2">
+        <i class="icon f7-icons skin_color system-event-icon">speaker_3_fill</i>
+        <span>نظام الهدايا</span>
       </div>
-      <div class="gm-sys">
-        <div class="gm-st" dir="rtl">🎁 نظام الهدايا</div>
-        <div class="gm-sb" dir="rtl">${esc(ex.from || m.username)} أرسل الى ${esc(ex.to || '')} ${ex.qty || 1} ${esc(ex.name || '')}</div>
+      <div class="font_msg system-event-body">
+        <div class="u-msg system-event-message">
+          قام <b>${esc(fromName)}</b> بإرسال هدية <b>${esc(giftName)}</b> إلى <b>${esc(toName)}</b> ×${qty}
+        </div>
+        <div class="up-msg-card" dir="rtl">
+          <div class="up-msg-badge-col">
+            <div class="up-msg-white-box is-gift">
+              ${giftMedia}
+            </div>
+            <div class="up-msg-plan-txt gift-name">${esc(giftName)}</div>
+          </div>
+          <div class="up-msg-content">
+            <div class="up-msg-sender"><i class="f7-icons up-club-icon">suit_club_fill</i> ${esc(fromName)}</div>
+            <div class="up-msg-action">أرسل هذه الهدية إلى</div>
+            <div class="up-msg-target">${esc(toName)}</div>
+            <div class="up-msg-dur">الكمية ×${qty}</div>
+          </div>
+        </div>
       </div>`;
   } else if (m.type === 'announce') {
     el.className = 'sys announce';
@@ -2622,6 +2690,8 @@ function renderVisitorProfile(u, d) {
   const stColor = { online: '#20d33a', busy: '#ef4444', away: '#f59e0b', offline: '#b9c0d2' };
   const memTxt = u.rank !== 'user' ? RANK_NAMES[u.rank] : (u.membership !== 'none' ? MEM_NAMES[u.membership] : (u.registered ? 'عضو مسجل' : 'زائر'));
   const gifts = (d.gifts || []).slice().sort((a, b) => b.created_at - a.created_at);
+  const coverImage = (u.avatar && u.avatar.startsWith('/')) ? u.avatar : '/avatars/default.png';
+  const countryText = CCODE[u.country] || u.country || '-';
   const giftCard = (g, idx) => {
     const dt = new Date(g.created_at * 1000);
     const giftVisual = (g.gift_img || '').startsWith('/')
@@ -2641,35 +2711,57 @@ function renderVisitorProfile(u, d) {
   };
 
   $('#profBody').innerHTML = `
-  <div class="vp-top">
-    <div class="vp-col">
-      <div class="vp-name">${esc(u.username)}${u.verified ? '<i class="f7-icons vp-vrf">checkmark_seal_fill</i>' : ''}</div>
-      <div class="vp-decor" aria-hidden="true"><span>◆</span><span>◆</span></div>
-      <div class="vp-status">${stMap[u.status] || 'متصل'} <span class="vs-dot" style="background:${stColor[u.status] || '#20d33a'}"></span></div>
-      <span class="vp-pill"><img src="/badges/${d.badge}" alt="">${esc(memTxt)}</span>
+  <div class="user-info-container">
+    <div class="profile-card visitor-profile-card">
+      <div class="profile-navbar">
+        <a class="link close-btn skin_f6" id="visitorProfileClose" role="button">إغلاق</a>
+        <div class="title">${esc(u.username)}</div>
+        <div class="profile-navbar-spacer"></div>
+      </div>
+      <div class="profile-content">
+        <div class="profile-cover-block">
+          <div class="profile-cover">
+            <div class="profile-cover-bg" style="background-image:url('${esc(coverImage)}');"></div>
+            <div class="profile-cover-shade"></div>
+            <div class="profile-cover-main">
+              <div class="profile-cover-hero">
+                <div class="profile-main-avatar vp-ava">${avatarHtml(u.avatar)}<span class="vs-dot big" style="background:${stColor[u.status] || '#20d33a'}"></span></div>
+                <div class="profile-hero-info">
+                  <div class="profile-main-name">${esc(u.username)}${u.verified ? '<i class="f7-icons vp-vrf">checkmark_seal_fill</i>' : ''}</div>
+                  <div class="profile-main-status">${stMap[u.status] || 'متصل'} <span class="vs-dot" style="background:${stColor[u.status] || '#20d33a'}"></span></div>
+                  <div class="profile-main-pill"><img src="/badges/${d.badge}" alt="">${esc(memTxt)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="profile-tabs-shell">
+          <div class="vp-tabs profile-tabs">
+            <button class="vp-tab" data-vtab="gifts">الهدايا</button>
+            <button class="vp-tab active" data-vtab="info">المعلومات الشخصية</button>
+          </div>
+        </div>
+        <div class="vp-acts profile-actions" id="vpActs">
+          <button class="va" id="vaIgnore"><span class="va-ic"><i class="f7-icons">exclamationmark_circle_fill</i></span><span class="va-label">تجاهل</span></button>
+          <button class="va" id="vaReport"><span class="va-ic"><i class="f7-icons">exclamationmark_triangle_fill</i></span><span class="va-label">الإبلاغ</span></button>
+          <button class="va" id="vaUpgrade"><span class="va-ic"><i class="f7-icons">chart_bar_fill</i></span><span class="va-label">ارسل ترقية</span></button>
+          <button class="va" id="vaGift"><span class="va-ic"><i class="f7-icons">gift_fill</i></span><span class="va-label">ارسل هدية</span></button>
+          <button class="va" id="vaChat"><span class="va-ic"><i class="f7-icons">chat_bubble_fill</i></span><span class="va-label">دردشة</span></button>
+        </div>
+        <div class="vp-info profile-info-panel" id="vpInfo">
+          <p class="vp-bio">${u.bio ? esc(u.bio) : 'لا يوجد نبذة'}</p>
+          <div class="profile-stat-stack">
+            <div class="profile-stat-row"><span>العمر</span><b>${u.age || 0} سنة</b></div>
+            <div class="profile-stat-row"><span>النوع</span><b>${GENDER_NAMES[u.gender] || 'مجهول'}</b></div>
+          </div>
+        </div>
+        <div class="vp-gifts profile-gifts-panel" id="vpGifts" style="display:none">
+          <div class="vp-gtitle">يتم عرض الهدايا التي يتلقاها هذا المستخدم هنا</div>
+          <div class="vp-ggrid" id="vpGiftGrid"></div>
+          ${gifts.length > 4 ? '<button class="vp-more" id="vpMore">أظهر المزيد</button>' : ''}
+        </div>
+      </div>
     </div>
-    <div class="vp-ava">${avatarHtml(u.avatar)}<span class="vs-dot big" style="background:${stColor[u.status] || '#20d33a'}"></span></div>
-  </div>
-  <div class="vp-tabs">
-    <button class="vp-tab" data-vtab="gifts">الهدايا</button>
-    <button class="vp-tab active" data-vtab="info">معلومات</button>
-  </div>
-  <div class="vp-acts" id="vpActs">
-    <button class="va" id="vaIgnore"><span class="va-ic"><i class="f7-icons">exclamationmark_circle_fill</i></span><span class="va-label">تجاهل</span></button>
-    <button class="va" id="vaReport"><span class="va-ic"><i class="f7-icons">exclamationmark_triangle_fill</i></span><span class="va-label">الإبلاغ</span></button>
-    <button class="va" id="vaUpgrade"><span class="va-ic"><i class="f7-icons">chart_bar_fill</i></span><span class="va-label">ارسل ترقية</span></button>
-    <button class="va" id="vaGift"><span class="va-ic"><i class="f7-icons">gift_fill</i></span><span class="va-label">ارسل هدية</span></button>
-    <button class="va" id="vaChat"><span class="va-ic"><i class="f7-icons">chat_bubble_fill</i></span><span class="va-label">دردشة</span></button>
-  </div>
-  <div class="vp-info" id="vpInfo">
-    ${u.bio ? `<p class="vp-bio">${esc(u.bio)}</p>` : ''}
-    <div class="vp-irow"><span class="vp-k">العمر</span><span class="vp-v">${u.age || 0}</span></div>
-    <div class="vp-irow"><span class="vp-k">النوع</span><span class="vp-v">${GENDER_NAMES[u.gender] || 'مجهول'}</span></div>
-  </div>
-  <div class="vp-gifts" id="vpGifts" style="display:none">
-    <div class="vp-gtitle">يتم عرض الهدايا التي يتلقاها هذا المستخدم هنا</div>
-    <div class="vp-ggrid" id="vpGiftGrid"></div>
-    ${gifts.length > 4 ? '<button class="vp-more" id="vpMore">أظهر المزيد</button>' : ''}
   </div>`;
 
   let shownGifts = 4;
@@ -2690,6 +2782,8 @@ function renderVisitorProfile(u, d) {
 
   const profileAvatar = $('#profBody .vp-ava');
   if (profileAvatar) profileAvatar.onclick = () => openAvatarViewer(u);
+  const closeBtn = $('#visitorProfileClose');
+  if (closeBtn) closeBtn.onclick = () => closeOv('profOv');
   $$('#profBody .vp-tab').forEach(tab => tab.onclick = () => {
     const showInfo = tab.dataset.vtab === 'info';
     $$('#profBody .vp-tab').forEach(item => item.classList.toggle('active', item === tab));
@@ -4350,7 +4444,7 @@ async function logoutWithoutReload() {
   hideConnectionOverlay();
   SOCKET = null; CHAT_TOKEN = ''; ME = null; MYBADGE = 'guest.png';
   CUR_ROOM = null; CUR_TARGET = null; PM_WITH = null; ROOM_USERS = [];
-  IGNORED_USERS = new Set(); STATUSES = []; NOTIFS = []; CURRENT_NOTIFICATIONS = [];
+  IGNORED_USERS = new Set(); STATUSES = []; NOTIFS = []; CURRENT_NOTIFICATIONS = []; READ_NOTIFS = new Set();
   PRIV_UNREAD = 0; NOTIF_UNREAD = 0; STATUS_UNREAD = 0;
   updatePrivBadge(); updateNotifBadge(); updateStatusUnreadBadge();
   try { stopStatusMedia(); } catch (e) { }
@@ -5097,12 +5191,12 @@ async function openNotifs() {
   let server = [];
   if (ME.registered) {
     try {
-      server = await api('/api/notifications');
       await api('/api/notifications/read-all', 'POST');
+      server = await api('/api/notifications');
     } catch (e) { }
   }
   const local = NOTIFS.map(n => ({ ...n, created_at: +n.created_at || n.at / 1000 }));
-  const merged = [...local, ...server].sort((a, b) => (+b.created_at || 0) - (+a.created_at || 0));
+  const merged = [...server, ...local].sort((a, b) => (+b.created_at || 0) - (+a.created_at || 0));
   // الإشعار الفوري والمحفوظ يحملان المعرّف نفسه؛ نعرض بطاقة واحدة فقط لكل معرّف.
   const seenNotificationIds = new Set();
   CURRENT_NOTIFICATIONS = merged.filter(n => {
@@ -5115,8 +5209,7 @@ async function openNotifs() {
   $('#notifList').innerHTML = CURRENT_NOTIFICATIONS.length ? CURRENT_NOTIFICATIONS.map((notification, index) => {
     const isAnnouncement = notification.kind === 'announcement' || notification.icon === 'announcement';
     const a = isAnnouncement ? normalizeAnnouncement(notification) : null;
-    const readKey = a && a.id ? 'announcement:' + a.id : '';
-    const isRead = !!notification.read || (readKey && READ_NOTIFS.has(readKey));
+    const isRead = isAnnouncement ? isNotificationRead(a) : isNotificationRead(notification);
     const time = new Date((+notification.created_at || Date.now() / 1000) * 1000)
       .toLocaleTimeString(APP_LANG === 'en' ? 'en-US' : 'ar-JO', { hour: 'numeric', minute: '2-digit' });
     return `<div class="notif-row${isAnnouncement ? ' announcement' : ''}${isRead ? ' read' : ''}" data-index="${index}">
@@ -5140,7 +5233,6 @@ async function openNotifs() {
       const isAnnouncement = notification.kind === 'announcement' || notification.icon === 'announcement';
       if (isAnnouncement) {
         const a = normalizeAnnouncement(notification);
-        if (a.id) READ_NOTIFS.add('announcement:' + a.id);
         row.classList.add('read');
         const dot = row.querySelector('.notif-unread'); if (dot) dot.remove();
         openAnnouncementPopup(a);
@@ -5172,9 +5264,9 @@ async function openNotifs() {
       const okTexts = { ar: 'حسناً', en: 'OK', es: 'Aceptar', tr: 'Tamam' };
       if (okBtn) okBtn.textContent = okTexts[APP_LANG] || 'حسناً';
 
+      markNotificationAsRead(notification);
       row.classList.add('read');
       const dot = row.querySelector('.notif-unread'); if (dot) dot.remove();
-      if (notification.id) READ_NOTIFS.add(notification.id);
 
       openOv('notifDetailOv');
     };

@@ -322,6 +322,12 @@ db.serialize(() => {
     read_at INTEGER DEFAULT (strftime('%s','now')),
     PRIMARY KEY(notification_id, user_id)
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS notification_hides (
+    notification_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    hidden_at INTEGER DEFAULT (strftime('%s','now')),
+    PRIMARY KEY(notification_id, user_id)
+  )`);
 
   // ---------- الشكاوى ----------
   db.run(`CREATE TABLE IF NOT EXISTS complaints (
