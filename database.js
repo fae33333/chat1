@@ -24,7 +24,7 @@ db.serialize(() => {
     balance INTEGER DEFAULT 0,             -- الرصيد
     membership TEXT DEFAULT 'none',        -- none | plus | premium | vip | mmez
     membership_expires INTEGER DEFAULT 0,
-    rank TEXT DEFAULT 'user',              -- user | roomadmin | admin | superadmin
+    rank TEXT DEFAULT 'user',              -- user | roomadmin | admin | superadmin | supermaster
     registered INTEGER DEFAULT 0,          -- 0=ضيف 1=مسجل
     avatar TEXT DEFAULT '',
     bio TEXT DEFAULT '',
@@ -38,12 +38,14 @@ db.serialize(() => {
   db.run(`ALTER TABLE users ADD COLUMN is_bot INTEGER DEFAULT 0`, () => { });
   // صلاحية فردية تمنحها الإدارة للمستخدم للصعود كمذيع.
   db.run(`ALTER TABLE users ADD COLUMN broadcast_allowed INTEGER DEFAULT 0`, () => { });
+  // استهلاك المكالمة المجانية الأولى (دقيقة واحدة تجريبية)
+  db.run(`ALTER TABLE users ADD COLUMN free_call_used INTEGER DEFAULT 0`, () => { });
 
   // ---------- الغرف ----------
   db.run(`CREATE TABLE IF NOT EXISTS rooms (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    description TEXT DEFAULT 'اهلا وسهلا بكم في شات نجوم العرب ★',
+    description TEXT DEFAULT 'اهلا وسهلا بكم في الدردشة ★',
     image TEXT DEFAULT '',
     type TEXT DEFAULT 'default',           -- default | voice
     max_users INTEGER DEFAULT 1000,
@@ -74,6 +76,17 @@ db.serialize(() => {
   db.run(`ALTER TABLE room_bots ADD COLUMN reply_enabled INTEGER DEFAULT 0`, () => { });
   db.run(`ALTER TABLE room_bots ADD COLUMN reply_text TEXT DEFAULT 'نعم؟'`, () => { });
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_bots_room ON room_bots (room_id, active)`);
+
+  // ---------- مشرفو الغرف المستقلون (أدمن لكل غرفة) ----------
+  db.run(`CREATE TABLE IF NOT EXISTS room_admins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    username TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(room_id, user_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_room_admins_lookup ON room_admins (room_id, user_id)`);
 
   // ---------- رسائل الروبوت المجدولة ----------
   db.run(`CREATE TABLE IF NOT EXISTS bots (
@@ -319,6 +332,84 @@ db.serialize(() => {
     message TEXT,
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+
+  // ---------- تسجيلات المكالمات الخاصة ----------
+  db.run(`CREATE TABLE IF NOT EXISTS call_recordings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    caller_id INTEGER NOT NULL,
+    caller_name TEXT NOT NULL,
+    callee_id INTEGER NOT NULL,
+    callee_name TEXT NOT NULL,
+    audio_path TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    duration INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+
+  // ---------- صفحات الأرشفة ومحركات البحث (SEO) ----------
+  db.run(`CREATE TABLE IF NOT EXISTS seo_pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT UNIQUE NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    keywords TEXT DEFAULT '',
+    logo_image TEXT DEFAULT '',
+    site_name TEXT DEFAULT '',
+    favicon TEXT DEFAULT '',
+    active INTEGER DEFAULT 1,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+  db.run(`ALTER TABLE seo_pages ADD COLUMN favicon TEXT DEFAULT ''`, () => { });
+
+  // ---------- باقات شحن الذهب ----------
+  db.run(`CREATE TABLE IF NOT EXISTS gold_packages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    gold INTEGER NOT NULL,
+    price REAL NOT NULL,
+    currency TEXT DEFAULT '$',
+    bonus INTEGER DEFAULT 0,
+    badge TEXT DEFAULT '',
+    sort INTEGER DEFAULT 0,
+    active INTEGER DEFAULT 1,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+
+  // ---------- سجل المعاملات والمدفوعات بالبطاقات ----------
+  db.run(`CREATE TABLE IF NOT EXISTS payment_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    username TEXT NOT NULL,
+    package_id INTEGER,
+    package_name TEXT,
+    gold_amount INTEGER NOT NULL,
+    bonus_amount INTEGER DEFAULT 0,
+    total_gold INTEGER NOT NULL,
+    amount_paid REAL NOT NULL,
+    currency TEXT DEFAULT '$',
+    card_last4 TEXT DEFAULT '',
+    card_brand TEXT DEFAULT '',
+    card_holder TEXT DEFAULT '',
+    deposit_card TEXT DEFAULT '',
+    status TEXT DEFAULT 'completed',
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+
+  // ---------- الرمزيات والصور المصنفة ----------
+  db.run(`CREATE TABLE IF NOT EXISTS avatars (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT DEFAULT 'def',           -- def | nature | other
+    path TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+
+  // ---------- صور المستخدمين المرفوعة (حد أقصى 10 صور لكل مستخدم) ----------
+  db.run(`CREATE TABLE IF NOT EXISTS user_avatars (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
 });
 
 // ====== الإعدادات الافتراضية ======
@@ -326,6 +417,8 @@ const defaultSettings = {
   vip_cost: '30',
   premium_cost: '20',
   plus_cost: '10',
+  register_gold: '10',
+  call_cost: '2',
   show_smiles: '1',
   show_voice: '1',
   show_image: '1',
@@ -336,14 +429,16 @@ const defaultSettings = {
   broadcast_allowed_memberships: 'mmez,plus,premium,vip',
   public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip',
   private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip',
+  private_call_allowed_memberships: 'mmez,plus,premium,vip',
   public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip',
   snd_join: '1',
   snd_msg: '0',
   snd_leave: '1',
   logo_url: '',
+  favicon_url: '',
   skin: 'default',
   font_size: '14',
-  site_name: 'نجوم العرب',
+  site_name: 'الدردشة العربية',
   supervisors_mode: '1',
   allow_register: '1',
   show_time: '1',
@@ -352,11 +447,59 @@ const defaultSettings = {
   msg_review: '0',
   enable_bots: '1',
   public_msgs_link: '',
-  msg_max: '500'
+  msg_max: '500',
+  seo_title: 'شات عربي | دردشة صوتية وكتابية مجانية بدون تسجيل',
+  seo_description: 'أفضل موقع شات عربي للتواصل الصوتي والكتابي المباشر مجاناً بدون تسجيل. غرف محادثة متميزة وآمنة على مدار الساعة.',
+  seo_keywords: 'شات, دردشة, شات عربي, دردشة صوتية, شات صوتي, دردشة كتابية, تعارف, شات مجاني, غرف دردشة',
+  seo_image: '/img/announcement.png',
+  merchant_bank_name: 'البنك التجاري المعتمد',
+  merchant_card_number: '4263 8890 1234 5678',
+  merchant_holder_name: 'إدارة الدردشة المعتمدة',
+  merchant_iban: 'JO94 ARAB 1234 5678 9012 3456',
+  card_payment_enabled: '1',
+  card_currency: '$',
+  default_language: 'ar',
+  admin_language: 'ar',
+  ai_provider: 'gemini',
+  ai_api_key: '',
+  ai_model: 'gemini-1.5-flash',
+  ai_custom_endpoint: '',
+  ai_system_prompt: 'أنت مساعد ذكي ومرح وودود في دردشة عربية. أجب باختصار شديد وبشكل واقعي ومفيد وممتع (في حدود 15-25 كلمة)، وخاطب المستخدم باسمه.'
 };
 const st = db.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES (?,?)`);
 Object.entries(defaultSettings).forEach(([k, v]) => st.run(k, v));
 st.finalize();
+
+// ====== إضافة باقات الذهب الافتراضية ======
+db.get(`SELECT COUNT(*) c FROM gold_packages`, (err, row) => {
+  if (row && row.c === 0) {
+    const pIns = db.prepare(`INSERT INTO gold_packages (name, gold, price, currency, bonus, badge, sort, active) VALUES (?,?,?,?,?,?,?,?)`);
+    pIns.run('باقة التجربة', 10, 1.99, '$', 0, '', 1, 1);
+    pIns.run('الباقة البرونزية', 50, 4.99, '$', 5, '', 2, 1);
+    pIns.run('الباقة الفضية', 100, 9.99, '$', 15, '🔥 الأكثر طلباً', 3, 1);
+    pIns.run('الباقة الذهبية', 250, 24.99, '$', 50, '⭐ باقة التوفير', 4, 1);
+    pIns.run('الباقة الماسية', 500, 49.99, '$', 150, '💎 باقة مميزة', 5, 1);
+    pIns.run('باقة VIP الملكية', 1000, 89.99, '$', 400, '👑 باقة كبار الشخصيات', 6, 1);
+    pIns.finalize();
+  }
+});
+
+// ====== إضافة الرمزيات الافتراضية ======
+db.get(`SELECT COUNT(*) c FROM avatars`, (err, row) => {
+  if (row && row.c === 0) {
+    const aIns = db.prepare(`INSERT INTO avatars (category, path) VALUES (?,?)`);
+    for (let i = 1; i <= 20; i++) {
+      aIns.run('def', `/avatars/def/${String(i).padStart(2, '0')}.jpg`);
+    }
+    for (let i = 1; i <= 16; i++) {
+      aIns.run('nature', `/avatars/nature/${String(i).padStart(2, '0')}.jpg`);
+    }
+    for (let i = 1; i <= 16; i++) {
+      aIns.run('other', `/avatars/other/${String(i).padStart(2, '0')}.jpg`);
+    }
+    aIns.finalize();
+  }
+});
 
 // ====== المستخدمون الافتراضيون ======
 const userCount = db.get(`SELECT COUNT(*) c FROM users`, (err, row) => {
@@ -364,13 +507,24 @@ const userCount = db.get(`SELECT COUNT(*) c FROM users`, (err, row) => {
     const ins = db.prepare(`INSERT INTO users (username,password,email,gender,age,country,balance,membership,rank,registered,avatar)
       VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
     const pw = bcrypt.hashSync('123456', 10);
+    ins.run('supermaster', pw, 'master@nujum.com', 'boy', 30, 'jo', 999999, 'vip', 'supermaster', 1, '/avatars/def/01.jpg');
     ins.run('ax', pw, 'admin@nujum.com', 'boy', 30, 'jo', 9999, 'vip', 'superadmin', 1, '/avatars/def/01.jpg');
     ins.run('admin', bcrypt.hashSync('admin123', 10), 'admin@nujum.com', 'boy', 28, 'jo', 500, 'premium', 'admin', 1, '/avatars/def/03.jpg');
     ins.run('محمد الاردن', bcrypt.hashSync('123456', 10), '', 'boy', 25, 'jo', 120, 'vip', 'user', 1, '/avatars/def/02.jpg');
     ins.run('الحب اهتمام', bcrypt.hashSync('123456', 10), '', 'girl', 22, 'sa', 60, 'premium', 'user', 1, '/avatars/def/04.jpg');
     ins.run('باسم', bcrypt.hashSync('123456', 10), '', 'boy', 27, 'eg', 35, 'plus', 'roomadmin', 1, '/avatars/def/09.jpg');
     ins.finalize();
-    console.log('✓ تم إنشاء المستخدمين الافتراضيين (ax/123456)');
+    console.log('✓ تم إنشاء المستخدمين الافتراضيين (supermaster / ax / 123456)');
+  } else {
+    // التأكد من وجود حساب supermaster في القواعد المنشأة مسبقاً
+    db.get(`SELECT id FROM users WHERE username='supermaster'`, (err2, masterRow) => {
+      if (!masterRow) {
+        const pw = bcrypt.hashSync('123456', 10);
+        db.run(`INSERT INTO users (username,password,email,gender,age,country,balance,membership,rank,registered,avatar)
+          VALUES ('supermaster',?,'master@nujum.com','boy',30,'jo',999999,'vip','supermaster',1,'/avatars/def/01.jpg')`, pw);
+        console.log('✓ تم إنشاء حساب مالك الدردشة (supermaster/123456)');
+      }
+    });
   }
 });
 

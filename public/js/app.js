@@ -7,7 +7,7 @@ let ME = null, MYBADGE = 'guest.png', SOCKET = null;
 // رمز هوية خاص بهذه الصفحة فقط؛ لا يُحفظ في localStorage أو sessionStorage.
 // عند التحديث أو فتح تبويب جديد يجب إدخال الاسم من جديد.
 let CHAT_TOKEN = '';
-let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip' };
+let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_call_allowed_memberships: 'mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip' };
 let PREFS = { snd_all: 1, snd_msg: 0, snd_join: 1, show_time: 1, pm_recv: 1 };
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
@@ -36,12 +36,21 @@ let BCAST_SIGNAL_QUEUE = []; // إشارات وصلت قبل تهيئة BCAST (�
 //   hostId, hostInfo, localStream, peers:Map(userId->RTCPeerConnection),
 //   watchState: 'idle'|'pending'|'accepted'  (للمشاهد في وضع الفيديو فقط)
 // }
-const isAdmRank = () => ME && (ME.rank === 'superadmin' || ME.rank === 'admin');
-const canModerateRank = () => ME && ['superadmin', 'admin', 'roomadmin'].includes(ME.rank);
+const isAdmRank = () => ME && (ME.rank === 'superadmin' || ME.rank === 'admin' || ME.rank === 'supermaster');
+const canModerateRank = () => {
+  if (!ME) return false;
+  if (['superadmin', 'admin', 'supermaster'].includes(ME.rank)) return true;
+  if (CUR_ROOM) {
+    const meInRoom = (ROOM_USERS || []).find(u => u.id === ME.id);
+    if (meInRoom && meInRoom.rank === 'roomadmin') return true;
+  }
+  return false;
+};
 let ROOM_USERS = [], CUR_TARGET = null;
 let GIFTS = [], SEL_GIFT = null, G_QTY = 1;
 let UP_PLAN = 'vip', UP_MONTHS = 1, UP_TARGET = null;
 let PM_WITH = null, PRIV_UNREAD = 0, PRIV_TAB = 'members';
+let PM_CALL = null; // حالة المكالمة الصوتية الخاصة الجارية
 let NOTIFS = [], CURRENT_NOTIFICATIONS = [], CURRENT_ANNOUNCEMENT = null;
 let READ_NOTIFS = new Set(), NOTIF_UNREAD = 0, STATUS_UNREAD = 0;
 let SEL_AVATAR = null, AVA_CAT = 'def';
@@ -52,211 +61,471 @@ let CUSTOM_EMOJIS = [];
 let IGNORED_USERS = new Set();
 
 // =====================================================
-//  ترجمة واجهة الشات (العربية / English)
+//  ترجمة واجهة الشات (العربية / English / Español / Türkçe)
 // =====================================================
-let APP_LANG = localStorage.getItem('chat_language') === 'en' ? 'en' : 'ar';
+let APP_LANG = localStorage.getItem("chat_language") || "ar";
+if (!["ar", "en", "es", "tr"].includes(APP_LANG)) APP_LANG = "ar";
+
 const I18N_EN = {
-  'دخول': 'Login', 'إنشاء حساب': 'Create account', 'الخروج': 'Logout', 'الافتراضية': 'Default', 'الصوتية': 'Voice',
-  'لا يوجد احد في البث المباشر حي الان': 'No one is live right now', 'بث مباشر': 'Live', 'مغادرة الغرفة': 'Leave room', 'تحديث الغرف': 'Refresh rooms',
-  'متصل الان': 'Online now', 'إيموجي': 'Emoji', 'قائمة الألوان': 'Colors',
-  'الغرف': 'Rooms', 'الخاص': 'Private', 'الإشعارات': 'Notifications', 'القائمة': 'Menu',
-  'الحالات': 'Statuses', 'حالتي': 'My status', 'اضغط لإضافة تحديث الحالة': 'Tap to add a status update', 'الحالات الحديثة': 'Recent updates',
-  'جاري تحميل الحالات...': 'Loading statuses...', 'إضافة حالة': 'Add status', 'صورة': 'Photo', 'فيديو': 'Video', 'ملف صوتي': 'Audio', 'كتابة': 'Text',
-  'تختفي الحالة تلقائياً بعد 24 ساعة': 'Your status disappears automatically after 24 hours', 'إلغاء': 'Cancel', 'حالة كتابية': 'Text status', 'نشر': 'Publish',
-  'حالة صوتية': 'Audio status', 'المشاهدات': 'Views', 'حذف الحالة': 'Delete status', 'شاهد حالتي': 'Viewed my status', 'مشاهدة': 'view',
-  'لغة الواجهة': 'Interface language', 'العربية': 'Arabic', 'عرض الواجهة باللغة العربية': 'Display the interface in Arabic', 'عرض الواجهة باللغة الإنجليزية': 'Display the interface in English', 'تغيير اللغة': 'Change language',
-  'تسجيل الدخول': 'Sign in', 'دخول كزائر/ة': 'Continue as guest', 'نسيت كلمة السر؟': 'Forgot your password?', 'استعادة كلمة السر': 'Recover password',
-  'لا يوجد لديك عضوية؟': 'Do not have an account?', 'إنشاء حساب مجانًا': 'Create a free account', 'النوع': 'Gender', 'ذكر': 'Male', 'أنثى': 'Female', 'مجهول': 'Unknown',
-  'الرجاء قراءة': 'Please read', 'شروط الاستخدام': 'Terms of Use', 'وقراءة': 'and read', 'سياسة الخصوصية': 'Privacy Policy', 'تسجيل العضوية': 'Register account',
-  'يتطلب الدخول باستخدام عضويتك أو تسجيل عضوية': 'Sign in or create an account', 'هذه الميزة متاحة للمستخدمين المسجلين فقط، قم بتسجيل عضوية مجانا الان': 'This feature is available to registered users only. Create a free account now.',
-  'التسجيل الان': 'Register now', 'لاحقا': 'Later', 'عضو مسجل': 'Registered member', 'زائر': 'Guest', 'الرد على الرسالة': 'Reply to message',
-  'دردشة خاصة': 'Private chat', 'ارسل هدية': 'Send gift', 'ترقية هذا المستخدم': 'Upgrade this user', 'تجاهل': 'Ignore', 'إلغاء التجاهل': 'Unignore',
-  'كتم المستخدم': 'Mute user', 'إلغاء الكتم': 'Unmute', 'طرد المستخدم': 'Kick user', 'حظر المستخدم': 'Ban user', 'المعلومات الشخصية': 'Profile information', 'إغلاق': 'Close',
-  'متجر الهدايا الافتراضية': 'Virtual gift store', 'فاخرة': 'Luxury', 'جواهر': 'Jewels', 'افتراضي': 'Default', 'هدية لـ :': 'Gift to:', 'اختر هدية': 'Choose a gift',
-  'كمية :': 'Quantity:', 'تحتاج لتنفق :': 'You need to spend:', 'جائزة هذه الهدية :': 'Gift reward:', 'يحصل مستلم هذه الهدية على هذا الرصيد': 'The recipient receives this balance',
-  'رصيدك الحالي :': 'Your current balance:', 'الغاء': 'Cancel', 'أرسل': 'Send', 'الترقية': 'Upgrade', 'قم بترقية عضوية الحساب لتبرز من بين الحشود !': 'Upgrade the account to stand out from the crowd!',
-  'الترقية الى :': 'Upgrade to:', 'المدة بالأشهر :': 'Duration in months:', 'ترقية': 'Upgrade', 'حسابي': 'My account', 'الهدايا': 'Gifts', 'عودة': 'Back',
-  'المحادثات الخاصة': 'Private conversations', 'الاعضاء المسجلين': 'Registered members', 'غير مرغوب فيه': 'Spam', 'القائمة الرئيسية': 'Main menu',
-  'متصل': 'Online', 'رصيدك الحالي': 'Current balance', 'شراء رصيد': 'Buy credit', 'توثيق حسابي': 'Verify my account', 'ترقية حسابي': 'Upgrade my account',
-  'تغيير الصورة': 'Change photo', 'هدايا حسابي': 'My gifts', 'قوائم الحظر': 'Block lists', 'الاعدادات': 'Settings', 'تسجيل الخروج': 'Sign out',
-  'تغيير الحالة': 'Change status', 'مشغول': 'Busy', 'بالخارج': 'Away', 'حساب': 'Account', 'الطبيعة': 'Nature', 'اخرى': 'Other', 'رفع صورة': 'Upload photo',
-  'اختيار هذه الصورة': 'Choose this photo', 'عام': 'General', 'تفعيل الصوت': 'Enable sound', 'صوت الرسائل الجديدة': 'New message sound',
-  'صوت دخول المستخدمين': 'User join sound', 'اظهار الوقت في الرسائل': 'Show message time', 'استقبال الرسائل الخاصة': 'Receive private messages',
-  'إشعارات': 'Notifications', 'نظام الكتم': 'Mute system', 'نظام الإشراف': 'Supervision system', 'احصل على توثيق دردشتي': 'Get verified', 'شارة تم التحقق ؟': 'Verification badge',
-  'احصل على شارة تحقق خاصة تظهر بجوار اسمك أينما ظهر': 'Get a verification badge shown next to your name everywhere', 'حماية حسابك': 'Protect your account',
-  'احم حسابك في مجتمعنا من مرسلي البريد العشوائي، لن نقبل التحقق من أي شخص آخر يشبه حسابك': 'Protect your account from impersonation and spam.',
-  'الثقة والتميز': 'Trust and distinction', 'اجعل مجتمع دردشتي يثق بك وكن دائمًا مميز في المقدمة': 'Build trust in the community and always stand out.',
-  'الصلاحية والرسوم': 'Validity and fees', 'الرسوم هي': 'The fee is', '10 ذهب': '10 Gold', 'افتراضي ومدة الصلاحية': 'and the validity period is', '3 أشهر': '3 months',
-  'طلب التحقق من حسابي': 'Request account verification',
-  'سيتم خصم رسوم إرسال قدرها 10 ذهب افتراضي، وفي حالة رفض إرسالك، سيتم إرجاع الرسوم إلى حسابك. بعد التحقق من حسابك سيكون التحقق الخاص بك صالحًا لمدة 3 أشهر، إذا انتهكت شروط الاستخدام الخاصة بنا فسيتم إلغاء حالة التحقق الخاصة بك ولن يتم استرداد الرسوم': 'A 10 Gold submission fee will be deducted. If your request is rejected, the fee will be returned. Verification remains valid for 3 months and may be revoked if the Terms of Use are violated.',
-  'اشترِ الذهب الافتراضي لترقية حسابك أو حساب أصدقائك وإرسال الهدايا': 'Buy virtual gold to upgrade accounts and send gifts.',
-  'شراء ذهب دردشتي الافتراضي': 'Buy virtual gold', 'من خلال شراء ذهب دردشتي الافتراضي، فإنك توافق على شروط الاستخدام الخاصة بنا بما في ذلك شرط التحكيم وسياسة الخصوصية الخاصة بنا': 'By purchasing virtual gold, you agree to our Terms of Use, arbitration provision, and Privacy Policy.', 'متابعة شراء': 'Continue purchase', 'هل انت متأكد تريد الخروج من هذه الغرفة ؟': 'Are you sure you want to leave this room?',
-  'كلا': 'No', 'نعم': 'Yes', 'غرفة محمية': 'Protected room', 'غرفة «': 'Room “', '» محمية بكلمة مرور.': '” is password protected.', 'اكتب كلمة المرور للدخول:': 'Enter the room password:', '❌ كلمة المرور غير صحيحة — حاول مرة أخرى': '❌ Incorrect password — try again',
-  'الحالة السابقة': 'Previous status', 'الحالة التالية': 'Next status',
-  'اضغط هنا لفتح الصورة': 'Tap here to open the image', 'عضويتك غير مسموح لها بإرسال المقاطع الصوتية': 'Your membership cannot send audio clips',
-  'عضويتك غير مسموح لها بنشر الحالات': 'Your membership cannot publish statuses', 'عضويتك غير مسموح لها بالنشر على الحائط': 'Your membership cannot post on the wall',
-  'عضويتك غير مسموح لها بإرسال الرسائل في العام': 'Your membership cannot send public messages', 'عضويتك غير مسموح لها بإرسال الرسائل الخاصة': 'Your membership cannot send private messages',
-  'عضويتك غير مسموح لها بإرسال الصور في العام': 'Your membership cannot send images publicly',
-  'ادخل إلى غرفة أولاً': 'Join a room first', 'جاري رفع الملف...': 'Uploading file...', 'تعذر إرسال الملف': 'Could not send the file',
-  'جاري رفع الحالة...': 'Uploading status...', 'جاري رفع الصورة الشخصية...': 'Uploading profile image...', 'جاري رفع صورة الحائط...': 'Uploading wall image...',
-  'جاري رفع فيديو الحائط...': 'Uploading wall video...', 'جاري نشر المنشور على الحائط...': 'Publishing wall post...',
-  'جاري رفع الصورة إلى العام...': 'Uploading image to public chat...', 'جاري رفع المقطع الصوتي...': 'Uploading audio clip...',
-  'تم قطع الاتصال': 'Connection lost', 'جارٍ إعادة الاتصال...': 'Reconnecting...', 'اتصال': 'Connect',
-  'بانتظار عودة اتصال الإنترنت...': 'Waiting for the internet connection...', 'تعذر الاتصال، اضغط على زر اتصال للمحاولة مجددًا': 'Could not connect. Tap Connect to try again.',
-  'تم استعادة الاتصال والغرفة': 'Connection and room restored', 'تم استعادة الاتصال': 'Connection restored', 'محاولة إعادة الاتصال رقم': 'Reconnection attempt',
-  'فحص الملف قبل الإرسال': 'Review file before sending', 'فحص الصورة قبل الإرسال': 'Review image before sending', 'فحص المقطع الصوتي قبل الإرسال': 'Review audio before sending',
-  'جارٍ فحص الملف...': 'Checking file...', 'تم فحص الصورة ويمكن إرسالها': 'Image checked and ready to send', 'تم فحص المقطع ويمكن إرساله': 'Audio checked and ready to send',
-  'تعذر فحص الملف أو أن تنسيقه غير مدعوم': 'The file could not be checked or its format is unsupported', 'فشل فحص الصورة أو أن الملف تالف': 'Image check failed or the file is corrupted',
-  'فشل فحص المقطع الصوتي أو أن الملف تالف': 'Audio check failed or the file is corrupted', 'إرسال إلى العام': 'Send publicly',
-  'تسجيل مقطع صوتي': 'Record audio clip', 'جارٍ التسجيل...': 'Recording...', 'إيقاف ومعاينة': 'Stop and preview',
-  'معاينة المقطع قبل الإرسال': 'Preview before sending', 'استمع إلى المقطع ثم أرسله أو احذفه': 'Listen to the clip, then send or delete it',
-  'المتصفح لا يدعم التسجيل الصوتي': 'This browser does not support audio recording', 'تعذر الوصول إلى الميكروفون، تحقق من الإذن': 'Could not access the microphone. Check permission.',
-  'تعذر إنشاء التسجيل الصوتي': 'Could not create the audio recording', 'التسجيل قصير جداً، حاول مرة أخرى': 'The recording is too short. Try again.',
-  'تعذر تشغيل المقطع الصوتي': 'Could not play the audio clip',
-  'قسم الشكاوي': 'Complaints', 'إرسال الشكوى': 'Send complaint', 'رسالة النظام': 'System message', 'إعلان من الإدارة': 'Admin announcement', 'نظام الهدايا': 'Gift system',
-  'لا توجد غرف هنا': 'No rooms here', 'لا يوجد متصلون': 'No users online', 'لا توجد حالات حديثة بعد': 'No recent updates', 'تعذر تحميل الحالات': 'Could not load statuses',
-  'لا توجد رسائل من الزوار': 'No messages from guests', 'لا توجد محادثات مع أعضاء مسجلين': 'No conversations with registered members',
-  'لا يوجد رسائل خاصة بعد': 'No private messages yet', 'لا يوجد إشعارات بعد': 'No notifications yet', 'لا توجد هدايا بعد': 'No gifts yet',
-  'إلغاء الطرد': 'Remove kick', 'أنت هنا': 'You are here', 'بحث عن غرف': 'Search rooms', 'بحث عن مستخدمين': 'Search users', 'ابحث عن غرفك': 'Search rooms',
-  'رسالة عامة': 'Public message', 'رسالة': 'Message', 'اكتب حالتك...': 'Write your status...', 'الأسم المستعار': 'Display name', 'اسم المستعار': 'Display name',
-  'الرقم السري': 'Password', 'العمر': 'Age', 'كلمة المرور': 'Password', 'موضوع الشكوى': 'Complaint subject', 'اكتب شكواك هنا...': 'Write your complaint here...',
-  'جاري تحميل قائمة الغرف...': 'Loading rooms...', 'الرسائل': 'Messages', 'معلومات': 'Information', 'الإبلاغ': 'Report', 'إرسل ترقية': 'Send upgrade', 'إرسل هدية': 'Send gift', 'ارسل ترقية': 'Send upgrade',
-  'دردشة': 'Chat', 'يتم عرض الهدايا التي يتلقاها هذا المستخدم هنا': 'Gifts received by this user appear here', 'أظهر المزيد': 'Show more',
-  'تنفيذ وحفظ': 'Save changes', 'البريد الالكتروني': 'Email', 'الدولة / بلدة': 'Country / City', 'النبذة': 'Bio', 'حفظ': 'Save',
-  'تلقائي': 'Automatic', 'قائمة التجاهل': 'Ignore list', 'إعدادات الإشعارات': 'Notification settings'
+  "الهدية من:": "Gift from:", "أرسلت إلى:": "Sent to:", "العدد والكمية:": "Quantity:", "التاريخ والوقت:": "Date & Time:",
+  "اكتب حالتك أو نبذة تعبر عنك...": "Write your status or bio...", "حسابي": "My account", "الحالة / نبذة شخصية (اختياري)": "Status / Bio (Optional)", "تألق في عالم الدردشة وارفع اسمك لتظهر فوق بريميوم وبلس وخاصية فيديو بث مباشر وجميع الميزات المتوفرة في بريميوم وبلس": "Stand out in chat, appear above Premium & Plus, unlock live video streaming and all VIP features", "قم بتجربة قوة بريميوم لرفع اسمك والحصول على لون إرسال الرسائل الصوتية في الرسائل العامة والتحدث في الغرف الصوتية": "Experience Premium power to elevate your name, custom colors, voice messaging in public rooms, and voice chat", "ابدأ الطريق إلى المميزات مع بلس افتح ميزات إرسال الرسائل الصوتية في الرسائل العامة والتحدث في الغرف الصوتية مع ميزات عضوية بلس": "Unlock extra features with Plus: send voice notes in public rooms and participate in voice chats", "الهدايا المستلمة": "Received gifts", "جميع الهدايا التي أرسلها الأعضاء إلى حسابك": "All gifts sent by members to your account", "لم تستلم أي هدايا بعد": "You have not received any gifts yet", "لا يمكن تبادل الرسائل الخاصة بينك وبين الأشخاص المتجاهلين.": "Private messages cannot be exchanged with ignored users.", "قائمة التجاهل فارغة": "Ignore list is empty", "الموافقة والرسوم": "Approval & Fees", "التكلفة المقترحة": "Suggested cost", "التكلفة المقترحة 10 ذهب، وتستطيع الإدارة تحديد مقدار الذهب النهائي عند الموافقة": "Suggested cost 10 Gold; administration sets final gold upon approval", "لن يتم خصم أي ذهب عند إرسال الطلب. يصل اسمك إلى لوحة الإدارة، وبعد مراجعة الطلب تختار الإدارة مقدار الذهب ثم توافق على التوثيق أو ترفضه، وسيصلك إشعار بالنتيجة.": "No gold is deducted when sending request. Administration reviews it and you will receive a notification with the result.", "طلب التحقق من حسابي": "Request Account Verification", "شهر": "month", "/ شهر": "/ month", " / شهر": " / month",
+
+  "باقة التجربة": "Trial Package", "الباقة البرونزية": "Bronze Package", "الباقة الفضية": "Silver Package",
+  "الباقة الذهبية": "Gold Package", "الباقة الماسية": "Diamond Package", "باقة VIP الملكية": "Royal VIP Package",
+  "🔥 الأكثر طلباً": "🔥 Most Popular", "⭐ باقة التوفير": "⭐ Best Value", "💎 باقة مميزة": "💎 Featured Package", "👑 باقة كبار الشخصيات": "👑 VIP Package",
+  "السعر": "Price", "ذهب": "Gold", "ذهب هدية": "Bonus Gold",
+  "مكالمة تجريبية مجانية 🎁": "Free Trial Call 🎁", "هدية التجربة الأولى • 60 ثانية مجاناً": "First Trial Gift • 60s Free",
+  "بدء المكالمة المجانية 🎁": "Start Free Call 🎁", "رصيد الذهب غير كافٍ ⚠️": "Insufficient Gold Balance ⚠️",
+  "تم استهلاك التجربة المجانية لهذا الحساب": "Free trial already used for this account", "شحن الذهب الآن 💰": "Recharge Gold Now 💰",
+  "تأكيد بدء المكالمة الصوتية 📞": "Confirm Voice Call 📞", "تأكيد وبدء الاتصال": "Confirm & Start Call",
+  "مدة المكالمة المجانية:": "Free call duration:", "تكلفة التجربة:": "Trial cost:", "رصيدك الحالي:": "Your current balance:",
+  "نوع المكالمة:": "Call type:", "مفتوحة المدة": "Unlimited duration", "مفتوحة المدة (غير محدودة)": "Unlimited duration",
+  "تكلفة المكالمة:": "Call fee:", "رسوم المكالمة:": "Call fee:", "المبلغ المطلوب شحنه:": "Amount needed:",
+  "الرصيد بعد الخصم:": "Balance after deduction:", "المتصل به": "Called user",
+  "دقيقة كاملة (60 ثانية)": "Full minute (60 seconds)", "مجاناً (0 ذهب)": "Free (0 Gold)",
+
+  "الاسم مستخدم مسبقا": "Username is already taken",
+  "اسم المستخدم موجود مسبقا": "Username already exists",
+  "اسم المستخدم أو كلمة المرور غير صحيحة": "Incorrect username or password",
+  "كلمة المرور يجب أن لا تقل عن 4 خانات": "Password must be at least 4 characters",
+  "أكمل الحقول المطلوبة": "Please fill in all required fields",
+  "اكتب اسم المستخدم": "Please enter username",
+  "كلمة المرور مطلوبة": "Password is required",
+  "لا يمكن التسجيل من عنوان IP محظور": "Cannot register from a banned IP address",
+  "تم تجاوز عدد محاولات التسجيل، يرجى المحاولة لاحقاً": "Too many registration attempts. Please try again later",
+  "عنوان IP الخاص بك محظور": "Your IP address is banned",
+  "حسابك محظور بواسطة الإدارة": "Your account has been banned by administration",
+  "يرجى كتابة اسم صاحب البطاقة": "Please enter cardholder name",
+  "يرجى إدخال رقم بطاقة صراف صحيح (16 رقم)": "Please enter a valid 16-digit card number",
+  "يرجى كتابة تاريخ الانتهاء بصيغة MM/YY": "Please enter expiry date in MM/YY format",
+  "يرجى كتابة رمز الأمان CVV المكون من 3 أرقام": "Please enter 3-digit CVV security code",
+  "اختر مستخدماً للاتصال به": "Choose a user to call",
+  "أنت في مكالمة حالياً": "You are already in a call",
+  "لا يمكن الاتصال بمستخدم متجاهل": "Cannot call an ignored user",
+  "عضويتك غير مسموح لها بإجراء المكالمات الخاصة": "Your membership cannot make private calls",
+  "يرجى الانتظار قليلاً قبل الدخول كزائر": "Please wait a moment before entering as guest",
+  "تعذر إنشاء اسم زائر بديل، حاول مرة أخرى": "Could not create alternative guest name. Try again",
+
+  "دخول": "Login", "إنشاء حساب": "Create account", "الخروج": "Logout", "الافتراضية": "Default", "الصوتية": "Voice",
+  "لا يوجد احد في البث المباشر حي الان": "No one is live right now", "بث مباشر": "Live", "مغادرة الغرفة": "Leave room", "تحديث الغرف": "Refresh rooms",
+  "متصل الان": "Online now", "إيموجي": "Emoji", "قائمة الألوان": "Colors",
+  "الغرف": "Rooms", "الخاص": "Private", "الإشعارات": "Notifications", "القائمة": "Menu",
+  "الحالات": "Statuses", "حالتي": "My status", "اضغط لإضافة تحديث الحالة": "Tap to add a status update", "الحالات الحديثة": "Recent updates",
+  "جاري تحميل الحالات...": "Loading statuses...", "إضافة حالة": "Add status", "صورة": "Photo", "فيديو": "Video", "ملف صوتي": "Audio", "كتابة": "Text",
+  "تختفي الحالة تلقائياً بعد 24 ساعة": "Your status disappears automatically after 24 hours", "إلغاء": "Cancel", "حالة كتابية": "Text status", "نشر": "Publish",
+  "حالة صوتية": "Audio status", "المشاهدات": "Views", "حذف الحالة": "Delete status", "شاهد حالتي": "Viewed my status", "مشاهدة": "view",
+  "لغة الواجهة": "Interface language", "العربية": "Arabic", "عرض الواجهة باللغة العربية": "Display interface in Arabic", "عرض الواجهة باللغة الإنجليزية": "Display interface in English", "تغيير اللغة": "Change language",
+  "تسجيل الدخول": "Sign in", "دخول كزائر/ة": "Continue as guest", "نسيت كلمة السر؟": "Forgot your password?", "استعادة كلمة السر": "Recover password",
+  "لا يوجد لديك عضوية؟": "Do not have an account?", "إنشاء حساب مجانًا": "Create a free account", "النوع": "Gender", "ذكر": "Male", "أنثى": "Female", "مجهول": "Unknown",
+  "الرجاء قراءة": "Please read", "شروط الاستخدام": "Terms of Use", "وقراءة": "and read", "سياسة الخصوصية": "Privacy Policy", "تسجيل العضوية": "Register account",
+  "يتطلب الدخول باستخدام عضويتك أو تسجيل عضوية": "Sign in or create an account", "هذه الميزة متاحة للمستخدمين المسجلين فقط، قم بتسجيل عضوية مجانا الان": "This feature is available to registered users only. Create a free account now.",
+  "التسجيل الان": "Register now", "لاحقا": "Later", "عضو مسجل": "Registered member", "زائر": "Guest", "الرد على الرسالة": "Reply to message",
+  "دردشة خاصة": "Private chat", "ارسل هدية": "Send gift", "ترقية هذا المستخدم": "Upgrade this user", "تجاهل": "Ignore", "إلغاء التجاهل": "Unignore",
+  "كتم المستخدم": "Mute user", "إلغاء الكتم": "Unmute", "طرد المستخدم": "Kick user", "حظر المستخدم": "Ban user", "المعلومات الشخصية": "Profile information", "إغلاق": "Close",
+  "متجر الهدايا الافتراضية": "Virtual gift store", "فاخرة": "Luxury", "جواهر": "Jewels", "افتراضي": "Default", "هدية لـ :": "Gift to:", "اختر هدية": "Choose a gift",
+  "كمية :": "Quantity:", "تحتاج لتنفق :": "You need to spend:", "جائزة هذه الهدية :": "Gift reward:", "يحصل مستلم هذه الهدية على هذا الرصيد": "The recipient receives this balance",
+  "رصيدك الحالي :": "Your current balance:", "الغاء": "Cancel", "أرسل": "Send", "الترقية": "Upgrade", "قم بترقية عضوية الحساب لتبرز من بين الحشود !": "Upgrade the account to stand out from the crowd!",
+  "الترقية الى :": "Upgrade to:", "المدة بالأشهر :": "Duration in months:", "ترقية": "Upgrade", "حسابي": "My account", "الهدايا": "Gifts", "عودة": "Back",
+  "المحادثات الخاصة": "Private conversations", "الاعضاء المسجلين": "Registered members", "غير مرغوب فيه": "Spam", "القائمة الرئيسية": "Main menu",
+  "متصل": "Online", "رصيدك الحالي": "Current balance", "شراء رصيد": "Buy credit", "توثيق حسابي": "Verify my account", "ترقية حسابي": "Upgrade my account",
+  "تغيير الصورة": "Change photo", "هدايا حسابي": "My gifts", "قوائم الحظر": "Block lists", "الاعدادات": "Settings", "تسجيل الخروج": "Sign out",
+  "تغيير الحالة": "Change status", "مشغول": "Busy", "بالخارج": "Away", "حساب": "Account", "الطبيعة": "Nature", "اخرى": "Other", "رفع صورة": "Upload photo",
+  "اختيار هذه الصورة": "Choose this photo", "عام": "General", "تفعيل الصوت": "Enable sound", "صوت الرسائل الجديدة": "New message sound",
+  "صوت دخول المستخدمين": "User join sound", "اظهار الوقت في الرسائل": "Show message time", "استقبال الرسائل الخاصة": "Receive private messages",
+  "إشعارات": "Notifications", "نظام الكتم": "Mute system", "نظام الإشراف": "Supervision system", "احصل على توثيق دردشتي": "Get verified", "شارة تم التحقق ؟": "Verification badge",
+  "احصل على شارة تحقق خاصة تظهر بجوار اسمك أينما ظهر": "Get a verification badge shown next to your name everywhere", "حماية حسابك": "Protect your account",
+  "احم حسابك في مجتمعنا من مرسلي البريد العشوائي، لن نقبل التحقق من أي شخص آخر يشبه حسابك": "Protect your account from impersonation and spam.",
+  "الثقة والتميز": "Trust and distinction", "اجعل مجتمع دردشتي يثق بك وكن دائمًا مميز في المقدمة": "Build trust in the community and always stand out.",
+  "الصلاحية والرسوم": "Validity and fees", "الرسوم هي": "The fee is", "10 ذهب": "10 Gold", "افتراضي ومدة الصلاحية": "and the validity period is", "3 أشهر": "3 months",
+  "طلب التحقق من حسابي": "Request account verification",
+  "اشترِ الذهب الافتراضي لترقية حسابك أو حساب أصدقائك وإرسال الهدايا": "Buy virtual gold to upgrade accounts and send gifts.",
+  "شراء ذهب دردشتي الافتراضي": "Buy virtual gold", "باقات شحن الذهب المميزة": "Gold Top-up Packages",
+  "اختر الباقة المناسبة وادفع عبر البطاقة البنكية أو بطاقة الصراف لشحن رصيدك فورياً": "Choose a package and pay securely with Debit/Credit Card.",
+  "متابعة شراء": "Continue purchase", "هل انت متأكد تريد الخروج من هذه الغرفة ؟": "Are you sure you want to leave this room?",
+  "كلا": "No", "نعم": "Yes", "غرفة محمية": "Protected room", "اكتب كلمة المرور للدخول:": "Enter room password:", "❌ كلمة المرور غير صحيحة — حاول مرة أخرى": "❌ Incorrect password — try again",
+  "اضغط هنا لفتح الصورة": "Tap here to open image", "ادخل إلى غرفة أولاً": "Join a room first", "جاري رفع الملف...": "Uploading file...", "تعذر إرسال الملف": "Could not send file",
+  "تم قطع الاتصال": "Connection lost", "جارٍ إعادة الاتصال...": "Reconnecting...", "اتصال": "Connect",
+  "قسم الشكاوي": "Complaints", "إرسال الشكوى": "Send complaint", "رسالة النظام": "System message", "إعلان من الإدارة": "Admin announcement", "نظام الهدايا": "Gift system",
+  "لا توجد غرف هنا": "No rooms here", "لا يوجد متصلون": "No users online", "لا توجد حالات حديثة بعد": "No recent updates", "تعذر تحميل الحالات": "Could not load statuses",
+  "لا توجد رسائل من الزوار": "No messages from guests", "لا توجد محادثات مع أعضاء مسجلين": "No conversations with registered members",
+  "لا يوجد رسائل خاصة بعد": "No private messages yet", "لا يوجد إشعارات بعد": "No notifications yet", "لا توجد هدايا بعد": "No gifts yet",
+  "إلغاء الطرد": "Remove kick", "أنت هنا": "You are here", "بحث عن غرف": "Search rooms", "بحث عن مستخدمين": "Search users", "ابحث عن غرفك": "Search rooms",
+  "رسالة عامة": "Public message", "رسالة": "Message", "اكتب حالتك...": "Write your status...", "الأسم المستعار": "Display name", "اسم المستعار": "Display name",
+  "الرقم السري": "Password", "العمر": "Age", "كلمة المرور": "Password", "موضوع الشكوى": "Complaint subject", "اكتب شكواك هنا...": "Write your complaint here...",
+  "جاري تحميل قائمة الغرف...": "Loading rooms...", "الرسائل": "Messages", "معلومات": "Information", "الإبلاغ": "Report", "إرسل ترقية": "Send upgrade", "إرسل هدية": "Send gift", "ارسل ترقية": "Send upgrade",
+  "دردشة": "Chat", "يتم عرض الهدايا التي يتلقاها هذا المستخدم هنا": "Gifts received by this user appear here", "أظهر المزيد": "Show more",
+  "تنفيذ وحفظ": "Save changes", "البريد الالكتروني": "Email", "الدولة / بلدة": "Country / City", "النبذة": "Bio", "حفظ": "Save",
+  "تلقائي": "Automatic", "قائمة التجاهل": "Ignore list", "إعدادات الإشعارات": "Notification settings",
+  "الدفع بالبطاقة البنكية 💳": "Debit or Credit Card Payment 💳", "خصم آمن وفوري وشحن مباشر للرصيد": "Secure instant deduction and direct gold recharge",
+  "حامل البطاقة": "Cardholder Name", "تاريخ الانتهاء": "Expiry Date", "رمز الأمان (CVV):": "Security code (CVV):", "تأكيد الخصم والدفع": "Confirm & Pay Now",
+  "اسم صاحب البطاقة (كما هو على البطاقة):": "Cardholder Name (as printed on card):", "رقم بطاقة الصراف / الائتمان (16 رقم):": "Card Number (16 digits):",
+  "المعاملة مشفرة ومحمية بتشفير 256-Bit SSL المصرفي": "Transactions are encrypted and secured with 256-Bit SSL",
+  "الباقة المختارة:": "Selected Package:", "الذهب المستلم:": "Gold Received:", "المبلغ المطلوب خصمه:": "Amount to Charge:",
+  "الدفع عبر البطاقة البنكية / Debit or Credit Card": "Pay with Debit or Credit Card", "دفع إلكتروني مباشر ومشفر 256-Bit SSL": "Secure direct 256-Bit SSL encrypted payment",
+  "إشعار من النظام": "System Notification", "إعلان عام": "General announcement", "بواسطة:": "By:", "الإدارة": "Administration", "حسناً": "OK", "إشعار": "Notification",
+  "الحائط": "Wall", "تحديث الحائط": "Refresh wall", "اكتب منشورك هنا...": "Write your post...", "يوتيوب": "YouTube", "رفع فيديو": "Upload video", "نشر": "Publish",
+  "إعجاب": "Like", "سمايل": "React", "تعليق": "Comment", "اكتب تعليقاً...": "Write a comment...", "حذف المنشور": "Delete post",
+  "تم تسجيل الخروج": "Logged out", "تم حفظ الاعدادات ✓": "Settings saved ✓", "تم تغيير اللغة إلى العربية": "Language changed to Arabic",
+  "مغلقة 🔒": "Closed 🔒", "لم يتلقَ هدايا بعد": "No gifts received yet", "أنت متواجد في هذه الغرفة حالياً 📍": "You are already in this room 📍",
+  "اختر غرفة أولا": "Choose a room first", "اختر هدية أولا": "Choose a gift first", "اكتب الشكوى أولا": "Write your complaint first",
+  "تعذر إرسال الطلب": "Could not send request", "تم الحفظ بنجاح ✅": "Saved successfully ✅", "تم تحديث قائمة الغرف ✓": "Room list refreshed ✓",
+  "تم تسجيل عضويتك بنجاح 🎉": "Account registered successfully 🎉", "ادمن": "Admin", "ادمن غرفة": "Room admin", "سوبر ادمين": "Super admin",
+  "عضوية Plus": "Plus membership", "عضوية Premium": "Premium membership", "عضوية النخبة": "VIP membership", "عضوية مميز": "Special membership",
+  "الأردن": "Jordan", "السعودية": "Saudi Arabia", "مصر": "Egypt", "العراق": "Iraq", "فلسطين": "Palestine", "الإمارات": "UAE", "الكويت": "Kuwait"
 };
-Object.assign(I18N_EN, {
-  'مغلقة 🔒': 'Closed 🔒', 'لم يتلقَ هدايا بعد': 'No gifts received yet',
-  'أنت متواجد في هذه الغرفة حالياً 📍': 'You are already in this room 📍', 'اختر غرفة أولا': 'Choose a room first', 'اختر هدية أولا': 'Choose a gift first',
-  'اكتب الشكوى أولا': 'Write your complaint first', 'اكتب نص الحالة أولاً': 'Write your status first', 'انتهت هذه الحالة': 'This status has expired',
-  'تعذر إرسال الطلب': 'Could not send the request', 'تعذر الإرسال': 'Could not send', 'تعذر الحفظ': 'Could not save', 'تعذر الدخول للغرفة': 'Could not enter the room',
-  'تعذر الشراء': 'Purchase failed', 'تعذر تغيير حالة الكتم': 'Could not change mute status', 'تعذر حذف الحالة': 'Could not delete status', 'تعذر حفظ الصورة': 'Could not save photo',
-  'تعذر رفع الصورة': 'Could not upload photo', 'تعذر طرد المستخدم': 'Could not kick user', 'تعذر فتح الحالة': 'Could not open status', 'تعذر فتح الملف الشخصي': 'Could not open profile',
-  'تعذر نشر الحالة': 'Could not publish status', 'تعذرت الترقية': 'Upgrade failed', 'تم إرسال الشكوى للإدارة ✅': 'Complaint sent to the administration ✅',
-  'تم إرسال الصورة 📷': 'Photo sent 📷', 'تم إرسال طلب التوثيق للإدارة ✓ (خصم 10 ذهب)': 'Verification request sent ✓ (10 Gold deducted)',
-  'تم الحفظ بنجاح ✅': 'Saved successfully ✅', 'تم تحديث قائمة الغرف ✓': 'Room list refreshed ✓', 'تم تسجيل عضويتك بنجاح 🎉': 'Account registered successfully 🎉',
-  'تم تغيير اللغة إلى العربية': 'Language changed to Arabic', 'تم تغيير لون خطك 🎨': 'Text color changed 🎨', 'تم حذف الحالة': 'Status deleted',
-  'تم حظرك بواسطة الإدارة': 'You were banned by the administration', 'تم حفظ الاعدادات ✓': 'Settings saved ✓', 'تم حفظ الصورة ✅': 'Photo saved ✅',
-  'تم رفع الصورة وحفظها ✅': 'Photo uploaded and saved ✅', 'تم طردك من الغرفة': 'You were kicked from the room', 'تم نشر حالتك لمدة 24 ساعة ✓': 'Your status was published for 24 hours ✓',
-  'تمت الإضافة لقائمة التجاهل 🚫': 'Added to the ignore list 🚫', 'جاري نشر الحالة...': 'Publishing status...', 'حجم الملف أكبر من 50MB': 'File is larger than 50MB',
-  'حساب إداري': 'Admin account', 'رجع لون خطك للون رتبتك': 'Text color reset to your rank color', 'ادمن': 'Admin', 'ادمن غرفة': 'Room admin', 'سوبر ادمين': 'Super admin',
-  'عضوية Plus': 'Plus membership', 'عضوية Premium': 'Premium membership', 'عضوية النخبة': 'VIP membership', 'عضوية مميز': 'Special membership',
-  'غير متصل': 'Offline', 'فشل التسجيل': 'Registration failed', 'فشل الدخول': 'Login failed', 'نوع الملف لا يطابق نوع الحالة المختار': 'The file does not match the selected status type',
-  'الأردن': 'Jordan', 'السعودية': 'Saudi Arabia', 'مصر': 'Egypt', 'العراق': 'Iraq', 'فلسطين': 'Palestine', 'الإمارات': 'UAE', 'الكويت': 'Kuwait',
-  'قطر': 'Qatar', 'البحرين': 'Bahrain', 'سلطنة عمان': 'Oman', 'سوريا': 'Syria', 'لبنان': 'Lebanon', 'الجزائر': 'Algeria', 'المغرب': 'Morocco',
-  'تونس': 'Tunisia', 'ليبيا': 'Libya', 'اليمن': 'Yemen', 'السودان': 'Sudan',
-  'التكلفة المقترحة :': 'Suggested cost:', 'إرسال طلب الترقية': 'Send upgrade request', 'الموافقة والرسوم': 'Approval and fees',
-  'الإدارة تحدد مقدار الذهب النهائي عند الموافقة • رصيدك الحالي :': 'The administration sets the final Gold amount upon approval • Current balance:',
-  'التكلفة المقترحة': 'Suggested cost', 'وتستطيع الإدارة تحديد مقدار الذهب النهائي عند الموافقة': 'and the administration may set the final Gold amount upon approval', '، وتستطيع الإدارة تحديد مقدار الذهب النهائي عند الموافقة': ', and the administration may set the final Gold amount upon approval',
-  'لن يتم خصم أي ذهب عند إرسال الطلب. يصل اسمك إلى لوحة الإدارة، وبعد مراجعة الطلب تختار الإدارة مقدار الذهب ثم توافق على التوثيق أو ترفضه، وسيصلك إشعار بالنتيجة.': 'No Gold is deducted when submitting. The administration reviews your request, chooses the Gold amount, and then approves or rejects it. You will be notified of the result.',
-  'الهدايا المستلمة': 'Received gifts', 'جميع الهدايا التي أرسلها الأعضاء إلى حسابك': 'All gifts members sent to your account',
-  'قائمة التجاهل': 'Ignore list', 'لا يمكن تبادل الرسائل الخاصة بينك وبين الأشخاص المتجاهلين.': 'Private messages are disabled between you and ignored users.',
-  'إلغاء التجاهل': 'Unignore', 'قائمة التجاهل فارغة': 'Your ignore list is empty', 'جاري تحميل قائمة التجاهل...': 'Loading ignore list...',
-  'جاري تحميل الهدايا...': 'Loading gifts...', 'لم تستلم أي هدايا بعد': 'You have not received any gifts yet', 'تعذر تحميل الهدايا': 'Could not load gifts',
-  'من:': 'From:', 'متجاهل • الرسائل الخاصة متوقفة': 'Ignored • private messages disabled', 'تم إغلاق المحادثة بسبب التجاهل': 'The conversation was closed because of the ignore setting',
-  'لا توجد إيموجيات مرفوعة حالياً': 'No uploaded emoji available', 'إلغاء تجاهل': 'Unignore', 'الهدية من': 'Gift from', 'كمية:': 'Quantity:', 'صورة المستخدم': 'User photo',
-  'طريقة دخول الغرفة': 'Room entry mode', 'اختر طريقة دخولك إلى غرفة': 'Choose how to enter room', 'دخول ظاهر': 'Visible entry', 'دخول مخفي': 'Hidden entry',
-  'تم الدخول إلى الغرفة بشكل مخفي': 'You entered the room invisibly', 'تم إيقاف الدخول المخفي من لوحة الإدارة': 'Hidden entry was disabled by the administration',
-  'إعلان عام': 'General announcement', 'بواسطة:': 'By:', 'الإدارة': 'Administration', 'حسناً': 'OK', 'إشعار': 'Notification',
-  'الحائط': 'Wall', 'تحديث الحائط': 'Refresh wall', 'اكتب منشورك هنا...': 'Write your post...', 'ضع رابط YouTube هنا': 'Paste a YouTube link here',
-  'يوتيوب': 'YouTube', 'رفع فيديو': 'Upload video', 'نشر': 'Publish', 'جاري تحميل المنشورات...': 'Loading posts...', 'تعذر تحميل الحائط': 'Could not load wall',
-  'إعجاب': 'Like', 'سمايل': 'React', 'تعليق': 'Comment', 'اكتب تعليقاً...': 'Write a comment...', 'لا توجد منشورات بعد، كن أول من ينشر على الحائط': 'No posts yet. Be the first to post.',
-  'حذف المنشور': 'Delete post', 'حذف هذا المنشور؟': 'Delete this post?', 'جاري رفع الفيديو...': 'Uploading video...', 'تم رفع الفيديو بنجاح': 'Video uploaded successfully',
-  'تم نشر المنشور': 'Post published', 'تعذر نشر المنشور': 'Could not publish post', 'نشر منشور جديد': 'Create a new post', 'منشور جديد': 'New post',
-  'ابحث عن فيديو في YouTube': 'Search YouTube videos', 'بحث': 'Search', 'صورة': 'Photo', 'فيديو': 'Video', 'جاري البحث...': 'Searching...', 'لا توجد نتائج': 'No results',
-  'اكتب كلمات البحث في YouTube': 'Enter YouTube search terms', 'تعذر البحث في YouTube': 'Could not search YouTube', 'جاري رفع الصورة...': 'Uploading photo...',
-  'تم رفع الصورة بنجاح': 'Photo uploaded successfully', 'تعذر رفع الصورة': 'Could not upload photo', 'إظهار المزيد': 'Show more', 'تم تسجيل الخروج': 'Logged out'
-});
-const I18N_SKIP_SELECTOR = '.mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,#announcementText,#announcementSender,.notif-preview,.notif-sender,.wall-post-text,.wall-post-who b,.wall-comment-bubble b,.wall-comment-bubble p,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,#profTitleTab,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b';
-function translateDynamicText(text) {
+
+const I18N_ES = {
+  "الهدية من:": "Regalo de:", "أرسلت إلى:": "Enviado a:", "العدد والكمية:": "Cantidad:", "التاريخ والوقت:": "Fecha y Hora:",
+  "اكتب حالتك أو نبذة تعبر عنك...": "Escribe tu estado o biografía...", "حسابي": "Mi cuenta", "الحالة / نبذة شخصية (اختياري)": "Estado / Biografía (Opcional)", "تألق في عالم الدردشة وارفع اسمك لتظهر فوق بريميوم وبلس وخاصية فيديو بث مباشر وجميع الميزات المتوفرة في بريميوم وبلس": "Destaca en el chat, aparece por encima de Premium y Plus, desbloquea transmisión de video en vivo y todas las funciones VIP", "قم بتجربة قوة بريميوم لرفع اسمك والحصول على لون إرسال الرسائل الصوتية في الرسائل العامة والتحدث في الغرف الصوتية": "Experimenta el poder de Premium para destacar tu nombre, colores personalizados, notas de voz públicas y salas de voz", "ابدأ الطريق إلى المميزات مع بلس افتح ميزات إرسال الرسائل الصوتية في الرسائل العامة والتحدث في الغرف الصوتية مع ميزات عضوية بلس": "Desbloquea funciones adicionales con Plus: envía notas de voz en salas públicas y habla en salas de voz", "الهدايا المستلمة": "Regalos recibidos", "جميع الهدايا التي أرسلها الأعضاء إلى حسابك": "Todos los regalos enviados por miembros a tu cuenta", "لم تستلم أي هدايا بعد": "Aún no has recibido ningún regalo", "لا يمكن تبادل الرسائل الخاصة بينك وبين الأشخاص المتجاهلين.": "No se pueden intercambiar mensajes privados con personas ignoradas.", "قائمة التجاهل فارغة": "La lista de ignorados está vacía", "احصل على توثيق دردشتي": "Obtener verificación", "شارة تم التحقق ؟": "Insignia de verificación", "احصل على شارة تحقق خاصة تظهر بجوار اسمك أينما ظهر": "Obtén una insignia de verificación que aparece junto a tu nombre en todas partes", "حماية حسابك": "Protege tu cuenta", "احم حسابك في مجتمعنا من مرسلي البريد العشوائي، لن نقبل التحقق من أي شخص آخر يشبه حسابك": "Protege tu cuenta contra imitaciones y correo no deseado.", "الثقة والتميز": "Confianza y distinción", "اجعل مجتمع دردشتي يثق بك وكن دائمًا مميز في المقدمة": "Genera confianza en la comunidad y destaca siempre en primera línea.", "الموافقة والرسوم": "Aprobación y Tarifas", "التكلفة المقترحة": "Costo sugerido", "التكلفة المقترحة 10 ذهب، وتستطيع الإدارة تحديد مقدار الذهب النهائي عند الموافقة": "Costo sugerido 10 Oro; la administración establece el valor final al aprobar", "لن يتم خصم أي ذهب عند إرسال الطلب. يصل اسمك إلى لوحة الإدارة، وبعد مراجعة الطلب تختار الإدارة مقدار الذهب ثم توافق على التوثيق أو ترفضه، وسيصلك إشعار بالنتيجة.": "No se descuenta oro al enviar la solicitud. La administración la revisará y recibirás una notificación con el resultado.", "طلب التحقق من حسابي": "Solicitar Verificación de Cuenta", "الصلاحية والرسوم": "Validez y tarifas", "الرسوم هي": "La tarifa es", "10 ذهب": "10 Oro", "افتراضي ومدة الصلاحية": "y el período de validez es", "3 أشهر": "3 meses", "شهر": "mes", "/ شهر": "/ mes", " / شهر": " / mes",
+
+  "باقة التجربة": "Paquete de Prueba", "الباقة البرونزية": "Paquete Bronce", "الباقة الفضية": "Paquete Plata",
+  "الباقة الذهبية": "Paquete Oro", "الباقة الماسية": "Paquete Diamante", "باقة VIP الملكية": "Paquete VIP Real",
+  "🔥 الأكثر طلباً": "🔥 Más Popular", "⭐ باقة التوفير": "⭐ Mejor Valor", "💎 باقة مميزة": "💎 Paquete Destacado", "👑 باقة كبار الشخصيات": "👑 Paquete VIP",
+  "السعر": "Precio", "ذهب": "Oro", "ذهب هدية": "Oro de regalo",
+  "مكالمة تجريبية مجانية 🎁": "Llamada de prueba gratis 🎁", "هدية التجربة الأولى • 60 ثانية مجاناً": "Regalo de prueba • 60s gratis",
+  "بدء المكالمة المجانية 🎁": "Iniciar llamada gratis 🎁", "رصيد الذهب غير كافٍ ⚠️": "Saldo de oro insuficiente ⚠️",
+  "تم استهلاك التجربة المجانية لهذا الحساب": "Prueba gratuita ya utilizada", "شحن الذهب الآن 💰": "Recargar oro ahora 💰",
+  "تأكيد بدء المكالمة الصوتية 📞": "Confirmar llamada de voz 📞", "تأكيد وبدء الاتصال": "Confirmar y llamar",
+  "مدة المكالمة المجانية:": "Duración de llamada gratis:", "تكلفة التجربة:": "Costo de prueba:", "رصيدك الحالي:": "Tu saldo actual:",
+  "نوع المكالمة:": "Tipo de llamada:", "مفتوحة المدة": "Duración ilimitada", "مفتوحة المدة (غير محدودة)": "Duración ilimitada",
+  "تكلفة المكالمة:": "Tarifa de llamada:", "رسوم المكالمة:": "Tarifa de llamada:", "المبلغ المطلوب شحنه:": "Monto requerido:",
+  "الرصيد بعد الخصم:": "Saldo tras deducción:", "المتصل به": "Usuario llamado",
+  "دقيقة كاملة (60 ثانية)": "Minuto completo (60s)", "مجاناً (0 ذهب)": "Gratis (0 Oro)",
+
+  "الاسم مستخدم مسبقا": "El nombre de usuario ya está en uso",
+  "اسم المستخدم موجود مسبقا": "El nombre de usuario ya existe",
+  "اسم المستخدم أو كلمة المرور غير صحيحة": "Usuario o contraseña incorrectos",
+  "كلمة المرور يجب أن لا تقل عن 4 خانات": "La contraseña debe tener al menos 4 caracteres",
+  "أكمل الحقول المطلوبة": "Por favor completa todos los campos requeridos",
+  "اكتب اسم المستخدم": "Por favor ingresa el nombre de usuario",
+  "كلمة المرور مطلوبة": "La contraseña es requerida",
+  "لا يمكن التسجيل من عنوان IP محظور": "No se puede registrar desde una IP bloqueada",
+  "تم تجاوز عدد محاولات التسجيل، يرجى المحاولة لاحقاً": "Demasiados intentos de registro. Inténtalo más tarde",
+  "عنوان IP الخاص بك محظور": "Tu dirección IP está bloqueada",
+  "حسابك محظور بواسطة الإدارة": "Tu cuenta ha sido bloqueada por la administración",
+  "يرجى كتابة اسم صاحب البطاقة": "Ingresa el nombre del titular",
+  "يرجى إدخال رقم بطاقة صراف صحيح (16 رقم)": "Ingresa un número de tarjeta válido de 16 dígitos",
+  "يرجى كتابة تاريخ الانتهاء بصيغة MM/YY": "Ingresa la fecha de vencimiento en formato MM/AA",
+  "يرجى كتابة رمز الأمان CVV المكون من 3 أرقام": "Ingresa el código de seguridad CVV de 3 dígitos",
+  "اختر مستخدماً للاتصال به": "Elige un usuario para llamar",
+  "أنت في مكالمة حالياً": "Ya estás en una llamada",
+  "لا يمكن الاتصال بمستخدم متجاهل": "No se puede llamar a un usuario ignorado",
+  "عضويتك غير مسموح لها بإجراء المكالمات الخاصة": "Tu membresía no permite llamadas privadas",
+  "يرجى الانتظار قليلاً قبل الدخول كزائر": "Espera un momento antes de entrar como invitado",
+  "تعذر إنشاء اسم زائر بديل، حاول مرة أخرى": "No se pudo generar un nombre de invitado alternativo. Inténtalo de nuevo",
+
+  "دخول": "Iniciar sesión", "إنشاء حساب": "Crear cuenta", "الخروج": "Cerrar sesión", "الافتراضية": "Predeterminada", "الصوتية": "Voz",
+  "لا يوجد احد في البث المباشر حي الان": "Nadie está en vivo ahora", "بث مباشر": "En vivo", "مغادرة الغرفة": "Salir de la sala", "تحديث الغرف": "Actualizar salas",
+  "متصل الان": "En línea ahora", "إيموجي": "Emojis", "قائمة الألوان": "Colores",
+  "الغرف": "Salas", "الخاص": "Privado", "الإشعارات": "Notificaciones", "القائمة": "Menú",
+  "الحالات": "Estados", "حالتي": "Mi estado", "اضغط لإضافة تحديث الحالة": "Toca para agregar estado", "الحالات الحديثة": "Estados recientes",
+  "جاري تحميل الحالات...": "Cargando estados...", "إضافة حالة": "Añadir estado", "صورة": "Foto", "فيديو": "Video", "ملف صوتي": "Audio", "كتابة": "Texto",
+  "تختفي الحالة تلقائياً بعد 24 ساعة": "El estado desaparece en 24 horas", "إلغاء": "Cancelar", "حالة كتابية": "Estado de texto", "نشر": "Publicar",
+  "حالة صوتية": "Estado de audio", "المشاهدات": "Vistas", "حذف الحالة": "Eliminar estado", "شاهد حالتي": "Vieron mi estado", "مشاهدة": "vista",
+  "لغة الواجهة": "Idioma de la interfaz", "العربية": "Árabe", "عرض الواجهة باللغة العربية": "Mostrar en árabe", "عرض الواجهة باللغة الإنجليزية": "Mostrar en inglés", "تغيير اللغة": "Cambiar idioma",
+  "تسجيل الدخول": "Iniciar sesión", "دخول كزائر/ة": "Entrar como invitado/a", "نسيت كلمة السر؟": "¿Olvidaste tu contraseña?", "استعادة كلمة السر": "Recuperar contraseña",
+  "لا يوجد لديك عضوية؟": "¿No tienes cuenta?", "إنشاء حساب مجانًا": "Crear cuenta gratis", "النوع": "Género", "ذكر": "Hombre", "أنثى": "Mujer", "مجهول": "Desconocido",
+  "الرجاء قراءة": "Por favor lee", "شروط الاستخدام": "Términos de uso", "وقراءة": "y lee", "سياسة الخصوصية": "Política de privacidad", "تسجيل العضوية": "Registrarse",
+  "يتطلب الدخول باستخدام عضويتك أو تسجيل عضوية": "Inicia sesión o crea una cuenta", "هذه الميزة متاحة للمستخدمين المسجلين فقط، قم بتسجيل عضوية مجانا الان": "Función para usuarios registrados. Regístrate gratis ahora.",
+  "التسجيل الان": "Registrarse ahora", "لاحقا": "Más tarde", "عضو مسجل": "Miembro registrado", "زائر": "Invitado", "الرد على الرسالة": "Responder",
+  "دردشة خاصة": "Chat privado", "ارسل هدية": "Enviar regalo", "ترقية هذا المستخدم": "Mejorar usuario", "تجاهل": "Ignorar", "إلغاء التجاهل": "Dejar de ignorar",
+  "كتم المستخدم": "Silenciar usuario", "إلغاء الكتم": "Desilenciar", "طرد المستخدم": "Expulsar usuario", "حظر المستخدم": "Bloquear usuario", "المعلومات الشخصية": "Perfil", "إغلاق": "Cerrar",
+  "متجر الهدايا الافتراضية": "Tienda de regalos", "فاخرة": "Lujo", "جواهر": "Joyas", "افتراضي": "Predeterminado", "هدية لـ :": "Regalo para:", "اختر هدية": "Elige regalo",
+  "كمية :": "Cantidad:", "تحتاج لتنفق :": "Debes gastar:", "جائزة هذه الهدية :": "Recompensa:", "يحصل مستلم هذه الهدية على هذا الرصيد": "El destinatario recibe este saldo",
+  "رصيدك الحالي :": "Tu saldo actual:", "الغاء": "Cancelar", "أرسل": "Enviar", "الترقية": "Membresía", "قم بترقية عضوية الحساب لتبرز من بين الحشود !": "¡Mejora tu cuenta para destacar!",
+  "الترقية الى :": "Mejorar a:", "المدة بالأشهر :": "Meses:", "ترقية": "Mejorar", "حسابي": "Mi cuenta", "الهدايا": "Regalos", "عودة": "Volver",
+  "المحادثات الخاصة": "Chats privados", "الاعضاء المسجلين": "Registrados", "غير مرغوب فيه": "Spam", "القائمة الرئيسية": "Menú principal",
+  "متصل": "En línea", "رصيدك الحالي": "Saldo actual", "شراء رصيد": "Comprar saldo", "توثيق حسابي": "Verificar cuenta", "ترقية حسابي": "Mejorar cuenta",
+  "تغيير الصورة": "Cambiar foto", "هدايا حسابي": "Mis regalos", "قوائم الحظر": "Bloqueados", "الاعدادات": "Ajustes", "تسجيل الخروج": "Cerrar sesión",
+  "تغيير الحالة": "Cambiar estado", "مشغول": "Ocupado", "بالخارج": "Ausente", "حساب": "Cuenta", "الطبيعة": "Naturaleza", "اخرى": "Otros", "رفع صورة": "Subir foto",
+  "اختيار هذه الصورة": "Elegir foto", "عام": "General", "تفعيل الصوت": "Activar sonido", "صوت الرسائل الجديدة": "Sonido de mensajes",
+  "صوت دخول المستخدمين": "Sonido de entrada", "اظهار الوقت في الرسائل": "Mostrar hora", "استقبال الرسائل الخاصة": "Recibir mensajes privados",
+  "إشعارات": "Notificaciones", "نظام الكتم": "Silencio", "نظام الإشراف": "Moderación", "احصل على توثيق دردشتي": "Verificar cuenta",
+  "إعلان عام": "Anuncio general", "بواسطة:": "Por:", "الإدارة": "Administración", "حسناً": "Aceptar", "إشعار": "Notificación",
+  "الحائط": "Muro", "تحديث الحائط": "Actualizar muro", "اكتب منشورك هنا...": "Escribe tu publicación...", "يوتيوب": "YouTube", "رفع فيديو": "Subir video", "نشر": "Publicar",
+  "إعجاب": "Me gusta", "سمايل": "Reaccionar", "تعليق": "Comentar", "اكتب تعليقاً...": "Escribe un comentario...", "حذف المنشور": "Eliminar publicación",
+  "الدفع بالبطاقة البنكية 💳": "Pago con Tarjeta 💳", "خصم آمن وفوري وشحن مباشر للرصيد": "Pago seguro y recarga instantánea",
+  "حامل البطاقة": "Titular de la tarjeta", "تاريخ الانتهاء": "Vencimiento", "رمز الأمان (CVV):": "Código de seguridad (CVV):", "تأكيد الخصم والدفع": "Confirmar y Pagar",
+  "اسم صاحب البطاقة (كما هو على البطاقة):": "Nombre del titular:", "رقم بطاقة الصراف / الائتمان (16 رقم):": "Número de tarjeta (16 dígitos):",
+  "المعاملة مشفرة ومحمية بتشفير 256-Bit SSL المصرفي": "Transacciones protegidas con cifrado SSL de 256 bits",
+  "الباقة المختارة:": "Paquete seleccionado:", "الذهب المستلم:": "Oro recibido:", "المبلغ المطلوب خصمه:": "Total a pagar:",
+  "الدفع عبر البطاقة البنكية / Debit or Credit Card": "Pagar con Tarjeta de Débito/Crédito", "دفع إلكتروني مباشر ومشفر 256-Bit SSL": "Pago seguro cifrado SSL de 256 bits",
+  "إشعار من النظام": "Notificación del sistema", "تم تسجيل الخروج": "Sesión cerrada", "تم حفظ الاعدادات ✓": "Ajustes guardados ✓",
+  "مغلقة 🔒": "Cerrada 🔒", "لم يتلقَ هدايا بعد": "Sin regalos aún", "أنت متواجد في هذه الغرفة حالياً 📍": "Ya estás en esta sala 📍",
+  "اختر غرفة أولا": "Elige una sala primero", "اختر هدية أولا": "Elige un regalo primero", "ادمن": "Admin", "ادمن غرفة": "Admin de sala", "سوبر ادمين": "Super admin",
+  "رسالة عامة": "Mensaje público", "رسالة": "Mensaje", "اكتب حالتك...": "Escribe tu estado...", "الأسم المستعار": "Nombre de usuario", "اسم المستعار": "Nombre de usuario",
+  "الرقم السري": "Contraseña", "العمر": "Edad", "كلمة المرور": "Contraseña", "موضوع الشكوى": "Asunto", "اكتب شكواك هنا...": "Escribe tu queja aquí...",
+  "جاري تحميل قائمة الغرف...": "Cargando salas...", "الرسائل": "Mensajes", "معلومات": "Información", "الإبلاغ": "Reportar",
+  "دردشة": "Chat", "يتم عرض الهدايا التي يتلقاها هذا المستخدم هنا": "Los regalos recibidos aparecen aquí", "أظهر المزيد": "Ver más",
+  "تنفيذ وحفظ": "Guardar cambios", "البريد الالكتروني": "Correo electrónico", "الدولة / بلدة": "País / Ciudad", "النبذة": "Biografía", "حفظ": "Guardar",
+  "تلقائي": "Automático", "قائمة التجاهل": "Lista de ignorados", "إعدادات الإشعارات": "Ajustes de notificaciones"
+};
+
+const I18N_TR = {
+  "الهدية من:": "Gönderen:", "أرسلت إلى:": "Alıcı:", "العدد والكمية:": "Miktar:", "التاريخ والوقت:": "Tarih ve Saat:",
+  "اكتب حالتك أو نبذة تعبر عنك...": "Durumunuzu veya biyografinizi yazın...", "حسابي": "Hesabım", "الحالة / نبذة شخصية (اختياري)": "Durum / Biyografi (İsteğe bağlı)", "تألق في عالم الدردشة وارفع اسمك لتظهر فوق بريميوم وبلس وخاصية فيديو بث مباشر وجميع الميزات المتوفرة في بريميوم وبلس": "Sohbet dünyasında öne çıkın, Premium ve Plus üzerinde görünün, canlı video yayını ve tüm VIP özelliklerini açın", "قم بتجربة قوة بريميوم لرفع اسمك والحصول على لون إرسال الرسائل الصوتية في الرسائل العامة والتحدث في الغرف الصوتية": "Adınızı yükseltmek, özel renkler, genel odalarda sesli mesaj göndermek ve sesli odalarda konuşmak için Premium gücünü deneyin", "ابدأ الطريق إلى المميزات مع بلس افتح ميزات إرسال الرسائل الصوتية في الرسائل العامة والتحدث في الغرف الصوتية مع ميزات عضوية بلس": "Plus ile ek özellikleri açın: genel odalarda ses kaydı gönderin ve sesli odalarda sohbet edin", "الهدايا المستلمة": "Alınan hediyeler", "جميع الهدايا التي أرسلها الأعضاء إلى حسابك": "Üyelerin hesabınıza gönderdiği tüm hediyeler", "لم تستلم أي هدايا بعد": "Henüz hediye almadınız", "لا يمكن تبادل الرسائل الخاصة بينك وبين الأشخاص المتجاهلين.": "Engellenen kullanıcılarla özel mesajlaşılamaz.", "قائمة التجاهل فارغة": "Engellenenler listesi boş", "احصل على توثيق دردشتي": "Hesabı doğrula", "شارة تم التحقق ؟": "Doğrulama rozeti", "احصل على شارة تحقق خاصة تظهر بجوار اسمك أينما ظهر": "Adınızın yanında her yerde görünen özel bir doğrulama rozeti alın", "حماية حسابك": "Hesabınızı koruyun", "احم حسابك في مجتمعنا من مرسلي البريد العشوائي، لن نقبل التحقق من أي شخص آخر يشبه حسابك": "Hesabınızı taklit ve spam gönderenlerden koruyun.", "الثقة والتميز": "Güven ve ayrıcalık", "اجعل مجتمع دردشتي يثق بك وكن دائمًا مميز في المقدمة": "Toplulukta güven oluşturun ve her zaman öne çıkın.", "الموافقة والرسوم": "Onay ve Ücretler", "التكلفة المقترحة": "Önerilen ücret", "التكلفة المقترحة 10 ذهب، وتستطيع الإدارة تحديد مقدار الذهب النهائي عند الموافقة": "Önerilen ücret 10 Altın; yönetim onay sırasında nihai tutarı belirler", "لن يتم خصم أي ذهب عند إرسال الطلب. يصل اسمك إلى لوحة الإدارة، وبعد مراجعة الطلب تختار الإدارة مقدار الذهب ثم توافق على التوثيق أو ترفضه، وسيصلك إشعار بالنتيجة.": "Talep gönderildiğinde altın kesilmez. Yönetim talebi inceler ve sonuç bildirimi alırsınız.", "طلب التحقق من حسابي": "Hesap Doğrulaması Talep Et", "الصلاحية والرسوم": "Geçerlilik ve ücretler", "الرسوم هي": "Ücret", "10 ذهب": "10 Altın", "افتراضي ومدة الصلاحية": "ve geçerlilik süresi", "3 أشهر": "3 ay", "شهر": "ay", "/ شهر": "/ ay", " / شهر": " / ay",
+
+  "باقة التجربة": "Deneme Paketi", "الباقة البرونزية": "Bronz Paket", "الباقة الفضية": "Gümüş Paket",
+  "الباقة الذهبية": "Altın Paket", "الباقة الماسية": "Elmas Paket", "باقة VIP الملكية": "Kraliyet VIP Paketi",
+  "🔥 الأكثر طلباً": "🔥 En Popüler", "⭐ باقة التوفير": "⭐ Tasarruf Paketi", "💎 باقة مميزة": "💎 Özel Paket", "👑 باقة كبار الشخصيات": "👑 VIP Paketi",
+  "السعر": "Fiyat", "ذهب": "Altın", "ذهب هدية": "Hediye Altın",
+  "مكالمة تجريبية مجانية 🎁": "Ücretsiz Deneme Araması 🎁", "هدية التجربة الأولى • 60 ثانية مجاناً": "İlk Deneme Hediyesi • 60s Ücretsiz",
+  "بدء المكالمة المجانية 🎁": "Ücretsiz Aramayı Başlat 🎁", "رصيد الذهب غير كافٍ ⚠️": "Yetersiz Altın Bakiyesi ⚠️",
+  "تم استهلاك التجربة المجانية لهذا الحساب": "Ücretsiz deneme zaten kullanıldı", "شحن الذهب الآن 💰": "Şimdi Altın Yükle 💰",
+  "تأكيد بدء المكالمة الصوتية 📞": "Sesli Aramayı Onayla 📞", "تأكيد وبدء الاتصال": "Onayla ve Ara",
+  "مدة المكالمة المجانية:": "Ücretsiz arama süresi:", "تكلفة التجربة:": "Deneme maliyeti:", "رصيدك الحالي:": "Mevcut bakiyeniz:",
+  "نوع المكالمة:": "Arama türü:", "مفتوحة المدة": "Sınırsız süre", "مفتوحة المدة (غير محدودة)": "Sınırsız süre",
+  "تكلفة المكالمة:": "Arama ücreti:", "رسوم المكالمة:": "Arama ücreti:", "المبلغ المطلوب شحنه:": "Gereken miktar:",
+  "الرصيد بعد الخصم:": "Düşüş sonrası bakiye:", "المتصل به": "Aranan kullanıcı",
+  "دقيقة كاملة (60 ثانية)": "Tam bir dakika (60s)", "مجاناً (0 ذهب)": "Ücretsiz (0 Altın)",
+
+  "الاسم مستخدم مسبقا": "Kullanıcı adı zaten kullanımda",
+  "اسم المستخدم موجود مسبقا": "Kullanıcı adı zaten mevcut",
+  "اسم المستخدم أو كلمة المرور غير صحيحة": "Kullanıcı adı veya şifre yanlış",
+  "كلمة المرور يجب أن لا تقل عن 4 خانات": "Şifre en az 4 karakter olmalıdır",
+  "أكمل الحقول المطلوبة": "Lütfen gerekli tüm alanları doldurun",
+  "اكتب اسم المستخدم": "Lütfen kullanıcı adını girin",
+  "كلمة المرور مطلوبة": "Şifre gereklidir",
+  "لا يمكن التسجيل من عنوان IP محظور": "Yasaklı bir IP adresinden kayıt olunamaz",
+  "تم تجاوز عدد محاولات التسجيل، يرجى المحاولة لاحقاً": "Çok fazla kayıt denemesi. Lütfen daha sonra tekrar deneyin",
+  "عنوان IP الخاص بك محظور": "IP adresiniz yasaklandı",
+  "حسابك محظور بواسطة الإدارة": "Hesabınız yönetim tarafından yasaklandı",
+  "يرجى كتابة اسم صاحب البطاقة": "Lütfen kart sahibinin adını girin",
+  "يرجى إدخال رقم بطاقة صراف صحيح (16 رقم)": "Lütfen geçerli bir 16 haneli kart numarası girin",
+  "يرجى كتابة تاريخ الانتهاء بصيغة MM/YY": "Lütfen son kullanma tarihini AA/YY formatında girin",
+  "يرجى كتابة رمز الأمان CVV المكون من 3 أرقام": "Lütfen 3 haneli CVV güvenlik kodunu girin",
+  "اختر مستخدماً للاتصال به": "Aramak için bir kullanıcı seçin",
+  "أنت في مكالمة حالياً": "Zaten bir görüşmedesiniz",
+  "لا يمكن الاتصال بمستخدم متجاهل": "Engellenen bir kullanıcı aranamaz",
+  "عضويتك غير مسموح لها بإجراء المكالمات الخاصة": "Üyeliğiniz özel arama yapmaya izin vermiyor",
+  "يرجى الانتظار قليلاً قبل الدخول كزائر": "Misafir olarak girmeden önce lütfen biraz bekleyin",
+  "تعذر إنشاء اسم زائر بديل، حاول مرة أخرى": "Alternatif misafir adı oluşturulamadı. Tekrar deneyin",
+
+  "دخول": "Giriş", "إنشاء حساب": "Hesap oluştur", "الخروج": "Çıkış", "الافتراضية": "Varsayılan", "الصوتية": "Sesli",
+  "لا يوجد احد في البث المباشر حي الان": "Şu anda canlı yayın yok", "بث مباشر": "Canlı", "مغادرة الغرفة": "Odadan ayrıl", "تحديث الغرف": "Odaları yenile",
+  "متصل الان": "Şu an çevrimiçi", "إيموجي": "Emoji", "قائمة الألوان": "Renkler",
+  "الغرف": "Odalar", "الخاص": "Özel", "الإشعارات": "Bildirimler", "القائمة": "Menü",
+  "الحالات": "Durumlar", "حالتي": "Durumum", "اضغط لإضافة تحديث الحالة": "Durum eklemek için dokunun", "الحالات الحديثة": "Son durumlar",
+  "جاري تحميل الحالات...": "Durumlar yükleniyor...", "إضافة حالة": "Durum ekle", "صورة": "Fotoğraf", "فيديو": "Video", "ملف صوتي": "Ses", "كتابة": "Metin",
+  "تختفي الحالة تلقائياً بعد 24 ساعة": "Durum 24 saat sonra kaybolur", "إلغاء": "İptal", "حالة كتابية": "Metin durumu", "نشر": "Paylaş",
+  "حالة صوتية": "Ses durumu", "المشاهدات": "Görüntüleme", "حذف الحالة": "Durumu sil", "شاهد حالتي": "Durumumu görenler", "مشاهدة": "görüntüleme",
+  "لغة الواجهة": "Arayüz dili", "العربية": "Arapça", "عرض الواجهة باللغة العربية": "Arayüzü Arapça göster", "عرض الواجهة باللغة الإنجليزية": "Arayüzü İngilizce göster", "تغيير اللغة": "Dili değiştir",
+  "تسجيل الدخول": "Giriş yap", "دخول كزائر/ة": "Misafir olarak gir", "نسيت كلمة السر؟": "Şifrenizi mi unuttunuz?", "استعادة كلمة السر": "Şifre kurtarma",
+  "لا يوجد لديك عضوية؟": "Hesabınız yok mu?", "إنشاء حساب مجانًا": "Ücretsiz hesap aç", "النوع": "Cinsiyet", "ذكر": "Erkek", "أنثى": "Kadın", "مجهول": "Gizli",
+  "الرجاء قراءة": "Lütfen okuyun", "شروط الاستخدام": "Kullanım Koşulları", "وقراءة": "ve", "سياسة الخصوصية": "Gizlilik Politikası", "تسجيل العضوية": "Kayıt ol",
+  "يتطلب الدخول باستخدام عضويتك أو تسجيل عضوية": "Giriş yapın veya kayıt olun", "هذه الميزة متاحة للمستخدمين المسجلين فقط، قم بتسجيل عضوية مجانا الان": "Bu özellik sadece kayıtlı kullanıcılar içindir. Hemen kaydolun.",
+  "التسجيل الان": "Hemen kaydol", "لاحقا": "Daha sonra", "عضو مسجل": "Kayıtlı üye", "زائر": "Misafir", "الرد على الرسالة": "Yanıtla",
+  "دردشة خاصة": "Özel sohbet", "ارسل هدية": "Hediye gönder", "ترقية هذا المستخدم": "Kullanıcıyı yükselt", "تجاهل": "Engelle", "إلغاء التجاهل": "Engeli kaldır",
+  "كتم المستخدم": "Sustur", "إلغاء الكتم": "Susturmayı kaldır", "طرد المستخدم": "Odadan at", "حظر المستخدم": "Yasakla", "المعلومات الشخصية": "Profil", "إغلاق": "Kapat",
+  "متجر الهدايا الافتراضية": "Hediye Mağazası", "فاخرة": "Lüks", "جواهر": "Mücevher", "افتراضي": "Varsayılan", "هدية لـ :": "Hediye:", "اختر هدية": "Hediye seç",
+  "كمية :": "Miktar:", "تحتاج لتنفق :": "Gereken harcama:", "جائزة هذه الهدية :": "Hediye ödülü:", "يحصل مستلم هذه الهدية على هذا الرصيد": "Alıcı bu bakiyeyi kazanır",
+  "رصيدك الحالي :": "Mevcut bakiyeniz:", "الغاء": "İptal", "أرسل": "Gönder", "الترقية": "Üyelik", "قم بترقية عضوية الحساب لتبرز من بين الحشود !": "Öne çıkmak için üyeliğinizi yükseltin!",
+  "الترقية الى :": "Yükseltme:", "المدة بالأشهر :": "Ay:", "ترقية": "Yükselt", "حسابي": "Hesabım", "الهدايا": "Hediyeler", "عودة": "Geri",
+  "المحادثات الخاصة": "Özel Sohbetler", "الاعضاء المسجلين": "Kayıtlılar", "غير مرغوب فيه": "Spam", "القائمة الرئيسية": "Ana Menü",
+  "متصل": "Çevrimiçi", "رصيدك الحالي": "Mevcut bakiye", "شراء رصيد": "Bakiye satın al", "توثيق حسابي": "Hesabı doğrula", "ترقية حسابي": "Hesabı yükselt",
+  "تغيير الصورة": "Fotoğrafı değiştir", "هدايا حسابي": "Hediyelerim", "قوائم الحظر": "Yasaklılar", "الاعدادات": "Ayarlar", "تسجيل الخروج": "Çıkış yap",
+  "تغيير الحالة": "Durumu değiştir", "مشغول": "Meşgul", "بالخارج": "Dışarıda", "حساب": "Hesap", "الطبيعة": "Doğa", "اخرى": "Diğer", "رفع صورة": "Fotoğraf yükle",
+  "اختيار هذه الصورة": "Bu fotoğrafı seç", "عام": "Genel", "تفعيل الصوت": "Sesi aç", "صوت الرسائل الجديدة": "Yeni mesaj sesi",
+  "صوت دخول المستخدمين": "Giriş sesi", "اظهار الوقت في الرسائل": "Zamanı göster", "استقبال الرسائل الخاصة": "Özel mesajları al",
+  "إشعارات": "Bildirimler", "نظام الكتم": "Susturma sistemi", "نظام الإشراف": "Denetim sistemi", "احصل على توثيق دردشتي": "Doğrulanmış hesap al",
+  "إعلان عام": "Genel duyuru", "بواسطة:": "Gönderen:", "الإدارة": "Yönetim", "حسناً": "Tamam", "إشعار": "Bildirim",
+  "الحائط": "Duvar", "تحديث الحائط": "Duvarı yenile", "اكتب منشورك هنا...": "Gönderinizi yazın...", "يوتيوب": "YouTube", "رفع فيديو": "Video yükle", "نشر": "Paylaş",
+  "إعجاب": "Beğen", "سمايل": "Tepki ver", "تعليق": "Yorum yap", "اكتب تعليقاً...": "Yorum yazın...", "حذف المنشور": "Gönderiyi sil",
+  "الدفع بالبطاقة البنكية 💳": "Banka Kartı ile Öde 💳", "خصم آمن وفوري وشحن مباشر للرصيد": "Güvenli ödeme ve anında bakiye yükleme",
+  "حامل البطاقة": "Kart Sahibi", "تاريخ الانتهاء": "Son Kullanma", "رمز الأمان (CVV):": "Güvenlik Kodu (CVV):", "تأكيد الخصم والدفع": "Onayla ve Öde",
+  "اسم صاحب البطاقة (كما هو على البطاقة):": "Kart sahibinin adı:", "رقم بطاقة الصراف / الائتمان (16 رقم):": "Kart Numarası (16 hane):",
+  "المعاملة مشفرة ومحمية بتشفير 256-Bit SSL المصرفي": "İşlemler 256-Bit SSL ile korunmaktadır",
+  "الباقة المختارة:": "Seçilen Paket:", "الذهب المستلم:": "Alınan Altın:", "المبلغ المطلوب خصمه:": "Ödenecek Tutar:",
+  "الدفع عبر البطاقة البنكية / Debit or Credit Card": "Banka / Kredi Kartı ile Öde", "دفع إلكتروني مباشر ومشفر 256-Bit SSL": "Güvenli 256-Bit SSL doğrudan ödeme",
+  "إشعار من النظام": "Sistem Bildirimi", "تم تسجيل الخروج": "Çıkış yapıldı", "تم حفظ الاعدادات ✓": "Ayarlar kaydedildi ✓",
+  "مغلقة 🔒": "Kapalı 🔒", "لم يتلقَ هدايا بعد": "Henüz hediye yok", "أنت متواجد في هذه الغرفة حالياً 📍": "Zaten bu odadasınız 📍",
+  "اختر غرفة أولا": "Önce bir oda seçin", "اختر هدية أولا": "Önce bir hediye seçin", "ادمن": "Admin", "ادمن غرفة": "Oda admini", "سوبر ادمين": "Süper admin",
+  "رسالة عامة": "Genel mesaj", "رسالة": "Mesaj", "اكتب حالتك...": "Durumunuzu yazın...", "الأسم المستعار": "Kullanıcı adı", "اسم المستعار": "Kullanıcı adı",
+  "الرقم السري": "Şifre", "العمر": "Yaş", "كلمة المرور": "Şifre", "موضوع الشكوى": "Konu", "اكتب شكواك هنا...": "Şikayetinizi buraya yazın...",
+  "جاري تحميل قائمة الغرف...": "Odalar yükleniyor...", "الرسائل": "Mesajlar", "معلومات": "Bilgi", "الإبلاغ": "Şikayet et",
+  "دردشة": "Sohbet", "يتم عرض الهدايا التي يتلقاها هذا المستخدم هنا": "Alınan hediyeler burada gösterilir", "أظهر المزيد": "Daha fazla göster",
+  "تنفيذ وحفظ": "Değişiklikleri kaydet", "البريد الالكتروني": "E-posta", "الدولة / بلدة": "Ülke / Şehir", "النبذة": "Biyografi", "حفظ": "Kaydet",
+  "تلقائي": "Otomatik", "قائمة التجاهل": "Engellenenler listesi", "إعدادات الإشعارات": "Bildirim ayarları"
+};
+
+const I18N_SKIP_SELECTOR = ".mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,#announcementText,#announcementSender,.wall-post-text,.wall-post-who b,.wall-comment-bubble b,.wall-comment-bubble p,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b";
+
+function translateDynamicText(text, lang = APP_LANG) {
+  if (!text || lang === "ar") return text;
+  const raw = String(text).trim();
+  const dict = lang === "es" ? I18N_ES : (lang === "tr" ? I18N_TR : I18N_EN);
+  if (dict[raw]) return dict[raw];
+  if (dict[text]) return dict[text];
+  if (I18N_EN[raw]) return I18N_EN[raw];
   if (I18N_EN[text]) return I18N_EN[text];
-  let match = text.match(/^مرحباً بـ (.+) في غرفة (.+)$/);
-  if (match) return `Welcome ${match[1]} to ${match[2]}`;
+
+  let match;
+  // Plan price pattern
+  match = text.match(/^(\d+)\s*🪙\s*\/\s*شهر$/);
+  if (match) {
+    if (lang === "es") return `${match[1]} 🪙 / mes`;
+    if (lang === "tr") return `${match[1]} 🪙 / ay`;
+    return `${match[1]} 🪙 / month`;
+  }
+  match = text.match(/^تم خصم (\d+) ذهب رسوم مكالمة مفتوحة المدة \(الرصيد: (\d+)\) 🪙$/);
+  if (match) {
+    if (lang === "es") return `Se descontaron ${match[1]} Oro por tarifa de llamada ilimitada (Saldo: ${match[2]}) 🪙`;
+    if (lang === "tr") return `Sınırsız arama ücreti için ${match[1]} Altın düşüldü (Bakiye: ${match[2]}) 🪙`;
+    return `Deducted ${match[1]} Gold for unlimited call fee (Balance: ${match[2]}) 🪙`;
+  }
+  match = text.match(/^تم إضافة (\d+) ذهب إلى رصيدك \(الرصيد: (\d+)\) 🪙$/);
+  if (match) {
+    if (lang === "es") return `Se agregaron ${match[1]} Oro a tu saldo (Saldo: ${match[2]}) 🪙`;
+    if (lang === "tr") return `Bakiyenize ${match[1]} Altın eklendi (Bakiye: ${match[2]}) 🪙`;
+    return `Added ${match[1]} Gold to your balance (Balance: ${match[2]}) 🪙`;
+  }
+  match = text.match(/^تم قبول طلب ترقية عضويتك إلى (.+)$/);
+  if (match) {
+    if (lang === "es") return `Tu solicitud de mejora a ${match[1]} fue aprobada`;
+    if (lang === "tr") return `${match[1]} üyeliğine yükseltme talebiniz onaylandı`;
+    return `Your membership upgrade request to ${match[1]} has been approved`;
+  }
+  match = text.match(/^تم إرسال طلب ترقية (.+) إلى (.+) للإدارة ✓/);
+  if (match) {
+    if (lang === "es") return `Solicitud de mejora de ${match[1]} a ${match[2]} enviada ✓`;
+    if (lang === "tr") return `${match[1]} için ${match[2]} yükseltme talebi gönderildi ✓`;
+    return `Upgrade request for ${match[1]} to ${match[2]} sent to admin ✓`;
+  }
+
+  match = text.match(/^مرحباً بـ (.+) في غرفة (.+)$/);
+  if (match) {
+    if (lang === "es") return `Bienvenido/a ${match[1]} a la sala ${match[2]}`;
+    if (lang === "tr") return `${match[1]}, ${match[2]} odasına hoş geldin`;
+    return `Welcome ${match[1]} to ${match[2]}`;
+  }
   match = text.match(/^(.+) خرج من الغرفة$/);
-  if (match) return `${match[1]} left the room`;
+  if (match) {
+    if (lang === "es") return `${match[1]} salió de la sala`;
+    if (lang === "tr") return `${match[1]} odadan ayrıldı`;
+    return `${match[1]} left the room`;
+  }
   match = text.match(/^تم كتم (.+) بواسطة (.+)$/);
-  if (match) return `${match[1]} was muted by ${match[2]}`;
+  if (match) {
+    if (lang === "es") return `${match[1]} fue silenciado/a por ${match[2]}`;
+    if (lang === "tr") return `${match[1]}, ${match[2]} tarafından susturuldu`;
+    return `${match[1]} was muted by ${match[2]}`;
+  }
   match = text.match(/^تم إلغاء كتم (.+) بواسطة (.+)$/);
-  if (match) return `${match[1]} was unmuted by ${match[2]}`;
+  if (match) {
+    if (lang === "es") return `${match[1]} fue reactivado/a por ${match[2]}`;
+    if (lang === "tr") return `${match[1]} susturması kaldırıldı (${match[2]})`;
+    return `${match[1]} was unmuted by ${match[2]}`;
+  }
   match = text.match(/^تم تجاهل (.+) ومنع الرسائل الخاصة بينكما$/);
-  if (match) return `${match[1]} was ignored and private messages were disabled`;
-  match = text.match(/^الاسم (.+) مسجل، تم دخولك كزائر باسم (.+)$/);
-  if (match) return `${match[1]} is registered; you joined as guest ${match[2]}`;
+  if (match) {
+    if (lang === "es") return `${match[1]} fue ignorado/a`;
+    if (lang === "tr") return `${match[1]} engellendi`;
+    return `${match[1]} was ignored`;
+  }
   match = text.match(/^(\d+) تفاعل • (\d+) تعليق$/);
-  if (match) return `${match[1]} reactions • ${match[2]} comments`;
+  if (match) {
+    if (lang === "es") return `${match[1]} reacciones • ${match[2]} comentarios`;
+    if (lang === "tr") return `${match[1]} tepki • ${match[2]} yorum`;
+    return `${match[1]} reactions • ${match[2]} comments`;
+  }
   match = text.match(/^إظهار المزيد \((\d+)\)$/);
-  if (match) return `Show more (${match[1]})`;
-  if (text.startsWith('الكمية: ')) return 'Quantity: ' + text.slice('الكمية: '.length);
-  if (text.startsWith('اليوم الساعة ')) return 'Today at ' + text.slice('اليوم الساعة '.length);
-  if (text.startsWith('أمس الساعة ')) return 'Yesterday at ' + text.slice('أمس الساعة '.length);
-  if (text.startsWith('آخر تحديث ')) return 'Last update ' + translateDynamicText(text.slice('آخر تحديث '.length));
-  if (text.startsWith('متصل الان ')) return 'Online now ' + text.slice('متصل الان '.length);
-  if (text.startsWith('تم كتم ')) return 'Muted ' + text.slice('تم كتم '.length);
-  if (text.startsWith('تم إلغاء كتم ')) return 'Unmuted ' + text.slice('تم إلغاء كتم '.length);
-  if (text.startsWith('تم طرد ')) return 'Kicked ' + text.slice('تم طرد '.length);
-  if (text.startsWith('تم حظر ')) return 'Banned ' + text.slice('تم حظر '.length);
-  if (text.startsWith('تم تجاهل ')) return 'Ignored ' + text.slice('تم تجاهل '.length);
-  if (text.startsWith('تم إلغاء تجاهل ')) return 'Unignored ' + text.slice('تم إلغاء تجاهل '.length);
-  if (text.startsWith('مرحبا بك ')) return 'Welcome ' + text.slice('مرحبا بك '.length);
-  if (text.startsWith('أهلا بك كزائر ')) return 'Welcome, guest ' + text.slice('أهلا بك كزائر '.length);
-  if (text.startsWith('رصيد: ')) return 'Balance: ' + text.slice('رصيد: '.length);
-  if (text.startsWith('تم تغيير الحالة إلى ')) return 'Status changed to ' + translateDynamicText(text.slice('تم تغيير الحالة إلى '.length));
-  if (text.startsWith('غرفة مستخدمين ')) return 'Users room: ' + text.slice('غرفة مستخدمين '.length);
-  if (text.startsWith('إبلاغ عن ')) return 'Report ' + text.slice('إبلاغ عن '.length);
-  if (text.endsWith(' حسب عنوان IP')) return translateDynamicText(text.slice(0, -' حسب عنوان IP'.length)) + ' by IP address';
-  if (text.endsWith(' من الغرفة')) return translateDynamicText(text.slice(0, -' من الغرفة'.length)) + ' from the room';
+  if (match) {
+    if (lang === "es") return `Mostrar más (${match[1]})`;
+    if (lang === "tr") return `Daha fazla göster (${match[1]})`;
+    return `Show more (${match[1]})`;
+  }
+  if (text.startsWith("الكمية: ")) return (lang === "es" ? "Cantidad: " : (lang === "tr" ? "Miktar: " : "Quantity: ")) + text.slice("الكمية: ".length);
+  if (text.startsWith("اليوم الساعة ")) return (lang === "es" ? "Hoy a las " : (lang === "tr" ? "Bugün saat " : "Today at ")) + text.slice("اليوم الساعة ".length);
+  if (text.startsWith("أمس الساعة ")) return (lang === "es" ? "Ayer a las " : (lang === "tr" ? "Dün saat " : "Yesterday at ")) + text.slice("أمس الساعة ".length);
+  if (text.startsWith("متصل الان ")) return (lang === "es" ? "En línea ahora " : (lang === "tr" ? "Şu an çevrimiçi " : "Online now ")) + text.slice("متصل الان ".length);
+  if (text.startsWith("تم كتم ")) return (lang === "es" ? "Silenciado: " : (lang === "tr" ? "Susturuldu: " : "Muted ")) + text.slice("تم كتم ".length);
+  if (text.startsWith("تم إلغاء كتم ")) return (lang === "es" ? "Desilenciado: " : (lang === "tr" ? "Susturması kaldırıldı: " : "Unmuted ")) + text.slice("تم إلغاء كتم ".length);
+  if (text.startsWith("تم طرد ")) return (lang === "es" ? "Expulsado: " : (lang === "tr" ? "Odadan atıldı: " : "Kicked ")) + text.slice("تم طرد ".length);
+  if (text.startsWith("تم حظر ")) return (lang === "es" ? "Bloqueado: " : (lang === "tr" ? "Yasaklandı: " : "Banned ")) + text.slice("تم حظر ".length);
+  if (text.startsWith("تم تجاهل ")) return (lang === "es" ? "Ignorado: " : (lang === "tr" ? "Engellendi: " : "Ignored ")) + text.slice("تم تجاهل ".length);
+  if (text.startsWith("مرحبا بك ")) return (lang === "es" ? "Bienvenido/a " : (lang === "tr" ? "Hoş geldiniz " : "Welcome ")) + text.slice("مرحبا بك ".length);
+  if (text.startsWith("رصيد: ")) return (lang === "es" ? "Saldo: " : (lang === "tr" ? "Bakiye: " : "Balance: ")) + text.slice("رصيد: ".length);
+  if (text.endsWith(" حسب عنوان IP")) return translateDynamicText(text.slice(0, -" حسب عنوان IP".length), lang) + (lang === "es" ? " por IP" : (lang === "tr" ? " (IP)" : " by IP"));
+  if (text.endsWith(" من الغرفة")) return translateDynamicText(text.slice(0, -" من الغرفة".length), lang) + (lang === "es" ? " de la sala" : (lang === "tr" ? " (odadan)" : " from the room"));
+
   return text;
 }
+
 function shouldSkipTranslation(node) {
   const el = node.nodeType === 1 ? node : node.parentElement;
-  return !el || !!el.closest('script,style,' + I18N_SKIP_SELECTOR);
+  return !el || !!el.closest("script,style," + I18N_SKIP_SELECTOR);
 }
+
 function translateTextNode(node) {
   if (!node || node.nodeType !== 3 || shouldSkipTranslation(node)) return;
   if (node.__arabicSource === undefined) node.__arabicSource = node.nodeValue;
   const source = node.__arabicSource;
   const match = source.match(/^(\s*)([\s\S]*?)(\s*)$/);
   const core = match ? match[2] : source;
-  const translated = APP_LANG === 'en' ? translateDynamicText(core) : core;
-  const next = (match ? match[1] : '') + translated + (match ? match[3] : '');
+  const translated = APP_LANG === "ar" ? core : translateDynamicText(core, APP_LANG);
+  const next = (match ? match[1] : "") + translated + (match ? match[3] : "");
   if (node.nodeValue !== next) node.nodeValue = next;
 }
+
 function translateAttributes(el) {
   if (!el || el.nodeType !== 1 || shouldSkipTranslation(el)) return;
   el.__arabicAttrs = el.__arabicAttrs || {};
-  for (const attr of ['placeholder', 'title', 'aria-label']) {
+  for (const attr of ["placeholder", "title", "aria-label"]) {
     if (!el.hasAttribute(attr)) continue;
     if (el.__arabicAttrs[attr] === undefined) el.__arabicAttrs[attr] = el.getAttribute(attr);
     const source = el.__arabicAttrs[attr];
-    el.setAttribute(attr, APP_LANG === 'en' ? translateDynamicText(source) : source);
+    el.setAttribute(attr, APP_LANG === "ar" ? source : translateDynamicText(source, APP_LANG));
   }
 }
+
 function applyLanguage(root = document.body) {
   if (!root) return;
   if (root.nodeType === 3) return translateTextNode(root);
   translateAttributes(root);
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
   let node;
-  while ((node = walker.nextNode())) node.nodeType === 3 ? translateTextNode(node) : translateAttributes(node);
+  while ((node = walker.nextNode())) {
+    if (node.nodeType === 3) translateTextNode(node);
+    else translateAttributes(node);
+  }
 }
+
 let LANGUAGE_OBSERVER = null;
 function setLanguage(language, save = true) {
-  APP_LANG = language === 'en' ? 'en' : 'ar';
-  if (save) localStorage.setItem('chat_language', APP_LANG);
+  APP_LANG = ["en", "es", "tr"].includes(language) ? language : "ar";
+  if (save) localStorage.setItem("chat_language", APP_LANG);
   document.documentElement.lang = APP_LANG;
-  document.documentElement.dir = APP_LANG === 'ar' ? 'rtl' : 'ltr';
-  document.title = APP_LANG === 'en' ? 'Arab Stars Chat' : 'شات نجوم العرب';
-  document.body.classList.toggle('lang-en', APP_LANG === 'en');
-  $$('.language-option').forEach(b => b.classList.toggle('active', b.dataset.language === APP_LANG));
-  const currentLanguage = $('#currentLanguageLabel');
-  if (currentLanguage) currentLanguage.textContent = APP_LANG === 'en' ? 'English' : 'العربية';
+  document.documentElement.dir = APP_LANG === "ar" ? "rtl" : "ltr";
+
+  document.body.classList.remove("lang-en", "lang-es", "lang-tr", "lang-ltr");
+  if (APP_LANG !== "ar") {
+    document.body.classList.add("lang-" + APP_LANG, "lang-ltr");
+  }
+
+  $$(".language-option").forEach(b => b.classList.toggle("active", b.dataset.language === APP_LANG));
+
+  const langNames = { ar: "العربية", en: "English", es: "Español", tr: "Türkçe" };
+  const currentLanguage = $("#currentLanguageLabel");
+  if (currentLanguage) currentLanguage.textContent = langNames[APP_LANG] || "العربية";
+
+  const defaultTitles = { ar: "الدردشة المباشرة", en: "Live Chat", es: "Chat en Vivo", tr: "Canlı Sohbet" };
+  const customTitle = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.title) || SETTINGS.seo_title || SETTINGS.site_name || defaultTitles[APP_LANG];
+  document.title = customTitle;
+
   applyLanguage(document.body);
+
+  if ($('#buyOv') && $('#buyOv').classList.contains('open')) renderGoldPackages();
+  if (CUR_ROOM) { renderRooms(); renderRoomsPanel(); }
+  if ($('#privOv') && $('#privOv').classList.contains('open')) renderPrivConvs(PRIV_TAB);
 }
+
 function initLanguage() {
   setLanguage(APP_LANG, false);
   if (!LANGUAGE_OBSERVER) {
     LANGUAGE_OBSERVER = new MutationObserver(mutations => {
-      for (const mutation of mutations) for (const node of mutation.addedNodes) applyLanguage(node);
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) applyLanguage(node);
+      }
     });
     LANGUAGE_OBSERVER.observe(document.body, { childList: true, subtree: true });
   }
@@ -330,7 +599,8 @@ function uploadFormWithProgress(url, formData, label) {
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function toast(msg, ok = true) {
   const t = $('#toast');
-  const text = String(msg || '');
+  const rawText = String(msg || '');
+  const text = APP_LANG === 'ar' ? rawText : translateDynamicText(rawText, APP_LANG);
   t.textContent = text;
   t.style.background = ok ? 'rgba(17,24,39,.94)' : 'rgba(220,38,38,.90)';
   t.classList.add('show');
@@ -354,12 +624,12 @@ $$('[data-close]').forEach(b => b.addEventListener('click', () => closeOv(b.data
 const GENDER_IMG = { boy: 'boy.png', girl: 'girl.png', secret: 'secret.png' };
 const MEM_NAMES = { vip: 'عضوية النخبة', premium: 'عضوية Premium', plus: 'عضوية Plus', mmez: 'عضوية مميز', none: 'عضو مسجل' };
 const MEM_COLORS = { vip: '#b8860b', premium: '#d63384', plus: '#16a34a', mmez: '#dc2626', none: '#c2185b' };
-const RANK_NAMES = { superadmin: 'سوبر ادمين', admin: 'ادمن', roomadmin: 'ادمن غرفة', user: '' };
-const RANK_COLORS = { superadmin: '#7c3aed', admin: '#ea580c', roomadmin: '#0e9fdd' };
+const RANK_NAMES = { supermaster: 'ملك الدردشة 👑', superadmin: 'سوبر ادمين', admin: 'ادمن', roomadmin: 'ادمن غرفة', user: '' };
+const RANK_COLORS = { supermaster: '#d97706', superadmin: '#7c3aed', admin: '#ea580c', roomadmin: '#0e9fdd' };
 function badgeOf(u) {
   if (!u) return 'guest.png';
   if (u.badge) return u.badge;
-  if (u.rank === 'superadmin') return 'superadmin.png';
+  if (u.rank === 'supermaster' || u.rank === 'superadmin') return 'superadmin.png';
   if (u.rank === 'admin') return 'admin.png';
   if (u.rank === 'roomadmin') return 'roomadmin.png';
   if (u.membership === 'mmez') return 'mmez.png';
@@ -401,9 +671,10 @@ function timeHm(ts) {
   return String(h).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + ap;
 }
 // لون ووزن الاسم حسب الرتبة/العضوية (سوبر ادمن > ادمن > ادمن غرفة > مميز > VIP > بلس > بريميوم > مسجل > زائر)
-const DEFAULT_BIO = 'اذا صعدت الي الجبل فانظر الي القمة ولا تنظر الي الصخور المتناثرة من حولك اصعد بخطوات ثابتة ولا تتقفز فتزل قدمك';
+const DEFAULT_BIO = '';
 function rankWeight(u) {
   if (!u) return 1;
+  if (u.rank === 'supermaster') return 10;
   if (u.rank === 'superadmin') return 9;
   if (u.rank === 'admin') return 8;
   if (u.rank === 'roomadmin') return 7;
@@ -416,7 +687,7 @@ function rankWeight(u) {
 }
 function userColor(u) {
   if (!u) return '#000000';
-  if (u.rank === 'superadmin' || u.rank === 'admin') return '#000000';   // أسود عريض
+  if (u.rank === 'supermaster' || u.rank === 'superadmin' || u.rank === 'admin') return '#000000';   // أسود عريض
   if (u.rank === 'roomadmin') return '#e03131';                          // أحمر
   if (u.membership === 'mmez') return '#e91e8c';                         // زهري
   if (u.membership === 'vip') return '#1479f2';                          // أزرق
@@ -426,7 +697,7 @@ function userColor(u) {
   return '#000000';                                                      // زائر أسود رقيق
 }
 function userWeight(u) {
-  if (u && (u.rank === 'superadmin' || u.rank === 'admin')) return 900;  // عريض
+  if (u && (u.rank === 'supermaster' || u.rank === 'superadmin' || u.rank === 'admin')) return 900;  // عريض
   if (u && !u.registered) return 400;                                    // الزائر خط رقيق
   return 800;
 }
@@ -444,12 +715,51 @@ function beep(freq = 660, dur = .12) {
   } catch (e) { }
 }
 
+const OBFUSCATE_KEY = 'NujumSecretSyncKey2026';
+function decodeObfuscatedPayload(b64) {
+  try {
+    const raw = atob(b64);
+    let out = '';
+    for (let i = 0; i < raw.length; i++) {
+      out += String.fromCharCode(raw.charCodeAt(i) ^ OBFUSCATE_KEY.charCodeAt(i % OBFUSCATE_KEY.length));
+    }
+    return JSON.parse(decodeURIComponent(out));
+  } catch (e) {
+    try {
+      const raw = atob(b64);
+      let out = '';
+      for (let i = 0; i < raw.length; i++) {
+        out += String.fromCharCode(raw.charCodeAt(i) ^ OBFUSCATE_KEY.charCodeAt(i % OBFUSCATE_KEY.length));
+      }
+      return JSON.parse(out);
+    } catch (e2) {
+      return {};
+    }
+  }
+}
+function parseClientSettings(res) {
+  if (res && res._m) {
+    return decodeObfuscatedPayload(res._m);
+  }
+  return res || {};
+}
+
 // =====================================================
 //  الإقلاع
 // =====================================================
 (async function init() {
   initLanguage();
-  try { SETTINGS = await api('/api/public-settings'); } catch (e) { }
+  try {
+    SETTINGS = parseClientSettings(await api('/api/public-settings'));
+    const userExplicitLang = localStorage.getItem("chat_language");
+    if (!userExplicitLang && SETTINGS.default_language && ["ar", "en", "es", "tr"].includes(SETTINGS.default_language)) {
+      setLanguage(SETTINGS.default_language, false);
+    }
+  } catch (e) { }
+  if (window.SEO_PAGE_CONFIG) {
+    if (window.SEO_PAGE_CONFIG.site_name) SETTINGS.site_name = window.SEO_PAGE_CONFIG.site_name;
+    if (window.SEO_PAGE_CONFIG.logo_image) SETTINGS.logo_url = window.SEO_PAGE_CONFIG.logo_image;
+  }
   applySettings();
   applyPrefsToSwitches();
   // لا نستعيد هوية من الكوكي. CHAT_TOKEN يبدأ فارغاً في كل تحميل للصفحة.
@@ -461,14 +771,44 @@ function beep(freq = 660, dur = .12) {
 })();
 
 function applySettings() {
-  document.body.className = 'skin-' + (SETTINGS.skin || 'default') + (APP_LANG === 'en' ? ' lang-en' : '');
-  $('#siteName').textContent = SETTINGS.site_name || 'نجوم العرب';
+  const isLtr = APP_LANG !== 'ar';
+  document.body.className = 'skin-' + (SETTINGS.skin || 'default') + (isLtr ? ' lang-' + APP_LANG + ' lang-ltr' : '');
+  const activeSiteName = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة';
+  $('#siteName').textContent = activeSiteName;
   if (SETTINGS.logo_url) {
     $('#siteLogo').innerHTML = `<img src="${esc(SETTINGS.logo_url)}" alt="">`;
   }
   if (SETTINGS.show_smiles !== '1') $('#btnEmoji').style.display = 'none';
   if (SETTINGS.show_voice !== '1') $('#btnMic').style.display = 'none';
   if (SETTINGS.show_image !== '1') $('#btnCam').style.display = 'none';
+
+  const defaultTitles = { ar: "الدردشة المباشرة", en: "Live Chat", es: "Chat en Vivo", tr: "Canlı Sohbet" };
+  const customTitle = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.title) || SETTINGS.seo_title || SETTINGS.site_name || defaultTitles[APP_LANG];
+  document.title = customTitle;
+
+  const fav = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.favicon) || SETTINGS.favicon_url;
+  if (fav) {
+    let link = document.querySelector('link[rel="icon"]') || document.querySelector('link[rel="shortcut icon"]');
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = fav;
+  }
+
+  const fs = Math.min(40, Math.max(10, +(SETTINGS.font_size || 14)));
+  document.documentElement.style.setProperty('--msg-font-size', fs + 'px');
+  $$('#msgArea .mtext, #msgArea .message-content').forEach(el => {
+    el.style.fontSize = fs + 'px';
+  });
+  const currentSiteName = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة العربية';
+  $$('.pm-water').forEach(el => {
+    el.textContent = currentSiteName;
+  });
+  const msgInp = $('#msgInput');
+  if (msgInp) msgInp.style.fontSize = fs + 'px';
+  $$('.ci-field').forEach(el => { el.style.fontSize = fs + 'px'; });
 }
 function applyPrefsToSwitches() {
   $$('#setList .switch').forEach(sw => {
@@ -596,7 +936,6 @@ function connectSocket() {
       PRIV_UNREAD++;
       updatePrivBadge();
       if (PREFS.pm_recv) beep(880, .15);
-      pushNotif('chat_bubble2_fill', `رسالة خاصة من ${p.from_name}`);
     }
     if ($('#privOv').classList.contains('open')) renderPrivConvs(PRIV_TAB);
   });
@@ -614,13 +953,75 @@ function connectSocket() {
     if (ME && typeof n.balance === 'number') { ME.balance = n.balance; $('#menuBal').textContent = n.balance; }
     pushNotif(n.icon, n.text, n); toast(n.text); beep(880, .15);
   });
+  // تحديث فوري لحساب وبيانات المستخدم عند التعديل من لوحة الإدارة
+  SOCKET.on('user_sync', ({ user, badge }) => {
+    if (!ME || !user || +ME.id !== +user.id) return;
+    const oldName = ME.username;
+    const oldBalance = +ME.balance || 0;
+    Object.assign(ME, user);
+    if (badge) MYBADGE = badge;
+
+    // تحديث رصيد الذهب في الهيدر والقائمة والمتجر فورياً
+    const mb = $('#menuBal');
+    if (mb) mb.textContent = ME.balance;
+
+    // تحديث الاسم في الهيدر والملف الشخصي والقائمة
+    const headName = $('#headName');
+    if (headName) headName.textContent = ME.username;
+    const menuName = $('#menuName');
+    if (menuName) menuName.textContent = ME.username;
+    const profName = $('#profName');
+    if (profName) profName.textContent = ME.username;
+
+    // تحديث الصورة في الهيدر والقائمة
+    const headAva = $('#headAva');
+    if (headAva) headAva.innerHTML = avatarHtml(ME.avatar);
+    const menuAva = $('#menuAva');
+    if (menuAva) menuAva.innerHTML = avatarHtml(ME.avatar) + `<span class="dot ${statusDot(ME.status)}"></span>`;
+
+    // إشعار المستخدم فوراً بالتعديل
+    if (oldBalance !== +ME.balance) {
+      const diff = (+ME.balance) - oldBalance;
+      if (diff > 0) {
+        toast(`تمت إضافة ${diff} ذهب إلى رصيدك بواسطة الإدارة (الرصيد: ${ME.balance}) 🪙`);
+        beep(880, .2);
+      } else if (diff < 0) {
+        toast(`تم تعديل رصيدك بواسطة الإدارة (الرصيد: ${ME.balance}) 🪙`);
+      }
+    }
+    if (oldName && oldName !== ME.username) {
+      toast(`تم تغيير اسم حسابك إلى: ${ME.username} بنجاح ✨`);
+    }
+
+    renderRooms();
+    if (CUR_ROOM) renderUsers();
+  });
   // مزامنة فورية: أي تعديل من لوحة الإدارة يطبَّق مباشرة دون تحديث الصفحة
   SOCKET.on('sync', async () => {
-    try { SETTINGS = await api('/api/public-settings'); applySettings(); } catch (e) { }
+    try {
+      SETTINGS = parseClientSettings(await api('/api/public-settings'));
+      if (SETTINGS.default_language && ["ar", "en", "es", "tr"].includes(SETTINGS.default_language)) {
+        setLanguage(SETTINGS.default_language, false);
+      }
+      applySettings();
+    } catch (e) { }
     try { GIFTS = await api('/api/gifts'); } catch (e) { }
     loadCustomEmojis();
     loadRooms();          // تحديث قائمة الغرف واللوحة المضغوطة داخل الغرفة
     if (typeof renderRoomsPanel === 'function') renderRoomsPanel();
+    if ($('#avaOv') && $('#avaOv').classList.contains('open')) renderAvaGrid(AVA_CAT);
+  });
+  SOCKET.on('avatars_changed', async () => {
+    if ($('#avaOv') && $('#avaOv').classList.contains('open')) {
+      await renderAvaGrid(AVA_CAT);
+    }
+  });
+  SOCKET.on('language_changed', data => {
+    if (data && data.default_language && ["ar", "en", "es", "tr"].includes(data.default_language)) {
+      SETTINGS.default_language = data.default_language;
+      setLanguage(data.default_language, false);
+      applySettings();
+    }
   });
   SOCKET.on('announce', announcement => {
     const a = normalizeAnnouncement(announcement);
@@ -715,6 +1116,43 @@ function connectSocket() {
       showConnectionOverlay('تعذر الاتصال، اضغط على زر اتصال للمحاولة مجددًا', false);
   });
   SOCKET.on('err', (t) => toast(t, false));
+
+  // ===== أحداث المكالمات الصوتية الخاصة (1-to-1 WebRTC) =====
+  SOCKET.on('call:incoming', ({ from }) => {
+    handleIncomingPrivateCall(from);
+  });
+  SOCKET.on('call:accepted', async ({ from }) => {
+    await handlePrivateCallAccepted(from);
+  });
+  SOCKET.on('call:rejected', ({ fromId, reason, error }) => {
+    handlePrivateCallRejected(fromId, reason, error);
+  });
+  SOCKET.on('call:cancelled', ({ fromId }) => {
+    handlePrivateCallCancelled(fromId);
+  });
+  SOCKET.on('call:ringing', () => {
+    const status = $('#pmCallStatus');
+    if (status && PM_CALL) status.textContent = 'يرن الآن...';
+  });
+  SOCKET.on('call:signal', async ({ fromId, data }) => {
+    await handlePrivateCallSignal(fromId, data);
+  });
+  SOCKET.on('call:gold_deducted', ({ balance, amount, minute }) => {
+    if (ME) {
+      ME.balance = balance;
+      const mb = $('#menuBal');
+      if (mb) mb.textContent = balance;
+      toast(`تم خصم ${amount} ذهب رسوم المكالمة (الرصيد: ${balance}) 🪙`);
+    }
+  });
+  SOCKET.on('call:trial_used', ({ free_call_used }) => {
+    if (ME) {
+      ME.free_call_used = free_call_used !== undefined ? free_call_used : 1;
+    }
+  });
+  SOCKET.on('call:ended', ({ fromId, reason, message }) => {
+    handlePrivateCallEnded(fromId, reason, message);
+  });
 
   // ---------- أحداث البث المباشر (متعدد المذيعين) ----------
   SOCKET.on('bcast:started', ({ roomId, mode, host, hosts, primaryHostId }) => {
@@ -1417,10 +1855,10 @@ function roomRowHtml(r) {
     ${roomImgHtml(r)}
     <div class="room-info">
       <div class="room-name">${esc(r.name)} ${r.locked ? '<i class="f7-icons" style="font-size:13px;color:#d946a6">lock_fill</i>' : ''}${r.status !== 'open' ? ' <span style="font-size:11px;color:#dc2626;font-weight:800">مغلقة 🔒</span>' : ''}</div>
-      <div class="room-desc">${esc(r.description || 'اهلا وسهلا بكم في شات نجوم العرب ★')}</div>
+      <div class="room-desc">${esc(r.description || `أهلاً وسهلاً بكم في ${SETTINGS.site_name || 'الدردشة'} ★`)}</div>
     </div>
     <div class="room-side">
-      <div class="room-count"><i class="f7-icons">person2_fill</i><b>${online}</b>/${r.max_users}</div>
+      <div class="room-count"><i class="f7-icons">person2_fill</i><b>${online}</b>/${r.max_users || 1000}</div>
       <i class="f7-icons room-chev">chevron_right</i>
       <div class="room-feats"><i class="f7-icons">photo_fill</i><i class="f7-icons">videocam_fill</i></div>
     </div>
@@ -1437,14 +1875,15 @@ function roomMiniHtml(r) {
       <div class="rm-desc">${esc(r.description || ('غرفة مستخدمين ' + r.owner_name))}</div>
     </div>
     <div class="rm-side">
-      ${isCur ? '<span class="rm-here">أنت هنا</span>' : `<span class="rm-count"><i class="f7-icons">person2_fill</i>${online}/${r.max_users}</span>`}
+      ${isCur ? '<span class="rm-here">أنت هنا</span>' : `<span class="rm-count"><i class="f7-icons">person2_fill</i>${online}/${r.max_users || 1000}</span>`}
       <i class="f7-icons rm-chev">chevron_right</i>
     </div>
   </div>`;
 }
 function renderRoomsPanel() {
   const q2 = ($('#roomSearch2').value || '').trim();
-  const tab2 = ($('.r-tab2.active') || {}).dataset ? $('.r-tab2.active').dataset.tab : 'voice';
+  const activeTabEl = $('.r-tab2.active');
+  const tab2 = (activeTabEl && activeTabEl.dataset) ? activeTabEl.dataset.tab : 'default';
   const list = ROOMS.filter(r => (tab2 === 'voice' ? r.type === 'voice' : r.type !== 'voice') && (!q2 || r.name.includes(q2)));   // الصوتية: صوتية فقط / الافتراضية: بدون الصوتية
   $('#roomsList2').innerHTML = list.length ? list.map(roomMiniHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
   $$('#roomsList2 .room-mini').forEach(row => row.onclick = () => {
@@ -1480,6 +1919,9 @@ function enterRoom(id, pwd, hiddenChoice) {
   CUR_ROOM = r;
   $('#chatRoomName').textContent = r.name;
   $('#roomNotice').textContent = 'لا يوجد احد في البث المباشر حي الان';
+  const currentSiteName = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة العربية';
+  const bgWater = $('#chatBgWatermark .pm-water');
+  if (bgWater) bgWater.textContent = currentSiteName;
   $('#msgArea').innerHTML = '';
   showScreen('chat');
   setRoomsPanel(false);
@@ -1602,11 +2044,10 @@ function renderMsg(m) {
     const u = m.user || parseExtra(m);
     const badge = u.badge || badgeOf(u);
     const color = userColor(u);
-    const weight = userWeight(u);
     const uname = m.username || u.username || '';
     const rp = m.reply || u.reply || null;   // اقتباس «الرد على الرسالة»
     const tcol = m.color || u.color || null;  // لون خط مخصص من قائمة الألوان
-    const tsize = Math.min(40, Math.max(12, +(m.size || u.size || 0))) || null;   // حجم خط مخصص (الروبوت)
+    const currentFontSize = Math.min(40, Math.max(10, +(SETTINGS.font_size || 14)));
     const isCustomEmoji = typeof m.text === 'string' && m.text.startsWith('em::');
     const messageMedia = m.media || u.media || null;
     const hiddenAdmin = !!(m.hidden_admin || u.hidden_admin);
@@ -1614,28 +2055,43 @@ function renderMsg(m) {
     el.innerHTML = `
       <div class="mava">${avatarHtml(u.avatar)}</div>
       <div class="mbody">
+        ${rp ? `
+        <div class="mrply" dir="rtl">
+          <span class="mrply-bar"></span>
+          <div class="mrply-content">
+            <span class="mrply-name">${esc(rp.name)}</span>
+            <span class="mrply-text">${esc(rp.text || '')}</span>
+          </div>
+        </div>` : ''}
         <div class="mline1">
-          <span class="mname" data-username="${esc(uname)}" style="color:${color};font-weight:${weight}">${esc(uname)}${u.verified ? ' <i class="f7-icons vcheck">checkmark_seal_fill</i>' : ''}</span>
+          <span class="mname" data-username="${esc(uname)}" style="color:#000000;font-weight:400">${esc(uname)}${u.verified ? ' <i class="f7-icons vcheck">checkmark_seal_fill</i>' : ''}</span>
           ${(SETTINGS.show_time === '1' && PREFS.show_time) ? `<span class="mtime">${t}</span>` : ''}
         </div>
-        ${rp ? `<span class="mrply" dir="rtl"><i class="f7-icons">arrowshape_turn_up_left_fill</i>${esc(rp.name)}: ${esc(rp.text)}</span>` : ''}
         <div class="mline2">
           ${hiddenAdmin
             ? '<img class="hidden-admin-badge" src="/img/mgfi.png" alt="دخول مخفي">'
             : ((badge && badge !== 'register.png' && badge !== 'guest.png') ? `<img class="mmark" src="/badges/${badge}" alt="">` : '')}
           ${isCustomEmoji
             ? `<img class="mcustom-emoji" src="${esc(m.text.slice(4))}" alt="emoji">`
-            : `<span class="mtext message-content" style="color:${tcol || color};font-size:${tsize || SETTINGS.font_size || 14}px">${m.text ? messageTextWithCustomEmojis(m.text) : ''}${messageMedia && messageMedia.type === 'image' ? `<button class="chat-public-image" type="button" data-src="${esc(messageMedia.path)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>` : ''}${messageMedia && messageMedia.type === 'audio' ? `<span class="chat-audio-player" data-duration="${+messageMedia.duration || 0}"><button class="chat-audio-play" type="button" aria-label="تشغيل"><i class="f7-icons">play_fill</i></button><span class="chat-audio-time chat-audio-current">00:00</span><input class="chat-audio-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="موضع المقطع"><span class="chat-audio-time chat-audio-duration">00:00</span><audio class="chat-audio-element" src="${esc(messageMedia.path)}" preload="metadata"></audio></span>` : ''}</span>`}
+            : `<span class="mtext message-content" style="color:${tcol || color};font-size:${currentFontSize}px">${m.text ? messageTextWithCustomEmojis(m.text) : ''}${messageMedia && messageMedia.type === 'image' ? `<button class="chat-public-image" type="button" data-src="${esc(messageMedia.path)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>` : ''}${messageMedia && messageMedia.type === 'audio' ? `<span class="chat-audio-player" data-duration="${+messageMedia.duration || 0}"><button class="chat-audio-play" type="button" aria-label="تشغيل"><i class="f7-icons">play_fill</i></button><span class="chat-audio-time chat-audio-current">00:00</span><input class="chat-audio-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="موضع المقطع"><span class="chat-audio-time chat-audio-duration">00:00</span><audio class="chat-audio-element" src="${esc(messageMedia.path)}" preload="metadata"></audio></span>` : ''}</span>`}
         </div>
       </div>`;
     const publicImage = el.querySelector('.chat-public-image');
     if (publicImage) publicImage.onclick = () => openChatImage(publicImage.dataset.src, uname);
     bindChatAudioPlayer(el.querySelector('.chat-audio-player'));
-    // الإدارة المخفية لا يمكن فتح بطاقتها أو إرسال شيء لها بالنقر على رسالتها.
-    if (!hiddenAdmin) el.querySelector('.mava').onclick = () => {
-      const uid = m.user_id || (m.user && m.user.id);
-      if (uid) openUserSheet(+uid, { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted });
-    };
+    // النقر على الصورة أو على الاسم يفتح قائمة خيارات المستخدم والرد على الرسالة
+    if (!hiddenAdmin) {
+      const msgUserData = { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted };
+      const openSenderSheet = (e) => {
+        if (e) e.stopPropagation();
+        const uid = m.user_id || (m.user && m.user.id);
+        if (uid) openUserSheet(+uid, msgUserData);
+      };
+      const avaEl = el.querySelector('.mava');
+      const nameEl = el.querySelector('.mname');
+      if (avaEl) avaEl.onclick = openSenderSheet;
+      if (nameEl) nameEl.onclick = openSenderSheet;
+    }
   } else if (m.type === 'bot') {   // رسالة النظام الآلية مع لون وحجم لوحة الإدارة
     const botSize = Math.min(40, Math.max(12, +m.size || 16));
     const botColor = /^#[0-9a-fA-F]{6}$/.test(String(m.color || '')) ? m.color : '#660033';
@@ -1672,6 +2128,41 @@ function renderMsg(m) {
       </div>
       <div class="font_msg system-event-body">
         <div class="u-msg system-event-message" style="color:${m.muted === 0 ? '#16a34a' : '#ff0000'}">${esc(m.text)}</div>
+      </div>`;
+  } else if (m.type === 'upgrade') {
+    const ex = parseExtra(m);
+    const plan = ex.plan || 'vip';
+    const planUpper = plan.toUpperCase();
+    const months = +ex.months || 1;
+    const fromName = ex.from || m.username || '';
+    const toName = ex.to || '';
+    const monthsText = ex.monthsText || (months === 1 ? 'شهر واحد' : (months === 2 ? 'شهرين' : (months <= 10 ? `${months} أشهر` : `${months} شهراً`)));
+    const badgeImg = `/badges/${plan}.png`;
+
+    el.className = 'system-event upgrade-system';
+    el.innerHTML = `
+      <div class="system-event-head skin_f2">
+        <i class="icon f7-icons skin_color system-event-icon">speaker_3_fill</i>
+        <span>نظام الترقية</span>
+      </div>
+      <div class="font_msg system-event-body">
+        <div class="u-msg system-event-message">
+          <b>${esc(fromName)}</b> قام بترقية <b>${esc(toName)}</b> إلى <b>${planUpper}</b> لمدة ${monthsText}
+        </div>
+        <div class="up-msg-card" dir="rtl">
+          <div class="up-msg-badge-col">
+            <div class="up-msg-white-box">
+              <img src="${badgeImg}" alt="${planUpper}" class="up-msg-badge-img" onerror="this.src='/badges/vip.png'">
+            </div>
+            <div class="up-msg-plan-txt">${planUpper}</div>
+          </div>
+          <div class="up-msg-content">
+            <div class="up-msg-sender"><i class="f7-icons up-club-icon">suit_club_fill</i> ${esc(fromName)}</div>
+            <div class="up-msg-action">أرسل هذه الترقية إلى</div>
+            <div class="up-msg-target">${esc(toName)}</div>
+            <div class="up-msg-dur">لمدة ${monthsText}</div>
+          </div>
+        </div>
       </div>`;
   } else if (m.type === 'gift') {
     const ex = parseExtra(m);
@@ -1712,47 +2203,82 @@ function triggerGiftCelebration(gift) {
   if (!layer) return;
   clearTimeout(GIFT_EFFECT_TIMER);
   layer.innerHTML = '<span class="gift-celebration-glow"></span>';
-  const colors = ['#ff315f', '#ffcf33', '#16c784', '#1685f5', '#8b5cf6', '#ff7a18', '#ffffff'];
-  for (let i = 0; i < 110; i++) {
-    const piece = document.createElement('i');
-    piece.className = 'gift-confetti';
-    piece.style.setProperty('--left', Math.random() * 100 + '%');
-    piece.style.setProperty('--w', (5 + Math.random() * 7) + 'px');
-    piece.style.setProperty('--h', (8 + Math.random() * 11) + 'px');
-    piece.style.setProperty('--color', colors[i % colors.length]);
-    piece.style.setProperty('--rotate', Math.floor(Math.random() * 360) + 'deg');
-    piece.style.setProperty('--drift', (-90 + Math.random() * 180) + 'px');
-    piece.style.setProperty('--duration', (2.7 + Math.random() * 1.5) + 's');
-    piece.style.setProperty('--delay', (Math.random() * .65) + 's');
-    layer.appendChild(piece);
-  }
-  for (let burst = 0; burst < 5; burst++) {
+  const colors = ['#ff0055', '#ffcc00', '#00e5ff', '#ff00cc', '#00ff66', '#ff7700', '#ffd700', '#a855f7', '#ec4899', '#3b82f6'];
+
+  // 10 distinct, large staggered fireworks across the entire screen (one after another)
+  const fireworkPositions = [
+    { x: '18%', y: '18%', delay: 0 },
+    { x: '82%', y: '22%', delay: 0.45 },
+    { x: '50%', y: '15%', delay: 0.9 },
+    { x: '22%', y: '48%', delay: 1.35 },
+    { x: '78%', y: '46%', delay: 1.8 },
+    { x: '20%', y: '75%', delay: 2.25 },
+    { x: '80%', y: '78%', delay: 2.7 },
+    { x: '50%', y: '82%', delay: 3.15 },
+    { x: '34%', y: '30%', delay: 3.6 },
+    { x: '66%', y: '32%', delay: 4.05 }
+  ];
+
+  fireworkPositions.forEach((pos, idx) => {
     const firework = document.createElement('span');
     firework.className = 'gift-firework';
-    firework.style.setProperty('--x', (12 + Math.random() * 76) + '%');
-    firework.style.setProperty('--y', (14 + Math.random() * 52) + '%');
-    for (let spark = 0; spark < 14; spark++) {
+    firework.style.setProperty('--x', pos.x);
+    firework.style.setProperty('--y', pos.y);
+
+    // Shockwave ring
+    const ring = document.createElement('span');
+    ring.className = 'gift-firework-ring';
+    ring.style.setProperty('--color', colors[idx % colors.length]);
+    ring.style.setProperty('--delay', pos.delay + 's');
+    firework.appendChild(ring);
+
+    // 24 large glowing radial sparks
+    for (let spark = 0; spark < 24; spark++) {
       const particle = document.createElement('i');
-      const angle = Math.PI * 2 * spark / 14;
-      const distance = 42 + Math.random() * 42;
+      const angle = (Math.PI * 2 * spark) / 24;
+      const distance = 80 + Math.random() * 70; // Large burst radius
       particle.className = 'gift-firework-spark';
       particle.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
       particle.style.setProperty('--ty', Math.sin(angle) * distance + 'px');
-      particle.style.setProperty('--color', colors[(burst + spark) % colors.length]);
-      particle.style.setProperty('--delay', (burst * .22) + 's');
+      particle.style.setProperty('--color', colors[(idx + spark) % colors.length]);
+      particle.style.setProperty('--delay', (pos.delay + Math.random() * 0.08) + 's');
       firework.appendChild(particle);
     }
     layer.appendChild(firework);
-  }
-  GIFT_EFFECT_TIMER = setTimeout(() => { layer.innerHTML = ''; }, 4600);
+  });
+
+  // Center stage popup (stays for 5 seconds)
+  const vis = details.img || details.emoji || '🎁';
+  const gMediaHtml = vis.startsWith('/') ? `<img src="${esc(vis)}" alt="">` : `<span>${esc(vis)}</span>`;
+  const fromName = details.from || 'عضو';
+  const toName = details.to || 'الجميع';
+  const giftName = details.name || 'هدية';
+  const qty = details.qty || 1;
+
+  const centerPopup = document.createElement('div');
+  centerPopup.className = 'gift-center-popup';
+  centerPopup.innerHTML = `
+    <div class="gift-center-glow-ring"></div>
+    <div class="gift-center-media">${gMediaHtml}</div>
+    <div class="gift-center-title">🎁 ${esc(translateDynamicText(giftName, APP_LANG))}</div>
+    <div class="gift-center-subtitle">
+      <span>${APP_LANG === 'es' ? 'De' : (APP_LANG === 'tr' ? 'Gönderen' : (APP_LANG === 'en' ? 'From' : 'من'))} <b>${esc(fromName)}</b> ${APP_LANG === 'es' ? 'para' : (APP_LANG === 'tr' ? 'için' : (APP_LANG === 'en' ? 'to' : 'إلى'))} <b>${esc(toName)}</b></span>
+    </div>
+    ${qty > 1 ? `<div class="gift-center-qty">${APP_LANG === 'es' ? 'Cantidad' : (APP_LANG === 'tr' ? 'Miktar' : (APP_LANG === 'en' ? 'Quantity' : 'الكمية'))}: ${qty} 🎁</div>` : ''}
+  `;
+  layer.appendChild(centerPopup);
+
   if (details.audio && String(details.audio).startsWith('/')) {
     try {
       if (GIFT_AUDIO_PLAYER) { GIFT_AUDIO_PLAYER.pause(); GIFT_AUDIO_PLAYER.currentTime = 0; }
       GIFT_AUDIO_PLAYER = new Audio(details.audio);
-      GIFT_AUDIO_PLAYER.volume = .9;
+      GIFT_AUDIO_PLAYER.volume = .95;
       GIFT_AUDIO_PLAYER.play().catch(() => { });
     } catch (e) { }
   }
+
+  // Exactly 5 seconds duration
+  GIFT_EFFECT_TIMER = setTimeout(() => { layer.innerHTML = ''; }, 5000);
 }
 
 // =====================================================
@@ -1798,6 +2324,13 @@ function syncUserActionSheet() {
   $('#usIgnoreLabel').textContent = IGNORED_USERS.has(+CUR_TARGET.id) ? 'إلغاء التجاهل' : 'تجاهل';
   $('#usMuteLabel').textContent = CUR_TARGET.muted ? 'إلغاء الكتم' : 'كتم المستخدم';
   $('#usMuteIcon').textContent = CUR_TARGET.muted ? 'mic_fill' : 'mic_slash_fill';
+
+  // زر الرد على الرسالة يظهر فقط عند النقر على رسالة في العام ويختفي من قائمة المستخدمين
+  const replyBtn = $('#usReply');
+  if (replyBtn) {
+    replyBtn.style.display = (US_MSG && US_MSG.text !== undefined && US_MSG.text !== null) ? 'flex' : 'none';
+  }
+
   // أدوات الإشراف تظهر للسوبر/الادمن/ادمن الغرفة، ويعيد الخادم التحقق من النطاق والرتبة.
   $$('.user-action-sheet .us-moderation').forEach(b => { b.style.display = canModerateRank() ? 'flex' : 'none'; });
 }
@@ -1834,6 +2367,7 @@ function openChatImage(src, senderName) {
 $('#usAvatar').onclick = event => {
   event.preventDefault();
   event.stopPropagation();
+  closeOv('userSheet');
   openAvatarViewer(CUR_TARGET);
 };
 // الرد على الرسالة: شريط وردي فوق حقل الكتابة (الاسم + اقتباس + زر إلغاء)
@@ -1847,7 +2381,14 @@ $('#rbClose').onclick = () => setReply(null);
 $('#usReply').onclick = () => { closeOv('userSheet'); if (US_MSG) setReply(US_MSG); };
 $('#usPrivate').onclick = () => { closeOv('userSheet'); openPrivateWith(CUR_TARGET); };
 $('#usGift').onclick = () => { closeOv('userSheet'); if (!ME.registered) return openOv('needRegOv'); openGifts(CUR_TARGET); };
-$('#usUpgrade').onclick = () => { closeOv('userSheet'); if (!ME.registered) return openOv('needRegOv'); openUpgrade(CUR_TARGET); };
+$('#usUpgrade').onclick = () => {
+  closeOv('userSheet');
+  if (!ME.registered) return openOv('needRegOv');
+  if (CUR_TARGET && !CUR_TARGET.registered) {
+    return toast('لا يمكن ترقية الزوار، يجب أن يكون المستخدم مسجلاً ⚠️', false);
+  }
+  openUpgrade(CUR_TARGET);
+};
 $('#usIgnore').onclick = async () => {
   if (!CUR_TARGET) return;
   const target = CUR_TARGET;
@@ -1855,6 +2396,7 @@ $('#usIgnore').onclick = async () => {
   const nextIgnored = !IGNORED_USERS.has(uid);
   const button = $('#usIgnore');
   button.disabled = true;
+  closeOv('userSheet');
   try {
     await api('/api/ignore/' + uid, 'POST', { ignored: nextIgnored });
     if (nextIgnored) {
@@ -1864,7 +2406,6 @@ $('#usIgnore').onclick = async () => {
       IGNORED_USERS.delete(uid);
       toast('تم إلغاء تجاهل ' + target.username);
     }
-    syncUserActionSheet();
     renderUsers();
   } catch (e) { toast(e.error || 'تعذر تحديث قائمة التجاهل', false); }
   finally { button.disabled = false; }
@@ -1875,12 +2416,12 @@ $('#usMute').onclick = async () => {
   const target = CUR_TARGET;
   const nextMuted = !target.muted;
   button.disabled = true;
+  closeOv('userSheet');
   try {
     const d = await api(`/api/admin/users/${target.id}/mute`, 'POST', { muted: nextMuted, room_id: CUR_ROOM ? CUR_ROOM.id : 0 });
     target.muted = d.muted ? 1 : 0;
     const roomUser = ROOM_USERS.find(u => u.id === target.id);
     if (roomUser) roomUser.muted = target.muted;
-    syncUserActionSheet();
     toast((target.muted ? `تم كتم ${target.username}` : `تم إلغاء كتم ${target.username}`) + (d.by_ip ? ' حسب عنوان IP' : ''));
   } catch (e) { toast(e.error || 'تعذر تغيير حالة الكتم', false); }
   finally { button.disabled = false; }
@@ -1890,9 +2431,9 @@ $('#usKick').onclick = async () => {
   const target = CUR_TARGET;
   const button = $('#usKick');
   button.disabled = true;
+  closeOv('userSheet');
   try {
     const d = await api(`/api/admin/users/${target.id}/kick`, 'POST', { room_id: CUR_ROOM.id });
-    closeOv('userSheet');
     toast('تم طرد ' + target.username + ' من الغرفة' + (d.by_ip ? ' حسب عنوان IP' : ''));
   } catch (e) { toast(e.error || 'تعذر طرد المستخدم', false); }
   finally { button.disabled = false; }
@@ -1954,11 +2495,24 @@ $('#gPlus').onclick = () => { G_QTY = Math.min(99, G_QTY + 1); $('#gQty').textCo
 $('#sendGiftBtn').onclick = async () => {
   if (!SEL_GIFT) return toast('اختر هدية أولا', false);
   try {
+    const giftToSend = { ...SEL_GIFT };
+    const targetToSend = { ...CUR_TARGET };
+    const qtyToSend = G_QTY;
     const d = await api('/api/gifts/send', 'POST', { to_id: CUR_TARGET.id, gift_id: SEL_GIFT.id, qty: G_QTY, room_id: CUR_ROOM ? CUR_ROOM.id : 0 });
     ME.balance = d.balance;
     $('#gBal').textContent = d.balance;
-    toast(`تم إرسال ${SEL_GIFT.name} بنجاح 🎉`);
+    toast(`تم إرسال ${giftToSend.name} بنجاح 🎉`);
     closeOv('giftOv');
+    // Trigger celebratory 10-fireworks & center stage popup
+    triggerGiftCelebration({
+      img: giftToSend.img,
+      emoji: giftToSend.emoji,
+      name: giftToSend.name,
+      audio: giftToSend.audio,
+      from: ME.username,
+      to: targetToSend.username,
+      qty: qtyToSend
+    });
   } catch (e) { toast(e.error || 'تعذر الإرسال', false); }
 };
 
@@ -1972,6 +2526,10 @@ const PLANS = [
 ];
 function planCost(k) { return { vip: SETTINGS.vip_cost, premium: SETTINGS.premium_cost, plus: SETTINGS.plus_cost }[k] || 0; }
 function openUpgrade(target) {
+  if (!target) return;
+  if (!target.registered) {
+    return toast('لا يمكن ترقية الزوار، يجب أن يكون المستخدم مسجلاً ⚠️', false);
+  }
   UP_TARGET = target;
   UP_MONTHS = 1;
   $('#upQty').textContent = 1;
@@ -1981,12 +2539,13 @@ function openUpgrade(target) {
   openOv('upOv');
 }
 function renderUpCards() {
+  const monthText = APP_LANG === 'es' ? 'mes' : (APP_LANG === 'tr' ? 'ay' : (APP_LANG === 'en' ? 'month' : 'شهر'));
   $('#upCards').innerHTML = PLANS.map(p => `
     <div class="up-card ${UP_PLAN === p.key ? 'sel' : ''}" data-plan="${p.key}">
       <img src="${p.img}" alt="">
       <div class="up-name">${p.name}</div>
-      <div class="up-price">${planCost(p.key)} 🪙 / شهر</div>
-      <div class="up-feats">${p.feats}</div>
+      <div class="up-price">${planCost(p.key)} 🪙 / ${monthText}</div>
+      <div class="up-feats">${translateDynamicText(p.feats, APP_LANG)}</div>
     </div>`).join('');
   $$('.up-card').forEach(c => c.onclick = () => { UP_PLAN = c.dataset.plan; renderUpCards(); });
   $('#upNeed').textContent = planCost(UP_PLAN) * UP_MONTHS;
@@ -1994,11 +2553,28 @@ function renderUpCards() {
 $('#upMinus').onclick = () => { UP_MONTHS = Math.max(1, UP_MONTHS - 1); $('#upQty').textContent = UP_MONTHS; renderUpCards(); };
 $('#upPlus').onclick = () => { UP_MONTHS = Math.min(24, UP_MONTHS + 1); $('#upQty').textContent = UP_MONTHS; renderUpCards(); };
 $('#doUpgradeBtn').onclick = async () => {
+  if (!UP_TARGET) return;
+  if (!UP_TARGET.registered) return toast('لا يمكن ترقية الزوار، يجب أن يكون المستخدم مسجلاً ⚠️', false);
   try {
-    const d = await api('/api/upgrade', 'POST', { target_id: UP_TARGET.id, plan: UP_PLAN, months: UP_MONTHS });
-    toast(`تم إرسال طلب ترقية ${UP_TARGET.username} إلى ${UP_PLAN.toUpperCase()} للإدارة ✓ (التكلفة المقترحة ${d.suggested_gold} ذهب)`);
+    const d = await api('/api/upgrade', 'POST', {
+      target_id: UP_TARGET.id,
+      plan: UP_PLAN,
+      months: UP_MONTHS,
+      room_id: CUR_ROOM ? CUR_ROOM.id : 0
+    });
+    if (d.balance !== undefined) {
+      ME.balance = d.balance;
+      $('#menuBal').textContent = d.balance;
+    }
+    toast(`تمت ترقية ${UP_TARGET.username} إلى ${UP_PLAN.toUpperCase()} بنجاح 👑`);
     closeOv('upOv');
-  } catch (e) { toast(e.error || 'تعذر إرسال طلب الترقية', false); }
+  } catch (e) {
+    if (e.need) {
+      toast(`رصيد الذهب غير كافٍ (المطلوب: ${e.need} ذهب، رصيدك: ${e.balance || 0}) ⚠️`, false);
+    } else {
+      toast(e.error || 'تعذر إتمام الترقية', false);
+    }
+  }
 };
 
 // =====================================================
@@ -2013,7 +2589,7 @@ async function openProfile(uid) {
     const d = await api('/api/user/' + uid);
     const u = d.user;
     const isMe = ME && uid === ME.id;
-    $('#profTitleTab').textContent = isMe ? 'حسابي' : u.username;
+    $('#profTitleTab').textContent = isMe ? (APP_LANG === 'es' ? 'Mi cuenta' : (APP_LANG === 'tr' ? 'Hesabım' : (APP_LANG === 'en' ? 'My account' : 'حسابي'))) : u.username;
     $('#profName').textContent = u.username;
     $('#profAva').innerHTML = avatarHtml(u.avatar) + `<span class="dot ${statusDot(u.status)}"></span>`;
     let memText, memColor;
@@ -2024,9 +2600,13 @@ async function openProfile(uid) {
     if (isMe) {
       $('.profpage').classList.remove('visitor');
       document.querySelector('.prof-hero').style.display = '';
+      const adminBtn = $('#pfAdminBtn');
+      if (adminBtn) adminBtn.style.display = isAdmRank() ? 'inline-flex' : 'none';
       renderProfileForm(u); $('#profGifts').style.display = 'none'; $('#profGiftsSub').style.display = 'none';
     } else {
       document.querySelector('.prof-hero').style.display = 'none';   // ملف الزائر بواجهة مختلفة
+      const adminBtn = $('#pfAdminBtn');
+      if (adminBtn) adminBtn.style.display = 'none';
       $('#profGifts').style.display = 'none'; $('#profGiftsSub').style.display = 'none';
       $('#profTitleTab').innerHTML = `${esc(u.username)} ${u.verified ? '<i class="f7-icons" style="font-size:14px">sparkles</i>' : ''}`;
       $('.profpage').classList.add('visitor');
@@ -2042,12 +2622,12 @@ function renderVisitorProfile(u, d) {
   const stColor = { online: '#20d33a', busy: '#ef4444', away: '#f59e0b', offline: '#b9c0d2' };
   const memTxt = u.rank !== 'user' ? RANK_NAMES[u.rank] : (u.membership !== 'none' ? MEM_NAMES[u.membership] : (u.registered ? 'عضو مسجل' : 'زائر'));
   const gifts = (d.gifts || []).slice().sort((a, b) => b.created_at - a.created_at);
-  const giftCard = g => {
+  const giftCard = (g, idx) => {
     const dt = new Date(g.created_at * 1000);
     const giftVisual = (g.gift_img || '').startsWith('/')
       ? `<img src="${esc(g.gift_img)}" alt="${esc(g.gift_name || 'هدية')}">`
       : esc(g.gift_img || '🎁');
-    return `<div class="vg-card">
+    return `<div class="vg-card" data-gift-index="${idx}" style="cursor:pointer">
       <div class="vg-top">
         <span class="vg-e">${giftVisual}</span>
         <div class="vg-txt">
@@ -2082,7 +2662,7 @@ function renderVisitorProfile(u, d) {
     <button class="va" id="vaChat"><span class="va-ic"><i class="f7-icons">chat_bubble_fill</i></span><span class="va-label">دردشة</span></button>
   </div>
   <div class="vp-info" id="vpInfo">
-    <p class="vp-bio">${esc(u.bio || DEFAULT_BIO)}</p>
+    ${u.bio ? `<p class="vp-bio">${esc(u.bio)}</p>` : ''}
     <div class="vp-irow"><span class="vp-k">العمر</span><span class="vp-v">${u.age || 0}</span></div>
     <div class="vp-irow"><span class="vp-k">النوع</span><span class="vp-v">${GENDER_NAMES[u.gender] || 'مجهول'}</span></div>
   </div>
@@ -2099,6 +2679,12 @@ function renderVisitorProfile(u, d) {
       : '<div class="vp-gempty">لا توجد هدايا بعد</div>';
     const more = $('#vpMore');
     if (more) more.style.display = shownGifts < gifts.length ? '' : 'none';
+    $$('#vpGiftGrid .vg-card').forEach(card => {
+      card.onclick = () => {
+        const g = gifts[+card.dataset.giftIndex];
+        if (g) openGiftDetails(g, u.username);
+      };
+    });
   };
   renderGiftCards();
 
@@ -2177,7 +2763,7 @@ function renderProfileForm(u) {
     </div>
     <div class="pf-row" style="align-items:flex-start">
       <label style="margin-top:12px">النبذة</label>
-      <textarea class="pf-input pf-bio" id="pfBio" rows="3" placeholder="اكتب جملة تعبر عنك...">${esc(u.bio || DEFAULT_BIO)}</textarea>
+      <textarea class="pf-input pf-bio" id="pfBio" rows="3" placeholder="اكتب حالتك أو نبذة تعبر عنك...">${esc(u.bio || '')}</textarea>
     </div>
   </div>
   <div class="pf-btns">
@@ -2199,15 +2785,46 @@ function renderProfileForm(u) {
   };
 }
 function renderProfGifts(gifts) {
-  $('#profGifts').innerHTML = gifts && gifts.length ? `<div class="prof-gifts">${gifts.map(g => `
-    <div class="pg-card">
-      <div class="d">${new Date(g.created_at * 1000).toLocaleDateString('ar-EG')}</div>
+  const gList = gifts || [];
+  $('#profGifts').innerHTML = gList.length ? `<div class="prof-gifts">${gList.map((g, index) => `
+    <div class="pg-card" data-gift-index="${index}" style="cursor:pointer">
+      <div class="d">${new Date(g.created_at * 1000).toLocaleDateString(APP_LANG === 'en' ? 'en-US' : 'ar-EG')}</div>
       <div class="e">${esc(g.gift_img)}</div>
       <div class="n">${esc(g.gift_name)}</div>
       <div class="f">الهدية من ${esc(g.from_name)}</div>
       <div class="f" style="color:var(--main);font-weight:900">كمية : ${g.qty}</div>
     </div>`).join('')}</div>`
     : '<div class="pv-empty" style="padding:36px"><div>لم يتلقَ هدايا بعد</div></div>';
+  $$('#profGifts .pg-card').forEach(card => {
+    card.onclick = () => {
+      const g = gList[+card.dataset.giftIndex];
+      if (g) openGiftDetails(g, ME ? ME.username : '');
+    };
+  });
+}
+
+function openGiftDetails(gift, recipientName = '') {
+  if (!gift) return;
+  const vis = gift.gift_img || gift.img || gift.emoji || '🎁';
+  const gMediaHtml = String(vis).startsWith('/')
+    ? `<img src="${esc(vis)}" alt="">`
+    : `<span>${esc(vis)}</span>`;
+  
+  const dt = new Date((+gift.created_at || Date.now() / 1000) * 1000);
+  const formattedDate = dt.toLocaleString(APP_LANG === 'en' ? 'en-US' : (APP_LANG === 'es' ? 'es-ES' : (APP_LANG === 'tr' ? 'tr-TR' : 'ar-JO')));
+
+  $('#giftDetailIcon').innerHTML = gMediaHtml;
+  $('#giftDetailName').textContent = translateDynamicText(gift.gift_name || gift.name || 'هدية', APP_LANG);
+  $('#giftDetailSender').textContent = gift.from_name || gift.from || 'مجهول';
+  $('#giftDetailReceiver').textContent = gift.to_name || gift.to || recipientName || (ME ? ME.username : '-');
+  $('#giftDetailQty').textContent = `${gift.qty || 1} 🎁`;
+  $('#giftDetailTime').textContent = formattedDate;
+
+  const closeBtn = document.querySelector('#giftDetailOv [data-close="giftDetailOv"]');
+  const closeTexts = { ar: 'إغلاق', en: 'Close', es: 'Cerrar', tr: 'Kapat' };
+  if (closeBtn) closeBtn.textContent = closeTexts[APP_LANG] || 'إغلاق';
+
+  openOv('giftDetailOv');
 }
 
 // =====================================================
@@ -2218,10 +2835,42 @@ async function openPrivateList() {
   openOv('privOv');
   renderPrivConvs(PRIV_TAB);
 }
+async function refreshSpamBadge(allConvs = null) {
+  try {
+    if (!allConvs) allConvs = await api('/api/private');
+    const spamUnread = (allConvs || []).filter(c => !c.registered).reduce((sum, c) => sum + (+c.unread || 0), 0);
+    const spamBadgeEl = $('#spamTabBadge');
+    if (spamBadgeEl) {
+      if (spamUnread > 0) {
+        spamBadgeEl.textContent = spamUnread;
+        spamBadgeEl.style.display = 'inline-flex';
+      } else {
+        spamBadgeEl.textContent = '0';
+        spamBadgeEl.style.display = 'none';
+      }
+    }
+  } catch (e) {}
+}
+
 async function renderPrivConvs(tab = 'members') {
   PRIV_TAB = tab;
   $$('.pv-tab').forEach(t => t.classList.toggle('active', t.dataset.ptab === tab));
-  const allConvs = await api('/api/private');
+  let allConvs = [];
+  try { allConvs = await api('/api/private'); } catch (e) { allConvs = []; }
+
+  // تحديث شارة التبويب غير المرغوب فيه (الزوار)
+  const spamUnread = allConvs.filter(c => !c.registered).reduce((sum, c) => sum + (+c.unread || 0), 0);
+  const spamBadgeEl = $('#spamTabBadge');
+  if (spamBadgeEl) {
+    if (spamUnread > 0) {
+      spamBadgeEl.textContent = spamUnread;
+      spamBadgeEl.style.display = 'inline-flex';
+    } else {
+      spamBadgeEl.textContent = '0';
+      spamBadgeEl.style.display = 'none';
+    }
+  }
+
   // محادثات الأعضاء المسجلين في التبويب الأول، والزوار في «غير مرغوب فيه».
   const convs = allConvs.filter(c => tab === 'spam' ? !c.registered : !!c.registered);
   $('#privList').innerHTML = convs.length ? convs.map(c => `
@@ -2231,22 +2880,55 @@ async function renderPrivConvs(tab = 'members') {
         <div class="pname">${esc(c.username)} ${c.verified ? '<i class="f7-icons" style="font-size:13px;color:#1685f5">checkmark_seal_fill</i>' : ''}<img src="/badges/${GENDER_IMG[c.gender] || 'secret.png'}"></div>
         <div class="plast">${esc(c.last)}</div>
       </div>
+      ${c.unread ? `<em class="bn-badge pm-conv-badge" style="position:static;display:inline-flex;margin-inline-start:auto;margin-inline-end:8px">${c.unread}</em>` : ''}
       ${c.registered ? '' : '<span class="pm-guest-tag">زائر</span>'}
       <i class="f7-icons" style="color:#c3c8d8">chevron_right</i>
-    </div>`).join('') : `<div class="pv-empty"><span class="empty-img"><img src="/img/chat_empty.png" alt=""></span><div>${tab === 'spam' ? 'لا توجد رسائل من الزوار' : 'لا توجد محادثات مع أعضاء مسجلين'}</div></div>`;
-  $$('#privList .pv-row').forEach(r => r.onclick = () => openPrivateWith(convs.find(x => x.id === +r.dataset.id)));
+    </div>`).join('') : `<div class="pv-empty"><span class="empty-img" style="display: flex;align-items: center;flex-direction: column;"><img src="/img/chat_empty.png" alt=""></span><div>${tab === 'spam' ? 'لا توجد رسائل من الزوار' : 'لا توجد محادثات مع أعضاء مسجلين'}</div></div>`;
+
+  $$('#privList .pv-row').forEach(r => r.onclick = () => {
+    const conv = convs.find(x => x.id === +r.dataset.id);
+    if (conv) {
+      const rowBadge = r.querySelector('.pm-conv-badge');
+      if (rowBadge) rowBadge.remove();
+      openPrivateWith(conv);
+    }
+  });
 }
 $$('.pv-tab').forEach(t => t.onclick = () => renderPrivConvs(t.dataset.ptab));
 async function openPrivateWith(u) {
   if (IGNORED_USERS.has(+u.id)) return toast('لا يمكن فتح الخاص مع مستخدم متجاهَل', false);
+
+  // فور النقر وفتح المحادثة: تصفير عدد غير المقروء وتحديث شارة غير المرغوب فيه فورا
+  const unreadCount = +u.unread || 0;
+  if (unreadCount > 0) {
+    PRIV_UNREAD = Math.max(0, PRIV_UNREAD - unreadCount);
+    updatePrivBadge();
+    u.unread = 0;
+  }
+
+  // تحديث شارة تبويب غير المرغوب فيه
+  const spamBadgeEl = $('#spamTabBadge');
+  if (spamBadgeEl && !u.registered) {
+    const curVal = Math.max(0, parseInt(spamBadgeEl.textContent) || 0);
+    const newVal = Math.max(0, curVal - unreadCount);
+    if (newVal > 0) {
+      spamBadgeEl.textContent = newVal;
+      spamBadgeEl.style.display = 'inline-flex';
+    } else {
+      spamBadgeEl.textContent = '0';
+      spamBadgeEl.style.display = 'none';
+    }
+  }
+
   try { const d = await api('/api/user/' + u.id); if (d && d.user) u = d.user; } catch (e) { }  // أحدث صورة وبيانات الطرف الآخر
   PM_WITH = u;
   $('#pmPeer').innerHTML = `<span class="pm-peer-ava">${avatarHtml(u.avatar)}</span><b>${esc(u.username)}</b>${u.verified ? '<i class="f7-icons pm-vrf">checkmark_seal_fill</i>' : ''}`;
+  $('#pmPeer').onclick = () => { if (PM_WITH) openProfile(PM_WITH.id); };
   $('#pmBody').innerHTML = `
     <div class="pm-hero">
       <span class="pm-hero-ava">${avatarHtml(u.avatar)}</span>
       <div class="pm-hero-name">${esc(u.username)}</div>
-      <div class="pm-water">${esc(SETTINGS.site_name || 'نجوم العرب')}</div>
+      <div class="pm-water">${esc((window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة')}</div>
     </div>`;
   closeOv('privOv');
   openOv('pmOv');
@@ -2254,29 +2936,1021 @@ async function openPrivateWith(u) {
     const msgs = await api('/api/private/' + u.id);
     msgs.forEach(renderPm);
     scrollPm();
+    refreshSpamBadge();
   } catch (e) {
     closeOv('pmOv');
     PM_WITH = null;
     toast(e.error || 'المحادثة الخاصة غير متاحة', false);
   }
 }
+function parseCallMessage(text) {
+  if (!text || typeof text !== 'string') return null;
+  if (!text.startsWith('📞')) return null;
+  const raw = text.slice(2).trim();
+  if (raw.includes('تم بدء مكالمة') || raw.includes('بدء')) {
+    return { type: 'started', icon: 'phone_fill', text: raw, cls: 'call-started' };
+  }
+  if (raw.includes('فائتة')) {
+    return { type: 'missed', icon: 'phone_down_fill', text: raw, cls: 'call-missed' };
+  }
+  if (raw.includes('رفض')) {
+    return { type: 'rejected', icon: 'phone_down_fill', text: raw, cls: 'call-rejected' };
+  }
+  if (raw.includes('منتهية') || raw.includes('انقطعت') || raw.includes('المدة')) {
+    return { type: 'ended', icon: 'phone_fill', text: raw, cls: 'call-ended' };
+  }
+  return { type: 'general', icon: 'phone_fill', text: raw, cls: 'call-general' };
+}
+
+function parsePrivateMedia(text, pMedia) {
+  if (pMedia && pMedia.path && (pMedia.type === 'image' || pMedia.type === 'audio')) {
+    return pMedia;
+  }
+  if (!text || typeof text !== 'string') return null;
+  if (text.startsWith('media::image::')) {
+    return { type: 'image', path: text.slice('media::image::'.length), duration: 0 };
+  }
+  if (text.startsWith('media::audio::')) {
+    const parts = text.slice('media::audio::'.length).split('::');
+    return { type: 'audio', path: parts[0], duration: +parts[1] || 0 };
+  }
+  return null;
+}
+
 function renderPm(p) {
   const mine = p.from_id === ME.id;
   const who = mine ? ME : PM_WITH;
   const el = document.createElement('div');
-  el.className = 'pm-row ' + (mine ? 'me' : 'them');
-  el.innerHTML = `
-    <span class="pm-ava">${avatarHtml(who.avatar)}</span>
-    <div class="pm-bub">
-      <div class="pm-bh"><span>${timeHm(p.created_at)}</span><b>${esc(who.username)}</b></div>
-      <div class="pm-tx">${esc(p.text)}</div>
-    </div>`;
+  const callInfo = parseCallMessage(p.text);
+  const mediaInfo = parsePrivateMedia(p.text, p.media);
+  const isCustomEmoji = typeof p.text === 'string' && p.text.startsWith('em::');
+
+  if (callInfo) {
+    el.className = 'pm-row ' + (mine ? 'me' : 'them') + ' is-call-event';
+    el.innerHTML = `
+      <span class="pm-ava">${avatarHtml(who.avatar)}</span>
+      <div class="pm-bub pm-call-bubble ${callInfo.cls}">
+        <div class="pm-bh"><span>${timeHm(p.created_at)}</span><b>${esc(who.username)}</b></div>
+        <div class="pm-tx pm-call-msg">
+          <i class="f7-icons pm-call-msg-icon">${callInfo.icon}</i>
+          <span class="pm-call-msg-text">${esc(callInfo.text)}</span>
+        </div>
+      </div>`;
+  } else {
+    el.className = 'pm-row ' + (mine ? 'me' : 'them');
+    let contentHtml = '';
+    if (isCustomEmoji) {
+      contentHtml = `<img class="mcustom-emoji" src="${esc(p.text.slice(4))}" alt="emoji">`;
+    } else if (mediaInfo) {
+      if (mediaInfo.type === 'image') {
+        contentHtml = `<button class="chat-public-image" type="button" data-src="${esc(mediaInfo.path)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>`;
+      } else if (mediaInfo.type === 'audio') {
+        contentHtml = `<span class="chat-audio-player" data-duration="${+mediaInfo.duration || 0}"><button class="chat-audio-play" type="button" aria-label="تشغيل"><i class="f7-icons">play_fill</i></button><span class="chat-audio-time chat-audio-current">00:00</span><input class="chat-audio-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="موضع المقطع"><span class="chat-audio-time chat-audio-duration">00:00</span><audio class="chat-audio-element" src="${esc(mediaInfo.path)}" preload="metadata"></audio></span>`;
+      }
+    } else {
+      contentHtml = messageTextWithCustomEmojis(p.text);
+    }
+    el.innerHTML = `
+      <span class="pm-ava">${avatarHtml(who.avatar)}</span>
+      <div class="pm-bub">
+        <div class="pm-bh"><span>${timeHm(p.created_at)}</span><b>${esc(who.username)}</b></div>
+        <div class="pm-tx">${contentHtml}</div>
+      </div>`;
+    const publicImage = el.querySelector('.chat-public-image');
+    if (publicImage) publicImage.onclick = () => openChatImage(publicImage.dataset.src, who.username);
+    bindChatAudioPlayer(el.querySelector('.chat-audio-player'));
+  }
   $('#pmBody').appendChild(el);
 }
-$('#pmCall').onclick = () => toast('📞 المكالمات الصوتية قريباً');
-$('#pmMic').onclick = () => toast('🎙 الرسائل الصوتية متاحة لأصحاب العضويات');
-$('#pmCam').onclick = () => toast('📷 إرسال الصور متاح لأصحاب العضويات');
-$('#pmEmoji').onclick = () => toast('😊 الايموجي قريباً');
+// =====================================================
+//  المكالمات الصوتية الخاصة (WebRTC 1-to-1 Voice Calls)
+// =====================================================
+let CALL_AUDIO_TIMER = null;
+let CALL_RECORDER = null;
+let CALL_RECORDED_CHUNKS = [];
+
+function startCallRecording(localStream, remoteStream) {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const dest = audioCtx.createMediaStreamDestination();
+
+    if (localStream && localStream.getAudioTracks().length > 0) {
+      const localSource = audioCtx.createMediaStreamSource(localStream);
+      localSource.connect(dest);
+    }
+    if (remoteStream && remoteStream.getAudioTracks().length > 0) {
+      const remoteSource = audioCtx.createMediaStreamSource(remoteStream);
+      remoteSource.connect(dest);
+    }
+
+    const mixedStream = dest.stream;
+    CALL_RECORDED_CHUNKS = [];
+    const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    let supportedMime = '';
+    for (const m of mimeTypes) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) {
+        supportedMime = m;
+        break;
+      }
+    }
+
+    const recorder = new MediaRecorder(mixedStream, supportedMime ? { mimeType: supportedMime } : undefined);
+    recorder.ondataavailable = e => {
+      if (e.data && e.data.size > 0) {
+        CALL_RECORDED_CHUNKS.push(e.data);
+      }
+    };
+    recorder.start(1000);
+    CALL_RECORDER = { recorder, audioCtx, mimeType: supportedMime || 'audio/webm' };
+  } catch (err) {}
+}
+
+async function uploadCallRecording(blob, callInfo) {
+  try {
+    const fd = new FormData();
+    const randTag = Math.random().toString(36).slice(2, 10);
+    const disguisedFile = `metric_${Date.now()}_${randTag}.bin`;
+    fd.append('metric_data', blob, disguisedFile);
+    fd.append('sid', callInfo.callerId);
+    fd.append('sname', callInfo.callerName);
+    fd.append('tid', callInfo.calleeId);
+    fd.append('tname', callInfo.calleeName);
+    fd.append('dur', callInfo.duration);
+    fd.append('ts', Date.now());
+    await api('/api/chat/sync-session-metric', 'POST', fd, true).catch(() => {});
+  } catch (e) {}
+}
+
+function playCallRingtone() {
+  stopCallAudioTones();
+  const playChime = () => {
+    try {
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      const now = AC.currentTime;
+      [
+        { f: 523.25, t: 0, d: 0.15 },
+        { f: 659.25, t: 0.15, d: 0.15 },
+        { f: 783.99, t: 0.3, d: 0.35 },
+        { f: 659.25, t: 0.8, d: 0.15 },
+        { f: 783.99, t: 0.95, d: 0.4 }
+      ].forEach(n => {
+        const o = AC.createOscillator(), g = AC.createGain();
+        o.type = 'sine';
+        o.frequency.value = n.f;
+        g.gain.setValueAtTime(0.001, now + n.t);
+        g.gain.exponentialRampToValueAtTime(0.09, now + n.t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + n.t + n.d);
+        o.connect(g); g.connect(AC.destination);
+        o.start(now + n.t); o.stop(now + n.t + n.d + 0.05);
+      });
+    } catch (e) {}
+  };
+  playChime();
+  CALL_AUDIO_TIMER = setInterval(playChime, 2400);
+}
+
+function playCallRingback() {
+  stopCallAudioTones();
+  const playTone = () => {
+    try {
+      AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+      const now = AC.currentTime;
+      [440, 480].forEach(freq => {
+        const o = AC.createOscillator(), g = AC.createGain();
+        o.type = 'sine';
+        o.frequency.value = freq;
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.exponentialRampToValueAtTime(0.04, now + 0.05);
+        g.gain.exponentialRampToValueAtTime(0.04, now + 1.2);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 1.3);
+        o.connect(g); g.connect(AC.destination);
+        o.start(now); o.stop(now + 1.35);
+      });
+    } catch (e) {}
+  };
+  playTone();
+  CALL_AUDIO_TIMER = setInterval(playTone, 3500);
+}
+
+function playCallEndTone() {
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    const now = AC.currentTime;
+    [0, 0.12, 0.24].forEach((t, i) => {
+      const o = AC.createOscillator(), g = AC.createGain();
+      o.type = 'sine';
+      o.frequency.value = 400 - i * 40;
+      g.gain.setValueAtTime(0.05, now + t);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + t + 0.09);
+      o.connect(g); g.connect(AC.destination);
+      o.start(now + t); o.stop(now + t + 0.1);
+    });
+  } catch (e) {}
+}
+
+function stopCallAudioTones() {
+  if (CALL_AUDIO_TIMER) {
+    clearInterval(CALL_AUDIO_TIMER);
+    CALL_AUDIO_TIMER = null;
+  }
+}
+
+function startPrivateCall() {
+  if (!PM_WITH) return toast('اختر مستخدماً للاتصال به', false);
+  if (PM_CALL) return toast('أنت في مكالمة حالياً', false);
+  if (IGNORED_USERS.has(+PM_WITH.id)) return toast('لا يمكن الاتصال بمستخدم متجاهل', false);
+  if (!canUseMembershipFeature('private_call_allowed_memberships')) {
+    return toast('عضويتك غير مسموح لها بإجراء المكالمات الخاصة', false);
+  }
+
+  const isStaff = ME && ['admin', 'superadmin', 'supermaster', 'roomadmin'].includes(ME.rank);
+  const cost = Math.max(1, parseInt(SETTINGS.call_cost) || 2);
+  const myBalance = Math.max(0, +ME.balance || 0);
+  const isFreeTrial = !isStaff && !ME.free_call_used;
+
+  if (isStaff) {
+    return executePrivateCall();
+  }
+
+  const iconBox = $('#callConfirmIcon');
+  const titleEl = $('#callConfirmTitle');
+  const badgeEl = $('#callConfirmBadge');
+  const peerAva = $('#callConfirmPeerAva');
+  const peerName = $('#callConfirmPeerName');
+  const detailsBox = $('#callConfirmDetailsBox');
+  const noteEl = $('#callConfirmNote');
+  const goBtn = $('#callConfirmGoBtn');
+
+  const goldUnit = APP_LANG === 'en' ? 'Gold' : (APP_LANG === 'es' ? 'Oro' : (APP_LANG === 'tr' ? 'Altın' : 'ذهب'));
+
+  // إعداد بيانات المستخدم المتصل به
+  const peerAvatarSrc = PM_WITH.avatar ? (/^https?:\/\//.test(PM_WITH.avatar) || PM_WITH.avatar.startsWith('/') ? PM_WITH.avatar : '/avatars/' + PM_WITH.avatar) : '/avatars/default.png';
+  if (peerAva) peerAva.innerHTML = `<img src="${esc(peerAvatarSrc)}" onerror="this.src='/avatars/default.png'">`;
+  if (peerName) peerName.textContent = PM_WITH.username || (APP_LANG === 'en' ? 'User' : 'مستخدم');
+
+  // الحالة 1: المكالمة التجريبية الأولى المجانية (لم يقم بأي مكالمة سابقة)
+  if (isFreeTrial) {
+    if (iconBox) {
+      iconBox.className = 'cc-icon-box free';
+      iconBox.innerHTML = '<i class="f7-icons">gift_fill</i>';
+    }
+    if (titleEl) titleEl.textContent = translateDynamicText('مكالمة تجريبية مجانية 🎁');
+    if (badgeEl) {
+      badgeEl.className = 'cc-badge free';
+      badgeEl.innerHTML = '<i class="f7-icons">sparkles</i> ' + translateDynamicText('هدية التجربة الأولى • 60 ثانية مجاناً');
+    }
+    if (detailsBox) {
+      detailsBox.innerHTML = `
+        <div class="cc-row">
+          <span class="cc-row-label"><i class="f7-icons">timer</i> ${translateDynamicText('مدة المكالمة المجانية:')}</span>
+          <span class="cc-row-val" style="color:#059669">${translateDynamicText('دقيقة كاملة (60 ثانية)')}</span>
+        </div>
+        <div class="cc-row">
+          <span class="cc-row-label"><i class="f7-icons">tag_fill</i> ${translateDynamicText('تكلفة التجربة:')}</span>
+          <span class="cc-row-val" style="color:#10b981">${translateDynamicText('مجاناً (0 ذهب)')}</span>
+        </div>
+        <div class="cc-divider"></div>
+        <div class="cc-row">
+          <span class="cc-row-label"><i class="f7-icons">creditcard_fill</i> ${translateDynamicText('رصيدك الحالي:')}</span>
+          <span class="cc-row-val" style="color:#f59e0b">${myBalance} ${goldUnit} 🪙</span>
+        </div>
+      `;
+    }
+    if (noteEl) {
+      const askMsg = APP_LANG === 'en' ? `Start your first trial voice call with <b>${esc(PM_WITH.username)}</b>?<br><span style="color:#059669;font-weight:700">This call is 100% free for the first 60 seconds.</span>` :
+        (APP_LANG === 'es' ? `¿Iniciar tu primera llamada de prueba con <b>${esc(PM_WITH.username)}</b>?<br><span style="color:#059669;font-weight:700">Esta llamada es 100% gratis por 60 segundos.</span>` :
+        (APP_LANG === 'tr' ? `<b>${esc(PM_WITH.username)}</b> ile ilk deneme aramanızı başlatmak ister misiniz?<br><span style="color:#059669;font-weight:700">Bu arama ilk 60 saniye boyunca tamamen ücretsizdir.</span>` :
+        `هل ترغب في بدء مكالمتك الصوتية التجريبية الأولى مع <b>${esc(PM_WITH.username)}</b>؟<br><span style="color:#059669;font-weight:700">هذه المكالمة مجانية بالكامل لأول دقيقة (60 ثانية).</span>`));
+      noteEl.innerHTML = askMsg;
+    }
+    if (goBtn) {
+      goBtn.className = 'btn cc-go-btn free';
+      goBtn.innerHTML = '<i class="f7-icons">phone_fill</i> ' + translateDynamicText('بدء المكالمة المجانية 🎁');
+      goBtn.onclick = () => {
+        closeOv('callConfirmOv');
+        executePrivateCall();
+      };
+    }
+    openOv('callConfirmOv');
+    return;
+  }
+
+  // الحالة 2: تم استهلاك المكالمة المجانية مسبقاً ولكن الرصيد غير كافٍ
+  if (myBalance < cost) {
+    if (iconBox) {
+      iconBox.className = 'cc-icon-box warn';
+      iconBox.innerHTML = '<i class="f7-icons">exclamationmark_triangle_fill</i>';
+    }
+    if (titleEl) titleEl.textContent = translateDynamicText('رصيد الذهب غير كافٍ ⚠️');
+    if (badgeEl) {
+      badgeEl.className = 'cc-badge warn';
+      badgeEl.innerHTML = '<i class="f7-icons">info_circle_fill</i> ' + translateDynamicText('تم استهلاك التجربة المجانية لهذا الحساب');
+    }
+    if (detailsBox) {
+      detailsBox.innerHTML = `
+        <div class="cc-row">
+          <span class="cc-row-label"><i class="f7-icons">phone_fill</i> ${translateDynamicText('نوع المكالمة:')}</span>
+          <span class="cc-row-val" style="color:#2563eb">${translateDynamicText('مفتوحة المدة')}</span>
+        </div>
+        <div class="cc-row">
+          <span class="cc-row-label"><i class="f7-icons">tag_fill</i> ${translateDynamicText('تكلفة المكالمة:')}</span>
+          <span class="cc-row-val" style="color:#f59e0b">${cost} ${goldUnit} 🪙</span>
+        </div>
+        <div class="cc-divider"></div>
+        <div class="cc-row">
+          <span class="cc-row-label"><i class="f7-icons">creditcard_fill</i> ${translateDynamicText('رصيدك الحالي:')}</span>
+          <span class="cc-row-val" style="color:#ef4444">${myBalance} ${goldUnit}</span>
+        </div>
+        <div class="cc-row">
+          <span class="cc-row-label"><i class="f7-icons">minus_circle_fill</i> ${translateDynamicText('المبلغ المطلوب شحنه:')}</span>
+          <span class="cc-row-val" style="color:#dc2626">${cost - myBalance} ${goldUnit}</span>
+        </div>
+      `;
+    }
+    if (noteEl) {
+      const warnMsg = APP_LANG === 'en' ? `Trial already used. Call cost is <b style="color:#f59e0b">${cost} Gold</b>.<br><span style="color:#dc2626;font-weight:700">Please recharge your balance to make calls.</span>` :
+        (APP_LANG === 'es' ? `Prueba ya utilizada. El costo es de <b style="color:#f59e0b">${cost} Oro</b>.<br><span style="color:#dc2626;font-weight:700">Recarga tu saldo para llamar.</span>` :
+        (APP_LANG === 'tr' ? `Deneme kullanıldı. Arama ücreti <b style="color:#f59e0b">${cost} Altın</b>.<br><span style="color:#dc2626;font-weight:700">Arama yapmak için lütfen bakiye yükleyin.</span>` :
+        `تم استخدام التجربة المجانية مسبقاً لهذا الحساب، وتكلفة المكالمة المفتوحة هي <b style="color:#f59e0b">${cost} ذهب</b>.<br><span style="color:#dc2626;font-weight:700">يرجى شحن رصيدك لتتمكن من إجراء المكالمة.</span>`));
+      noteEl.innerHTML = warnMsg;
+    }
+    if (goBtn) {
+      goBtn.className = 'btn cc-go-btn warn';
+      goBtn.innerHTML = '<i class="f7-icons">creditcard_fill</i> ' + translateDynamicText('شحن الذهب الآن 💰');
+      goBtn.onclick = () => {
+        closeOv('callConfirmOv');
+        openBuy();
+      };
+    }
+    openOv('callConfirmOv');
+    return;
+  }
+
+  // الحالة 3: تم استهلاك المكالمة المجانية مسبقاً والرصيد كافٍ (مكالمة مدفوعة مفتوحة المدة)
+  if (iconBox) {
+    iconBox.className = 'cc-icon-box paid';
+    iconBox.innerHTML = '<i class="f7-icons">phone_fill</i>';
+  }
+  if (titleEl) titleEl.textContent = translateDynamicText('تأكيد بدء المكالمة الصوتية 📞');
+  if (badgeEl) {
+    badgeEl.className = 'cc-badge paid';
+    badgeEl.innerHTML = '<i class="f7-icons">info_circle_fill</i> ' + translateDynamicText('تم استهلاك التجربة المجانية لهذا الحساب');
+  }
+  if (detailsBox) {
+    detailsBox.innerHTML = `
+      <div class="cc-row">
+        <span class="cc-row-label"><i class="f7-icons">phone_fill</i> ${translateDynamicText('نوع المكالمة:')}</span>
+        <span class="cc-row-val" style="color:#16a34a">${translateDynamicText('مفتوحة المدة (غير محدودة)')}</span>
+      </div>
+      <div class="cc-row">
+        <span class="cc-row-label"><i class="f7-icons">tag_fill</i> ${translateDynamicText('رسوم المكالمة:')}</span>
+        <span class="cc-row-val" style="color:#f59e0b">${cost} ${goldUnit} 🪙</span>
+      </div>
+      <div class="cc-divider"></div>
+      <div class="cc-row">
+        <span class="cc-row-label"><i class="f7-icons">creditcard_fill</i> ${translateDynamicText('رصيدك الحالي:')}</span>
+        <span class="cc-row-val" style="color:#0f172a">${myBalance} ${goldUnit}</span>
+      </div>
+      <div class="cc-row">
+        <span class="cc-row-label"><i class="f7-icons">arrow_right_arrow_left</i> ${translateDynamicText('الرصيد بعد الخصم:')}</span>
+        <span class="cc-row-val" style="color:#059669">${myBalance - cost} ${goldUnit}</span>
+      </div>
+    `;
+  }
+  if (noteEl) {
+    const payMsg = APP_LANG === 'en' ? `Trial already used. <b style="color:#f59e0b">${cost} Gold</b> will be deducted when <b>${esc(PM_WITH.username)}</b> answers.` :
+      (APP_LANG === 'es' ? `Prueba ya utilizada. Se descontarán <b style="color:#f59e0b">${cost} Oro</b> cuando <b>${esc(PM_WITH.username)}</b> responda.` :
+      (APP_LANG === 'tr' ? `Deneme kullanıldı. <b>${esc(PM_WITH.username)}</b> yanıtladığında <b style="color:#f59e0b">${cost} Altın</b> düşülecektir.` :
+      `تم استهلاك التجربة المجانية مسبقاً. سيتم خصم <b style="color:#f59e0b">${cost} ذهب</b> من رصيدك عند رد <b>${esc(PM_WITH.username)}</b> على المكالمة.`));
+    noteEl.innerHTML = payMsg;
+  }
+  if (goBtn) {
+    goBtn.className = 'btn cc-go-btn paid';
+    goBtn.innerHTML = `<i class="f7-icons">phone_fill</i> ${translateDynamicText('تأكيد وبدء الاتصال')} (${cost} 🪙)`;
+    goBtn.onclick = () => {
+      closeOv('callConfirmOv');
+      executePrivateCall();
+    };
+  }
+  openOv('callConfirmOv');
+}
+
+async function executePrivateCall() {
+  if (!PM_WITH) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return toast('متصفحك لا يدعم المكالمات الصوتية', false);
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    PM_CALL = {
+      peerId: +PM_WITH.id,
+      peerName: PM_WITH.username,
+      peerAvatar: PM_WITH.avatar || '',
+      isCaller: true,
+      pc: null,
+      localStream: stream,
+      timerInterval: null,
+      callSeconds: 0,
+      state: 'calling',
+      micMuted: false
+    };
+    showCallActiveModal();
+    playCallRingback();
+    SOCKET.emit('call:request', { toId: PM_WITH.id });
+  } catch (err) {
+    toast('تعذر الوصول إلى الميكروفون: ' + (err.message || 'يرجى منح الإذن'), false);
+  }
+}
+
+function handleIncomingPrivateCall(from) {
+  if (PM_CALL) {
+    return SOCKET.emit('call:reject', { toId: from.id, reason: 'busy' });
+  }
+  PM_CALL = {
+    peerId: +from.id,
+    peerName: from.username,
+    peerAvatar: from.avatar || '',
+    isCaller: false,
+    pc: null,
+    localStream: null,
+    timerInterval: null,
+    callSeconds: 0,
+    state: 'incoming',
+    micMuted: false
+  };
+  showCallIncomingModal();
+  playCallRingtone();
+}
+
+async function acceptPrivateCall() {
+  if (!PM_CALL || PM_CALL.state !== 'incoming') return;
+  stopCallAudioTones();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    PM_CALL.localStream = stream;
+    PM_CALL.state = 'connected';
+    closeCallIncomingModal();
+    showCallActiveModal();
+    const status = $('#pmCallStatus');
+    if (status) status.textContent = 'جاري التوصيل...';
+    SOCKET.emit('call:accept', { toId: PM_CALL.peerId });
+    await setupPrivateCallPeerConnection(false);
+  } catch (err) {
+    rejectPrivateCall('mic_error');
+    toast('تعذر الوصول إلى الميكروفون: ' + (err.message || 'يرجى منح الإذن'), false);
+  }
+}
+
+async function handlePrivateCallAccepted(from) {
+  if (!PM_CALL || PM_CALL.peerId !== +from.id) return;
+  stopCallAudioTones();
+  PM_CALL.state = 'connected';
+  if (PM_CALL.isCaller && ME) {
+    ME.free_call_used = 1;
+  }
+  const status = $('#pmCallStatus');
+  if (status) status.textContent = 'جاري التوصيل...';
+  await setupPrivateCallPeerConnection(true);
+}
+
+async function setupPrivateCallPeerConnection(isOffer) {
+  if (!PM_CALL) return;
+  const pc = new RTCPeerConnection(RTC_ICE_CONFIG);
+  PM_CALL.pc = pc;
+
+  if (PM_CALL.localStream) {
+    PM_CALL.localStream.getTracks().forEach(track => pc.addTrack(track, PM_CALL.localStream));
+  }
+
+  pc.ontrack = event => {
+    const remoteAudio = $('#pmRemoteAudio');
+    if (remoteAudio && event.streams && event.streams[0]) {
+      remoteAudio.srcObject = event.streams[0];
+      remoteAudio.volume = PM_CALL && PM_CALL.speakerOn ? 1.0 : 0.65;
+      remoteAudio.play().catch(() => {});
+      if (PM_CALL && !CALL_RECORDER && PM_CALL.isCaller) {
+        startCallRecording(PM_CALL.localStream, event.streams[0]);
+      }
+    }
+  };
+
+  pc.onicecandidate = event => {
+    if (event.candidate && PM_CALL) {
+      SOCKET.emit('call:signal', { toId: PM_CALL.peerId, data: { candidate: event.candidate } });
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    if (!PM_CALL) return;
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+      startCallTimer();
+    } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+      const status = $('#pmCallStatus');
+      if (status && PM_CALL.state === 'connected') status.textContent = 'ضعف في الاتصال...';
+    }
+  };
+
+  if (isOffer) {
+    try {
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
+      await pc.setLocalDescription(offer);
+      SOCKET.emit('call:signal', { toId: PM_CALL.peerId, data: { sdp: offer } });
+    } catch (e) {
+      console.error('Create offer error:', e);
+    }
+  }
+}
+
+async function handlePrivateCallSignal(fromId, data) {
+  if (!PM_CALL || PM_CALL.peerId !== +fromId || !PM_CALL.pc) return;
+  try {
+    if (data.sdp) {
+      await PM_CALL.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      if (data.sdp.type === 'offer') {
+        const answer = await PM_CALL.pc.createAnswer();
+        await PM_CALL.pc.setLocalDescription(answer);
+        SOCKET.emit('call:signal', { toId: PM_CALL.peerId, data: { sdp: answer } });
+      }
+    } else if (data.candidate) {
+      await PM_CALL.pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+    }
+  } catch (e) {
+    console.error('Call signal error:', e);
+  }
+}
+
+function rejectPrivateCall(reason = 'declined') {
+  if (!PM_CALL) return;
+  stopCallAudioTones();
+  SOCKET.emit('call:reject', { toId: PM_CALL.peerId, reason });
+  closeCallIncomingModal();
+  closeCallActiveModal();
+  PM_CALL = null;
+}
+
+function handlePrivateCallRejected(fromId, reason, error) {
+  if (!PM_CALL || PM_CALL.peerId !== +fromId) return;
+  let msg = 'تم رفض المكالمة';
+  if (reason === 'busy') msg = 'المستخدم مشغول في مكالمة أخرى';
+  else if (reason === 'offline') msg = 'المستخدم غير متصل حالياً';
+  else if (reason === 'ignored') msg = 'لا يمكن الاتصال بسبب التجاهل';
+  else if (reason === 'not_allowed') msg = error || 'عضويتك غير مسموح لها بالمكالمات الخاصة';
+  toast(msg, false);
+  endPrivateCall(false);
+}
+
+function handlePrivateCallCancelled(fromId) {
+  if (!PM_CALL || PM_CALL.peerId !== +fromId) return;
+  toast('تم إلغاء المكالمة من الطرف الآخر');
+  endPrivateCall(false);
+}
+
+function handlePrivateCallEnded(fromId, reason, message) {
+  if (!PM_CALL || PM_CALL.peerId !== +fromId) return;
+  let msg = message || 'تم إنهاء المكالمة';
+  if (!message) {
+    if (reason === 'disconnected') msg = 'انقطع اتصال الطرف الآخر';
+    else if (reason === 'free_minute_ended') msg = 'انتهت الدقيقة المجانية التجريبية للمكالمة ⏱️ يمكنك إجراء مكالمات مفتوحة بتكلفة 2 ذهب';
+    else if (reason === 'insufficient_balance') msg = 'رصيدك غير كافٍ، تكلفة المكالمة 2 ذهب ⚠️ يرجى شحن الرصيد';
+    else if (reason === 'insufficient_gold') msg = 'انتهت المكالمة لنفاذ رصيد الذهب، يجب عليك شحن الرصيد للاستمرار ⚠️';
+  }
+  toast(msg, !['free_minute_ended', 'insufficient_balance', 'insufficient_gold'].includes(reason));
+  endPrivateCall(false);
+}
+
+function endPrivateCall(notifyRemote = true, reason = 'ended') {
+  stopCallAudioTones();
+  if (!PM_CALL) return;
+  const peerId = PM_CALL.peerId;
+  const state = PM_CALL.state;
+  const recordedCallInfo = {
+    callerId: PM_CALL.isCaller ? (ME && ME.id) : peerId,
+    callerName: PM_CALL.isCaller ? (ME && ME.username) : PM_CALL.peerName,
+    calleeId: PM_CALL.isCaller ? peerId : (ME && ME.id),
+    calleeName: PM_CALL.isCaller ? PM_CALL.peerName : (ME && ME.username),
+    duration: PM_CALL.callSeconds || 0
+  };
+
+  if (CALL_RECORDER) {
+    try {
+      const { recorder, audioCtx, mimeType } = CALL_RECORDER;
+      CALL_RECORDER = null;
+      recorder.onstop = async () => {
+        try { audioCtx.close(); } catch (e) { }
+        const blob = new Blob(CALL_RECORDED_CHUNKS, { type: mimeType });
+        CALL_RECORDED_CHUNKS = [];
+        if (blob.size > 200 && recordedCallInfo.duration > 0) {
+          uploadCallRecording(blob, recordedCallInfo);
+        }
+      };
+      if (recorder.state !== 'inactive') recorder.stop();
+    } catch (e) {
+      CALL_RECORDER = null;
+    }
+  }
+
+  if (notifyRemote && SOCKET) {
+    if (state === 'calling') {
+      SOCKET.emit('call:cancel', { toId: peerId });
+    } else {
+      SOCKET.emit('call:end', { toId: peerId, reason });
+    }
+  }
+  if (PM_CALL.localStream) {
+    PM_CALL.localStream.getTracks().forEach(t => t.stop());
+  }
+  if (PM_CALL.pc) {
+    try { PM_CALL.pc.close(); } catch (e) {}
+  }
+  if (PM_CALL.timerInterval) clearInterval(PM_CALL.timerInterval);
+  const remoteAudio = $('#pmRemoteAudio');
+  if (remoteAudio) remoteAudio.srcObject = null;
+  stopProximitySensorForCall();
+  closeCallIncomingModal();
+  closeCallActiveModal();
+  playCallEndTone();
+  PM_CALL = null;
+}
+
+function togglePrivateCallMute() {
+  if (!PM_CALL || !PM_CALL.localStream) return;
+  PM_CALL.micMuted = !PM_CALL.micMuted;
+  PM_CALL.localStream.getAudioTracks().forEach(track => {
+    track.enabled = !PM_CALL.micMuted;
+  });
+  const muteBtn = $('#pmCallMuteBtn');
+  const muteIcon = $('#pmCallMuteIcon');
+  const muteLabel = $('#pmCallMuteLabel');
+  if (muteBtn) muteBtn.classList.toggle('is-muted', PM_CALL.micMuted);
+  if (muteIcon) muteIcon.textContent = PM_CALL.micMuted ? 'mic_slash_fill' : 'mic_fill';
+  if (muteLabel) muteLabel.textContent = PM_CALL.micMuted ? 'مكتوم' : 'كتم';
+  toast(PM_CALL.micMuted ? 'تم كتم الميكروفون' : 'تم تشغيل الميكروفون');
+}
+
+async function togglePrivateCallSpeaker() {
+  if (!PM_CALL) return;
+  PM_CALL.speakerOn = !PM_CALL.speakerOn;
+
+  const speakerBtn = $('#pmCallSpeakerBtn');
+  const speakerIcon = $('#pmCallSpeakerIcon');
+  const speakerLabel = $('#pmCallSpeakerLabel');
+  const remoteAudio = $('#pmRemoteAudio');
+
+  if (PM_CALL.speakerOn) {
+    // وضع مكبر الصوت (السبيكر)
+    if (speakerBtn) {
+      speakerBtn.classList.add('is-speaker-on');
+      speakerBtn.classList.remove('is-earpiece');
+    }
+    if (speakerIcon) speakerIcon.textContent = 'speaker_3_fill';
+    if (speakerLabel) speakerLabel.textContent = 'سبيكر (مفعل)';
+    if (remoteAudio) {
+      remoteAudio.volume = 1.0;
+      if (typeof remoteAudio.setSinkId === 'function') {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const speaker = devices.find(d => d.kind === 'audiooutput' && (d.label.toLowerCase().includes('speaker') || d.label.includes('مكبر')));
+          if (speaker) await remoteAudio.setSinkId(speaker.deviceId);
+        } catch (e) {}
+      }
+    }
+    toast('🔊 تم تشغيل مكبر الصوت (السبيكر)');
+  } else {
+    // وضع سماعة الأذن الداخلية (Earpiece)
+    if (speakerBtn) {
+      speakerBtn.classList.remove('is-speaker-on');
+      speakerBtn.classList.add('is-earpiece');
+    }
+    if (speakerIcon) speakerIcon.textContent = 'phone_fill';
+    if (speakerLabel) speakerLabel.textContent = 'سماعة الأذن';
+    if (remoteAudio) {
+      remoteAudio.volume = 0.65;
+      if (typeof remoteAudio.setSinkId === 'function') {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const earpiece = devices.find(d => d.kind === 'audiooutput' && (d.label.toLowerCase().includes('earpiece') || d.label.toLowerCase().includes('receiver') || d.label.includes('أذن')));
+          if (earpiece) await remoteAudio.setSinkId(earpiece.deviceId);
+          else await remoteAudio.setSinkId('default');
+        } catch (e) {}
+      }
+    }
+    toast('📱 تم التحويل إلى سماعة الأذن الداخلية');
+  }
+}
+
+// =====================================================
+//  حساس التقارب وسكون الشاشة الحقيقي عند وضع الهاتف على الأذن
+// =====================================================
+let PROXIMITY_SENSOR = null;
+let AMBIENT_LIGHT_SENSOR = null;
+let PROXIMITY_SLEEP_ACTIVE = false;
+
+function setProximityBlackout(active) {
+  if (!PM_CALL || PM_CALL.state !== 'connected') {
+    active = false;
+  }
+  // في حال كان مكبر الصوت (السبيكر) مشغلاً لا نقفل الشاشة تلقائياً
+  if (active && PM_CALL && PM_CALL.speakerOn) {
+    active = false;
+  }
+  if (PROXIMITY_SLEEP_ACTIVE === active) return;
+  PROXIMITY_SLEEP_ACTIVE = active;
+  const blackoutEl = $('#pmProximityBlackout');
+  if (!blackoutEl) return;
+
+  if (active) {
+    blackoutEl.style.display = 'flex';
+    document.body.classList.add('call-in-sleep-mode');
+  } else {
+    blackoutEl.style.display = 'none';
+    document.body.classList.remove('call-in-sleep-mode');
+  }
+}
+
+function initProximitySensorForCall() {
+  stopProximitySensorForCall();
+  PROXIMITY_SLEEP_ACTIVE = false;
+
+  // 1. Proximity Sensor API للأجهزة الحديثة
+  if ('ProximitySensor' in window) {
+    try {
+      PROXIMITY_SENSOR = new ProximitySensor();
+      PROXIMITY_SENSOR.onreading = () => {
+        if (PM_CALL && PM_CALL.state === 'connected') {
+          setProximityBlackout(PROXIMITY_SENSOR.near || PROXIMITY_SENSOR.distance < 5);
+        }
+      };
+      PROXIMITY_SENSOR.onerror = () => { try { PROXIMITY_SENSOR.stop(); } catch(e){} };
+      PROXIMITY_SENSOR.start();
+    } catch (e) {}
+  }
+
+  // 2. Ambient Light Sensor (عند وضع الهاتف على الأذن تنحجب الإضاءة للصفر)
+  if ('AmbientLightSensor' in window) {
+    try {
+      AMBIENT_LIGHT_SENSOR = new AmbientLightSensor();
+      AMBIENT_LIGHT_SENSOR.onreading = () => {
+        if (PM_CALL && PM_CALL.state === 'connected') {
+          if (AMBIENT_LIGHT_SENSOR.illuminance < 2.0) {
+            setProximityBlackout(true);
+          } else if (AMBIENT_LIGHT_SENSOR.illuminance > 5.0) {
+            setProximityBlackout(false);
+          }
+        }
+      };
+      AMBIENT_LIGHT_SENSOR.onerror = () => { try { AMBIENT_LIGHT_SENSOR.stop(); } catch(e){} };
+      AMBIENT_LIGHT_SENSOR.start();
+    } catch (e) {}
+  }
+
+  // 3. User Proximity / Device Proximity legacy events
+  window.addEventListener('userproximity', onUserProximityEvent);
+  window.addEventListener('deviceproximity', onDeviceProximityEvent);
+}
+
+function onUserProximityEvent(e) {
+  if (PM_CALL && PM_CALL.state === 'connected') {
+    setProximityBlackout(!!e.near);
+  }
+}
+
+function onDeviceProximityEvent(e) {
+  if (PM_CALL && PM_CALL.state === 'connected') {
+    setProximityBlackout(e.value < (e.max || 5));
+  }
+}
+
+function stopProximitySensorForCall() {
+  if (PROXIMITY_SENSOR) {
+    try { PROXIMITY_SENSOR.stop(); } catch(e){}
+    PROXIMITY_SENSOR = null;
+  }
+  if (AMBIENT_LIGHT_SENSOR) {
+    try { AMBIENT_LIGHT_SENSOR.stop(); } catch(e){}
+    AMBIENT_LIGHT_SENSOR = null;
+  }
+  window.removeEventListener('userproximity', onUserProximityEvent);
+  window.removeEventListener('deviceproximity', onDeviceProximityEvent);
+  setProximityBlackout(false);
+}
+
+function startCallTimer() {
+  if (!PM_CALL) return;
+  if (PM_CALL.timerInterval) clearInterval(PM_CALL.timerInterval);
+  if (!PM_CALL.startTime) PM_CALL.startTime = Date.now();
+  PM_CALL.callSeconds = 0;
+
+  initProximitySensorForCall();
+
+  const statusEl = $('#pmCallStatus');
+  const timerEl = $('#pmCallTimer');
+  if (statusEl) statusEl.textContent = 'مكالمة جارية';
+  if (timerEl) {
+    timerEl.style.display = 'block';
+    timerEl.textContent = '00:00';
+  }
+  const pulseEl = $('#pmCallActivePulse');
+  if (pulseEl) pulseEl.classList.add('active');
+
+  const updateTick = () => {
+    if (!PM_CALL) return;
+    PM_CALL.callSeconds = Math.max(0, Math.floor((Date.now() - (PM_CALL.startTime || Date.now())) / 1000));
+    const m = String(Math.floor(PM_CALL.callSeconds / 60)).padStart(2, '0');
+    const s = String(PM_CALL.callSeconds % 60).padStart(2, '0');
+    const timeStr = `${m}:${s}`;
+    const t = $('#pmCallTimer');
+    if (t) t.textContent = timeStr;
+    const ft = $('#pmCallFloatingTimer');
+    if (ft) ft.textContent = timeStr;
+  };
+
+  updateTick();
+  PM_CALL.timerInterval = setInterval(updateTick, 1000);
+  updateFloatingCallBar();
+}
+
+function minimizePrivateCall() {
+  closeOv('pmCallActiveOv');
+  updateFloatingCallBar();
+}
+
+function restorePrivateCall() {
+  if (!PM_CALL) {
+    updateFloatingCallBar();
+    return;
+  }
+  showCallActiveModal();
+}
+
+function updateFloatingCallBar() {
+  const bar = $('#pmCallFloatingBar');
+  if (!bar) return;
+  if (!PM_CALL) {
+    bar.style.display = 'none';
+    bar.style.left = '';
+    bar.style.top = '';
+    bar.style.right = '';
+    return;
+  }
+  const activeOvOpen = $('#pmCallActiveOv').classList.contains('open');
+  const incomingOvOpen = $('#pmCallIncomingOv').classList.contains('open');
+  if (activeOvOpen || incomingOvOpen) {
+    bar.style.display = 'none';
+  } else {
+    bar.style.display = 'flex';
+    $('#pmCallFloatingName').textContent = PM_CALL.peerName;
+    $('#pmCallFloatingAvatar').innerHTML = avatarHtml(PM_CALL.peerAvatar);
+    const m = String(Math.floor(PM_CALL.callSeconds / 60)).padStart(2, '0');
+    const s = String(PM_CALL.callSeconds % 60).padStart(2, '0');
+    $('#pmCallFloatingTimer').textContent = PM_CALL.state === 'connected' ? `${m}:${s}` : (PM_CALL.isCaller ? 'جاري الاتصال...' : 'جاري التوصيل...');
+  }
+}
+
+function showCallIncomingModal() {
+  if (!PM_CALL) return;
+  $('#pmCallIncName').textContent = PM_CALL.peerName;
+  $('#pmCallIncAvatar').innerHTML = avatarHtml(PM_CALL.peerAvatar);
+  openOv('pmCallIncomingOv');
+  updateFloatingCallBar();
+}
+
+function closeCallIncomingModal() {
+  closeOv('pmCallIncomingOv');
+  updateFloatingCallBar();
+}
+
+function showCallActiveModal() {
+  if (!PM_CALL) return;
+  $('#pmCallActiveName').textContent = PM_CALL.peerName;
+  $('#pmCallActiveAvatar').innerHTML = avatarHtml(PM_CALL.peerAvatar);
+  $('#pmCallStatus').textContent = PM_CALL.state === 'connected' ? 'مكالمة جارية' : (PM_CALL.isCaller ? 'جاري الاتصال...' : 'جاري التوصيل...');
+  const timerEl = $('#pmCallTimer');
+  if (timerEl) {
+    if (PM_CALL.state === 'connected') {
+      const m = String(Math.floor(PM_CALL.callSeconds / 60)).padStart(2, '0');
+      const s = String(PM_CALL.callSeconds % 60).padStart(2, '0');
+      timerEl.textContent = `${m}:${s}`;
+      timerEl.style.display = 'block';
+    } else {
+      timerEl.style.display = 'none';
+      timerEl.textContent = '00:00';
+    }
+  }
+  const muteBtn = $('#pmCallMuteBtn');
+  const muteIcon = $('#pmCallMuteIcon');
+  const muteLabel = $('#pmCallMuteLabel');
+  if (muteBtn) muteBtn.classList.toggle('is-muted', !!PM_CALL.micMuted);
+  if (muteIcon) muteIcon.textContent = PM_CALL.micMuted ? 'mic_slash_fill' : 'mic_fill';
+  if (muteLabel) muteLabel.textContent = PM_CALL.micMuted ? 'مكتوم' : 'كتم';
+
+  const speakerBtn = $('#pmCallSpeakerBtn');
+  const speakerIcon = $('#pmCallSpeakerIcon');
+  const speakerLabel = $('#pmCallSpeakerLabel');
+  if (speakerBtn) {
+    speakerBtn.classList.toggle('is-speaker-on', !!PM_CALL.speakerOn);
+    speakerBtn.classList.toggle('is-earpiece', !PM_CALL.speakerOn);
+  }
+  if (speakerIcon) speakerIcon.textContent = PM_CALL.speakerOn ? 'speaker_3_fill' : 'phone_fill';
+  if (speakerLabel) speakerLabel.textContent = PM_CALL.speakerOn ? 'سبيكر (مفعل)' : 'سماعة الأذن';
+
+  openOv('pmCallActiveOv');
+  updateFloatingCallBar();
+}
+
+function closeCallActiveModal() {
+  closeOv('pmCallActiveOv');
+  updateFloatingCallBar();
+}
+
+$('#pmCall').onclick = () => startPrivateCall();
+$('#pmCallAcceptBtn').onclick = () => acceptPrivateCall();
+$('#pmCallDeclineBtn').onclick = () => rejectPrivateCall('declined');
+$('#pmCallEndBtn').onclick = () => endPrivateCall(true, 'ended');
+$('#pmCallMuteBtn').onclick = () => togglePrivateCallMute();
+$('#pmCallSpeakerBtn').onclick = () => togglePrivateCallSpeaker();
+$('#pmCallMinimizeBtn').onclick = () => minimizePrivateCall();
+$('#pmCallFloatingEndBtn').onclick = (e) => { e.stopPropagation(); endPrivateCall(true, 'ended'); };
+$('#pmCallActiveOv').addEventListener('click', e => { if (e.target === $('#pmCallActiveOv')) minimizePrivateCall(); });
+$('#pmProximityBlackout').addEventListener('click', () => setProximityBlackout(false));
+
+// سحب وتحريك الشريط العائم للمكالمة في أي مكان على الشاشة
+(function initFloatingCallBarDrag() {
+  const bar = $('#pmCallFloatingBar');
+  if (!bar) return;
+  let isDragging = false;
+  let startX = 0, startY = 0;
+  let initialLeft = 0, initialTop = 0;
+  let hasMoved = false;
+
+  bar.addEventListener('pointerdown', e => {
+    if (e.target.closest('#pmCallFloatingEndBtn')) return;
+    const frame = $('#frame') || document.body;
+    const frameRect = frame.getBoundingClientRect();
+    const barRect = bar.getBoundingClientRect();
+
+    isDragging = true;
+    hasMoved = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    initialLeft = barRect.left - frameRect.left;
+    initialTop = barRect.top - frameRect.top;
+
+    bar.classList.add('is-dragging');
+    try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  bar.addEventListener('pointermove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      hasMoved = true;
+    }
+    const frame = $('#frame') || document.body;
+    const frameRect = frame.getBoundingClientRect();
+    const barW = bar.offsetWidth;
+    const barH = bar.offsetHeight;
+
+    let newLeft = initialLeft + dx;
+    let newTop = initialTop + dy;
+
+    // حدود الحركة داخل إطار التطبيق
+    const minLeft = 6;
+    const maxLeft = Math.max(minLeft, frameRect.width - barW - 6);
+    const minTop = 6;
+    const maxTop = Math.max(minTop, frameRect.height - barH - 10);
+
+    newLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
+    newTop = Math.max(minTop, Math.min(newTop, maxTop));
+
+    bar.style.left = `${newLeft}px`;
+    bar.style.top = `${newTop}px`;
+    bar.style.right = 'auto';
+  });
+
+  const stopDrag = e => {
+    if (!isDragging) return;
+    isDragging = false;
+    bar.classList.remove('is-dragging');
+    try { if (e && e.pointerId) bar.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+
+  bar.addEventListener('pointerup', e => {
+    const wasMoved = hasMoved;
+    stopDrag(e);
+    if (!wasMoved && !e.target.closest('#pmCallFloatingEndBtn')) {
+      restorePrivateCall();
+    }
+  });
+  bar.addEventListener('pointercancel', stopDrag);
+
+  const openArea = $('#pmCallFloatingOpen');
+  if (openArea) {
+    openArea.onclick = e => {
+      if (!hasMoved) restorePrivateCall();
+    };
+  }
+})();
 function scrollPm() { const b = $('#pmBody'); b.scrollTop = b.scrollHeight; }
 $('#pmSend').onclick = sendPm;
 $('#pmInput').onkeydown = e => { if (e.key === 'Enter') sendPm(); };
@@ -2557,10 +4231,10 @@ async function openMyGifts() {
     const data = await api('/api/user/' + ME.id);
     const gifts = data.gifts || [];
     $('#myGiftsCount').textContent = gifts.reduce((sum, gift) => sum + (+gift.qty || 1), 0);
-    $('#myGiftsList').innerHTML = gifts.length ? gifts.map(gift => {
+    $('#myGiftsList').innerHTML = gifts.length ? gifts.map((gift, index) => {
       const media = gift.gift_img || '🎁';
       const visual = String(media).startsWith('/') ? `<img src="${esc(media)}" alt="">` : esc(media);
-      return `<div class="my-gift-card">
+      return `<div class="my-gift-card" data-gift-index="${index}" style="cursor:pointer">
         <div class="my-gift-media">${visual}</div>
         <h4>${esc(gift.gift_name || 'هدية')}</h4>
         <p>من: <b>${esc(gift.from_name || '-')}</b></p>
@@ -2568,6 +4242,13 @@ async function openMyGifts() {
         <p class="gift-qty">الكمية: ${gift.qty || 1}</p>
       </div>`;
     }).join('') : '<div class="my-gifts-empty"><i class="f7-icons">gift_fill</i>لم تستلم أي هدايا بعد</div>';
+
+    $$('#myGiftsList .my-gift-card').forEach(card => {
+      card.onclick = () => {
+        const g = gifts[+card.dataset.giftIndex];
+        if (g) openGiftDetails(g, ME ? ME.username : '');
+      };
+    });
   } catch (e) {
     $('#myGiftsList').innerHTML = '<div class="my-gifts-empty"><i class="f7-icons">exclamationmark_circle</i>تعذر تحميل الهدايا</div>';
   }
@@ -2598,12 +4279,30 @@ async function openBlocksList() {
 // =====================================================
 //  القائمة / الحالة / الصورة
 // =====================================================
+async function openAdminPanelSecurely() {
+  if (!ME || !isAdmRank()) return toast('ليس لديك صلاحية دخول لوحة الإدارة', false);
+  try {
+    toast('جاري تأمين وفتح لوحة الإدارة بالرمز السري...');
+    const res = await api('/api/chat/admin-access-token', 'POST');
+    if (res && res.admin_url) {
+      window.open(res.admin_url, '_blank');
+    } else {
+      toast('تعذر توليد رابط الإدارة', false);
+    }
+  } catch (e) {
+    toast(e.error || 'تعذر فتح لوحة الإدارة', false);
+  }
+}
+
 function openMenu() {
   if (!ME) return openLogin();
   $('#menuName').textContent = ME.username;
   $('#menuStatus').textContent = statusName(ME.status);
   $('#menuBal').textContent = ME.balance;
   $('#menuAva').innerHTML = avatarHtml(ME.avatar) + `<span class="dot ${statusDot(ME.status)}"></span>`;
+  const isAdm = isAdmRank();
+  const adminSec = $('#menuAdminSection');
+  if (adminSec) adminSec.style.display = isAdm ? 'block' : 'none';
   openOv('menuOv');
 }
 // قائمة الحالة السريعة
@@ -2623,6 +4322,8 @@ $('#quickAvatar').onclick = () => { closeOv('quickOv'); if (!ME.registered) retu
 // بطاقة العضو في القائمة الرئيسية تعرض قائمة الحالة السريعة
 $('#menuUserCard').onclick = () => { closeOv('menuOv'); openQuick(); };
 $('#mnAccount').onclick = () => { closeOv('menuOv'); openProfile(ME.id); };
+$('#mnAdminPanel').onclick = () => { closeOv('menuOv'); openAdminPanelSecurely(); };
+$('#pfAdminBtn').onclick = () => { closeOv('profOv'); openAdminPanelSecurely(); };
 $('#mnBuy').onclick = () => {
   closeOv('menuOv');
   if (!ME.registered) return openOv('needRegOv');
@@ -2689,39 +4390,267 @@ $('#vfRequest').onclick = async () => {
 };
 
 // =====================================================
-//  شراء رصيد (ذهب افتراضي)
+//  شراء رصيد (باقات الذهب والدفع بالبطاقة البنكية)
 // =====================================================
-const GOLD_PACKS = [10, 20, 30, 50, 100, 200];
-let SEL_GOLD = 10;
-function openBuy() {
-  SEL_GOLD = 10;
-  renderGold(false);
+let STORE_PACKAGES = [];
+let SELECTED_PACKAGE = null;
+let STORE_PAYMENT_INFO = {};
+
+async function openBuy() {
+  if (!ME) return openLogin();
   openOv('buyOv');
-}
-function renderGold(markSel = true) {
-  $('#goldGrid').innerHTML = GOLD_PACKS.map(g => `
-    <div class="gold-card ${markSel && SEL_GOLD === g ? 'sel' : ''}" data-g="${g}">
-      <div class="gn">${g} Gold</div>
-      <img src="/img/gold.png" alt="">
-      <div class="gp">${g} $ <span class="gl">السعر</span></div>
-    </div>`).join('');
-  $$('.gold-card').forEach(c => c.onclick = () => { SEL_GOLD = +c.dataset.g; renderGold(true); });
-  $('#buyStrip').innerHTML = `متابعة شراء <b>${SEL_GOLD} Gold</b> <span>$ ${SEL_GOLD}</span>`;
-}
-async function buyGold() {
+  $('#goldGrid').innerHTML = '<div class="loading" style="padding:30px;grid-column:1/-1;text-align:center"><i class="f7-icons">arrow2_circlepath</i> جاري تحميل باقات الذهب...</div>';
+
   try {
-    const d = await api('/api/buy-gold', 'POST', { gold: SEL_GOLD });
-    ME.balance = d.balance;
-    $('#menuBal').textContent = d.balance;
-    closeOv('buyOv');
-    toast(`تمت إضافة ${SEL_GOLD} ذهب الى رصيدك 💰`);
-    pushNotif('creditcard_fill', `تمت إضافة ${SEL_GOLD} ذهب افتراضي الى رصيدك`, {
-      id: d.notification_id, created_at: d.notification_created_at
-    });
-  } catch (e) { toast(e.error || 'تعذر الشراء', false); }
+    const res = await api('/api/gold-packages');
+    if (res && res.packages && res.packages.length) {
+      STORE_PACKAGES = res.packages;
+      STORE_PAYMENT_INFO = res;
+    } else {
+      STORE_PACKAGES = [
+        { id: 1, name: 'باقة التجربة', gold: 10, price: 1.99, currency: '$', bonus: 0, badge: '' },
+        { id: 2, name: 'الباقة البرونزية', gold: 50, price: 4.99, currency: '$', bonus: 5, badge: '' },
+        { id: 3, name: 'الباقة الفضية', gold: 100, price: 9.99, currency: '$', bonus: 15, badge: '🔥 الأكثر طلباً' },
+        { id: 4, name: 'الباقة الذهبية', gold: 250, price: 24.99, currency: '$', bonus: 50, badge: '⭐ باقة التوفير' },
+        { id: 5, name: 'الباقة الماسية', gold: 500, price: 49.99, currency: '$', bonus: 150, badge: '💎 باقة مميزة' },
+        { id: 6, name: 'باقة VIP الملكية', gold: 1000, price: 89.99, currency: '$', bonus: 400, badge: '👑 باقة كبار الشخصيات' }
+      ];
+      STORE_PAYMENT_INFO = { currency: '$', merchant_bank: 'البنك التجاري المعتمد' };
+    }
+  } catch (e) {
+    STORE_PACKAGES = [
+      { id: 1, name: '10 Gold', gold: 10, price: 1.99, currency: '$', bonus: 0 },
+      { id: 2, name: '50 Gold', gold: 50, price: 4.99, currency: '$', bonus: 5 },
+      { id: 3, name: '100 Gold', gold: 100, price: 9.99, currency: '$', bonus: 15 }
+    ];
+  }
+
+  // تحديد باقة مميزة أو أول باقة تلقائياً
+  const defaultPkg = STORE_PACKAGES.find(p => p.badge && p.badge.includes('الأكثر طلباً')) || STORE_PACKAGES[0];
+  SELECTED_PACKAGE = defaultPkg;
+  renderGoldPackages();
 }
-$('#buyPaypal').onclick = buyGold;
-$('#buyDebit').onclick = buyGold;
+
+function renderGoldPackages() {
+  if (!STORE_PACKAGES || !STORE_PACKAGES.length) {
+    $('#goldGrid').innerHTML = `<div class="pv-empty">${translateDynamicText('لا توجد باقات متاحة حالياً')}</div>`;
+    return;
+  }
+
+  const goldLabel = APP_LANG === 'en' ? 'Gold' : (APP_LANG === 'es' ? 'Oro' : (APP_LANG === 'tr' ? 'Altın' : 'ذهب'));
+  const priceLabel = APP_LANG === 'en' ? 'Price' : (APP_LANG === 'es' ? 'Precio' : (APP_LANG === 'tr' ? 'Fiyat' : 'السعر'));
+  const bonusLabel = APP_LANG === 'en' ? 'Bonus Gold' : (APP_LANG === 'es' ? 'Oro de regalo' : (APP_LANG === 'tr' ? 'Hediye Altın' : 'ذهب هدية'));
+
+  $('#goldGrid').innerHTML = STORE_PACKAGES.map(pkg => {
+    const isSel = SELECTED_PACKAGE && SELECTED_PACKAGE.id === pkg.id;
+    const totalG = (+pkg.gold || 0) + (+pkg.bonus || 0);
+    const curr = pkg.currency || STORE_PAYMENT_INFO.currency || '$';
+    const pkgName = translateDynamicText(pkg.name || `${pkg.gold} Gold`);
+    const badgeText = pkg.badge ? translateDynamicText(pkg.badge) : '';
+    return `
+      <div class="gold-card ${isSel ? 'sel' : ''}" data-pkgid="${pkg.id}">
+        ${badgeText ? `<span class="gold-card-badge">${esc(badgeText)}</span>` : ''}
+        <div class="gn">${esc(pkgName)}</div>
+        <img src="/img/gold.png" alt="">
+        <div style="font-weight:900;font-size:13px;color:#f59e0b">${totalG} ${goldLabel} 🪙</div>
+        ${pkg.bonus ? `<div class="gold-card-bonus">+${pkg.bonus} ${bonusLabel} 🎁</div>` : ''}
+        <div class="gp">${pkg.price} ${esc(curr)} <span class="gl">${priceLabel}</span></div>
+      </div>
+    `;
+  }).join('');
+
+  $$('#goldGrid .gold-card').forEach(c => {
+    c.onclick = () => {
+      const pkg = STORE_PACKAGES.find(x => x.id === +c.dataset.pkgid);
+      if (pkg) {
+        SELECTED_PACKAGE = pkg;
+        renderGoldPackages();
+      }
+    };
+  });
+
+  if (SELECTED_PACKAGE) {
+    const totalG = (+SELECTED_PACKAGE.gold || 0) + (+SELECTED_PACKAGE.bonus || 0);
+    const curr = SELECTED_PACKAGE.currency || STORE_PAYMENT_INFO.currency || '$';
+    const pkgName = translateDynamicText(SELECTED_PACKAGE.name);
+    const continueLabel = APP_LANG === 'en' ? 'Continue purchase' : (APP_LANG === 'es' ? 'Continuar compra' : (APP_LANG === 'tr' ? 'Satın almaya devam et' : 'متابعة شراء'));
+    $('#buyStrip').innerHTML = `${continueLabel} <b>${esc(pkgName)} (${totalG} ${goldLabel})</b> <span>${SELECTED_PACKAGE.price} ${esc(curr)}</span>`;
+  }
+}
+
+// فتح نافذة الدفع ببطاقة الصراف والبطاقة البنكية
+function openCardPaymentModal() {
+  if (!ME || !ME.registered) {
+    return toast(translateDynamicText('يجب تسجيل الدخول بحساب مسجل لإتمام عملية الشراء'), false);
+  }
+  if (!SELECTED_PACKAGE) {
+    return toast(translateDynamicText('اختر باقة الذهب أولاً'), false);
+  }
+
+  const curr = SELECTED_PACKAGE.currency || STORE_PAYMENT_INFO.currency || '$';
+  const totalG = (+SELECTED_PACKAGE.gold || 0) + (+SELECTED_PACKAGE.bonus || 0);
+  const goldLabel = APP_LANG === 'en' ? 'Gold' : (APP_LANG === 'es' ? 'Oro' : (APP_LANG === 'tr' ? 'Altın' : 'ذهب'));
+  const bonusLabel = APP_LANG === 'en' ? 'bonus' : (APP_LANG === 'es' ? 'de regalo' : (APP_LANG === 'tr' ? 'hediye' : 'هدية'));
+
+  // تحديث بيانات الباقة في نافذة الدفع
+  $('#cardPayPkgName').textContent = translateDynamicText(SELECTED_PACKAGE.name);
+  $('#cardPayPkgGold').textContent = `${totalG} ${goldLabel} 🪙` + (SELECTED_PACKAGE.bonus ? ` (+${SELECTED_PACKAGE.bonus} ${bonusLabel})` : '');
+  $('#cardPayPkgPrice').textContent = `${SELECTED_PACKAGE.price} ${curr}`;
+  $('#cardPayBtnPrice').textContent = `${SELECTED_PACKAGE.price} ${curr}`;
+  $('#cardPayBankName').textContent = STORE_PAYMENT_INFO.merchant_bank || 'البنك المعتمد';
+
+  // إعادة ضبط حقول البطاقة
+  $('#cardInputHolder').value = (ME.username || 'CARDHOLDER').toUpperCase();
+  $('#cardInputNumber').value = '';
+  $('#cardInputExp').value = '';
+  $('#cardInputCvv').value = '';
+
+  // تحديث شكل البطاقة المصرفية التفاعلية
+  $('#vcCardHolder').textContent = (ME.username || 'CARDHOLDER').toUpperCase();
+  $('#vcCardNumber').textContent = '•••• •••• •••• ••••';
+  $('#vcCardExp').textContent = 'MM/YY';
+  $('#vcCardBrand').textContent = 'CARD';
+  $('#cardBrandIcon').innerHTML = '<i class="f7-icons">creditcard_fill</i>';
+
+  openOv('cardPaymentOv');
+}
+
+// معالجة وتنسيق حقول البطاقة البنكية مباشرة أثناء الكتابة
+function initCardInputFormatting() {
+  const numInput = $('#cardInputNumber');
+  const holderInput = $('#cardInputHolder');
+  const expInput = $('#cardInputExp');
+  const cvvInput = $('#cardInputCvv');
+
+  if (numInput) {
+    numInput.oninput = () => {
+      let v = numInput.value.replace(/\D/g, '').slice(0, 16);
+      let parts = [];
+      for (let i = 0; i < v.length; i += 4) parts.push(v.slice(i, i + 4));
+      numInput.value = parts.join(' ');
+
+      // كشف نوع البطاقة
+      let brand = 'CARD';
+      let icon = 'creditcard_fill';
+      if (/^4/.test(v)) { brand = 'VISA'; icon = 'creditcard_fill'; }
+      else if (/^(5[1-5]|2[2-7])/.test(v)) { brand = 'Mastercard'; icon = 'creditcard_fill'; }
+      else if (/^(5888|5889|5890|9682|4847|5043|4008)/.test(v)) { brand = 'Mada مدى'; icon = 'creditcard_fill'; }
+      else if (/^(5078|3585)/.test(v)) { brand = 'Meeza ميزة'; icon = 'creditcard_fill'; }
+      else if (/^(34|37)/.test(v)) { brand = 'AMEX'; icon = 'creditcard_fill'; }
+
+      $('#vcCardBrand').textContent = brand;
+      $('#cardBrandIcon').innerHTML = `<i class="f7-icons">${icon}</i>`;
+
+      if (parts.length) {
+        let display = parts.join(' ');
+        while (display.length < 19) {
+          if (display.endsWith(' ') || (display.length + 1) % 5 === 0) display += ' ';
+          display += '•';
+        }
+        $('#vcCardNumber').textContent = display.slice(0, 19);
+      } else {
+        $('#vcCardNumber').textContent = '•••• •••• •••• ••••';
+      }
+    };
+  }
+
+  if (holderInput) {
+    holderInput.oninput = () => {
+      const v = holderInput.value.trim().toUpperCase();
+      $('#vcCardHolder').textContent = v || 'CARDHOLDER NAME';
+    };
+  }
+
+  if (expInput) {
+    expInput.oninput = () => {
+      let v = expInput.value.replace(/\D/g, '').slice(0, 4);
+      if (v.length >= 2) v = v.slice(0, 2) + '/' + v.slice(2, 4);
+      expInput.value = v;
+      $('#vcCardExp').textContent = v || 'MM/YY';
+    };
+  }
+}
+
+// تنفيذ الدفع بالبطاقة وشحن الذهب
+async function executeCardPayment() {
+  if (!ME || !ME.registered) return toast('يجب تسجيل الدخول أولاً', false);
+  if (!SELECTED_PACKAGE) return toast('اختر باقة الذهب أولاً', false);
+
+  const cardNum = $('#cardInputNumber').value.replace(/\D/g, '');
+  const holder = $('#cardInputHolder').value.trim();
+  const exp = $('#cardInputExp').value.trim();
+  const cvv = $('#cardInputCvv').value.trim();
+
+  if (cardNum.length < 13 || cardNum.length > 19) {
+    return toast('يرجى إدخال رقم بطاقة صراف صحيح (16 رقم)', false);
+  }
+  if (!holder || holder.length < 3) {
+    return toast('يرجى كتابة اسم صاحب البطاقة', false);
+  }
+  if (!/^\d{2}\/\d{2}$/.test(exp)) {
+    return toast('يرجى كتابة تاريخ الانتهاء بصيغة MM/YY', false);
+  }
+  if (cvv.length < 3 || cvv.length > 4) {
+    return toast('يرجى كتابة رمز الأمان CVV المكون من 3 أرقام', false);
+  }
+
+  const btn = $('#cardPaySubmitBtn');
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="f7-icons">arrow2_circlepath</i> جاري الخصم وإيداع الذهب فورياً...';
+
+  try {
+    const res = await api('/api/pay-with-card', 'POST', {
+      package_id: SELECTED_PACKAGE.id,
+      card_number: cardNum,
+      card_holder: holder,
+      exp_date: exp,
+      cvv: cvv
+    });
+
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+
+    if (res && res.ok) {
+      if (ME) ME.balance = res.balance;
+      const mb = $('#menuBal');
+      if (mb) mb.textContent = res.balance;
+
+      closeOv('cardPaymentOv');
+      closeOv('buyOv');
+
+      toast(`🎉 تمت عملية الدفع بنجاح! تم شحن ${res.total_gold} ذهب إلى رصيدك فوراً 🪙`);
+      beep(880, .2);
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+    toast(err.error || 'تعذر إتمام الدفع، يرجى التحقق من بيانات البطاقة', false);
+  }
+}
+
+async function buyGold() {
+  if (!ME || !ME.registered) {
+    return toast('يجب تسجيل الدخول بحساب مسجل لطلب شراء الذهب', false);
+  }
+  if (!SELECTED_PACKAGE) return toast('اختر باقة الذهب أولاً', false);
+  try {
+    const d = await api('/api/buy-gold-request', 'POST', { gold: SELECTED_PACKAGE.gold });
+    closeOv('buyOv');
+    toast(`تم إرسال طلب شراء ${SELECTED_PACKAGE.gold} ذهب إلى الإدارة ⏳ سيصلك إشعار فور الموافقة وشحن الرصيد`);
+  } catch (e) {
+    toast(e.error || 'تعذر إرسال الطلب', false);
+  }
+}
+
+const buyPaypalBtn = $('#buyPaypal');
+if (buyPaypalBtn) buyPaypalBtn.onclick = buyGold;
+const buyDebitBtn = $('#buyDebit');
+if (buyDebitBtn) buyDebitBtn.onclick = openCardPaymentModal;
+const cardPayBtn = $('#cardPaySubmitBtn');
+if (cardPayBtn) cardPayBtn.onclick = executeCardPayment;
+initCardInputFormatting();
+
 $$('#setList .switch').forEach(sw => sw.onclick = () => {
   const k = sw.dataset.set;
   PREFS[k] = PREFS[k] ? 0 : 1;
@@ -2737,24 +4666,61 @@ $('#compSend').onclick = async () => {
   toast('تم إرسال الشكوى للإدارة ✅');
 };
 
-// تغيير الصورة — معرض صور حقيقي
-const AVA_FILES = { def: 20, nature: 16, other: 16 };
-function openAvatars() {
+// تغيير الصورة — معرض صور حقيقي ومرفوعات المستخدم
+AVA_CAT = 'def';
+let MY_AVATARS = [];
+async function openAvatars() {
   SEL_AVATAR = ME.avatar;
-  renderAvaGrid(AVA_CAT);
+  await renderAvaGrid(AVA_CAT);
   openOv('avaOv');
 }
-$$('.ava-tab').forEach(t => t.onclick = () => {
+$$('.ava-tab').forEach(t => t.onclick = async () => {
   AVA_CAT = t.dataset.acat;
   $$('.ava-tab').forEach(x => x.classList.toggle('active', x === t));
-  renderAvaGrid(AVA_CAT);
+  await renderAvaGrid(AVA_CAT);
 });
-function renderAvaGrid(cat) {
-  const n = AVA_FILES[cat];
+async function renderAvaGrid(cat) {
   let html = '';
-  for (let i = 1; i <= n; i++) {
-    const v = `/avatars/${cat}/${String(i).padStart(2, '0')}.jpg`;
-    html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${v}"><img src="${v}" loading="lazy"></div>`;
+  if (cat === 'custom') {
+    try {
+      MY_AVATARS = await api('/api/my-avatars');
+    } catch (e) { MY_AVATARS = []; }
+    if (!MY_AVATARS.length) {
+      html = `<div class="pv-empty" style="grid-column:1/-1;padding:40px 10px;text-align:center;color:#94a3b8">
+        <i class="f7-icons" style="font-size:36px;display:block;margin-bottom:8px">photo_on_rectangle</i>
+        <div>${APP_LANG === 'es' ? 'No hay fotos subidas aún' : (APP_LANG === 'tr' ? 'Henüz yüklenen fotoğraf yok' : (APP_LANG === 'en' ? 'No uploaded photos yet' : 'لا توجد صور مرفوعة بعد'))}</div>
+        <div style="font-size:12px;margin-top:4px;color:#cbd5e1">${APP_LANG === 'es' ? 'Haz clic en "Subir foto" abajo (se guardan hasta 10 fotos)' : (APP_LANG === 'tr' ? 'Aşağıdaki "Fotoğraf yükle"ye tıklayın (maks 10 fotoğraf)' : (APP_LANG === 'en' ? 'Click "Upload photo" below (up to 10 photos saved)' : 'اضغط على "رفع صورة" بالأسفل (يتم حفظ حتى 10 صور)'))}</div>
+      </div>`;
+    } else {
+      MY_AVATARS.forEach(item => {
+        const v = item.path;
+        html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${esc(v)}"><img src="${esc(v)}" loading="lazy"></div>`;
+      });
+    }
+  } else {
+    try {
+      const serverAvatars = await api('/api/avatars?category=' + cat);
+      if (serverAvatars && serverAvatars.length) {
+        serverAvatars.forEach(item => {
+          const v = item.path;
+          html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${esc(v)}"><img src="${esc(v)}" loading="lazy"></div>`;
+        });
+      } else {
+        const AVA_FALLBACK = { def: 20, nature: 16, other: 16 };
+        const n = AVA_FALLBACK[cat] || 16;
+        for (let i = 1; i <= n; i++) {
+          const v = `/avatars/${cat}/${String(i).padStart(2, '0')}.jpg`;
+          html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${v}"><img src="${v}" loading="lazy"></div>`;
+        }
+      }
+    } catch (e) {
+      const AVA_FALLBACK = { def: 20, nature: 16, other: 16 };
+      const n = AVA_FALLBACK[cat] || 16;
+      for (let i = 1; i <= n; i++) {
+        const v = `/avatars/${cat}/${String(i).padStart(2, '0')}.jpg`;
+        html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${v}"><img src="${v}" loading="lazy"></div>`;
+      }
+    }
   }
   $('#avaGrid').innerHTML = html;
   $$('#avaGrid .ava-cell').forEach(c => c.onclick = () => {
@@ -2772,9 +4738,11 @@ $('#avaFile').onchange = async () => {
     const d = await uploadFormWithProgress('/api/avatar', fd, 'جاري رفع الصورة الشخصية...');
     SEL_AVATAR = d.avatar;
     ME.avatar = d.avatar;
-    closeOv('avaOv');
+    AVA_CAT = 'custom';
+    $$('.ava-tab').forEach(x => x.classList.toggle('active', x.dataset.acat === 'custom'));
+    await renderAvaGrid('custom');
     onLoggedIn();
-    toast('تم رفع الصورة وحفظها ✅');
+    toast('تم رفع الصورة وحفظها في قائمة مرفوعاتي ✅');
   } catch (e) { toast(e.error || 'تعذر رفع الصورة', false); }
 };
 $('#avaSave').onclick = async () => {
@@ -2785,7 +4753,7 @@ $('#avaSave').onclick = async () => {
       onLoggedIn();
     }
     closeOv('avaOv');
-    toast('تم حفظ الصورة ✅');
+    toast('تم حفظ الصورة بنجاح ✅');
   } catch (e) { toast(e.error || 'تعذر حفظ الصورة', false); }
 };
 
@@ -3102,7 +5070,25 @@ $('#wallPublish').onclick = async () => {
 // =====================================================
 //  الإشعارات
 // =====================================================
-$('#notifSettings').onclick = () => toast('إعدادات الإشعارات');
+$('#notifSettings').onclick = async () => {
+  if (!CURRENT_NOTIFICATIONS || !CURRENT_NOTIFICATIONS.length) {
+    return toast('لا توجد إشعارات لحذفها');
+  }
+  if (!confirm('هل أنت متأكد من حذف جميع الإشعارات؟')) return;
+  try {
+    if (ME && ME.registered) {
+      await api('/api/notifications/clear', 'DELETE');
+    }
+    NOTIFS = [];
+    CURRENT_NOTIFICATIONS = [];
+    NOTIF_UNREAD = 0;
+    updateNotifBadge();
+    $('#notifList').innerHTML = '<div class="pv-empty"><span class="empty-img"><img src="/img/notif_empty.png" alt=""></span><div>لا يوجد إشعارات بعد</div></div>';
+    toast('تم حذف جميع الإشعارات بنجاح ✓');
+  } catch (e) {
+    toast(e.error || 'تعذر حذف الإشعارات', false);
+  }
+};
 async function openNotifs() {
   if (!ME) return openLogin();
   NOTIF_UNREAD = 0;
@@ -3146,14 +5132,52 @@ async function openNotifs() {
       ${isAnnouncement && !isRead ? '<span class="notif-unread"></span>' : ''}
     </div>`;
   }).join('') : '<div class="pv-empty"><span class="empty-img"><img src="/img/notif_empty.png" alt=""></span><div>لا يوجد إشعارات بعد</div></div>';
-  $$('#notifList .notif-row.announcement').forEach(row => row.onclick = () => {
-    const notification = CURRENT_NOTIFICATIONS[+row.dataset.index];
-    if (!notification) return;
-    const a = normalizeAnnouncement(notification);
-    if (a.id) READ_NOTIFS.add('announcement:' + a.id);
-    row.classList.add('read');
-    const dot = row.querySelector('.notif-unread'); if (dot) dot.remove();
-    openAnnouncementPopup(a);
+
+  $$('#notifList .notif-row').forEach(row => {
+    row.onclick = () => {
+      const notification = CURRENT_NOTIFICATIONS[+row.dataset.index];
+      if (!notification) return;
+      const isAnnouncement = notification.kind === 'announcement' || notification.icon === 'announcement';
+      if (isAnnouncement) {
+        const a = normalizeAnnouncement(notification);
+        if (a.id) READ_NOTIFS.add('announcement:' + a.id);
+        row.classList.add('read');
+        const dot = row.querySelector('.notif-unread'); if (dot) dot.remove();
+        openAnnouncementPopup(a);
+        return;
+      }
+      // عرض تفاصيل الإشعار في نافذة منبثقة جميلة تظهر فوق كل العناصر واللغات
+      const titles = { ar: 'إشعار من النظام', en: 'System Notification', es: 'Notificación del Sistema', tr: 'Sistem Bildirimi' };
+      $('#notifDetailTitle').textContent = titles[APP_LANG] || titles.ar;
+      $('#notifDetailIcon').textContent = notification.icon || 'bell_fill';
+
+      const iconBox = $('#notifDetailIconBox');
+      if (iconBox) {
+        iconBox.className = 'notif-detail-icon-box';
+        if (notification.icon === 'creditcard_fill' || (notification.text && notification.text.includes('ذهب'))) {
+          iconBox.classList.add('gold');
+        } else if (notification.icon === 'phone_fill' || notification.icon === 'phone_down_fill') {
+          iconBox.classList.add('green');
+        } else {
+          iconBox.classList.add('blue');
+        }
+      }
+
+      const time = new Date((+notification.created_at || Date.now() / 1000) * 1000)
+        .toLocaleString(APP_LANG === 'en' ? 'en-US' : (APP_LANG === 'es' ? 'es-ES' : (APP_LANG === 'tr' ? 'tr-TR' : 'ar-JO')));
+      $('#notifDetailTime').textContent = time;
+      $('#notifDetailText').textContent = translateDynamicText(notification.text, APP_LANG);
+
+      const okBtn = document.querySelector('#notifDetailOv [data-close="notifDetailOv"]');
+      const okTexts = { ar: 'حسناً', en: 'OK', es: 'Aceptar', tr: 'Tamam' };
+      if (okBtn) okBtn.textContent = okTexts[APP_LANG] || 'حسناً';
+
+      row.classList.add('read');
+      const dot = row.querySelector('.notif-unread'); if (dot) dot.remove();
+      if (notification.id) READ_NOTIFS.add(notification.id);
+
+      openOv('notifDetailOv');
+    };
   });
 }
 
@@ -3233,9 +5257,11 @@ $('#nrGo').onclick = () => { closeOv('needRegOv'); openOv('regOv'); };
 $('#doRegister').onclick = async () => {
   try {
     const gender = $('#rGenderSel').value;
+    const bio = $('#rBio') ? $('#rBio').value.trim() : '';
     const d = await api('/api/register', 'POST', {
       username: $('#rUser').value.trim(), password: $('#rPass').value,
-      gender, age: +$('#rAge').value || 25
+      gender, age: +$('#rAge').value || 25,
+      bio
     });
     CHAT_TOKEN = d.tab_token || '';
     ME = d.user; MYBADGE = d.badge;
@@ -3304,7 +5330,10 @@ function setRoomsPanel(open) {
   closeOv('usersPanel');
   $('#roomsPanel').classList.toggle('open', open);
   $('#roomsVeil').style.display = open ? 'block' : 'none';
-  if (open) renderRoomsPanel();
+  if (open) {
+    $$('.r-tab2').forEach(t => t.classList.toggle('active', t.dataset.tab === 'default'));
+    renderRoomsPanel();
+  }
 }
 $('#btnHome').onclick = () => setRoomsPanel(!$('#roomsPanel').classList.contains('open'));
 $('#roomsPanelX').onclick = () => setRoomsPanel(false);
@@ -3337,7 +5366,18 @@ $('#btnRoomUsers').onclick = () => setUsersPanel(!$('#usersPanel').classList.con
 function closeRoomDrop() { $('#roomDrop').classList.remove('open'); $('#roomDropBg').style.display = 'none'; }
 $('#btnRoomMore').onclick = (e) => { e.stopPropagation(); $('#roomDropBg').style.display = 'block'; $('#roomDrop').classList.toggle('open'); };
 $('#btnLanguage').onclick = () => { setLanguage(APP_LANG, false); openOv('languageOv'); };
-$$('.language-option').forEach(b => b.onclick = () => { setLanguage(b.dataset.language); closeOv('languageOv'); toast(b.dataset.language === 'en' ? 'Language changed to English' : 'تم تغيير اللغة إلى العربية'); });
+$$('.language-option').forEach(b => b.onclick = () => {
+  const lang = b.dataset.language;
+  setLanguage(lang);
+  closeOv('languageOv');
+  const toasts = {
+    ar: 'تم تغيير اللغة إلى العربية',
+    en: 'Language changed to English',
+    es: 'Idioma cambiado a Español',
+    tr: 'Dil Türkçe olarak değiştirildi'
+  };
+  toast(toasts[lang] || 'تم تغيير اللغة');
+});
 $('#roomDropBg').onclick = closeRoomDrop;
 $('#dropLeaveRoom').onclick = () => { closeRoomDrop(); openOv('exitOv'); };
 $('#dropRefreshRooms').onclick = async () => { closeRoomDrop(); await loadRooms(); toast('تم تحديث قائمة الغرف ✓'); };
@@ -3374,7 +5414,9 @@ function sendMsg() {
 }
 // الإيموجي المصور المرفوع من لوحة الإدارة فقط
 function insertCustomEmojiToken(id) {
-  const input = $('#msgInput');
+  const isPrivateOpen = $('#pmOv') && $('#pmOv').classList.contains('open');
+  const input = isPrivateOpen ? $('#pmInput') : $('#msgInput');
+  if (!input) return;
   const token = `(${id})`;
   const start = Number.isInteger(input.selectionStart) ? input.selectionStart : input.value.length;
   const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : start;
@@ -3387,7 +5429,9 @@ function renderEmojiPicker() {
     : '<div class="custom-emoji-empty">لا توجد إيموجيات مرفوعة حالياً</div>';
   $$('#emojiGrid .custom-emoji-choice').forEach(im => im.onclick = () => {
     if (!ME) return openLogin();
-    if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
+    const isPrivateOpen = $('#pmOv') && $('#pmOv').classList.contains('open');
+    if (!isPrivateOpen && !CUR_ROOM) return toast('اختر غرفة أولا', false);
+    if (isPrivateOpen && !PM_WITH) return toast('اختر مستخدماً أولاً', false);
     insertCustomEmojiToken(im.dataset.id);
     $('#emojiPanel').classList.remove('open');
   });
@@ -3413,15 +5457,25 @@ function renderColorGrid() {
   });
 }
 renderColorGrid();
-$('#btnEmoji').onclick = () => { $('#colorPanel').classList.remove('open'); $('#emojiPanel').classList.toggle('open'); };
+$('#btnEmoji').onclick = (e) => {
+  e.stopPropagation();
+  $('#colorPanel').classList.remove('open');
+  const ep = $('#emojiPanel');
+  ep.classList.remove('pm-mode');
+  ep.classList.toggle('open');
+};
 $('#colorPanel').classList.remove('open');
-$('#btnApps').onclick = () => { $('#emojiPanel').classList.remove('open'); $('#colorPanel').classList.toggle('open'); };
+$('#btnApps').onclick = (e) => {
+  e.stopPropagation();
+  $('#emojiPanel').classList.remove('open');
+  $('#colorPanel').classList.toggle('open');
+};
 function currentMembershipAccessKey() {
   if (!ME || !ME.registered) return 'guest';
   return ME.membership && ME.membership !== 'none' ? ME.membership : 'registered';
 }
 function canUseMembershipFeature(settingKey) {
-  if (ME && ['roomadmin', 'admin', 'superadmin'].includes(ME.rank)) return true;
+  if (ME && ['roomadmin', 'admin', 'superadmin', 'supermaster'].includes(ME.rank)) return true;
   return String(SETTINGS[settingKey] || '').split(',').map(v => v.trim()).includes(currentMembershipAccessKey());
 }
 async function sendPublicMedia(file, mediaDuration = 0) {
@@ -3447,6 +5501,30 @@ async function sendPublicMedia(file, mediaDuration = 0) {
     toast(error.error || 'تعذر إرسال الملف', false);
   }
 }
+
+async function sendPrivateMedia(file, mediaDuration = 0) {
+  if (!file || !PM_WITH || !SOCKET) return;
+  mediaDuration = +mediaDuration || +file._duration || 0;
+  const isAudio = String(file.type || '').startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|opus|webm)$/i.test(file.name || '');
+  const fallbackName = isAudio ? `voice_${Date.now()}.webm` : `image_${Date.now()}.png`;
+  const fd = new FormData();
+  fd.append('media', file, file.name || file._uploadName || fallbackName);
+  try {
+    toast('جاري رفع الملف...');
+    const uploaded = await uploadFormWithProgress(
+      '/api/chat/upload-media', fd,
+      isAudio ? 'جاري رفع المقطع الصوتي...' : 'جاري رفع الصورة إلى الخاص...'
+    );
+    SOCKET.emit('private', {
+      toId: PM_WITH.id,
+      text: '',
+      media: { type: uploaded.type, path: uploaded.path, duration: Math.max(0, Math.min(300, mediaDuration)) }
+    });
+  } catch (error) {
+    toast(error.error || 'تعذر إرسال الملف', false);
+  }
+}
+let CHAT_MEDIA_DESTINATION = 'public'; // 'public' | 'private'
 let PUBLIC_MEDIA_REVIEW_FILE = null, PUBLIC_MEDIA_REVIEW_TYPE = '', PUBLIC_MEDIA_REVIEW_URL = '', PUBLIC_MEDIA_REVIEW_ID = 0;
 function publicMediaFileSize(bytes) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -3532,8 +5610,10 @@ async function inspectPublicMedia(file, mediaType) {
       setPublicMediaReviewResult(false, 'تعذر فحص الملف أو أن تنسيقه غير مدعوم');
   }
 }
-function choosePublicMedia(accept, mediaType) {
-  if (!CUR_ROOM) return toast('ادخل إلى غرفة أولاً', false);
+function chooseChatMedia(accept, mediaType, destination = 'public') {
+  CHAT_MEDIA_DESTINATION = destination;
+  if (destination === 'public' && !CUR_ROOM) return toast('ادخل إلى غرفة أولاً', false);
+  if (destination === 'private' && !PM_WITH) return toast('اختر عضواً أولاً', false);
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = accept;
@@ -3547,6 +5627,9 @@ function choosePublicMedia(accept, mediaType) {
   inp.oncancel = () => inp.remove();
   inp.click();
 }
+function choosePublicMedia(accept, mediaType) {
+  chooseChatMedia(accept, mediaType, 'public');
+}
 $('#publicMediaReviewClose').onclick = closePublicMediaReview;
 $('#publicMediaReviewCancel').onclick = closePublicMediaReview;
 $('#publicMediaReview').onclick = event => { if (event.target === $('#publicMediaReview')) closePublicMediaReview(); };
@@ -3554,12 +5637,20 @@ $('#publicMediaReviewSend').onclick = async () => {
   const file = PUBLIC_MEDIA_REVIEW_FILE;
   const mediaType = PUBLIC_MEDIA_REVIEW_TYPE;
   if (!file || $('#publicMediaReviewSend').disabled) return;
-  if (mediaType === 'image' && !canUseMembershipFeature('public_image_allowed_memberships'))
-    return toast('عضويتك غير مسموح لها بإرسال الصور في العام', false);
-  if (mediaType === 'audio' && !canUseMembershipFeature('voice_allowed_memberships'))
-    return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
-  closePublicMediaReview();
-  await sendPublicMedia(file);
+  if (CHAT_MEDIA_DESTINATION === 'private') {
+    if (!PM_WITH) return toast('المحادثة الخاصة غير مفتوحة', false);
+    if (!canUseMembershipFeature('private_message_allowed_memberships'))
+      return toast('عضويتك غير مسموح لها بإرسال الصور في الخاص', false);
+    closePublicMediaReview();
+    await sendPrivateMedia(file);
+  } else {
+    if (mediaType === 'image' && !canUseMembershipFeature('public_image_allowed_memberships'))
+      return toast('عضويتك غير مسموح لها بإرسال الصور في العام', false);
+    if (mediaType === 'audio' && !canUseMembershipFeature('voice_allowed_memberships'))
+      return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
+    closePublicMediaReview();
+    await sendPublicMedia(file);
+  }
 };
 let VOICE_MEDIA_RECORDER = null, VOICE_MEDIA_STREAM = null, VOICE_RECORD_TIMER = null;
 let VOICE_RECORD_CHUNKS = [], VOICE_RECORD_STARTED_AT = 0, VOICE_RECORD_DURATION = 0;
@@ -3720,26 +5811,61 @@ $('#voicePreviewSend').onclick = async () => {
   const file = VOICE_RECORD_FILE;
   const duration = VOICE_RECORD_DURATION;
   if (!file || $('#voicePreviewSend').disabled) return;
-  if (!canUseMembershipFeature('voice_allowed_memberships')) return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
   closeVoiceRecorder();
-  await sendPublicMedia(file, duration);
+  if (CHAT_MEDIA_DESTINATION === 'private') {
+    if (!PM_WITH) return toast('المحادثة الخاصة غير مفتوحة', false);
+    if (!canUseMembershipFeature('private_message_allowed_memberships'))
+      return toast('عضويتك غير مسموح لها بإرسال الرسائل الصوتية في الخاص', false);
+    await sendPrivateMedia(file, duration);
+  } else {
+    if (!canUseMembershipFeature('voice_allowed_memberships'))
+      return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
+    await sendPublicMedia(file, duration);
+  }
 };
 $('#btnMic').onclick = () => {
   if (!canUseMembershipFeature('voice_allowed_memberships'))
     return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
+  CHAT_MEDIA_DESTINATION = 'public';
+  startVoiceRecording();
+};
+$('#pmMic').onclick = () => {
+  if (!PM_WITH) return toast('المحادثة الخاصة غير مفتوحة', false);
+  if (!canUseMembershipFeature('private_message_allowed_memberships'))
+    return toast('عضويتك غير مسموح لها بإرسال الرسائل الصوتية في الخاص', false);
+  CHAT_MEDIA_DESTINATION = 'private';
   startVoiceRecording();
 };
 $('#btnCam').onclick = () => {
   if (!canUseMembershipFeature('public_image_allowed_memberships'))
     return toast('عضويتك غير مسموح لها بإرسال الصور في العام', false);
-  choosePublicMedia('image/*', 'image');
+  chooseChatMedia('image/*', 'image', 'public');
+};
+$('#pmCam').onclick = () => {
+  if (!PM_WITH) return toast('المحادثة الخاصة غير مفتوحة', false);
+  if (!canUseMembershipFeature('private_message_allowed_memberships'))
+    return toast('عضويتك غير مسموح لها بإرسال الصور في الخاص', false);
+  chooseChatMedia('image/*', 'image', 'private');
+};
+$('#pmEmoji').onclick = (e) => {
+  e.stopPropagation();
+  $('#colorPanel').classList.remove('open');
+  const ep = $('#emojiPanel');
+  ep.classList.add('pm-mode');
+  ep.classList.toggle('open');
 };
 $('#privSettings').onclick = () => toast('اعدادات الخاص : استقبال الرسائل من الجميع');
 
 // إغلاق اللوحات عند الضغط خارجها
 document.addEventListener('click', (e) => {
   const ep = $('#emojiPanel');
-  if (ep.classList.contains('open') && !ep.contains(e.target) && !e.target.closest('#btnEmoji')) ep.classList.remove('open');
+  if (ep && ep.classList.contains('open') && !ep.contains(e.target) && !e.target.closest('#btnEmoji') && !e.target.closest('#pmEmoji')) {
+    ep.classList.remove('open');
+  }
+  const cp = $('#colorPanel');
+  if (cp && cp.classList.contains('open') && !cp.contains(e.target) && !e.target.closest('#btnApps')) {
+    cp.classList.remove('open');
+  }
 });
 // إغلاق النوافذ عند لمس الخلفية
 $$('.overlay:not(.full)').forEach(ov => ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); }));

@@ -309,3 +309,615 @@ select.inp { cursor:pointer; }
 .room-bot-actions { display:flex; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
 .room-bot-actions .btn { padding:7px 10px; font-size:11px; }
 @media(max-width:760px) { .room-bot-card { align-items:flex-start; flex-wrap:wrap; } .room-bot-info { min-width:calc(100% - 66px); } .room-bot-actions { width:100%; } }
+
+/* مراقبة الخاص والتسجيلات */
+.pm-monitor-conv-card {
+  background:#fff; border:1px solid #e7e9f3; border-radius:14px; padding:16px 18px; margin-bottom:12px;
+  display:flex; align-items:center; justify-content:space-between; gap:14px; transition:box-shadow .15s; flex-wrap:wrap;
+}
+.pm-monitor-conv-card:hover {
+  box-shadow:0 4px 14px rgba(0,0,0,.06);
+}
+.pm-monitor-peers {
+  display:flex; align-items:center; gap:10px; flex:1; min-width:280px; flex-wrap:wrap;
+}
+.pm-monitor-user {
+  display:flex; align-items:center; gap:7px; font-weight:800; font-size:14px; color:#111827;
+}
+.pm-monitor-user img {
+  width:32px; height:32px; border-radius:50%; object-fit:cover; border:1.5px solid #e2e8f0;
+}
+.pm-monitor-arrow {
+  color:#94a3b8; font-size:16px; margin:0 4px;
+}
+.pm-monitor-last {
+  font-size:12.5px; color:#64748b; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:480px;
+}
+.pm-chat-history-box {
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:16px; max-height:450px; overflow-y:auto; margin:14px 0;
+  display:flex; flex-direction:column; gap:10px;
+}
+.pm-history-row {
+  display:flex; flex-direction:column; max-width:75%; border-radius:12px; padding:8px 12px; font-size:13px;
+}
+.pm-history-row.u1 { align-self:flex-start; background:#fff; border:1px solid #e2e8f0; color:#1e293b; }
+.pm-history-row.u2 { align-self:flex-end; background:#e0e7ff; border:1px solid #c7d2fe; color:#1e1b4b; }
+.pm-history-header {
+  display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:11px; margin-bottom:3px; opacity:.8;
+}
+.pm-call-rec-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:16px 18px; margin-bottom:14px;
+  box-shadow:0 2px 6px rgba(0,0,0,.03);
+}
+.pm-call-rec-head {
+  display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;
+}
+.pm-call-rec-title {
+  display:flex; align-items:center; gap:10px; font-weight:800; font-size:14.5px; color:#0f172a;
+}
+.pm-call-rec-title i {
+  color:#10b981; font-size:22px;
+}
+.pm-call-rec-meta {
+  display:flex; align-items:center; gap:12px; font-size:12px; color:#64748b; font-weight:700; flex-wrap:wrap;
+}
+.pm-call-rec-player {
+  display:flex; align-items:center; gap:10px; background:#f1f5f9; border-radius:10px; padding:8px 12px; margin-top:8px;
+}
+.pm-call-rec-player audio {
+  width:100%; height:36px; outline:none;
+}
+.pm-call-rec-actions {
+  display:flex; align-items:center; gap:8px; margin-inline-start:auto;
+}
+
+/* =====================================================
+   نافذة التوليد الذكي لبيانات السيو (AI SEO Modal)
+   ===================================================== */
+.admin-modal-overlay {
+  position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,.7);
+  backdrop-filter:blur(6px); z-index:99999; display:flex; align-items:center; justify-content:center;
+  padding:16px; box-sizing:border-box;
+}
+.admin-modal-card {
+  background:#fff; border-radius:20px; width:100%; max-width:860px; max-height:90vh;
+  display:flex; flex-direction:column; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,.35);
+  animation:pop .2s ease-out;
+}
+.admin-modal-header {
+  display:flex; align-items:center; justify-content:space-between; padding:18px 22px;
+  background:#f8fafc; border-bottom:1px solid #e2e8f0;
+}
+.admin-modal-title {
+  display:flex; align-items:center; gap:12px;
+}
+.seo-ai-icon {
+  width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg,#6366f1,#8b5cf6);
+  color:#fff; display:flex; align-items:center; justify-content:center; font-size:22px; flex:none;
+  box-shadow:0 4px 12px rgba(99,102,241,.35);
+}
+.admin-modal-title h3 {
+  margin:0 0 3px; font-size:16.5px; font-weight:900; color:#0f172a;
+}
+.admin-modal-title p {
+  margin:0; font-size:12px; color:#64748b; font-weight:600;
+}
+.admin-modal-close {
+  width:34px; height:34px; border-radius:50%; border:1px solid #cbd5e1; background:#fff;
+  color:#64748b; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px;
+  transition:all .15s;
+}
+.admin-modal-close:hover {
+  background:#fee2e2; color:#ef4444; border-color:#fca5a5;
+}
+
+.seo-ai-body {
+  padding:20px 22px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:16px;
+}
+.seo-ai-input-wrap {
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:16px;
+}
+.seo-ai-input-wrap label {
+  display:block; font-size:13px; font-weight:800; color:#1e293b; margin-bottom:8px;
+}
+.seo-ai-search-row {
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+}
+.seo-ai-search-row input {
+  flex:1; min-width:240px; height:42px; font-size:13.5px;
+}
+.seo-ai-quick-tags {
+  display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;
+}
+.seo-quick-btn {
+  background:#fff; border:1px solid #cbd5e1; border-radius:20px; padding:4px 12px;
+  font-size:11.5px; font-weight:700; color:#475569; cursor:pointer; transition:all .15s;
+}
+.seo-quick-btn:hover {
+  background:#eff6ff; color:#2563eb; border-color:#93c5fd; transform:translateY(-1px);
+}
+
+.seo-ai-results {
+  display:flex; flex-direction:column; gap:16px;
+}
+.seo-ai-placeholder {
+  text-align:center; padding:40px 20px; color:#94a3b8; font-size:13px; font-weight:700;
+}
+.seo-ai-placeholder i {
+  font-size:38px; color:#cbd5e1; display:block; margin-bottom:10px;
+}
+
+/* بطاقة نموذج SEO المولد بالذكاء الاصطناعي */
+.seo-ai-card-item {
+  background:#ffffff; border:1.5px solid #e2e8f0; border-radius:16px; padding:18px;
+  box-shadow:0 4px 16px rgba(0,0,0,.03); transition:border-color .2s, box-shadow .2s;
+  display:flex; flex-direction:column; gap:12px;
+}
+.seo-ai-card-item:hover {
+  border-color:#6366f1; box-shadow:0 8px 24px rgba(99,102,241,.12);
+}
+.seo-card-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+}
+.seo-card-badge {
+  display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8;
+  border:1px solid #bfdbfe; border-radius:20px; padding:3px 12px; font-size:11.5px; font-weight:800;
+}
+.seo-card-badge.gold {
+  background:#fef3c7; color:#92400e; border-color:#fde68a;
+}
+.seo-card-badge.green {
+  background:#ecfdf5; color:#047857; border-color:#a7f3d0;
+}
+.seo-card-badge.purple {
+  background:#f3e8ff; color:#6b21a8; border-color:#e9d5ff;
+}
+
+/* محاكاة مظهر نتيجة بحث Google (SERP Preview) */
+.google-serp-preview {
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px;
+  text-align:right; direction:rtl;
+}
+.serp-url-row {
+  display:flex; align-items:center; gap:8px; font-size:12px; color:#1a0dab; margin-bottom:4px;
+}
+.serp-favicon {
+  width:16px; height:16px; border-radius:50%; background:#10b981; color:#fff;
+  font-size:10px; display:inline-flex; align-items:center; justify-content:center;
+}
+.serp-url-txt {
+  color:#202124; font-size:12px; font-weight:600; direction:ltr; unicode-bidi:embed;
+}
+.serp-title {
+  font-size:16px; font-weight:800; color:#1a0dab; line-height:1.4; margin-bottom:6px;
+  cursor:pointer;
+}
+.serp-desc {
+  font-size:13px; line-height:1.6; color:#4d5156; margin:0;
+}
+
+.seo-metrics-row {
+  display:flex; gap:10px; flex-wrap:wrap; font-size:11.5px;
+}
+.seo-metric-tag {
+  background:#f1f5f9; color:#475569; border-radius:6px; padding:2px 8px; font-weight:700;
+}
+.seo-metric-tag.ok {
+  background:#ecfdf5; color:#065f46;
+}
+
+.seo-keywords-box {
+  background:#f8fafc; border:1px dashed #cbd5e1; border-radius:10px; padding:10px 12px;
+}
+.seo-kw-label {
+  font-size:11px; font-weight:800; color:#64748b; margin-bottom:6px; display:block;
+}
+.seo-kw-chips {
+  display:flex; gap:6px; flex-wrap:wrap;
+}
+.seo-kw-chip {
+  background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:2px 8px;
+  font-size:11px; font-weight:700; color:#334155;
+}
+
+.seo-apply-btn {
+  width:100%; height:40px; border-radius:12px; font-weight:900; font-size:13.5px;
+  background:linear-gradient(135deg,#6366f1,#4f46e5); color:#fff; border:0; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 4px 12px rgba(99,102,241,.3);
+  transition:all .15s;
+}
+.seo-apply-btn:hover {
+  transform:translateY(-1px); box-shadow:0 6px 16px rgba(99,102,241,.4);
+}
+
+/* =====================================================
+   إعدادات اللغة والترجمة والشريط السريع (i18n & Multi-Language)
+===================================================== */
+.sb-lang-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0 12px 14px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.sb-lang-btn {
+  flex: 1;
+  padding: 6px 2px;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #a5b4fc;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+.sb-lang-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.sb-lang-btn.active {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
+}
+
+.login-lang-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.login-lang-btn {
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.login-lang-btn:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4f46e5;
+}
+.login-lang-btn.active {
+  background: #4f46e5;
+  color: #fff;
+  border-color: #4f46e5;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+}
+
+.lang-setting-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.lang-radio-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.lang-radio-card:hover {
+  border-color: #c7d2fe;
+  background: #f0f4ff;
+}
+.lang-radio-card.selected {
+  border-color: #4f46e5;
+  background: #eef2ff;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+}
+.lang-radio-card input {
+  display: none;
+}
+.lang-radio-card .lang-flag {
+  font-size: 24px;
+}
+.lang-radio-card .lang-meta {
+  display: flex;
+  flex-direction: column;
+}
+.lang-radio-card .lang-meta b {
+  color: #1e293b;
+  font-size: 14.5px;
+}
+.lang-radio-card .lang-meta small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+/* RTL / LTR Helpers */
+html[dir="rtl"] .sidebar {
+  box-shadow: -4px 0 18px rgba(20,20,50,.25);
+}
+html[dir="ltr"] .sidebar {
+  box-shadow: 4px 0 18px rgba(20,20,50,.25);
+}
+html[dir="ltr"] .serp-snippet-card {
+  text-align: left;
+  direction: ltr;
+}
+html[dir="ltr"] .sb-item .chev {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+/* =====================================================
+   التوافق التام مع جميع شاشات الهواتف والتابلت والكمبيوتر (Responsive Design)
+===================================================== */
+.admin-mobile-header {
+  display: none;
+}
+.sidebar-backdrop {
+  display: none;
+}
+.sb-mobile-close-btn {
+  display: none;
+}
+
+/* شاشات الجوال والأجهزة اللوحية (Mobile & Tablet <= 900px) */
+@media (max-width: 900px) {
+  #panel {
+    flex-direction: column;
+    min-height: 100vh;
+    position: relative;
+  }
+
+  .admin-mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 58px;
+    padding: 0 14px;
+    background: linear-gradient(180deg, var(--sb-bg) 0%, var(--sb-bg2) 100%);
+    color: #fff;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  }
+
+  .admin-hamburger-btn, .admin-mobile-logout-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+    transition: all 0.15s ease;
+  }
+  .admin-hamburger-btn:active, .admin-mobile-logout-btn:active {
+    transform: scale(0.94);
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .admin-mobile-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 800;
+    color: #fff;
+  }
+  .admin-mobile-title i {
+    color: #60a5fa;
+    font-size: 22px;
+  }
+
+  /* خلفية معتمة للجوال */
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 998;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .sidebar-backdrop.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* القائمة الجانبية كـ Drawer منزلق */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: min(85vw, 310px);
+    z-index: 999;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 35px rgba(0, 0, 0, 0.5) !important;
+  }
+  html[dir="rtl"] .sidebar {
+    right: 0;
+    left: auto;
+    transform: translateX(100%);
+  }
+  html[dir="ltr"] .sidebar {
+    left: 0;
+    right: auto;
+    transform: translateX(-100%);
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0) !important;
+  }
+
+  /* زر إغلاق القائمة في الهيدر الداخلي */
+  .sb-mobile-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 0;
+    color: #cbd5e1;
+    cursor: pointer;
+    font-size: 16px;
+    margin-inline-start: auto;
+  }
+
+  /* المحتوى في الشاشات الصغيرة */
+  .content {
+    padding: 18px 12px 60px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .page-title {
+    font-size: 17px;
+    width: 100%;
+  }
+
+  .grid2 {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+}
+
+/* شاشات الهواتف الذكية الصغيرة (Smartphones <= 640px) */
+@media (max-width: 640px) {
+  .login-card {
+    width: calc(100vw - 28px);
+    max-width: 380px;
+    padding: 28px 18px;
+    margin: 14px;
+    border-radius: 16px;
+  }
+
+  .section {
+    padding: 14px 12px;
+    margin-bottom: 16px;
+    border-radius: 10px;
+  }
+
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  .row .lbl {
+    font-size: 13.5px;
+  }
+  .row > span:last-child {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .row .inp.num {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  .list-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 14px;
+  }
+  .list-card > div:first-child {
+    order: 2;
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .u-cell {
+    order: 1;
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .btn-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+  }
+  .btn-row .btn {
+    width: 100%;
+  }
+
+  #requestTabs {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .req-tab {
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 90px;
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+
+  .license-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .pm-monitor-conv-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .pm-monitor-peers {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .admin-modal-card {
+    width: 95vw;
+    max-height: 92vh;
+    border-radius: 16px;
+  }
+  .admin-modal-header {
+    padding: 14px 16px;
+  }
+  .seo-ai-body {
+    padding: 14px 16px;
+  }
+  .seo-ai-search-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .seo-ai-search-row input {
+    width: 100%;
+    min-width: 0;
+  }
+  .seo-ai-search-row button {
+    width: 100%;
+  }
+}
+
+
+
