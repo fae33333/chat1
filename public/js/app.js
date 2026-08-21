@@ -33,9 +33,15 @@ let BCAST = null;           // الحالة الحية للبث الجاري (ف
 let BCAST_SIGNAL_QUEUE = []; // إشارات وصلت قبل تهيئة BCAST (سباق زمني عند الدخول لغرفة فيها بث نشط) — تُطبَّق فور التهيئة
 // شكل BCAST: {
 //   roomId, mode:'video'|'audio', isHost:bool,
-//   hostId, hostInfo, localStream, peers:Map(userId->RTCPeerConnection),
-//   watchState: 'idle'|'pending'|'accepted'  (للمشاهد في وضع الفيديو فقط)
+//   hostId, hostInfo, localStream, peers:Map('dir:userId'->RTCPeerConnection),
+//   watching:Set(hostId)        ← [فيديو] كل المذيعين الذين وافقوا على مشاهدتي لهم (يعملون كلهم معاً في نفس الوقت)
+//   pendingTargets:Set(hostId)  ← طلبات مشاهدة أرسلتها وما زالت بانتظار رد أصحابها
 // }
+// ملاحظة مهمة: قبول بثٍ جديد لا يوقف أي بث آخر — كل بث وافق صاحبه على طلبه يستمر بشكل طبيعي،
+// سواء كنت مذيعاً يبث بنفسه أو مشاهداً عادياً.
+function bcastWatchingSet() { if (BCAST && !BCAST.watching) BCAST.watching = new Set(); return BCAST ? BCAST.watching : new Set(); }
+function bcastPendingSet() { if (BCAST && !BCAST.pendingTargets) BCAST.pendingTargets = new Set(); return BCAST ? BCAST.pendingTargets : new Set(); }
+function bcastIsWatchingHost(hostId) { return !!(BCAST && BCAST.watching && BCAST.watching.has(+hostId)); }
 const isAdmRank = () => ME && (ME.rank === 'superadmin' || ME.rank === 'admin' || ME.rank === 'supermaster');
 const canChooseHiddenEntry = () => ME && (ME.rank === 'superadmin' || ME.rank === 'admin');
 const isAlwaysHiddenEntry = () => ME && ME.rank === 'supermaster';
@@ -1203,41 +1209,37 @@ function connectSocket() {
     if (card) card.remove();
   });
   // رد المذيع المطلوب على طلب المشاهدة (يصل للمشاهد أو لمذيعٍ طلب مشاهدة مذيع آخر)
-  SOCKET.on('bcast:watch_response', ({ roomId, accept, hosts, reason }) => {
+  SOCKET.on('bcast:watch_response', ({ roomId, accept, hosts, hostId, reason }) => {
     if (!BCAST || BCAST.roomId !== +roomId) return;
     const approvedHost = (hosts || [])[0] || null;
-    if (accept) {
-      // إغلاق المشاهدة السابقة (إن كانت لمذيع مختلف) لحظة القبول فقط — قبل ذلك يبقى البث الحالي شغالاً
-      const prevTarget = BCAST.targetHostId;
-      if (prevTarget && approvedHost && prevTarget !== approvedHost.id) {
-        bcastClosePeer(prevTarget, 'in');
-        bcastRemoveTile(prevTarget);
-      }
-      BCAST.watchState = 'accepted';
-      if (approvedHost) { BCAST.targetHostId = approvedHost.id; bcastRegisterHost(approvedHost); }
+    const respondedId = +(hostId || (approvedHost && approvedHost.id) || 0);
+    if (respondedId) bcastPendingSet().delete(respondedId);
+    if (accept && approvedHost) {
+      // [بثوث متزامنة] يُضاف هذا البث إلى ما أشاهده حالياً دون إيقاف أي بث آخر مقبول مسبقاً
+      bcastWatchingSet().add(+approvedHost.id);
+      bcastRegisterHost(approvedHost);
+      if (BCAST.mode === 'video') bcastEnsureTile(+approvedHost.id, approvedHost);
       if (!BCAST.isHost) {
         // مشاهد عادي: أظهر البث وأوقف رسالة الانتظار
         $('#bcastWaitMsg').hidden = true;
         $('#bcastLeaveBtn').hidden = false;
-        $('#bcastHostAvatar').innerHTML = bcastAvatarChip(approvedHost ? approvedHost.avatar : '');
-        $('#bcastHostName').textContent = approvedHost ? approvedHost.username : '-';
       } else {
-        // مذيع يراقب مذيعاً آخر: بثّه مستمر وتظهر بلاطة المذيع المقبول بجانب كاميرته
-        toast(`${approvedHost ? approvedHost.username : 'المذيع'} وافق على مشاهدتك لبثه`, true);
+        // مذيع يشاهد مذيعاً آخر: بثّه مستمر كما هو وتظهر بلاطة المذيع المقبول بجانب كاميرته
+        toast(`${approvedHost.username} وافق على مشاهدتك لبثه`, true);
       }
-      BCAST.pendingTargetId = null;
       bcastUpdateHeader();
       bcastFlushSignalQueue();
     } else if (BCAST.isHost) {
-      // مذيع: بثّه سليم؛ الرفض يخص الطلب المعلق فقط — مشاهدته الحالية لمذيع آخر (إن وجدت) تبقى شغالة
+      // مذيع: بثّه سليم؛ الرفض يخص الطلب المعلق فقط — كل مشاهداته الحالية تبقى شغالة
       toast(reason === 'host_ended' ? 'انتهى بث المذيع الذي طلبت مشاهدته' : 'رفض المذيع طلب مشاهدتك لبثه', false);
-      BCAST.pendingTargetId = null;
-    } else if (BCAST.watchState === 'accepted' && BCAST.targetHostId) {
-      // مشاهد كان يشاهد مذيعاً وطلب مذيعاً آخر فرُفض/انتهى بثه: يبقى على بثه الحالي
+    } else if (bcastWatchingSet().size) {
+      // مشاهد يتابع بثوثاً أخرى: الرفض لا يؤثر عليها إطلاقاً
       toast(reason === 'host_ended'
-        ? 'انتهى بث المذيع الذي طلبت مشاهدته — ما زلت على بثك الحالي'
-        : 'رفض المذيع طلبك — ما زلت على بثك الحالي', false);
-      BCAST.pendingTargetId = null;
+        ? 'انتهى بث المذيع الذي طلبت مشاهدته — بقية البثوث ما زالت تعمل'
+        : 'رفض المذيع طلبك — بقية البثوث ما زالت تعمل', false);
+    } else if (bcastPendingSet().size) {
+      // ما زال هناك طلب آخر معلّق — لا نغلق الشاشة
+      toast(reason === 'host_ended' ? 'انتهى بث المذيع' : 'رفض المذيع طلب مشاهدتك للبث', false);
     } else {
       toast(reason === 'host_ended' ? 'انتهى بث المذيع' : 'رفض المذيع طلب مشاهدتك للبث', false);
       bcastResetState();
@@ -1249,12 +1251,19 @@ function connectSocket() {
     if (!CUR_ROOM || +roomId !== CUR_ROOM.id || !BCAST || BCAST.roomId !== +roomId || BCAST.mode !== 'video') return;
     bcastClosePeer(+hostId, 'in');
     bcastRemoveTile(+hostId);
+    bcastWatchingSet().delete(+hostId);
+    bcastPendingSet().delete(+hostId);
     if (!BCAST.isHost) {
-      toast('انتهى بث المذيع', false);
-      bcastResetState();
-      bcastRenderBar();
+      // بقية البثوث التي أشاهدها تستمر؛ لا نغلق الشاشة إلا إن لم يبقَ شيء
+      if (!bcastWatchingSet().size && !bcastPendingSet().size) {
+        toast('انتهى بث المذيع', false);
+        bcastResetState();
+        bcastRenderBar();
+        return;
+      }
+      toast('انتهى أحد البثوث التي تشاهدها — البقية ما زالت تعمل', false);
+      bcastUpdateHeader();
     } else {
-      if (BCAST.targetHostId === +hostId) { BCAST.watchState = null; BCAST.targetHostId = null; }
       toast('انتهى بث المذيع الذي تشاهده — بثّك ما زال مستمراً', false);
       bcastUpdateHeader();
     }
@@ -1298,7 +1307,7 @@ function connectSocket() {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     } catch (e) { return toast('تعذر الوصول إلى الميكروفون، تحقق من الأذونات', false); }
     bcastResetState(); // أغلق اتصالات الاستماع السابقة (استقبال فقط) قبل التحوّل إلى مذيع ثنائي الاتجاه
-    BCAST = { roomId: +roomId, mode: 'audio', isHost: true, isPrimary: false, hosts: new Map(), localStream: stream, peers: new Map(), watchState: null, targetHostId: null };
+    BCAST = { roomId: +roomId, mode: 'audio', isHost: true, isPrimary: false, hosts: new Map(), localStream: stream, peers: new Map(), watching: new Set(), pendingTargets: new Set() };
     bcastSetFloatingMode('audio');
     AUDIO_BCAST_HOST_MUTED = false;
     bcastUpdateHostMuteButton();
@@ -1363,7 +1372,8 @@ function bcastRenderBar() {
     const hosts = (state && state.hosts) || [];
     const shown = hosts.slice(0, 4);
     // في وضع الفيديو (الغرف الافتراضية): البثوث مستقلة — أي شخص (مشاهد أو مذيع آخر) يطلب مشاهدة مذيع بعينه
-    // بالنقر على صورته، فلا يشاهد إلا من وافق على طلبه تحديداً، ولا يشاهد أكثر من مذيع واحد في نفس الوقت.
+    // بالنقر على صورته، فلا يشاهد إلا من وافق على طلبه تحديداً — ويمكنه متابعة أكثر من مذيع في نفس الوقت،
+    // فكل بث وُوفق على طلبه يعمل بشكل طبيعي بجانب البثوث الأخرى.
     const pickable = !!(state && state.mode === 'video');
     hostsBox.innerHTML = shown.map(h => `<span class="lb-host-chip${pickable ? ' watchable' : ''}" data-hid="${h.id}" title="${esc(h.username)}">
         <span class="lb-host-photo">${bcastAvatarChip(h.avatar)}</span><small class="lb-host-label">${esc(h.username)}</small>
@@ -1448,8 +1458,9 @@ function bcastResetState() {
 // يحدّث اسم/صورة رأس شاشة البث وعدّاد المذيعين/المشاهدين
 function bcastUpdateHeader() {
   if (!BCAST) return;
+  const watching = [...bcastWatchingSet()].map(id => BCAST.hosts.get(id)).filter(Boolean);
   if (BCAST.isHost) {
-    // مذيع: بطاقته الشخصية + عدد مشاهدية المقبولين (اتصالات الإرسال) + المذيع الذي يشاهده إن وجد
+    // مذيع: بطاقته الشخصية + عدد مشاهديه المقبولين (اتصالات الإرسال) + البثوث التي يشاهدها هو
     $('#bcastHostAvatar').innerHTML = bcastAvatarChip(ME ? (ME.avatar || '') : '');
     $('#bcastHostName').textContent = (ME && ME.username) || '-';
     const viewerCount = [...BCAST.peers.keys()].filter(k => {
@@ -1457,18 +1468,22 @@ function bcastUpdateHeader() {
       return BCAST.mode === 'video' ? dir === 'out' : !BCAST.hosts.has(+id);
     }).length;
     let txt = `${viewerCount} مشاهد`;
-    if (BCAST.mode === 'video' && BCAST.watchState === 'accepted' && BCAST.targetHostId) {
-      const t = BCAST.hosts.get(BCAST.targetHostId);
-      if (t) txt += ` • تشاهد بث ${t.username}`;
+    if (BCAST.mode === 'video' && watching.length) {
+      txt += watching.length === 1
+        ? ` • تشاهد بث ${watching[0].username}`
+        : ` • تشاهد ${watching.length} بثوث`;
     }
     $('#bcastViewersCount').textContent = txt;
   } else {
-    // مشاهد: بطاقة المذيع الذي يشاهده تحديداً
-    const t = (BCAST.targetHostId && BCAST.hosts.get(BCAST.targetHostId))
-      || (BCAST.hosts.size ? [...BCAST.hosts.values()][BCAST.hosts.size - 1] : null);
+    // مشاهد: بطاقة المذيع الذي يشاهده (أو عدد البثوث إن كان يتابع أكثر من مذيع في نفس الوقت)
+    const t = watching[0] || (BCAST.hosts.size ? [...BCAST.hosts.values()][BCAST.hosts.size - 1] : null);
     $('#bcastHostAvatar').innerHTML = bcastAvatarChip(t ? t.avatar : '');
-    $('#bcastHostName').textContent = t ? t.username : '-';
-    $('#bcastViewersCount').textContent = t ? 'مشاهدة مباشرة' : '-';
+    $('#bcastHostName').textContent = watching.length > 1
+      ? `${t.username} +${watching.length - 1}`
+      : (t ? t.username : '-');
+    $('#bcastViewersCount').textContent = watching.length > 1
+      ? `تشاهد ${watching.length} بثوث مباشرة`
+      : (t ? 'مشاهدة مباشرة' : '-');
   }
 }
 function bcastAvatarChip(avatar) { return avatarHtml(avatar, ''); }
@@ -1492,8 +1507,8 @@ function bcastUnregisterHost(hostId) {
   bcastClosePeer(hostId);
   if (BCAST.mode === 'video') {
     bcastRemoveTile(hostId);
-    if (BCAST.targetHostId === +hostId) { BCAST.watchState = null; BCAST.targetHostId = null; }
-    if (BCAST.pendingTargetId === +hostId) BCAST.pendingTargetId = null;
+    bcastWatchingSet().delete(+hostId);
+    bcastPendingSet().delete(+hostId);
   }
   else bcastRemoveAudioEl(hostId);
   bcastUpdateHeader();
@@ -1646,6 +1661,8 @@ function bcastRenderSpeakersList() {
 //   'both:UID' → بث صوتي ثنائي الاتجاه (mesh بين المذيعين/المستمعين)
 // بهذا يمكن لمذيعَين أن يشاهد كلٌّ منهما الآخر عبر اتصالين مستقلين، كل اتجاه بموافقة صاحبه وحده.
 function bcastPeerKey(uid, dir) { return dir + ':' + uid; }
+// الاتجاه المقابل: ما أرسله أنا كـ'out' يستقبله الطرف الآخر كـ'in' والعكس، و'both' يقابل نفسه.
+function bcastOppositeDir(dir) { return dir === 'out' ? 'in' : dir === 'in' ? 'out' : 'both'; }
 function bcastGetPeer(uid) {
   if (!BCAST || !BCAST.peers) return null;
   for (const dir of ['in', 'out', 'both']) {
@@ -1654,18 +1671,35 @@ function bcastGetPeer(uid) {
   }
   return null;
 }
+// [مهم] عند تبادل مذيعَين المشاهدة يوجد اتصالان مستقلان مع نفس الشخص ('in' و'out') —
+// لذلك تحمل كل إشارة اتجاهها لدى مُرسِلها، ويستخرج المستقبل الاتصال الصحيح بالاتجاه المعاكس.
+// بدون ذلك كان رد/مرشحات اتصال الإرسال تُطبَّق على اتصال الاستقبال فينقطع البثّان معاً.
+function bcastPeerForSignal(uid, data) {
+  if (!BCAST || !BCAST.peers) return null;
+  if (data && data.dir) {
+    const pc = BCAST.peers.get(bcastPeerKey(uid, bcastOppositeDir(data.dir)));
+    if (pc) return pc;
+  }
+  return bcastGetPeer(uid);
+}
+function bcastSendSignal(remoteUserId, dir, payload) {
+  if (!CUR_ROOM) return;
+  SOCKET.emit('bcast:signal', CUR_ROOM.id, remoteUserId, { ...payload, dir });
+}
 // إنشاء اتصال WebRTC جديد مع طرف معيّن وربط أحداثه المشتركة
 function bcastNewPeerConnection(key) {
-  const remoteUserId = +String(key).split(':')[1];
+  const [dir, rawId] = String(key).split(':');
+  const remoteUserId = +rawId;
   const pc = new RTCPeerConnection(RTC_ICE_CONFIG);
   pc.onicecandidate = (e) => {
-    if (e.candidate) SOCKET.emit('bcast:signal', CUR_ROOM.id, remoteUserId, { type: 'candidate', candidate: e.candidate });
+    if (e.candidate) bcastSendSignal(remoteUserId, dir, { type: 'candidate', candidate: e.candidate });
   };
   // [مذيع] إن سقط اتصال إرسالٍ مع طرف ما دون أن يغادر فعلياً — غالباً بسبب اضطراب شبكي عابر —
   // أعد الاتصال تلقائياً بدل ترك ذلك الطرف بلا تدفق. اتصالات الاستقبال ('in') يعيد صاحبها (المذيع المصدر) فتحها.
   pc.onconnectionstatechange = () => {
     if (pc.connectionState !== 'failed' && pc.connectionState !== 'disconnected') return;
     if (!BCAST || !BCAST.isHost || BCAST.peers.get(key) !== pc) return;
+    if (dir === 'in') return; // اتصال استقبال: لا نعيد فتحه من طرفنا حتى لا نُلغي اتصال إرسالنا لنفس الشخص
     setTimeout(() => {
       if (BCAST && BCAST.isHost && BCAST.peers.get(key) === pc
         && (pc.connectionState === 'failed' || pc.connectionState === 'disconnected')) bcastConnectToPeer(remoteUserId);
@@ -1700,7 +1734,7 @@ async function bcastConnectToPeer(remoteUserId) {
   try {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    SOCKET.emit('bcast:signal', CUR_ROOM.id, remoteUserId, { type: 'offer', sdp: offer });
+    bcastSendSignal(remoteUserId, dir, { type: 'offer', sdp: offer });
   } catch (e) { bcastClosePeer(remoteUserId, dir); }
 }
 
@@ -1721,7 +1755,9 @@ function bcastFlushSignalQueue() {
 async function bcastHandleSignal(fromUserId, data) {
   if (!BCAST) return;
   if (data.type === 'offer') {
-    const dir = (BCAST.mode === 'audio' && BCAST.isHost) ? 'both' : 'in';
+    // اتجاه الاتصال عندي = عكس اتجاهه لدى مرسل العرض (يرسل 'out' ⇐ أستقبله 'in'، و'both' يبقى 'both')
+    const dir = data.dir ? bcastOppositeDir(data.dir)
+      : ((BCAST.mode === 'audio' && BCAST.isHost) ? 'both' : 'in');
     const key = bcastPeerKey(fromUserId, dir);
     let pc = BCAST.peers.get(key);
     if (!pc) {
@@ -1734,19 +1770,19 @@ async function bcastHandleSignal(fromUserId, data) {
     await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    SOCKET.emit('bcast:signal', CUR_ROOM.id, fromUserId, { type: 'answer', sdp: answer });
+    bcastSendSignal(fromUserId, dir, { type: 'answer', sdp: answer });
   } else if (data.type === 'answer') {
-    const pc = bcastGetPeer(fromUserId);
+    const pc = bcastPeerForSignal(fromUserId, data);
     if (pc) await pc.setRemoteDescription(new RTCSessionDescription(data.sdp)).catch(() => { });
   } else if (data.type === 'candidate') {
-    const pc = bcastGetPeer(fromUserId);
+    const pc = bcastPeerForSignal(fromUserId, data);
     if (pc) await pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => { });
   }
 }
 
 // [مستمع] تهيئة الاستماع التلقائي عند وجود بث صوتي قائم في غرفة صوتية — لا حاجة لأي طلب
 function bcastViewerAutoConnectAudio(roomId, hosts) {
-  BCAST = { roomId: +roomId, mode: 'audio', isHost: false, isPrimary: false, hosts: new Map(), peers: new Map(), watchState: 'accepted' };
+  BCAST = { roomId: +roomId, mode: 'audio', isHost: false, isPrimary: false, hosts: new Map(), peers: new Map(), watching: new Set(), pendingTargets: new Set() };
   // المستمع الصوتي يستقبل الصوت في الخلفية فقط؛ النافذة العائمة مخصصة للمذيع.
   bcastSetFloatingMode('audio');
   (hosts || []).forEach(h => bcastRegisterHost(h));
@@ -1764,7 +1800,7 @@ function bcastOpenStartConfirm(mode) {
     : (mode === 'audio' ? 'بدء بث صوتي' : 'بدء بث فيديو');
   $('#bcastStartText').textContent = mode === 'audio'
     ? 'سيسمعك جميع من في هذه الغرفة الصوتية مباشرة فور بدء البث، بمن فيهم من ينضم لاحقاً.'
-    : 'سيبدأ بث فيديو مستقل خاص بك: لا يرى بثك أحد إلا بعد موافقتك على طلبه، ولا يُدمج بثك تلقائياً مع أي مذيع آخر. ولمشاهدة مذيع آخر أرسل له طلباً بالنقر على صورته في شريط البث.';
+    : 'سيبدأ بث فيديو مستقل خاص بك: لا يرى بثك أحد إلا بعد موافقتك على طلبه، ولا يُدمج بثك تلقائياً مع أي مذيع آخر. ولمشاهدة مذيع آخر أرسل له طلباً بالنقر على صورته في شريط البث — بثك وبثه يعملان معاً بشكل طبيعي بعد الموافقة.';
   $('#bcastStartGo').onclick = () => { closeOv('bcastStartOv'); bcastStart(mode); };
   openOv('bcastStartOv');
 }
@@ -1785,13 +1821,30 @@ async function bcastStart(mode) {
   } catch (e) { return toast('تعذر الوصول إلى ' + (mode === 'audio' ? 'الميكروفون' : 'الكاميرا') + '، تحقق من الأذونات', false); }
   SOCKET.emit('bcast:start', CUR_ROOM.id, (res) => {
     if (!res || !res.ok) { stream.getTracks().forEach(t => t.stop()); return toast((res && res.text) || 'تعذر بدء البث', false); }
-    BCAST = { roomId: CUR_ROOM.id, mode: res.mode, isHost: true, isPrimary: !!res.isNewBroadcast, hosts: new Map(), localStream: stream, peers: new Map(), watchState: null, targetHostId: null, pendingTargetId: null };
+    // [بثوث متزامنة] إن كنت أشاهد بثوثاً مقبولة قبل صعودي، تبقى شغّالة كما هي ولا تُغلق اتصالاتها.
+    const keepViewer = BCAST && BCAST.roomId === CUR_ROOM.id && BCAST.mode === 'video' && res.mode === 'video' && !BCAST.isHost;
+    const keptPeers = keepViewer ? BCAST.peers : new Map();
+    const keptHosts = keepViewer ? BCAST.hosts : new Map();
+    const keptWatching = keepViewer ? bcastWatchingSet() : new Set();
+    const keptPending = keepViewer ? bcastPendingSet() : new Set();
+    if (!keepViewer && BCAST) { // حالة صوتية/غرفة أخرى: أغلق ما كان مفتوحاً
+      if (BCAST.peers) for (const pc of BCAST.peers.values()) { try { pc.close(); } catch (e) { } }
+      $('#bcastGrid').innerHTML = '';
+    }
+    BCAST = {
+      roomId: CUR_ROOM.id, mode: res.mode, isHost: true, isPrimary: !!res.isNewBroadcast,
+      hosts: keptHosts, localStream: stream, peers: keptPeers,
+      watching: keptWatching, pendingTargets: keptPending
+    };
+    // البثوث التي وافق أصحابها على مشاهدتي لها قبل صعودي (يؤكدها الخادم) تبقى مسجلة
+    (res.watching || []).forEach(h => { BCAST.watching.add(+h.id); bcastRegisterHost(h); });
     bcastSetFloatingMode(res.mode);
     AUDIO_BCAST_HOST_MUTED = false;
     bcastUpdateHostMuteButton();
     bcastRegisterHost({ id: ME.id, username: ME.username, avatar: ME.avatar || '', badge: badgeOf(ME) }, true);
     $('#bcastEndBtn').hidden = false;
     $('#bcastLeaveBtn').hidden = true;
+    $('#bcastWaitMsg').hidden = true;
     openOv('bcastOv');
     if (res.mode !== 'video') toast(res.isNewBroadcast ? 'بدأ البث الصوتي — يسمعك جميع من في الغرفة الآن مباشرة' : 'انضممت للبث الصوتي');
     // [صوت] أتصل بكل من انضم قبلي: المذيعون الحاليون (بث ثنائي الاتجاه بيننا) والمستمعون المسجلون بالفعل.
@@ -1829,24 +1882,24 @@ function bcastOpenWatchConfirm(host) {
   openOv('bcastWatchOv');
 }
 // [مشاهدة معتمدة على الطلب] إرسال طلب مشاهدة بث فيديو مذيع محدَّد بالذات — لا يتصل إلا بهذا المذيع تحديداً إن وافق.
-// يصلح للمشاهد العادي وللمذيع الذي يريد مشاهدة مذيع آخر (يبقي بثّه شغالاً)؛ وفي كل الحالات:
-// لا أكثر من مذيع واحد في نفس الوقت — المشاهدة السابقة تبقى تعمل حتى تُقبل الموافقة على الجديد،
-// وعند القبول يُغلق البث الأول تلقائياً ويُفتح البث الثاني. الرفض لا يفقد المشاهد بثه الحالي.
+// يصلح للمشاهد العادي وللمذيع الذي يريد مشاهدة مذيع آخر (يبقي بثّه شغالاً).
+// [الأهم] المشاهدات متزامنة: أي بث وافق صاحبه على طلبك يعمل بشكل طبيعي بجانب البثوث الأخرى،
+// ولا يُغلق أي بث قائم بسبب قبول بثٍ جديد.
 function bcastWatchRequest(targetHost) {
   if (!CUR_ROOM || !targetHost) return;
   if (ME && targetHost.id === ME.id) return;
   const rid = CUR_ROOM.id;
   const haveVideoState = BCAST && BCAST.roomId === rid && BCAST.mode === 'video';
-  const watchingNow = haveVideoState && BCAST.watchState === 'accepted' && BCAST.targetHostId === targetHost.id;
-  if (watchingNow) return toast('أنت تشاهد هذا المذيع بالفعل');
-  // --- حالة 1: أنا مذيع وأطلب مشاهدة مذيع آخر (كل اتجاه بموافقة مستقلة) ---
+  if (haveVideoState && bcastIsWatchingHost(targetHost.id)) return toast('أنت تشاهد هذا المذيع بالفعل');
+  if (haveVideoState && bcastPendingSet().has(+targetHost.id)) return toast('طلبك لهذا المذيع ما زال بانتظار موافقته');
+  // --- حالة 1: أنا مذيع وأطلب مشاهدة مذيع آخر (كل اتجاه بموافقة مستقلة، وبثّي مستمر) ---
   if (haveVideoState && BCAST.isHost) {
-    BCAST.pendingTargetId = targetHost.id;
+    bcastPendingSet().add(+targetHost.id);
     openOv('bcastOv');
     SOCKET.emit('bcast:watch_request', rid, targetHost.id, (res) => {
       if (!res || !res.ok) {
-        if (res && res.already) { BCAST.pendingTargetId = null; return toast('أنت تشاهد هذا المذيع بالفعل'); }
-        BCAST.pendingTargetId = null;
+        bcastPendingSet().delete(+targetHost.id);
+        if (res && res.already) return toast('أنت تشاهد هذا المذيع بالفعل');
         toast((res && res.text) || 'تعذر إرسال طلب المشاهدة', false);
       } else {
         toast(`تم إرسال طلب مشاهدة إلى ${targetHost.username} — بانتظار موافقته…`, true);
@@ -1855,17 +1908,17 @@ function bcastWatchRequest(targetHost) {
     return;
   }
   // --- حالة 2: مشاهد عادي (بلا بث خاص به) ---
-  const switching = haveVideoState && !BCAST.isHost && BCAST.watchState === 'accepted' && BCAST.targetHostId;
+  const alreadyWatchingOthers = haveVideoState && !BCAST.isHost && bcastWatchingSet().size > 0;
   if (haveVideoState && !BCAST.isHost) {
-    BCAST.pendingTargetId = targetHost.id;
+    bcastPendingSet().add(+targetHost.id);
   } else {
-    BCAST = { roomId: rid, mode: 'video', isHost: false, isPrimary: false, hosts: new Map(), peers: new Map(), watchState: 'pending', targetHostId: null, pendingTargetId: targetHost.id };
+    BCAST = { roomId: rid, mode: 'video', isHost: false, isPrimary: false, hosts: new Map(), peers: new Map(), watching: new Set(), pendingTargets: new Set([+targetHost.id]) };
     bcastSetFloatingMode('video');
     $('#bcastGrid').innerHTML = '';
   }
-  if (switching) {
-    // ما زال يشاهد المذيع السابق — تبقى بلاطته ظاهرة حتى قبول الطلب الجديد
-    toast(`تم إرسال طلب مشاهدة إلى ${targetHost.username} — عند موافقته سيتحوّل البث إليه`, true);
+  if (alreadyWatchingOthers) {
+    // يواصل مشاهدة بثوثه الحالية، وعند الموافقة يُضاف البث الجديد بجانبها
+    toast(`تم إرسال طلب مشاهدة إلى ${targetHost.username} — عند موافقته سيُعرض بثه بجانب البثوث الحالية`, true);
   } else {
     $('#bcastHostAvatar').innerHTML = bcastAvatarChip(targetHost.avatar);
     $('#bcastHostName').textContent = targetHost.username;
@@ -1876,30 +1929,37 @@ function bcastWatchRequest(targetHost) {
   bcastUpdateHeader();
   openOv('bcastOv');
   SOCKET.emit('bcast:watch_request', rid, targetHost.id, (res) => {
+    if (!BCAST) return;
     if (!res || !res.ok) {
       if (res && res.already) {
-        BCAST.pendingTargetId = null;
-        if (!BCAST.targetHostId) { BCAST.watchState = 'accepted'; BCAST.targetHostId = targetHost.id; }
+        bcastPendingSet().delete(+targetHost.id);
+        bcastWatchingSet().add(+targetHost.id);
         $('#bcastWaitMsg').hidden = true; $('#bcastLeaveBtn').hidden = false;
         return;
       }
+      bcastPendingSet().delete(+targetHost.id);
       toast((res && res.text) || 'تعذر إرسال طلب المشاهدة', false);
-      if (!BCAST.targetHostId) { bcastResetState(); bcastRenderBar(); }
-      else BCAST.pendingTargetId = null;
+      if (!bcastWatchingSet().size && !bcastPendingSet().size) { bcastResetState(); bcastRenderBar(); }
     }
   });
 }
-// إيقاف مشاهدة مذيع بعينه (زر X على البلاطة): للمشاهد العادي يغادر كلياً، وللمذيع يبقي بثّه شغالاً
+// إيقاف مشاهدة بثٍّ بعينه (زر X على البلاطة) — لا يؤثر على بقية البثوث ولا على بثّي أنا
 function bcastStopWatchingHost(hostId) {
   if (!CUR_ROOM || !BCAST || BCAST.mode !== 'video') return;
-  if (!BCAST.isHost) return bcastLeaveAsViewer();
-  SOCKET.emit('bcast:leave', CUR_ROOM.id);
+  hostId = +hostId;
+  SOCKET.emit('bcast:leave', CUR_ROOM.id, hostId);
   bcastClosePeer(hostId, 'in');
   bcastRemoveTile(hostId);
-  if (BCAST.targetHostId === +hostId) { BCAST.watchState = null; BCAST.targetHostId = null; }
-  BCAST.pendingTargetId = null;
+  bcastWatchingSet().delete(hostId);
+  bcastPendingSet().delete(hostId);
   bcastUpdateHeader();
-  toast('أوقفت مشاهدة هذا البث — بثّك ما زال مستمراً', true);
+  if (!BCAST.isHost && !bcastWatchingSet().size && !bcastPendingSet().size) {
+    // مشاهد عادي لم يعد يتابع أي بث: تُغلق الشاشة بالكامل
+    bcastResetState();
+    bcastRenderBar();
+    return;
+  }
+  toast(BCAST.isHost ? 'أوقفت مشاهدة هذا البث — بثّك ما زال مستمراً' : 'أوقفت مشاهدة هذا البث — بقية البثوث ما زالت تعمل', true);
 }
 function bcastLeaveAsViewer() {
   if (!CUR_ROOM || !BCAST || BCAST.isHost) return;

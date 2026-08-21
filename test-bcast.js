@@ -1,7 +1,7 @@
 /* اختبار آلي شامل لاستقلالية البثوث (فيديو) عبر Socket.IO */
 const io = require('socket.io-client');
 
-const BASE = 'http://localhost:3000';
+const BASE = process.env.BASE || 'https://localhost:2083';
 const ROOM_ID = 1; // غرفة افتراضية (فيديو)
 
 let passed = 0, failed = 0;
@@ -23,7 +23,7 @@ async function login(username, password) {
 
 function connect(token) {
   return new Promise((resolve, reject) => {
-    const sock = io(BASE, { auth: { client: 'chat', token }, transports: ['websocket'] });
+    const sock = io(BASE, { auth: { client: 'chat', token }, transports: ['websocket'], rejectUnauthorized: false });
     sock.on('connect', () => resolve(sock));
     sock.on('connect_error', reject);
     setTimeout(() => reject(new Error('timeout')), 8000);
@@ -95,31 +95,30 @@ function expectNone(sock, ev, ms = 1200) {
   const accC = await pAccC;
   ok('قُبل الطلب ووصلت الموافقة إلى C', accC.accept === true && accC.hosts && accC.hosts.length === 1 && accC.hosts[0].id === uidA);
 
-  console.log('\n[4] C تطلب التبديل إلى B — تبقى على بث A حتى موافقة B');
+  console.log('\n[4] C تطلب مشاهدة B أيضاً — البثّان يعملان معاً بعد الموافقة');
   const noLeftYet = await expectNone(A, 'bcast:viewer_left', 1000);
   const pReqB = once(B, 'bcast:watch_request');
   const ackC3 = await emit(C, 'bcast:watch_request', ROOM_ID, uidB);
-  ok('أُرسل طلب التبديل إلى B', ackC3.ok, JSON.stringify(ackC3));
+  ok('أُرسل طلب المشاهدة إلى B', ackC3.ok, JSON.stringify(ackC3));
   const stillWatchingA = await noLeftYet;
-  ok('لم تُغلق مشاهدة A قبل موافقة B', stillWatchingA === true);
+  ok('لم تُغلق مشاهدة A أثناء انتظار موافقة B', stillWatchingA === true);
   const reqB = await pReqB;
   ok('وصل طلب C إلى B تحديداً', reqB.user && reqB.user.id === uidC);
-  const pViewLeftA = once(A, 'bcast:viewer_left');
+  const noLeftAfterAccept = expectNone(A, 'bcast:viewer_left', 1200);
   const pAccC2 = once(C, 'bcast:watch_response');
   B.emit('bcast:watch_response', ROOM_ID, uidC, true);
   const accC2 = await pAccC2;
-  ok('C تشاهد الآن B فقط', accC2.accept && accC2.hosts[0].id === uidB);
-  const vLeft = await pViewLeftA;
-  ok('أُعلم A بإغلاق مشاهدته القديمة لحظة قبول B', vLeft.userId === uidC);
+  ok('قبل B طلب C', accC2.accept && accC2.hosts[0].id === uidB);
+  ok('مشاهدة A لم تُغلق بعد قبول B (البثّان معاً)', (await noLeftAfterAccept) === true);
 
-  console.log('\n[5] توجيه إشارات WebRTC — C لا تستطيع الإشارة إلى A بعد التبديل');
-  const pSigA = expectNone(A, 'bcast:signal');
+  console.log('\n[5] توجيه إشارات WebRTC — C تتواصل مع المذيعَين في نفس الوقت');
+  const pSigA = once(A, 'bcast:signal');
   const pSigB = once(B, 'bcast:signal');
-  C.emit('bcast:signal', ROOM_ID, uidA, { type: 'offer', sdp: { type: 'offer', sdp: 'x' } });
-  C.emit('bcast:signal', ROOM_ID, uidB, { type: 'offer', sdp: { type: 'offer', sdp: 'y' } });
-  const noneA = await pSigA, gotB = await pSigB;
-  ok('إشارة C→A محجوبة (لم تعد تشاهده)', noneA === true);
-  ok('إشارة C→B مسموحة (تشاهده الآن)', gotB.__timeout !== true && gotB.data && gotB.data.sdp && gotB.data.sdp.sdp === 'y', JSON.stringify(gotB));
+  C.emit('bcast:signal', ROOM_ID, uidA, { type: 'offer', dir: 'in', sdp: { type: 'offer', sdp: 'x' } });
+  C.emit('bcast:signal', ROOM_ID, uidB, { type: 'offer', dir: 'in', sdp: { type: 'offer', sdp: 'y' } });
+  const gotA = await pSigA, gotB = await pSigB;
+  ok('إشارة C→A مسموحة (ما زالت تشاهده)', gotA.__timeout !== true && gotA.data && gotA.data.sdp.sdp === 'x', JSON.stringify(gotA));
+  ok('إشارة C→B مسموحة (تشاهده أيضاً)', gotB.__timeout !== true && gotB.data && gotB.data.sdp.sdp === 'y', JSON.stringify(gotB));
 
   console.log('\n[6] مذيع B يطلب مشاهدة مذيع A (اتجاه واحد بموافقة مستقلة)');
   const pReqA2 = once(A, 'bcast:watch_request');
@@ -132,20 +131,38 @@ function expectNone(sock, ev, ms = 1200) {
   A.emit('bcast:watch_response', ROOM_ID, uidBReal, true);
   const accB = await pAccB;
   ok('B يشاهد A الآن (اتجاه واحد)', accB.accept && accB.hosts[0].id === uidA);
+  // A ما زال يبث لمشاهديه بشكل طبيعي رغم أنه صار مصدراً لمذيع آخر أيضاً
+  const pSigC3 = once(C, 'bcast:signal');
+  A.emit('bcast:signal', ROOM_ID, uidC, { type: 'offer', dir: 'out', sdp: { type: 'offer', sdp: 'a2c' } });
+  const gotC3 = await pSigC3;
+  ok('بث A لم يتوقف بعد دخول مذيع آخر عليه (إشارته تصل لمشاهده)', gotC3.__timeout !== true && gotC3.data.sdp.sdp === 'a2c');
+  const pSigB3 = once(B, 'bcast:signal');
+  A.emit('bcast:signal', ROOM_ID, uidBReal, { type: 'offer', dir: 'out', sdp: { type: 'offer', sdp: 'a2b' } });
+  const gotB3 = await pSigB3;
+  ok('A يرسل بثه للمذيع B الذي وافق على مشاهدته', gotB3.__timeout !== true && gotB3.data.sdp.sdp === 'a2b');
 
-  console.log('\n[7] A يرفض طلب مشاهد جديد — المشاهد الجديد لا يدخل');
+  console.log('\n[7] C توقف مشاهدة A وحده — بقية بثوثها تعمل، ثم رفض/قبول طلب جديد');
+  const pViewerLeftA3 = once(A, 'bcast:viewer_left');
+  C.emit('bcast:leave', ROOM_ID, uidA);
+  const vl3 = await pViewerLeftA3;
+  ok('أُعلم A بإيقاف C لمشاهدة بثه وحده', vl3.userId === uidC, JSON.stringify(vl3));
+  const pSigB2 = once(B, 'bcast:signal');
+  C.emit('bcast:signal', ROOM_ID, uidB, { type: 'candidate', dir: 'in', candidate: { cand: 'z' } });
+  const gotB2 = await pSigB2;
+  ok('C ما زالت تشاهد B بعد إيقافها مشاهدة A', gotB2.__timeout !== true && gotB2.data.type === 'candidate');
   const pReqA3 = once(A, 'bcast:watch_request');
   await emit(C, 'bcast:watch_request', ROOM_ID, uidA);
-  const reqA3 = await pReqA3;
+  await pReqA3;
   const pRejC = once(C, 'bcast:watch_response');
-  A.emit('bcast:watch_response', ROOM_ID, reqA3.user.id, false);
+  A.emit('bcast:watch_response', ROOM_ID, uidC, false);
   const rejC = await pRejC;
-  ok('وصل الرفض إلى C', rejC.accept === false);
-  // C ما زالت تشاهد B — الرفض لم يفقدها بثها الحالي
-  const pSigB2 = once(B, 'bcast:signal');
-  C.emit('bcast:signal', ROOM_ID, uidB, { type: 'candidate', candidate: { cand: 'z' } });
-  const gotB2 = await pSigB2;
-  ok('C ما زالت تشاهد B بعد رفض A (إشارتها تصل)', gotB2.__timeout !== true && gotB2.data && gotB2.data.type === 'candidate');
+  ok('وصل الرفض إلى C مع تحديد صاحب البث', rejC.accept === false && rejC.hostId === uidA, JSON.stringify(rejC));
+  const pReqA4 = once(A, 'bcast:watch_request');
+  await emit(C, 'bcast:watch_request', ROOM_ID, uidA);
+  await pReqA4;
+  const pAccC4 = once(C, 'bcast:watch_response');
+  A.emit('bcast:watch_response', ROOM_ID, uidC, true);
+  ok('عادت C لمشاهدة A بجانب B (بثّان معاً)', (await pAccC4).accept === true);
 
   console.log('\n[8] انتهاء بث B — تنقطع مشاهدة C له ويُعلم A بمغادرة B لمشاهدته');
   const pWatchEnded = once(C, 'bcast:watch_ended');
@@ -158,6 +175,10 @@ function expectNone(sock, ev, ms = 1200) {
   const vlA2 = await pViewerLeftA2;
   ok('أُعلم A بأن B لم يعد يشاهده', vlA2.userId === uidBReal);
   ok('البث الكلي لم ينته (A ما زال يبث)', (await pStopped) === true);
+  const pSigA4 = once(A, 'bcast:signal');
+  C.emit('bcast:signal', ROOM_ID, uidA, { type: 'candidate', dir: 'in', candidate: { cand: 'k' } });
+  const gotA4 = await pSigA4;
+  ok('C ما زالت تشاهد A بعد انتهاء بث B', gotA4.__timeout !== true && gotA4.data.type === 'candidate');
 
   console.log('\n[9] انتهاء بث A — ينتهي البث كاملاً');
   const pStopped2 = once(C, 'bcast:stopped');

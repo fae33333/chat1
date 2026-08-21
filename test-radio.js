@@ -2,7 +2,7 @@
 const io = require('socket.io-client');
 let passed = 0, failed = 0;
 const ok = (n, c, e = '') => { c ? (passed++, console.log('  ✔ ' + n)) : (failed++, console.log('  ✘ ' + n + ' ' + e)); };
-const BASE = 'http://localhost:3000';
+const BASE = process.env.BASE || 'https://localhost:2083';
 const KEY = 'NujumSecretSyncKey2026';
 function decode(b64) {
   const raw = Buffer.from(b64, 'base64');
@@ -23,7 +23,7 @@ async function pubSettings() {
   const data = await res.json();
   ok('تسجيل الدخول (دردشة + إدارة)', res.status === 200 && !!data.tab_token && !!data.admin_access_token);
 
-  const sock = io(BASE, { auth: { client: 'chat', token: data.tab_token }, transports: ['websocket'] });
+  const sock = io(BASE, { auth: { client: 'chat', token: data.tab_token }, transports: ['websocket'], rejectUnauthorized: false });
   await new Promise((r, j) => { sock.on('connect', r); sock.on('connect_error', j); });
   ok('الاتصال بالدردشة نشط', sock.connected);
 

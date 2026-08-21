@@ -1,6 +1,6 @@
 /* اختبار تراجعي: البث الصوتي في الغرف الصوتية (mesh تلقائي كما كان) */
 const io = require('socket.io-client');
-const BASE = 'http://localhost:3000';
+const BASE = process.env.BASE || 'https://localhost:2083';
 const ROOM_ID = 8; // غرفة صوتية
 
 let passed = 0, failed = 0;
@@ -21,7 +21,7 @@ async function login(u, p) {
 }
 function connect(token) {
   return new Promise((resolve, reject) => {
-    const sock = io(BASE, { auth: { client: 'chat', token }, transports: ['websocket'] });
+    const sock = io(BASE, { auth: { client: 'chat', token }, transports: ['websocket'], rejectUnauthorized: false });
     sock.on('connect', () => resolve(sock));
     sock.on('connect_error', reject);
     setTimeout(() => reject(new Error('timeout')), 8000);

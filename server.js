@@ -3382,9 +3382,44 @@ function cancelPendingRoomLeave(uid, roomId) {
 //  - الغرف الصوتية (type == 'voice'): بث صوتي، يسمع الجميع تلقائياً بدون طلب.
 // =====================================================
 // roomId -> { mode:'video'|'audio', hosts:Map(uid -> {id,username,avatar,badge,socketId,startedAt}), primaryHostId, startedAt,
-//             viewers:Set(uid), pending:Map(uid -> {username,avatar}), speakPending:Map(uid -> {username,avatar}),
-//             viewerOf:Map(viewerUid -> hostUid) }   ← للفيديو فقط: يحدد المذيع الذي يشاهده كل مشاهد (مذيع واحد كحد أقصى)
+//             viewers:Set(uid), pending:Map(viewerUid -> Map(hostId -> {username,avatar})), speakPending:Map(uid -> {username,avatar}),
+//             viewerOf:Map(viewerUid -> Set(hostUid)) }
+//   ← للفيديو: كل مشاهد يمكنه متابعة أكثر من مذيع في نفس الوقت، وكل علاقة مشاهدة مستقلة بموافقة صاحب البث وحده.
+//     لا يُغلق أي بث مقبول عند قبول بث آخر — الاثنان يعملان معاً طالما وافق كل مذيع على طلبه.
 const roomBroadcast = {};
+
+// ===== مساعدات علاقات المشاهدة (فيديو: مشاهدات متعددة متزامنة) =====
+function bcastWatchSet(b, viewerId, create = false) {
+  if (!b) return null;
+  if (!b.viewerOf) b.viewerOf = new Map();
+  let set = b.viewerOf.get(viewerId);
+  if (!set && create) { set = new Set(); b.viewerOf.set(viewerId, set); }
+  return set || null;
+}
+function bcastIsWatching(b, viewerId, hostId) {
+  const set = b && b.viewerOf ? b.viewerOf.get(viewerId) : null;
+  return !!(set && set.has(hostId));
+}
+function bcastAddWatch(b, viewerId, hostId) { bcastWatchSet(b, viewerId, true).add(hostId); }
+function bcastRemoveWatch(b, viewerId, hostId) {
+  const set = b && b.viewerOf ? b.viewerOf.get(viewerId) : null;
+  if (!set || !set.delete(hostId)) return false;
+  if (!set.size) b.viewerOf.delete(viewerId);
+  return true;
+}
+function bcastPendingMap(b, viewerId, create = false) {
+  if (!b) return null;
+  if (!b.pending) b.pending = new Map();
+  let map = b.pending.get(viewerId);
+  if (!map && create) { map = new Map(); b.pending.set(viewerId, map); }
+  return map || null;
+}
+function bcastRemovePending(b, viewerId, hostId) {
+  const map = b && b.pending ? b.pending.get(viewerId) : null;
+  if (!map || !map.delete(hostId)) return false;
+  if (!map.size) b.pending.delete(viewerId);
+  return true;
+}
 const activePrivateCalls = new Map();   // uid -> { targetId, callerId, state: 'calling'|'connected', connectedAt?: number }
 
 async function recordPrivateCallLog(fromId, toId, text) {
@@ -3440,41 +3475,43 @@ function removeHostFromBroadcast(roomId, uid, reason = 'host_left') {
     io.to('room_' + roomId).emit('bcast:primary_changed', { roomId, primaryHostId: b.primaryHostId });
   }
   if (b.mode === 'video') {
-    // [بثوث فيديو مستقلة] المشاهدون الذين كانوا يشاهدون هذا المذيع تحديداً تنقطع مشاهدتهم (كل مشاهد مرتبط بمذيع واحد فقط)
+    // [بثوث فيديو مستقلة] تنقطع فقط مشاهدة بث هذا المذيع تحديداً؛ أي بث آخر مقبول لدى نفس المشاهد يبقى شغالاً
     if (b.viewerOf) {
-      for (const [viewerId, watchedHostId] of [...b.viewerOf.entries()]) {
-        if (watchedHostId === uid) {
-          b.viewerOf.delete(viewerId);
+      for (const [viewerId, watchedHosts] of [...b.viewerOf.entries()]) {
+        if (viewerId === uid) continue;
+        if (watchedHosts.delete(uid)) {
+          if (!watchedHosts.size) b.viewerOf.delete(viewerId);
           io.to('user_' + viewerId).emit('bcast:watch_ended', { roomId, hostId: uid });
         }
       }
-      // إن كان المذيع المغادر نفسه يشاهد مذيعاً آخر، أغلق مشاهدته هو أيضاً وأعلِم ذلك المذيع
-      const hisWatch = b.viewerOf.get(uid);
-      if (hisWatch !== undefined) {
+      // إن كان المذيع المغادر نفسه يشاهد مذيعين آخرين، أغلق مشاهداته كلها وأعلِم كل واحد منهم
+      const hisWatches = b.viewerOf.get(uid);
+      if (hisWatches) {
         b.viewerOf.delete(uid);
-        io.to('user_' + hisWatch).emit('bcast:viewer_left', { roomId, userId: uid });
+        for (const hostId of hisWatches) io.to('user_' + hostId).emit('bcast:viewer_left', { roomId, userId: uid });
       }
     }
-    // ألغِ أي طلبات مشاهدة كانت موجّهة تحديداً لهذا المذيع بما أنه لم يعد يبث
+    // ألغِ أي طلبات مشاهدة كانت موجّهة تحديداً لهذا المذيع بما أنه لم يعد يبث (بقية الطلبات تبقى معلّقة)
     if (b.pending && b.pending.size) {
-      for (const [viewerId, req] of [...b.pending.entries()]) {
-        if (req.targetHostId === uid) {
-          b.pending.delete(viewerId);
-          io.to('user_' + viewerId).emit('bcast:watch_response', { roomId, accept: false, hosts: [], reason: 'host_ended' });
+      for (const [viewerId, reqs] of [...b.pending.entries()]) {
+        if (viewerId === uid) continue;
+        if (reqs.delete(uid)) {
+          if (!reqs.size) b.pending.delete(viewerId);
+          io.to('user_' + viewerId).emit('bcast:watch_response', { roomId, accept: false, hosts: [], hostId: uid, reason: 'host_ended' });
         }
       }
-      // وإن كان للمغادر طلب مشاهدة معلّق لدى مذيع آخر، ألغِه
-      const hisReq = b.pending.get(uid);
-      if (hisReq) {
+      // وإن كان للمغادر طلبات مشاهدة معلّقة لدى مذيعين آخرين، ألغِها
+      const hisReqs = b.pending.get(uid);
+      if (hisReqs) {
         b.pending.delete(uid);
-        io.to('user_' + hisReq.targetHostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
+        for (const hostId of hisReqs.keys()) io.to('user_' + hostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
       }
     }
   } else if (b.pending && b.pending.size) {
-    for (const [viewerId, req] of [...b.pending.entries()]) {
-      if (req.targetHostId === uid) {
-        b.pending.delete(viewerId);
-        io.to('user_' + viewerId).emit('bcast:watch_response', { roomId, accept: false, hosts: [] });
+    for (const [viewerId, reqs] of [...b.pending.entries()]) {
+      if (reqs.delete(uid)) {
+        if (!reqs.size) b.pending.delete(viewerId);
+        io.to('user_' + viewerId).emit('bcast:watch_response', { roomId, accept: false, hosts: [], hostId: uid });
       }
     }
   }
@@ -3488,16 +3525,16 @@ function cleanupBroadcastForUser(roomId, uid) {
   if (b.hosts.has(uid)) { removeHostFromBroadcast(roomId, uid, 'host_left'); return; }
   if (b.speakPending) b.speakPending.delete(uid);
   if (b.mode === 'video') {
-    // فيديو: كل مشاهد مرتبط بمذيع واحد بعينه — يُعلم ذلك المذيع فقط
-    const req = b.pending && b.pending.get(uid);
-    if (req) {
+    // فيديو: قد يكون المشاهد مرتبطاً بعدة مذيعين — يُعلم كل مذيع كان يشاهده
+    const reqs = b.pending && b.pending.get(uid);
+    if (reqs) {
       b.pending.delete(uid);
-      io.to('user_' + req.targetHostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
+      for (const hostId of reqs.keys()) io.to('user_' + hostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
     }
-    const watchedHost = b.viewerOf ? b.viewerOf.get(uid) : undefined;
-    if (watchedHost !== undefined) {
+    const watchedHosts = b.viewerOf ? b.viewerOf.get(uid) : null;
+    if (watchedHosts) {
       b.viewerOf.delete(uid);
-      io.to('user_' + watchedHost).emit('bcast:viewer_left', { roomId, userId: uid });
+      for (const hostId of watchedHosts) io.to('user_' + hostId).emit('bcast:viewer_left', { roomId, userId: uid });
     }
     return;
   }
@@ -4082,19 +4119,15 @@ io.on('connection', async (socket) => {
     if (b.speakPending) b.speakPending.delete(uid); // تجاوز الإدارة لأي طلب تحدث معلّق سابق لنفس الشخص
     // [فيديو] البثوث مستقلة تماماً: مذيع جديد لا يُدمج تلقائياً مع المذيعين الحاليين ولا يُعرّف على مشاهديهم؛
     // لرؤية بعضهم البعض يجب تبادل طلبات مشاهدة وموافقة مستقلة لكل اتجاه. من كان يشاهد مذيعاً آخر وتصيّد مذيعاً، تُغلق مشاهدته السابقة.
+    // [فيديو] البثوث مستقلة تماماً: مذيع جديد لا يُدمج تلقائياً مع المذيعين الحاليين ولا يُعرّف على مشاهديهم؛
+    // لرؤية بعضهم البعض يجب تبادل طلبات مشاهدة وموافقة مستقلة لكل اتجاه. ومن كان يشاهد مذيعاً ثم صعد مذيعاً،
+    // تبقى مشاهدته الحالية شغّالة كما هي (الموافقة السابقة لا تُلغى بصعوده للبث).
     let existingHosts = [];
     let currentViewers = [];
+    let alreadyWatching = [];
     if (mode === 'video') {
-      const prevWatch = b.viewerOf.get(uid);
-      if (prevWatch !== undefined) {
-        b.viewerOf.delete(uid);
-        io.to('user_' + prevWatch).emit('bcast:viewer_left', { roomId, userId: uid });
-      }
-      const prevReq = b.pending.get(uid);
-      if (prevReq) {
-        b.pending.delete(uid);
-        io.to('user_' + prevReq.targetHostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
-      }
+      const myWatches = b.viewerOf ? b.viewerOf.get(uid) : null;
+      alreadyWatching = myWatches ? [...myWatches].map(hid => b.hosts.get(hid)).filter(Boolean) : [];
     } else {
       // [صوت] من ينضم كمذيع للبث القائم يتصل بكل المذيعين والمشاهدين الحاليين؛ الطرف الأقدم لا يبادر بالاتصال، تفادياً لتصادم العروض.
       existingHosts = [...b.hosts.values()];
@@ -4105,7 +4138,7 @@ io.on('connection', async (socket) => {
     io.to('room_' + roomId).emit(isNewBroadcast ? 'bcast:started' : 'bcast:host_joined', {
       roomId, mode, host: hostInfo, hosts: [...b.hosts.values()], primaryHostId: b.primaryHostId
     });
-    ack({ ok: true, mode, isNewBroadcast, existingHosts, viewers: currentViewers });
+    ack({ ok: true, mode, isNewBroadcast, existingHosts, viewers: currentViewers, watching: alreadyWatching });
   });
 
   // [مستمع] طلب الإذن للتحدث في غرفة صوتية — يصل للمضيف الأساسي فقط ليقبله أو يرفضه
@@ -4182,7 +4215,8 @@ io.on('connection', async (socket) => {
 
   // طلب مشاهدة (بث الفيديو فقط) — موجَّه لمذيع واحد محدَّد بالذات (targetHostId)، وهو وحده من يملك حق قبوله أو رفضه.
   // يشمل ذلك المذيعين أنفسهم: كل بث مستقل، ولا يرى مذيعٌ بثَّ مذيعٍ آخر إلا بطلبٍ يوافق عليه صاحبه (لكل اتجاه موافقة مستقلة).
-  // المشاهد (أو المذيع المشاهد) لا يشاهد أكثر من مذيع واحد في نفس الوقت: أي طلب جديد يغلق المشاهدة السابقة تلقائياً.
+  // [مشاهدات متزامنة] يمكن للشخص الواحد (مشاهداً كان أو مذيعاً) متابعة عدة مذيعين في آنٍ واحد:
+  // كل بث وافق صاحبه على طلبه يعمل بشكل طبيعي ولا يُغلق بسبب قبول بثٍ آخر.
   socket.on('bcast:watch_request', async (roomId, targetHostId, cb) => {
     const ack = typeof cb === 'function' ? cb : () => { };
     roomId = +roomId; targetHostId = +targetHostId;
@@ -4190,32 +4224,31 @@ io.on('connection', async (socket) => {
     if (!b || b.mode !== 'video') return ack({ ok: false, text: 'لا يوجد بث فيديو حالياً في هذه الغرفة' });
     if (targetHostId === uid) return ack({ ok: false, text: 'لا يمكن مشاهدة بثك الشخصي' });
     if (!b.hosts.has(targetHostId)) return ack({ ok: false, text: 'هذا المذيع لم يعد يبث حالياً' });
-    if (b.viewerOf && b.viewerOf.get(uid) === targetHostId) return ack({ ok: true, already: true });
-    if (b.pending.has(uid) && b.pending.get(uid).targetHostId === targetHostId) return ack({ ok: true, pending: true });
-    // المشاهدة الحالية (إن وجدت) تبقى تعمل حتى تُقبل الموافقة على المذيع الجديد —
-    // عند القبول فقط يُغلق البث السابق ويُفتح الجديد (الرفض لا يفقد المشاهد بثه الحالي).
-    // وإلغاء أي طلب معلّق سابق موجّه لمذيع آخر
-    const prevReq = b.pending.get(uid);
-    if (prevReq && prevReq.targetHostId !== targetHostId) {
-      b.pending.delete(uid);
-      io.to('user_' + prevReq.targetHostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
-    }
+    if (bcastIsWatching(b, uid, targetHostId)) return ack({ ok: true, already: true });
+    const myPending = bcastPendingMap(b, uid, true);
+    if (myPending.has(targetHostId)) return ack({ ok: true, pending: true });
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
-    b.pending.set(uid, { username: me.username, avatar: me.avatar || '', targetHostId });
+    myPending.set(targetHostId, { username: me.username, avatar: me.avatar || '' });
     const payload = { roomId, user: { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me) } };
     io.to('user_' + targetHostId).emit('bcast:watch_request', payload);
     ack({ ok: true, pending: true });
   });
 
-  // إلغاء طلب المشاهدة قبل رد المذيع المطلوب
-  socket.on('bcast:watch_cancel', (roomId) => {
+  // إلغاء طلب المشاهدة قبل رد المذيع المطلوب (مذيع محدد، أو كل الطلبات المعلقة إن لم يُحدد)
+  socket.on('bcast:watch_cancel', (roomId, targetHostId) => {
     roomId = +roomId;
     const b = roomBroadcast[roomId];
     if (!b) return;
-    const req = b.pending.get(uid);
-    if (!req) return;
+    const reqs = b.pending ? b.pending.get(uid) : null;
+    if (!reqs) return;
+    if (targetHostId !== undefined && targetHostId !== null) {
+      targetHostId = +targetHostId;
+      if (!bcastRemovePending(b, uid, targetHostId)) return;
+      io.to('user_' + targetHostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
+      return;
+    }
     b.pending.delete(uid);
-    io.to('user_' + req.targetHostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
+    for (const hostId of reqs.keys()) io.to('user_' + hostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
   });
 
   // رد المذيع المطلوب تحديداً على طلب مشاهدته: قبول أو رفض. أي مذيع آخر لا يملك صلاحية الرد على طلب لم يُوجَّه إليه.
@@ -4223,48 +4256,46 @@ io.on('connection', async (socket) => {
     roomId = +roomId; targetUserId = +targetUserId;
     const b = roomBroadcast[roomId];
     if (!b) return;
-    const req = b.pending.get(targetUserId);
-    if (!req || req.targetHostId !== uid) return; // فقط المذيع الذي طُلبت مشاهدته تحديداً يملك حق الرد
-    b.pending.delete(targetUserId);
+    // فقط المذيع الذي طُلبت مشاهدته تحديداً يملك حق الرد على طلبه هو
+    if (!bcastRemovePending(b, targetUserId, uid)) return;
     if (accept) {
-      // [فيديو] سجّل المشاهد مرتبطاً بهذا المذيع تحديداً (مذيع واحد كحد أقصى لكل مشاهد).
-      // إن كان يشاهد مذيعاً آخر قبلك، تُغلق مشاهدته السابقة الآن فقط (لحظة القبول) ويُعلم المذيع السابق.
+      // [فيديو] تُضاف علاقة مشاهدة جديدة دون المساس بأي بث آخر يشاهده هذا الشخص —
+      // كل البثوث التي وُوفق عليها تعمل في نفس الوقت بشكل طبيعي.
       if (b.mode === 'video') {
-        if (b.viewerOf) {
-          const prevHost = b.viewerOf.get(targetUserId);
-          if (prevHost !== undefined && prevHost !== uid) {
-            b.viewerOf.delete(targetUserId);
-            io.to('user_' + prevHost).emit('bcast:viewer_left', { roomId, userId: targetUserId });
-          }
-          b.viewerOf.set(targetUserId, uid);
-        }
+        bcastAddWatch(b, targetUserId, uid);
         b.viewers.delete(targetUserId);
       } else b.viewers.add(targetUserId);
     }
     const hostInfo = b.hosts.get(uid);
-    io.to('user_' + targetUserId).emit('bcast:watch_response', { roomId, accept: !!accept, hosts: accept && hostInfo ? [hostInfo] : [] });
+    io.to('user_' + targetUserId).emit('bcast:watch_response', { roomId, accept: !!accept, hostId: uid, hosts: accept && hostInfo ? [hostInfo] : [] });
   });
 
-  // مشاهد يغادر البث (فيديو) دون مغادرة الغرفة نفسها — يُعلم المذيع الذي كان يشاهده تحديداً فقط
-  socket.on('bcast:leave', (roomId) => {
+  // مشاهد يوقف مشاهدة بث (فيديو) دون مغادرة الغرفة — hostId اختياري: بثٌّ واحد بعينه أو كل البثوث
+  socket.on('bcast:leave', (roomId, hostId) => {
     roomId = +roomId;
     const b = roomBroadcast[roomId];
     if (!b) return;
     if (b.mode === 'video') {
-      const req = b.pending.get(uid);
-      if (req) {
-        b.pending.delete(uid);
-        io.to('user_' + req.targetHostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
+      if (hostId !== undefined && hostId !== null) {
+        hostId = +hostId;
+        if (bcastRemovePending(b, uid, hostId)) io.to('user_' + hostId).emit('bcast:watch_cancelled', { roomId, userId: uid });
+        if (bcastRemoveWatch(b, uid, hostId)) io.to('user_' + hostId).emit('bcast:viewer_left', { roomId, userId: uid });
+        return;
       }
-      const watchedHost = b.viewerOf ? b.viewerOf.get(uid) : undefined;
-      if (watchedHost !== undefined) {
+      const reqs = b.pending ? b.pending.get(uid) : null;
+      if (reqs) {
+        b.pending.delete(uid);
+        for (const hid of reqs.keys()) io.to('user_' + hid).emit('bcast:watch_cancelled', { roomId, userId: uid });
+      }
+      const watched = b.viewerOf ? b.viewerOf.get(uid) : null;
+      if (watched) {
         b.viewerOf.delete(uid);
-        io.to('user_' + watchedHost).emit('bcast:viewer_left', { roomId, userId: uid });
+        for (const hid of watched) io.to('user_' + hid).emit('bcast:viewer_left', { roomId, userId: uid });
       }
       return;
     }
-    const wasConnected = b.viewers.delete(uid) || b.pending.delete(uid);
-    if (wasConnected) for (const hostId of b.hosts.keys()) io.to('user_' + hostId).emit('bcast:viewer_left', { roomId, userId: uid });
+    const wasConnected = b.viewers.delete(uid) || (b.pending && b.pending.delete(uid));
+    if (wasConnected) for (const hid of b.hosts.keys()) io.to('user_' + hid).emit('bcast:viewer_left', { roomId, userId: uid });
   });
 
   // ترحيل إشارات WebRTC (offer/answer/ice candidate):
@@ -4282,8 +4313,8 @@ io.on('connection', async (socket) => {
         ? (targetUserId !== uid && (targetIsHost || b.viewers.has(targetUserId)))
         : (targetIsHost && b.viewers.has(uid));
     } else {
-      const watchesMe = b.viewerOf && b.viewerOf.get(targetUserId) === uid;   // الطرف الآخر يشاهدني (أنا مصدر التدفق)
-      const iWatchHim = b.viewerOf && b.viewerOf.get(uid) === targetUserId;  // أنا أشاهده (أتلقى تدفقه)
+      const watchesMe = bcastIsWatching(b, targetUserId, uid);   // الطرف الآخر يشاهدني (أنا مصدر التدفق)
+      const iWatchHim = bcastIsWatching(b, uid, targetUserId);   // أنا أشاهده (أتلقى تدفقه)
       valid = iAmHost
         ? (targetIsHost ? (watchesMe || iWatchHim) : watchesMe)              // مذيع↔مذيع: علاقة مشاهدة قائمة بأي اتجاه
         : (targetIsHost && iWatchHim);                                       // مشاهد: فقط المذيع الذي وافق على مشاهدته
