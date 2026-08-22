@@ -2,7 +2,7 @@
 <html lang="ar" >
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <title></title>
 <link rel="stylesheet" href="/icons/framework7-icons.css?v=20260822-0265">
 <link rel="stylesheet" href="/css/fonts.css?v=20260822-0265">
@@ -184,7 +184,7 @@
     <div class="c-input dots-bg" id="inputBar">
       <button class="ci-circle" id="btnEmoji" style="background: #9c1e4600;"><i class="f7-icons btnEmojiGG">smiley_fill</i></button>
       <button class="ci-plain pink" id="btnApps"><i class="f7-icons" style="font-size:25px;color:var(--njomarab-theme-color)">circle_grid_hex_fill</i></button>
-      <input type="text" class="ci-field" id="msgInput" placeholder="رسالة عامة" autocomplete="off">
+      <textarea type="text" class="ci-field" id="msgInput" onfocus="activeresize()" placeholder="رسالة عامة" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
       <button class="ci-plain" id="btnMic"><i class="f7-icons">mic_fill</i></button>
       <button class="ci-plain" id="btnCam"><i class="f7-icons">camera_fill</i></button>
       <button class="ci-circle" id="btnSend"><i class="f7-icons">arrow_up</i></button>
@@ -625,7 +625,7 @@
       <div class="pm-bar">
         <button class="pmb emo" id="pmEmoji"><i class="f7-icons">smiley_fill</i></button>
         <button class="pmb cam" id="pmCam"><i class="f7-icons">camera_fill</i></button>
-        <input type="text" id="pmInput" placeholder="رسالة">
+        <input type="text" id="pmInput" placeholder="رسالة" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <button class="pmb mic" id="pmMic"><i class="f7-icons">mic_fill</i></button>
         <button class="pmb send" id="pmSend"><i class="f7-icons">arrow_up</i></button>
       </div>
@@ -1277,6 +1277,18 @@
       </div>
       <div class="persistent-ban-device"><i class="f7-icons">lock_shield_fill</i><span>الحظر مرتبط بالحساب والجهاز ويستمر عند تغيير عنوان IP</span></div>
       <button type="button" id="persistentBanRecheck"><i class="f7-icons">arrow_clockwise</i><span>إعادة التحقق بعد فك الحظر</span></button>
+    </div>
+  </div>
+
+  <!-- قالب: تم الدخول إلى حسابك من جهاز آخر (إنهاء الجلسة السابقة) -->
+  <div class="persistent-ban-overlay session-conflict-overlay hidden" id="sessionConflictOv" role="alertdialog" aria-modal="true" aria-hidden="true">
+    <div class="persistent-ban-card session-conflict-card">
+      <div class="persistent-ban-mark session-conflict-mark"><i class="f7-icons">person_2_circle_fill</i></div>
+      <div class="persistent-ban-label session-conflict-label">جلسة جديدة</div>
+      <h2>تم الدخول بحسابك من جهاز آخر</h2>
+      <p>تم تسجيل الدخول إلى حسابك من جهاز آخر. لضمان أمان حسابك، تم إنهاء هذه الجلسة تلقائياً.</p>
+      <div class="session-conflict-note"><i class="f7-icons">lock_shield_fill</i><span>إذا لم تكن أنت من قام بالدخول، غيّر كلمة المرور وعُد للدخول مجدداً.</span></div>
+      <button type="button" id="sessionConflictReload"><i class="f7-icons">arrow_clockwise</i><span>العودة لتسجيل الدخول</span></button>
     </div>
   </div>
 

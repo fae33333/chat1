@@ -42,6 +42,8 @@ db.serialize(() => {
   db.run(`ALTER TABLE users ADD COLUMN free_call_used INTEGER DEFAULT 0`, () => { });
   // معرف جهاز دائم للحظر الإداري حتى عند تغيّر عنوان IP.
   db.run(`ALTER TABLE users ADD COLUMN device_id TEXT DEFAULT ''`, () => { });
+  // لون الخط المخصص للعضو المسجل — يبقى ثابتاً ويسري من أي جهاز.
+  db.run(`ALTER TABLE users ADD COLUMN color TEXT DEFAULT ''`, () => { });
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_device_id ON users (device_id)`);
 
   // ---------- الغرف ----------

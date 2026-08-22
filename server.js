@@ -553,6 +553,9 @@ const q = {
 // هوية مستقلة لكل صفحة شات. الرمز محفوظ في ذاكرة الصفحة والخادم فقط؛
 // لذلك لا تنتقل هوية تبويب إلى تبويب آخر، وتختفي من العميل عند التحديث.
 const CHAT_TOKENS = new Map();
+// الجلسة النشطة لكل حساب مسجّل: uid -> رمز الدخول الحالي.
+// عند ظهور رمز جديد (دخول من جهاز آخر) يُلغى الرمز القديم وتُقطع جلساته.
+const USER_ACTIVE_TOKEN = new Map();
 const CHAT_TOKEN_TTL = 12 * 60 * 60 * 1000;
 function issueChatToken(user, ip, deviceId = '') {
   const token = crypto.randomBytes(32).toString('hex');
@@ -563,7 +566,33 @@ function issueChatToken(user, ip, deviceId = '') {
     deviceId: validDeviceId(deviceId),
     createdAt: Date.now()
   });
+  // منع الدخول من جهاز آخر بنفس الحساب المسجل: إبطال الجلسة السابقة وقطع اتصالاتها.
+  if (user.registered) {
+    const uid = +user.id;
+    const prev = USER_ACTIVE_TOKEN.get(uid);
+    USER_ACTIVE_TOKEN.set(uid, token);
+    if (prev && prev !== token) {
+      CHAT_TOKENS.delete(prev);
+      disconnectRegisteredSessions(uid);
+    }
+  }
   return token;
+}
+// إنهاء كل اتصالات Socket.IO القائمة لحسابٍ ما وإبلاغها بجلسة بديلة.
+function disconnectRegisteredSessions(uid) {
+  const sockets = userSockets[uid];
+  if (!sockets || !sockets.length) return;
+  for (const sid of [...sockets]) {
+    const s = io.sockets.sockets.get(sid);
+    if (!s) continue;
+    try {
+      s.emit('session_conflict', {
+        reason: 'session_conflict',
+        text: 'تم تسجيل الدخول إلى حسابك من جهاز آخر. تم إنهاء الجلسة الحالية.'
+      });
+      setTimeout(() => { try { s.disconnect(true); } catch (e) { } }, 300);
+    } catch (e) { }
+  }
 }
 function chatTokenFromRequest(req) {
   return String(req.get('x-chat-token') || '').trim();
@@ -854,6 +883,7 @@ function pubUser(u) {
     status: String(u.status || 'متصل'),
     bio: String(u.bio || ''),
     muted: u.muted ? 1 : 0,
+    color: String(u.color || ''),
     is_bot: u.is_bot ? 1 : 0,
     verified: VERIFIED_SET.has(u.username) ? 1 : 0
   };
@@ -1992,6 +2022,18 @@ app.post('/api/profile', requireUser, async (req, res) => {
   refreshUserEverywhere(req.authUid);
   res.json({ ok: true });
 });
+
+// حفظ لون الخط المخصص للعضو المسجل (يسري على كل الأجهزة). تجاهل للزوار.
+app.post('/api/color', requireUser, async (req, res) => {
+  const me = await q.get(`SELECT registered FROM users WHERE id=?`, req.authUid);
+  if (!me || !me.registered) return res.status(403).json({ error: 'حفظ لون الخط يتطلب عضوية مسجلة' });
+  let color = String(req.body.color || '').trim();
+  if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) return res.status(400).json({ error: 'لون غير صالح' });
+  await q.run(`UPDATE users SET color=? WHERE id=?`, color, req.authUid);
+  refreshUserEverywhere(req.authUid);
+  res.json({ ok: true, color });
+});
+
 // إعادة بث بيانات العضو للغرف المتواجد فيها وتحديث حساب المستخدم فورياً
 async function refreshUserEverywhere(uid) {
   uid = +uid;
@@ -4501,6 +4543,19 @@ io.on('connection', async (socket) => {
   if (!uid) { socket.disconnect(); return; }
   let me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
   if (!me) { socket.disconnect(); return; }
+  // منع الدخول من جهاز آخر: إن كان هذا الرمز لم يعد الرمز النشط للحساب المسجّل
+  // (دخل شخص آخر بالحساب) نُنهي هذه المحاولة فوراً ونعرض «تم الدخول من جهاز آخر».
+  if (me.registered && isChatPage && socketToken && USER_ACTIVE_TOKEN.has(uid)) {
+    const activeToken = USER_ACTIVE_TOKEN.get(uid);
+    if (activeToken && activeToken !== socketToken) {
+      socket.emit('session_conflict', {
+        reason: 'session_conflict',
+        text: 'تم تسجيل الدخول إلى حسابك من جهاز آخر. تم إنهاء الجلسة الحالية.'
+      });
+      setTimeout(() => { try { socket.disconnect(true); } catch (e) { } }, 300);
+      return;
+    }
+  }
   const clientIp = validIp(requestIp(socket.request))
     || validIp(tokenAuth && tokenAuth.ip)
     || validIp(socket.handshake.address)
@@ -4907,7 +4962,10 @@ io.on('connection', async (socket) => {
     const freshPub = { ...pubUser(me), rank: effectiveRank, badge: effectiveBadge };   // صورة وبيانات حديثة من قاعدة البيانات (ليس لقطة الدخول)
     onlineUsers[uid] = freshPub;
     const rp = reply && reply.name ? { name: String(reply.name).slice(0, 40), text: String(reply.text || '').slice(0, 90) } : null;   // الرد على الرسالة
-    const col = /^#[0-9a-fA-F]{6}$/.test(String(color || '')) ? String(color) : null;   // لون الخط من قائمة الألوان
+    // لون الخط: يوجّه العميل اللون المختار، وإن لم يُرسل نستخدم اللون المحفوظ في حساب العضو (يسري من أي جهاز).
+    const col = /^#[0-9a-fA-F]{6}$/.test(String(color || ''))
+      ? String(color)
+      : (/^#[0-9a-fA-F]{6}$/.test(String(me.color || '')) ? String(me.color) : null);
     const messageUser = hiddenAdmin ? { ...freshPub, hidden_admin: 1 } : freshPub;
     const extra = JSON.stringify({ badge: effectiveBadge, gender: me.gender, rank: effectiveRank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, media: cleanMedia, verified: VERIFIED_SET.has(me.username) ? 1 : 0, hidden_admin: hiddenAdmin ? 1 : 0 });
     const ins = await q.run(`INSERT INTO messages (room_id,user_id,username,text,type,extra) VALUES (?,?,?,?,'msg',?)`, roomId, uid, me.username, text, extra);

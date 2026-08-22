@@ -670,6 +670,33 @@ async function recheckPersistentBan() {
 const persistentBanRecheckButton = $('#persistentBanRecheck');
 if (persistentBanRecheckButton) persistentBanRecheckButton.onclick = recheckPersistentBan;
 
+// ---------- قالب «تم الدخول من جهاز آخر» ----------
+function showSessionConflictTemplate(text = '') {
+  hideMessageLengthTemplate();
+  hideSlowDownTemplate();
+  CHAT_TOKEN = '';
+  CONNECTION_INTERRUPTED = false;
+  if (SOCKET) {
+    const oldSocket = SOCKET;
+    SOCKET = null;
+    try { oldSocket.disconnect(); } catch (error) { }
+  }
+  if (ME) ME = null; MYBADGE = 'guest.png';
+  const overlay = $('#sessionConflictOv');
+  if (overlay) {
+    overlay.classList.remove('hidden');
+    overlay.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('persistent-banned');   // يمنع التفاعل مع خلفية الدردشة
+  }
+  const note = overlay && overlay.querySelector('.session-conflict-note span');
+  if (note) note.textContent = text || 'إذا لم تكن أنت من قام بالدخول، غيّر كلمة المرور وعُد للدخول مجدداً.';
+  // أيقونة «القائمة» تعود إلى رمزها العام (لأننا سجّلنا خروجاً من هذه الصفحة)
+  const menu = $('#bnMenu');
+  if (menu) menu.innerHTML = '<i class="f7-icons" id="bnMenuIcon">square_grid2x2_fill</i><span>القائمة</span>';
+}
+const sessionConflictReloadBtn = $('#sessionConflictReload');
+if (sessionConflictReloadBtn) sessionConflictReloadBtn.onclick = () => location.reload();
+
 // ---------- أدوات ----------
 async function api(url, method = 'GET', body, isForm = false) {
   const o = { method, credentials: 'same-origin', headers: { 'X-Chat-Client': '1' } };
@@ -1187,6 +1214,7 @@ function connectSocket() {
     const oldName = ME.username;
     const oldBalance = +ME.balance || 0;
     Object.assign(ME, user);
+    if (typeof syncMyColorFromProfile === 'function') syncMyColorFromProfile(ME);
     if (badge) MYBADGE = badge;
 
     // تحديث رصيد الذهب في الهيدر والقائمة والمتجر فورياً
@@ -1335,6 +1363,11 @@ function connectSocket() {
   SOCKET.on('banned', ({ text, reason }) => {
     hideConnectionOverlay();
     showPersistentBanTemplate(reason || text || 'سلوك سيئ داخل الدردشة');
+  });
+  // شخص آخر دخل بالحساب نفسه — نُنهي هذه الجلسة ونعرض قالب التوضيح.
+  SOCKET.on('session_conflict', ({ text }) => {
+    hideConnectionOverlay();
+    if (typeof showSessionConflictTemplate === 'function') showSessionConflictTemplate(text);
   });
   socket.on('disconnect', reason => {
     if (socket !== SOCKET || !ME || !CHAT_TOKEN || reason === 'io client disconnect') return;
@@ -2618,6 +2651,8 @@ function renderMsg(m) {
     const isCustomEmoji = typeof m.text === 'string' && m.text.startsWith('em::');
     const messageMedia = m.media || u.media || null;
     const hiddenAdmin = !!(m.hidden_admin || u.hidden_admin);
+    // إخفاء شارة «زائر» و«مسجل بدون عضوية» من العام، وإظهارها فقط للإدارات والعضويات.
+    const showBadge = !!badge && !['guest.png', 'register.png'].includes(badge);
     el.className = 'msg' + (hiddenAdmin ? ' hidden-admin-msg' : '');
     el.innerHTML = `
       <div class="mava">${avatarHtml(u.avatar)}</div>
@@ -2637,7 +2672,7 @@ function renderMsg(m) {
         <div class="mline2">
           ${hiddenAdmin
             ? '<img class="hidden-admin-badge" src="/img/mgfi.png" alt="دخول مخفي">'
-            : (badge ? `<img class="mmark" data-badge-kind="${badgeKind}" src="/badges/${badge}" alt="">` : '')}
+            : (showBadge ? `<img class="mmark" data-badge-kind="${badgeKind}" src="/badges/${badge}" alt="">` : '')}
           ${isCustomEmoji
             ? `<img class="mcustom-emoji" src="${esc(m.text.slice(4))}" alt="emoji">`
             : `<span class="mtext message-content" style="color:${tcol || color};font-size:${currentFontSize}px">${m.text ? messageTextWithCustomEmojis(m.text) : ''}${messageMedia && messageMedia.type === 'image' ? `<button class="chat-public-image" type="button" data-src="${esc(messageMedia.path)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>` : ''}${messageMedia && messageMedia.type === 'audio' ? `<span class="chat-audio-player" data-duration="${+messageMedia.duration || 0}"><button class="chat-audio-play" type="button" aria-label="تشغيل"><i class="f7-icons">play_fill</i></button><span class="chat-audio-time chat-audio-current">00:00</span><input class="chat-audio-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="موضع المقطع"><span class="chat-audio-time chat-audio-duration">00:00</span><audio class="chat-audio-element" src="${esc(messageMedia.path)}" preload="metadata"></audio></span>` : ''}</span>`}
@@ -2914,9 +2949,9 @@ function userSheetMembership(u) {
   return u.registered ? 'عضو مسجل' : 'زائر';
 }
 function userSheetMembershipColor(u) {
-  if (u.rank && u.rank !== 'user') return RANK_COLORS[u.rank] || '#7c3aed';
-  if (u.membership && u.membership !== 'none') return MEM_COLORS[u.membership] || '#c2185b';
-  return u.registered ? MEM_COLORS.none : '#6b7280';
+  if (!u) return '#6b7280';
+  // نفس لون اسم العضو في العام: سوبر/ادمن أسود، أدمن غرفة أحمر، وكل عضوية بلونها.
+  return userColor(u);
 }
 function syncUserActionSheet() {
   if (!CUR_TARGET) return;
@@ -3195,11 +3230,12 @@ async function openProfile(uid) {
     $('#profTitleTab').textContent = isMe ? (APP_LANG === 'es' ? 'Mi cuenta' : (APP_LANG === 'tr' ? 'Hesabım' : (APP_LANG === 'en' ? 'My account' : 'حسابي'))) : u.username;
     $('#profName').textContent = u.username;
     $('#profAva').innerHTML = avatarHtml(u.avatar) + `<span class="dot ${statusDot(u.status)}"></span>`;
-    let memText, memColor;
-    if (u.rank !== 'user') { memText = RANK_NAMES[u.rank]; memColor = RANK_COLORS[u.rank] || '#7c3aed'; }
-    else if (u.membership !== 'none') { memText = MEM_NAMES[u.membership]; memColor = MEM_COLORS[u.membership]; }
-    else { memText = u.registered ? 'عضو مسجل' : 'زائر'; memColor = u.registered ? '#c2185b' : '#6b7280'; }
-    $('#profMem').innerHTML = `<img src="/badges/${d.badge}"> <span style="color:${memColor}">${memText}</span>`;
+    let memText;
+    if (u.rank !== 'user') memText = RANK_NAMES[u.rank];
+    else if (u.membership !== 'none') memText = MEM_NAMES[u.membership];
+    else memText = u.registered ? 'عضو مسجل' : 'زائر';
+    // نفس لون اسم العضو في العام (سوبر/ادمن أسود وكل عضوية بلونها).
+    $('#profMem').innerHTML = `<img src="/badges/${d.badge}"> <span style="color:${userColor(u)}">${memText}</span>`;
     if (isMe) {
       $('.profpage').classList.remove('visitor');
       document.querySelector('.prof-hero').style.display = '';
@@ -3264,7 +3300,7 @@ function renderVisitorProfile(u, d) {
                 <div class="profile-hero-info">
                   <div class="profile-main-name">${esc(u.username)}${u.verified ? '<i class="f7-icons vp-vrf">checkmark_seal_fill</i>' : ''}</div>
                   <div class="profile-main-status">${stMap[u.status] || 'متصل'} <span class="vs-dot" style="background:${stColor[u.status] || '#20d33a'}"></span></div>
-                  <div class="profile-main-pill"><img src="/badges/${d.badge}" alt="">${esc(memTxt)}</div>
+                  <div class="profile-main-pill"><img src="/badges/${d.badge}" alt="" style="filter:none"><span style="color:${userColor(u)};font-weight:900">${esc(memTxt)}</span></div>
                 </div>
               </div>
             </div>
@@ -6115,6 +6151,9 @@ $('#doRegister').onclick = async () => {
   } catch (e) { $('#regErr').textContent = e.error || 'فشل التسجيل'; }
 };
 function onLoggedIn() {
+  // تحميل لون الخط المخصص المحفوظ في حساب العضو (يسري على كل الأجهزة).
+  if (typeof syncMyColorFromProfile === 'function') syncMyColorFromProfile(ME);
+  if (typeof applyMyColorToAppsButton === 'function') applyMyColorToAppsButton();
   // الهيدر: إخفاء زر الدخول وإظهار الصورة + الاسم
   $('#headEnterBtn').style.display = 'none';
   $('#headUserBox').style.display = 'flex';
@@ -6353,7 +6392,18 @@ $('#roomSearch2').oninput = renderRoomsPanel;
 
 // الإرسال
 $('#btnSend').onclick = sendMsg;
-$('#msgInput').onkeydown = e => { if (e.key === 'Enter') sendMsg(); };
+
+const msgInput = document.getElementById('msgInput');
+
+msgInput.onkeydown = function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+
+        sendMsg();
+
+        this.value = '';
+    }
+};
 function sendMsg() {
   if (!ME) return openLogin();
   if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
@@ -6408,15 +6458,36 @@ api('/api/gifts').then(g => { GIFTS = g; }).catch(() => { });   // تحميل م
 // قائمة الألوان — تغيير لون خط رسائلي (يُحفظ على جهازي)
 const TEXT_COLORS = ['#000000', '#e03131', '#e91e8c', '#9c36b5', '#7c3aed', '#1479f2', '#0e9fdd', '#38b6ff', '#2e9e44', '#66bb6a', '#f59e0b', '#ea580c', '#795548', '#6b7280'];
 let MY_COLOR = localStorage.getItem('njc_color') || '';
+// مزامنة لون الخط المخصص من حساب العضو (يُحمَّل من الخادم ليبقى ثابتاً على كل الأجهزة).
+function syncMyColorFromProfile(u) {
+  if (!u) return;
+  // لون العضو المحفوظ إلزامي إن وُجد؛ وإلا نبقيه على ما في المتصفح (لحالة الزائر/الاحتياط).
+  if (u.color) MY_COLOR = u.color;
+  else if (ME && u.registered) MY_COLOR = u.color || '';   // عضو مسجّل بلا لون محفوظ = «تلقائي»
+  applyMyColorToAppsButton();
+}
+// عكس اللون المختار/المحفوظ على أيقونة زر قائمة الألوان (btnApps).
+// اللون «تلقائي» يجعلها ترجع للون سمة التصميم الافتراضي.
+function applyMyColorToAppsButton() {
+  const icon = $('#btnApps i');
+  if (!icon) return;
+  if (MY_COLOR) icon.style.color = MY_COLOR;
+  else icon.style.color = '';   // يقع على CSS الافتراضي: var(--njomarab-theme-color)
+}
 function renderColorGrid() {
   $('#colorGrid').innerHTML = `<button class="csw auto${MY_COLOR === '' ? ' sel' : ''}" data-c="">تلقائي</button>` +
     TEXT_COLORS.map(c => `<button class="csw${MY_COLOR === c ? ' sel' : ''}" data-c="${c}" style="background:${c}"></button>`).join('');
-  $$('#colorGrid .csw').forEach(b => b.onclick = () => {
+  $$('#colorGrid .csw').forEach(b => b.onclick = async () => {
     MY_COLOR = b.dataset.c;
     localStorage.setItem('njc_color', MY_COLOR);
     renderColorGrid();
+    applyMyColorToAppsButton();
     $('#colorPanel').classList.remove('open');
     toast(MY_COLOR ? 'تم تغيير لون خطك 🎨' : 'رجع لون خطك للون رتبتك');
+    // حفظ اللون في حساب العضو المسجل كي يبقى عند الدخول من أي جهاز.
+    if (ME && ME.registered) {
+      try { const d = await api('/api/color', 'POST', { color: MY_COLOR }); if (ME) ME.color = d.color || MY_COLOR; } catch (e) { }
+    }
   });
 }
 renderColorGrid();
@@ -6832,3 +6903,26 @@ document.addEventListener('click', (e) => {
 });
 // إغلاق النوافذ عند لمس الخلفية
 $$('.overlay:not(.full)').forEach(ov => ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); }));
+
+var zise3 = 0;
+var zise4 = 0; 
+function activeresize() {
+    zise3 = 1;
+    navigator.virtualKeyboard.show();
+    if ("virtualKeyboard" in navigator) {
+    navigator.virtualKeyboard.overlaysContent = true;
+    navigator.virtualKeyboard.addEventListener("geometrychange", event => {
+        const { x, y, width, height } = event.target.boundingRect;
+        zise4 = height;
+        const xbod1Style = document.getElementById("frame");
+        if (height === 0) {
+            xbod1Style.style.height = "calc(100% - 2px)";
+        } else {
+            xbod1Style.style.height = (window.innerHeight - height) - 0 + 'px';
+        }
+    
+    });
+}
+}
+
+
