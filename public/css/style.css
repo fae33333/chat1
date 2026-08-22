@@ -417,6 +417,8 @@ body { background:#0e1220; display:flex; justify-content:center; }
   background: #e2e8f0 !important;
   z-index: 1;
   direction: ltr;
+  scrollbar-width: thin;
+  scrollbar-color: #d6d7db #0f172a;
 }
 .c-msgs .msg, .c-msgs .system-event, .c-msgs .gift-event, .c-msgs .c-welcome {
   position: relative;
@@ -491,7 +493,6 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .chat-public-image:active { transform:scale(.985); }
 .chat-audio-player {
   direction:ltr;
-  width: min(70%,288px);
   min-height:42px;
   margin-top:5px;
   padding:5px 7px;
@@ -745,12 +746,23 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .usheet { border-radius:22px 22px 0 0; padding:12px 14px 22px; }
 .usheet-name { text-align:center; font-weight:900; font-size:15px; padding-bottom:12px; border-bottom:1px solid #f0f1f6; margin-bottom:8px; color:var(--navy); }
 .us-opt {
-  width:100%; background:none; border:0; display:flex; align-items:center; gap:12px; padding:13px 8px; font-size:14px;
-  font-weight:800; color:var(--navy); cursor:pointer; border-bottom:1px solid #f6f7fa; text-align:right;
+  width:100%;
+  background:none;
+  border:0;
+  display:flex;
+  gap:12px;
+  padding:13px 8px;
+  font-size:14px;
+  font-weight:800;
+  color:var(--navy);
+  cursor:pointer;
+  border-bottom:1px solid #f6f7fa;
+  direction: ltr;
+  flex-direction: row;
 }
 .us-opt i { font-size:21px; color:var(--main); width:26px; }
 .us-opt.st .dot { width:10px; height:10px; margin-inline-start:8px; }
-.us-opt.st > i:last-child, .us-opt > i:last-child { margin-inline-start:auto; color:#c3c8d8; font-size:16px; width:auto; }
+.us-opt.st > i:last-child, .us-opt > i:last-child {margin-inline-start:auto;color:#c3c8d8;font-size:16px;width:auto;}
 .us-opt.st > i:first-child { color:var(--navy); }
 .us-cancel { width:100%; background:none; border:0; padding:13px; text-align:center; color:#6b7280; font-weight:800; font-size:14px; cursor:pointer; }
 
@@ -773,7 +785,7 @@ body { background:#0e1220; display:flex; justify-content:center; }
   direction:ltr;
   width:100%;
   min-height:60px;
-  padding:7px 8px;
+  padding: 11px 8px;
   border:0;
   border-bottom:1px solid #ededed;
   background:#fff;
@@ -785,8 +797,8 @@ body { background:#0e1220; display:flex; justify-content:center; }
   font-family:inherit;
 }
 .us-avatar {
-  width:45px;
-  height:45px;
+  width: 50px;
+  height: 50px;
   border-radius:50%;
   border:2px solid #1685f5;
   padding:2px;
@@ -820,13 +832,13 @@ body { background:#0e1220; display:flex; justify-content:center; }
   white-space:nowrap;
   text-overflow:ellipsis;
   color:#171717;
-  font-size:14px;
+  font-size: 16px;
   font-weight:700;
   line-height:1.2;
 }
 .us-userinfo small {
   color:#e21e2c;
-  font-size:10.5px;
+  font-size: 12.5px;
   font-weight:700;
   line-height:1.2;
 }
@@ -844,13 +856,13 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .user-action-sheet .us-opt {
   direction:ltr;
   min-height:30px;
-  padding:5px 14px;
+  padding: 8px 14px;
   border:0;
   border-bottom:1px solid #eeeeee;
   gap:10px;
   color:#333;
   background:#fff;
-  font-size: 15.5px;
+  font-size: 17px;
   font-weight:500;
   line-height:20px;
   text-align:left;
@@ -860,9 +872,9 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .user-action-sheet .us-opt:disabled { opacity:.55; cursor:wait; }
 .user-action-sheet .us-opt span { flex:1; text-align:left; }
 .user-action-sheet .us-opt i.us-icon {
-  width:21px;
+  width: 21px;
   flex:none;
-  font-size:19px;
+  font-size: 22px;
   text-align:center;
 }
 .user-action-sheet .us-opt i.reply { color: var(--main); }
@@ -1253,10 +1265,10 @@ body.lang-en .toast { direction:ltr; }
 .pvpage .page-heading { padding:4px 2px 12px; }
 
 /* قائمة الحالة السريعة - حسب المطلوب */
-.us-opt.st { gap:10px; }
+.us-opt.st {gap:10px;}
 .us-opt.st .dot { width:11px; height:11px; margin:0; }
 .us-opt.st > i:last-child { margin-inline-start:auto; color:#6b7591; }
-.usheet .mn-title { text-align:right; padding:4px 8px 6px; font-size:13px; }
+.usheet .mn-title {text-align: center;padding:4px 8px 6px;font-size:13px;}
 
 /* حالات "لا يوجد" بالرسم التوضيحي */
 .pv-empty .empty-img { display:block; margin:0 auto 20px; }
@@ -4000,7 +4012,7 @@ body.lang-en .card-payment-dialog {
 }
 .profile-actions .va-ic i {
   color:#b6254f;
-  font-size:17px;
+  font-size: 23px;
 }
 .profile-actions .va.active .va-ic {
   background:#eceff4;
