@@ -921,8 +921,16 @@ function connectSocket() {
   socket.on('connect', () => restoreCurrentRoom(socket));
   SOCKET.on('msg', (m) => {
     if (CUR_ROOM && m.room_id === CUR_ROOM.id) {
+      // إذا كان المستخدم أسفل الدردشة (أو الرسالة رسالته هو) ننزل تلقائياً،
+      // أما إن كان يقرأ رسائل قديمة بالأعلى فنثبّت مكانه ونزيد عداد الزر العائم.
+      const senderId = +(m.user_id || (m.user && m.user.id) || 0);
+      const stick = isNearBottom() || (ME && senderId === ME.id);
       renderMsg(m);
-      scrollBottom();
+      if (stick) scrollBottom();
+      else {
+        if (m.type === 'msg') NEW_MSGS_BELOW++;
+        updateScrollDownBtn();
+      }
       if (m.type === 'gift') triggerGiftCelebration(parseExtra(m));
       else if (m.type === 'join' && PREFS.snd_join && SETTINGS.snd_join === '1') beep(520, .1);
       else if (m.type === 'msg' && PREFS.snd_msg && SETTINGS.snd_msg === '1') beep(740, .07);
@@ -2263,7 +2271,40 @@ async function loadRoomMessages(id) {
   msgs.forEach(m => renderMsg(m));
   scrollBottom();
 }
-function scrollBottom() { const a = $('#msgArea'); a.scrollTop = a.scrollHeight; }
+function scrollBottom(smooth) {
+  const a = $('#msgArea');
+  NEW_MSGS_BELOW = 0;
+  if (smooth) a.scrollTo({ top: a.scrollHeight, behavior: 'smooth' });
+  else a.scrollTop = a.scrollHeight;
+  const btn = $('#scrollDownBtn');
+  if (btn) { btn.style.display = 'none'; $('#scrollDownCount').style.display = 'none'; }
+}
+
+// ===== زر النزول لأسفل الدردشة + عداد الرسائل الجديدة =====
+// عند تمرير المستخدم للأعلى لقراءة الرسائل القديمة يبقى مكانه ثابتاً،
+// ويظهر زر عائم يحمل عدد الرسائل الجديدة، وبالنقر عليه ينزل للأسفل ويختفي.
+let NEW_MSGS_BELOW = 0;
+function isNearBottom() {
+  const a = $('#msgArea');
+  return a.scrollHeight - a.scrollTop - a.clientHeight < 80;
+}
+function updateScrollDownBtn() {
+  const btn = $('#scrollDownBtn'), cnt = $('#scrollDownCount');
+  if (!btn) return;
+  if (isNearBottom()) {
+    NEW_MSGS_BELOW = 0;
+    btn.style.display = 'none';
+    cnt.style.display = 'none';
+    return;
+  }
+  btn.style.display = 'flex';
+  if (NEW_MSGS_BELOW > 0) {
+    cnt.textContent = NEW_MSGS_BELOW > 99 ? '99+' : NEW_MSGS_BELOW;
+    cnt.style.display = 'flex';
+  } else cnt.style.display = 'none';
+}
+$('#msgArea').addEventListener('scroll', updateScrollDownBtn);
+$('#scrollDownBtn').onclick = () => scrollBottom(true);
 
 // =====================================================
 //  عرض الرسائل
