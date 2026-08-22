@@ -16,6 +16,9 @@ const { Server } = require('socket.io');
 const db = require('./database');
 
 const app = express();
+const COOKIE_SECRET = process.env.COOKIE_SECRET || 'nujum-admin-device-secret-2026';
+const DEVICE_COOKIE_NAME = 'nujum_device_id';
+const DEVICE_COOKIE_MAX_AGE = 1000 * 60 * 60 * 24 * 365 * 5;
 const HTTPS_KEY_PATH = process.env.HTTPS_KEY || path.join(__dirname, 'key.pem');
 const HTTPS_CERT_PATH = process.env.HTTPS_CERT || path.join(__dirname, 'cert.pem');
 let HTTPS_ENABLED = false;
@@ -29,7 +32,9 @@ if (fs.existsSync(HTTPS_KEY_PATH) && fs.existsSync(HTTPS_CERT_PATH)) {
   }
 }
 if (!server) server = http.createServer(app);
-const io = new Server(server);
+// يفحص مفتاح key قبل إنشاء جلسة Engine.IO/Socket.IO، أي قبل قبول WebSocket.
+// التحقق والحظر الفعليان موجودان في allowSocketHandshake أدناه.
+const io = new Server(server, { allowRequest: allowSocketHandshake });
 
 const PORT = +(process.env.PORT || (HTTPS_ENABLED ? 2083 : 3000));
 const SERVER_PROTOCOL = HTTPS_ENABLED ? 'https' : 'http';
@@ -57,6 +62,62 @@ function validIp(value) {
   const ip = normalizeIp(value);
   return net.isIP(ip) ? ip : '';
 }
+function validDeviceId(value) {
+  const id = String(value || '').trim();
+  return /^nd_[a-f0-9]{48}$/.test(id) ? id : '';
+}
+function rawCookieValue(req, name) {
+  const header = String(requestHeader(req, 'cookie') || '');
+  for (const item of header.split(';')) {
+    const separator = item.indexOf('=');
+    if (separator < 0) continue;
+    if (item.slice(0, separator).trim() !== name) continue;
+    try { return decodeURIComponent(item.slice(separator + 1).trim()); }
+    catch (error) { return ''; }
+  }
+  return '';
+}
+function requestDeviceId(req) {
+  const direct = validDeviceId(req && req.deviceId);
+  if (direct) return direct;
+  const parsed = validDeviceId(req && req.signedCookies && req.signedCookies[DEVICE_COOKIE_NAME]);
+  if (parsed) return parsed;
+  const raw = rawCookieValue(req, DEVICE_COOKIE_NAME);
+  if (!raw) return '';
+  const unsigned = cookieParser.signedCookie(raw, COOKIE_SECRET);
+  return unsigned === false ? '' : validDeviceId(unsigned);
+}
+
+// إزالة محرف & من حقول النصوص القابلة للعرض بعد أن يفك Express/Socket.IO
+// الحزمة. لا نلمس رابط HTTP الخام، وإلا ستتعطل فواصل & الخاصة بـ EIO/key.
+const ENTITY_TEXT_FIELDS = new Set([
+  'text', 'text_content', 'caption', 'bio', 'subject', 'note', 'reason',
+  'description', 'welcome', 'reply_text', 'name'
+]);
+function stripPacketAmpersands(value) {
+  return String(value ?? '').replace(/&/g, '');
+}
+function sanitizeDisplayTextFields(value, fieldName = '', depth = 0) {
+  if (depth > 8 || value === null || value === undefined) return value;
+  if (typeof value === 'string')
+    return ENTITY_TEXT_FIELDS.has(fieldName) ? stripPacketAmpersands(value) : value;
+  if (Array.isArray(value))
+    return value.map(item => sanitizeDisplayTextFields(item, fieldName, depth + 1));
+  if (typeof value !== 'object' || Object.getPrototypeOf(value) !== Object.prototype) return value;
+  for (const key of Object.keys(value)) {
+    value[key] = sanitizeDisplayTextFields(value[key], key, depth + 1);
+  }
+  return value;
+}
+function sanitizeSocketEventPacket(packet) {
+  if (!Array.isArray(packet)) return packet;
+  // packet[0] هو اسم الحدث ولا يجوز تغييره؛ ننظف حمولة الحدث فقط.
+  for (let index = 1; index < packet.length; index++) {
+    packet[index] = sanitizeDisplayTextFields(packet[index], '', 0);
+  }
+  return packet;
+}
+
 function requestHeader(req, name) {
   if (!req) return '';
   if (typeof req.get === 'function') return req.get(name) || '';
@@ -128,6 +189,12 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// طبقة موحدة لحقول النص القادمة عبر API: &lt; تصبح lt; ولا تبقى بداية
+// لكيان HTML، مع إبقاء كلمات المرور والروابط والرموز والملفات دون تغيير.
+app.use((req, res, next) => {
+  if (req.body && typeof req.body === 'object') sanitizeDisplayTextFields(req.body);
+  next();
+});
 
 // =====================================================
 //  تتبع اتصالات المتواجدين في الدردشة وغرف المحادثة
@@ -154,7 +221,25 @@ const sessionMw = session({
   cookie: { maxAge: 1000 * 60 * 60 * 24 * 30, secure: HTTPS_ENABLED, sameSite: 'lax', httpOnly: true }
 });
 app.use(sessionMw);
-app.use(cookieParser('nujum-admin-device-secret-2026'));
+app.use(cookieParser(COOKIE_SECRET));
+// معرف موقع وموقّع يبقى مع المتصفح عند تبديل الشبكة أو عنوان IP. لا يحتوي
+// معلومات شخصية، ويستخدم فقط لربط الحظر الإداري بالجهاز نفسه.
+app.use((req, res, next) => {
+  let deviceId = requestDeviceId(req);
+  if (!deviceId) {
+    deviceId = 'nd_' + crypto.randomBytes(24).toString('hex');
+    res.cookie(DEVICE_COOKIE_NAME, deviceId, {
+      signed: true,
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: HTTPS_ENABLED,
+      maxAge: DEVICE_COOKIE_MAX_AGE,
+      path: '/'
+    });
+  }
+  req.deviceId = deviceId;
+  next();
+});
 io.use((socket, next) => sessionMw(socket.request, {}, next));
 
 // وسيط فحص معدل طلبات الـ API (استثناء مسارات ومسؤولي لوحة الإدارة تماماً)
@@ -246,6 +331,9 @@ function resolveAdminAuth(req) {
 
 // مسار محمي وديناميكي لفتح لوحة التحكم بالرمز العشوائي السري فقط
 app.get(['/admin', '/admin.html'], async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   const token = String(req.query.token || req.headers['x-admin-token'] || '').trim();
   const auth = token ? ADMIN_TOKEN_LOOKUP.get(token) : null;
   const isValid = auth && validateAdminTokenRecord(auth, req);
@@ -300,7 +388,19 @@ app.get(['/admin', '/admin.html'], async (req, res) => {
   res.send(adminHtml);
 });
 
-app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+// ملفات الواجهة تتغير أثناء إدارة الخادم؛ منع تخزين JS/CSS القديمة يمنع تشغيل
+// نسخة app.js سابقة بعد النشر (خصوصاً خطأ applySettings القديم).
+app.use(express.static(path.join(__dirname, 'public'), {
+  index: false,
+  etag: true,
+  setHeaders: (res, filePath) => {
+    if (/\.(?:js|css|html)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 
 // ---------- رفع الملفات ----------
 fs.mkdirSync(path.join(__dirname, 'public/uploads'), { recursive: true });
@@ -454,9 +554,15 @@ const q = {
 // لذلك لا تنتقل هوية تبويب إلى تبويب آخر، وتختفي من العميل عند التحديث.
 const CHAT_TOKENS = new Map();
 const CHAT_TOKEN_TTL = 12 * 60 * 60 * 1000;
-function issueChatToken(user, ip) {
+function issueChatToken(user, ip, deviceId = '') {
   const token = crypto.randomBytes(32).toString('hex');
-  CHAT_TOKENS.set(token, { uid: +user.id, rank: user.rank || 'user', ip: normalizeIp(ip), createdAt: Date.now() });
+  CHAT_TOKENS.set(token, {
+    uid: +user.id,
+    rank: user.rank || 'user',
+    ip: normalizeIp(ip),
+    deviceId: validDeviceId(deviceId),
+    createdAt: Date.now()
+  });
   return token;
 }
 function chatTokenFromRequest(req) {
@@ -487,12 +593,218 @@ setInterval(() => {
   for (const [token, auth] of CHAT_TOKENS) if (auth.createdAt < cutoff) CHAT_TOKENS.delete(token);
 }, 60 * 60 * 1000).unref();
 
+// =====================================================
+//  حماية مفتاح اتصال Socket.IO
+// =====================================================
+// يحتفظ الخادم بالمفاتيح المقبولة لمدة 24 ساعة (قابلة للتغيير من البيئة).
+// عند تكرار مفتاح أو إرسال قيمة لا تطابق مولّد العميل يُحظر IP الحقيقي في
+// جدول bans، ولذلك يستمر الحظر بعد إعادة تشغيل الخادم ويظهر في لوحة الإدارة.
+const SOCKET_KEY_TTL_MS = Math.max(60 * 1000, Number(process.env.SOCKET_KEY_TTL_MS) || 24 * 60 * 60 * 1000);
+const SOCKET_KEY_MAX_ENTRIES = Math.max(1000, Number(process.env.SOCKET_KEY_MAX_ENTRIES) || 200000);
+const USED_SOCKET_KEYS = new Map(); // key -> { ip, createdAt }
+
+function validateGeneratedSocketKey(value) {
+  const key = String(value || '');
+  if (!key) return { ok: false, reason: 'مفتاح الاتصال key مفقود أو فارغ' };
+  if (!/^\d+$/.test(key)) return { ok: false, reason: 'مفتاح الاتصال يحتوي على محارف غير رقمية' };
+
+  // x في المولّد رقم من 10 خانات، ثم تلحق به نتيجة x * 257.
+  if (key.length < 22 || key.length > 23)
+    return { ok: false, reason: `طول مفتاح الاتصال غير صحيح (${key.length})` };
+
+  const xText = key.slice(0, 10);
+  const x = Number(xText);
+  if (!Number.isSafeInteger(x) || x < 1000000000 || x > 9999999999)
+    return { ok: false, reason: 'بداية مفتاح الاتصال ليست رقماً مولداً صحيحاً' };
+
+  const expected = xText + String(x * 257);
+  if (key !== expected)
+    return { ok: false, reason: 'مفتاح الاتصال غير مولد بالمعادلة المطلوبة' };
+
+  return { ok: true, key };
+}
+
+function readSocketKey(req) {
+  try {
+    const parsed = new URL(String((req && req.url) || '/'), 'http://socket.local');
+    const values = parsed.searchParams.getAll('key');
+    if (values.length !== 1)
+      return { key: values[0] || '', malformed: true, reason: values.length ? 'تم إرسال key أكثر من مرة' : 'لا يوجد key في رابط الاتصال' };
+    return { key: values[0], malformed: false, reason: '' };
+  } catch (error) {
+    return { key: '', malformed: true, reason: 'تعذر تحليل رابط اتصال Socket.IO' };
+  }
+}
+
+function removeExpiredSocketKeys(now = Date.now()) {
+  const cutoff = now - SOCKET_KEY_TTL_MS;
+  for (const [key, entry] of USED_SOCKET_KEYS) {
+    if (entry.createdAt > cutoff) break;
+    USED_SOCKET_KEYS.delete(key);
+  }
+}
+
+function rememberSocketKey(key, ip, now = Date.now()) {
+  removeExpiredSocketKeys(now);
+  // حد أعلى يمنع استنزاف الذاكرة عند إغراق الخادم بمفاتيح صحيحة مختلفة.
+  while (USED_SOCKET_KEYS.size >= SOCKET_KEY_MAX_ENTRIES) {
+    const oldestKey = USED_SOCKET_KEYS.keys().next().value;
+    if (oldestKey === undefined) break;
+    USED_SOCKET_KEYS.delete(oldestKey);
+  }
+  USED_SOCKET_KEYS.set(key, { ip, createdAt: now });
+}
+
+async function autoBanSocketKeyIp(ip, reason, deviceId = '') {
+  ip = validIp(ip);
+  deviceId = validDeviceId(deviceId);
+  if (!ip) return;
+  const cleanReason = String(reason || 'مخالفة مفتاح اتصال WebSocket').slice(0, 150);
+  const existing = await q.get(`SELECT id,device_id FROM bans WHERE ip=? LIMIT 1`, ip);
+  if (!existing) {
+    await q.run(`INSERT INTO bans (username,ip,device_id,reason) VALUES (?,?,?,?)`, 'حظر تلقائي WebSocket', ip, deviceId, cleanReason);
+  } else if (deviceId && !validDeviceId(existing.device_id)) {
+    await q.run(`UPDATE bans SET device_id=? WHERE id=?`, deviceId, existing.id);
+  }
+  await q.run(`UPDATE users SET banned=1 WHERE registered=0 AND (ip=? OR (?<>'' AND device_id=?))`, ip, deviceId, deviceId);
+
+  // إبطال رموز الصفحات المفتوحة وفصل كل اتصالات العنوان/الجهاز فوراً.
+  for (const [token, auth] of CHAT_TOKENS) {
+    if (validIp(auth.ip) === ip || (deviceId && validDeviceId(auth.deviceId) === deviceId)) CHAT_TOKENS.delete(token);
+  }
+  for (const activeSocket of [...io.sockets.sockets.values()]) {
+    const sameIp = validIp(activeSocket.data.clientIp) === ip;
+    const sameDevice = deviceId && validDeviceId(activeSocket.data.deviceId) === deviceId;
+    if (!sameIp && !sameDevice) continue;
+    activeSocket.emit('banned', {
+      banned: true,
+      persistent: true,
+      text: 'تم حظرك بسبب سلوكك السيئ',
+      reason: cleanReason
+    });
+    setTimeout(() => activeSocket.disconnect(true), 80);
+  }
+  console.warn(`🔴 [AUTO-BAN WebSocket] ${ip} — ${cleanReason}`);
+}
+
+// Socket.IO/Engine.IO يستدعي هذه الدالة في طلب المصافحة الأول فقط. طلب ترقية
+// WebSocket لنفس sid لا يُحسب استخداماً ثانياً للمفتاح.
+async function allowSocketHandshake(req, callback) {
+  let replied = false;
+  const done = (message, accepted) => {
+    if (replied) return;
+    replied = true;
+    callback(message, accepted);
+  };
+
+  try {
+    const ip = validIp(requestIp(req));
+    const deviceId = requestDeviceId(req);
+    if (!ip) return done('تعذر تحديد عنوان IP الحقيقي', false);
+
+    // منع المحظور أصلاً قبل استهلاك أي موارد إضافية، حتى لو غيّر عنوان IP.
+    const currentBan = await q.get(
+      `SELECT id FROM bans WHERE ip=? OR (?<>'' AND device_id=?) LIMIT 1`,
+      ip, deviceId, deviceId
+    );
+    if (currentBan) return done('هذا المستخدم أو الجهاز محظور', false);
+
+    const received = readSocketKey(req);
+    const validation = received.malformed
+      ? { ok: false, reason: received.reason }
+      : validateGeneratedSocketKey(received.key);
+
+    if (!validation.ok) {
+      await autoBanSocketKeyIp(ip, validation.reason, deviceId);
+      return done('مفتاح اتصال غير صالح', false);
+    }
+
+    const now = Date.now();
+    const previous = USED_SOCKET_KEYS.get(validation.key);
+    if (previous && now - previous.createdAt <= SOCKET_KEY_TTL_MS) {
+      await autoBanSocketKeyIp(ip, `مفتاح اتصال مكرر: ${validation.key}`, deviceId);
+      return done('مفتاح اتصال مكرر', false);
+    }
+    if (previous) USED_SOCKET_KEYS.delete(validation.key);
+
+    // الحجز يتم قبل قبول الطلب كي لا ينجح طلبان متزامنان بالمفتاح نفسه.
+    rememberSocketKey(validation.key, ip, now);
+    return done(null, true);
+  } catch (error) {
+    console.error('[Socket key] تعذر فحص المصافحة:', error);
+    return done('تعذر التحقق من مفتاح الاتصال', false);
+  }
+}
+
+setInterval(removeExpiredSocketKeys, 10 * 60 * 1000).unref();
+
 async function getSettings() {
   const rows = await q.all(`SELECT key,value FROM settings`);
   const s = {};
   rows.forEach(r => s[r.key] = r.value);
   return s;
 }
+
+// قواعد رسائل العام (الفاصل والحد الأقصى)؛ تُحدّث فور حفظها من لوحة الإدارة.
+let PUBLIC_MESSAGE_COOLDOWN_MS = 3000;
+let PUBLIC_MESSAGE_MAX_LENGTH = 500;
+const PUBLIC_MESSAGE_LAST_SENT = new Map(); // هوية الشخص -> وقت آخر رسالة مقبولة
+function normalizePublicMessageCooldownSeconds(value, fallback = 3) {
+  const parsed = Number(value);
+  const seconds = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(60, Math.max(0, Math.round(seconds)));
+}
+function normalizePublicMessageMaxLength(value, fallback = 500) {
+  const parsed = Number(value);
+  const length = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(5000, Math.max(1, Math.round(length)));
+}
+function normalizePublicMessageSpacing(value, fallback = 4) {
+  const parsed = Number(value);
+  const spacing = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(40, Math.max(0, Math.round(spacing)));
+}
+function normalizePublicMessageNameSize(value, fallback = 14) {
+  const parsed = Number(value);
+  const size = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(36, Math.max(10, Math.round(size)));
+}
+function normalizePublicMessageBodyWidth(value) {
+  return String(value || '').toLowerCase() === 'full' ? 'full' : 'fit';
+}
+const PUBLIC_MESSAGE_BADGE_SETTING_KEYS = [
+  'msg_badge_superadmin_size', 'msg_badge_admin_size', 'msg_badge_roomadmin_size',
+  'msg_badge_mmez_size', 'msg_badge_vip_size', 'msg_badge_premium_size',
+  'msg_badge_plus_size', 'msg_badge_register_size', 'msg_badge_guest_size',
+  'msg_badge_hidden_admin_size'
+];
+function normalizePublicMessageBadgeSize(value, fallback = 24) {
+  const parsed = Number(value);
+  const size = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(80, Math.max(12, Math.round(size)));
+}
+async function refreshPublicMessageRules() {
+  const settings = await getSettings();
+  PUBLIC_MESSAGE_COOLDOWN_MS = normalizePublicMessageCooldownSeconds(settings.public_message_cooldown_seconds) * 1000;
+  PUBLIC_MESSAGE_MAX_LENGTH = normalizePublicMessageMaxLength(settings.msg_max);
+  return { cooldownMs: PUBLIC_MESSAGE_COOLDOWN_MS, maxLength: PUBLIC_MESSAGE_MAX_LENGTH };
+}
+function publicMessageIdentityKey(socket, user) {
+  if (user && user.registered) return `user:${+user.id}`;
+  const deviceId = validDeviceId(socket && socket.data && socket.data.deviceId);
+  if (deviceId) return `device:${deviceId}`;
+  const ip = validIp(socket && socket.data && socket.data.clientIp);
+  return ip ? `ip:${ip}` : `guest:${user ? +user.id : 0}`;
+}
+refreshPublicMessageRules().catch(() => { });
+setTimeout(() => refreshPublicMessageRules().catch(() => { }), 1200);
+setInterval(() => {
+  const cutoff = Date.now() - Math.max(PUBLIC_MESSAGE_COOLDOWN_MS, 5 * 60 * 1000);
+  for (const [identity, sentAt] of PUBLIC_MESSAGE_LAST_SENT) {
+    if (sentAt < cutoff) PUBLIC_MESSAGE_LAST_SENT.delete(identity);
+  }
+}, 5 * 60 * 1000).unref();
+
 function membershipAccessKey(user) {
   if (!user || !user.registered) return 'guest';
   if (user.membership && user.membership !== 'none') return user.membership;
@@ -696,7 +1008,36 @@ function badgeOf(u) {
 // =====================================================
 async function guestIpBan(ip) {
   if (!ip) return null;
-  return q.get(`SELECT id,reason FROM bans WHERE ip=? ORDER BY id DESC LIMIT 1`, ip);
+  return q.get(`SELECT id,username,ip,device_id,reason FROM bans WHERE ip=? ORDER BY id DESC LIMIT 1`, ip);
+}
+async function deviceBan(deviceId) {
+  deviceId = validDeviceId(deviceId);
+  if (!deviceId) return null;
+  return q.get(`SELECT id,username,ip,device_id,reason FROM bans WHERE device_id=? ORDER BY id DESC LIMIT 1`, deviceId);
+}
+async function persistentBanForRequest(req, user = null) {
+  if (user && user.banned) {
+    const accountBan = await q.get(
+      `SELECT id,username,ip,device_id,reason FROM bans WHERE username=? ORDER BY id DESC LIMIT 1`,
+      user.username
+    );
+    return accountBan || { username: user.username, reason: 'حظر الحساب بواسطة الإدارة' };
+  }
+  const byDevice = await deviceBan(requestDeviceId(req));
+  if (byDevice) return byDevice;
+  return guestIpBan(validIp(requestIp(req)));
+}
+function persistentBanPayload(ban) {
+  return {
+    banned: true,
+    persistent: true,
+    error: 'تم حظرك بسبب سلوكك السيئ',
+    text: 'تم حظرك بسبب سلوكك السيئ',
+    reason: String((ban && ban.reason) || 'حظر بواسطة الإدارة').slice(0, 150)
+  };
+}
+function sendPersistentBan(res, ban) {
+  return res.status(403).json(persistentBanPayload(ban));
 }
 async function guestIpMute(ip) {
   if (!ip) return null;
@@ -704,13 +1045,14 @@ async function guestIpMute(ip) {
 }
 async function finishAuthentication(req, res, user, extraPayload = {}) {
   const ip = requestIp(req);
+  const deviceId = requestDeviceId(req);
   let fresh = user;
   if (ip) {
     if (!user.registered) {
       const mutedByIp = await guestIpMute(ip);
-      await q.run(`UPDATE users SET ip=?, muted=? WHERE id=?`, ip, mutedByIp ? 1 : 0, user.id);
+      await q.run(`UPDATE users SET ip=?, device_id=?, muted=? WHERE id=?`, ip, deviceId, mutedByIp ? 1 : 0, user.id);
     } else {
-      await q.run(`UPDATE users SET ip=? WHERE id=?`, ip, user.id);
+      await q.run(`UPDATE users SET ip=?, device_id=? WHERE id=?`, ip, deviceId, user.id);
     }
     fresh = await q.get(`SELECT * FROM users WHERE id=?`, user.id);
   }
@@ -723,13 +1065,26 @@ async function finishAuthentication(req, res, user, extraPayload = {}) {
   if (req.get('x-chat-client') === '1') {
     const previousToken = chatTokenFromRequest(req);
     if (previousToken) CHAT_TOKENS.delete(previousToken);
-    payload.tab_token = issueChatToken(fresh, ip);
+    payload.tab_token = issueChatToken(fresh, ip, deviceId);
     return res.json(payload);
   }
   req.session.uid = fresh.id;
   req.session.rank = fresh.rank;
   res.json(payload);
 }
+
+// تفحصه الواجهة عند كل تحميل؛ حظر الجهاز يبقى فعالاً عند تبديل IP.
+app.get('/api/ban-status', async (req, res) => {
+  try {
+    const auth = resolveRequestAuth(req);
+    const user = auth && auth.uid ? await q.get(`SELECT id,username,banned FROM users WHERE id=?`, auth.uid) : null;
+    const ban = await persistentBanForRequest(req, user);
+    if (ban) return res.json(persistentBanPayload(ban));
+    res.json({ banned: false });
+  } catch (error) {
+    res.status(500).json({ error: 'تعذر التحقق من حالة الحظر' });
+  }
+});
 
 app.post('/api/login', async (req, res) => {
   const ip = requestIp(req);
@@ -741,9 +1096,8 @@ app.post('/api/login', async (req, res) => {
   const u = await q.get(`SELECT * FROM users WHERE username=?`, cleanUsername);
   if (!u || !u.password || !bcrypt.compareSync(String(password), u.password))
     return res.status(400).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
-  const ipBan = await guestIpBan(ip);
-  if (ipBan) return res.status(403).json({ error: 'عنوان IP الخاص بك محظور' + (ipBan.reason ? ': ' + ipBan.reason : '') });
-  if (u.banned) return res.status(403).json({ error: 'هذا الحساب محظور' });
+  const activeBan = await persistentBanForRequest(req, u);
+  if (activeBan) return sendPersistentBan(res, activeBan);
   await finishAuthentication(req, res, u);
 });
 
@@ -754,8 +1108,8 @@ app.post('/api/guest', async (req, res) => {
   let { username, gender } = req.body || {};
   username = String(username || '').trim().slice(0, 20);
   if (!username) return res.status(400).json({ error: 'اكتب اسم المستخدم' });
-  const ipBan = await guestIpBan(ip);
-  if (ipBan) return res.status(403).json({ error: 'عنوان IP الخاص بك محظور' + (ipBan.reason ? ': ' + ipBan.reason : '') });
+  const requestBan = await persistentBanForRequest(req);
+  if (requestBan) return sendPersistentBan(res, requestBan);
 
   let u = await q.get(`SELECT * FROM users WHERE username=?`, username);
   let renamedFrom = '';
@@ -792,7 +1146,10 @@ app.post('/api/guest', async (req, res) => {
     const r = await q.run(`INSERT INTO users (username,gender,registered,membership,rank) VALUES (?,?,0,'none','user')`, username, gender || 'secret');
     u = await q.get(`SELECT * FROM users WHERE id=?`, r.lastID);
   }
-  if (u.banned) { await q.run(`UPDATE users SET banned=0 WHERE id=?`, u.id); u.banned = 0; }
+  if (u.banned) {
+    const userBan = await persistentBanForRequest(req, u);
+    return sendPersistentBan(res, userBan);
+  }
   await finishAuthentication(req, res, u, renamedFrom ? { guest_name_changed: true, requested_username: renamedFrom } : {});
 });
 
@@ -806,8 +1163,8 @@ app.post('/api/register', async (req, res) => {
   const cleanBio = String(bio || '').trim().slice(0, 150);
   if (!cleanUsername || !cleanPassword) return res.status(400).json({ error: 'أكمل الحقول المطلوبة' });
   if (cleanPassword.length < 4) return res.status(400).json({ error: 'كلمة المرور يجب أن لا تقل عن 4 خانات' });
-  const ipBan = await guestIpBan(ip);
-  if (ipBan) return res.status(403).json({ error: 'لا يمكن التسجيل من عنوان IP محظور' });
+  const requestBan = await persistentBanForRequest(req);
+  if (requestBan) return sendPersistentBan(res, requestBan);
 
   const settings = await getSettings();
   const rawGold = settings.register_gold !== undefined && settings.register_gold !== null && String(settings.register_gold).trim() !== ''
@@ -859,6 +1216,8 @@ app.get('/api/chat/me', async (req, res) => {
   if (!auth || auth.source !== 'chat') return res.json({ user: null });
   const u = await q.get(`SELECT * FROM users WHERE id=?`, auth.uid);
   if (!u) return res.json({ user: null });
+  const activeBan = await persistentBanForRequest(req, u);
+  if (activeBan) return sendPersistentBan(res, activeBan);
   
   // عند عمل رفرش للدردشة، يتم إبطال أي رابط إدارة سابق فوراً!
   if (['admin', 'superadmin', 'supermaster'].includes(u.rank)) {
@@ -1811,9 +2170,35 @@ app.get('/api/admin/settings', requireAdmin, async (req, res) => res.json(await 
 
 app.post('/api/admin/settings', requireSuperAdmin, async (req, res) => {
   const entries = Object.entries(req.body);
-  for (const [k, v] of entries) await q.run(`INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, String(v));
+  const savedValues = {};
+  for (const [k, v] of entries) {
+    let storedValue = String(v);
+    if (k === 'public_message_cooldown_seconds') storedValue = String(normalizePublicMessageCooldownSeconds(v));
+    if (k === 'msg_max') storedValue = String(normalizePublicMessageMaxLength(v));
+    if (k === 'public_message_spacing_px') storedValue = String(normalizePublicMessageSpacing(v));
+    if (k === 'public_message_name_size_px') storedValue = String(normalizePublicMessageNameSize(v));
+    if (k === 'public_message_body_width') storedValue = normalizePublicMessageBodyWidth(v);
+    if (PUBLIC_MESSAGE_BADGE_SETTING_KEYS.includes(k)) storedValue = String(normalizePublicMessageBadgeSize(v));
+    await q.run(`INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, storedValue);
+    savedValues[k] = storedValue;
+  }
   if (req.body.hidden_super !== undefined && String(req.body.hidden_super) !== '1') await revealHiddenAdmins();
+  if (req.body.public_message_cooldown_seconds !== undefined || req.body.msg_max !== undefined) await refreshPublicMessageRules();
   reloadBots();      // قد يكون تبديل «تفعيل الروبوت» تغيّر
+
+  // هذه المفاتيح تصل فوراً لكل صفحات الدردشة المفتوحة قبل المزامنة العامة.
+  const liveSettingKeys = new Set([
+    'show_smiles', 'show_voice', 'show_image', 'hidden_super',
+    'snd_join', 'snd_msg', 'snd_leave', 'show_time', 'msg_max',
+    'public_message_cooldown_seconds', 'public_message_spacing_px',
+    'public_message_name_size_px', 'public_message_body_width',
+    ...PUBLIC_MESSAGE_BADGE_SETTING_KEYS
+  ]);
+  const liveChanges = {};
+  for (const [key, value] of Object.entries(savedValues)) {
+    if (liveSettingKeys.has(key)) liveChanges[key] = value;
+  }
+  if (Object.keys(liveChanges).length) io.emit('settings_changed', liveChanges);
   io.emit('sync');   // تطبيق فوري على صفحات الدردشة
   if (req.body.default_language) {
     io.emit('language_changed', { default_language: String(req.body.default_language) });
@@ -2133,7 +2518,12 @@ app.post('/api/admin/ip/ban', requireAdmin, async (req, res) => {
   }
   for (const activeSocket of [...io.sockets.sockets.values()]) {
     if (normalizeIp(activeSocket.data.clientIp) !== ip) continue;
-    activeSocket.emit('banned', { text: 'تم حظر عنوان IP الخاص بك بواسطة الإدارة' });
+    activeSocket.emit('banned', {
+      banned: true,
+      persistent: true,
+      text: 'تم حظرك بسبب سلوكك السيئ',
+      reason
+    });
     activeSocket.disconnect(true);
   }
   res.json({ ok: true, id: ban.id, ip });
@@ -2281,38 +2671,113 @@ async function userIdsForModerationTarget(target) {
 
 app.post('/api/admin/users/:id/ban', requireModerator, async (req, res) => {
   const banned = req.body.banned ? 1 : 0;
-  const target = await q.get(`SELECT id,username,rank,registered,ip FROM users WHERE id=?`, +req.params.id);
+  const target = await q.get(`SELECT id,username,rank,registered,ip,device_id FROM users WHERE id=?`, +req.params.id);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
   if (!allowModerationAction(req, res, target)) return;
-  const reason = String(req.body.reason || 'حظر من الإدارة').slice(0, 150);
+  const reason = String(req.body.reason || 'سلوك سيئ داخل الدردشة').slice(0, 150);
   const byIp = isIpModeratedGuest(target);
   const ip = normalizeIp(target.ip);
+  const targetSockets = socketsForModerationTarget(target);
+  const moderationTargetIds = await userIdsForModerationTarget(target);
+  const socketDeviceId = targetSockets.map(s => validDeviceId(s.data.deviceId)).find(Boolean) || '';
+  const deviceId = validDeviceId(target.device_id) || socketDeviceId;
 
   if (byIp) {
-    await q.run(`UPDATE users SET banned=? WHERE registered=0 AND ip=?`, banned, ip);
+    await q.run(
+      `UPDATE users SET banned=? WHERE registered=0 AND (ip=? OR (?<>'' AND device_id=?))`,
+      banned, ip, deviceId, deviceId
+    );
     if (banned) {
-      const exists = await q.get(`SELECT id FROM bans WHERE ip=? LIMIT 1`, ip);
-      if (!exists) await q.run(`INSERT INTO bans (username,ip,reason) VALUES (?,?,?)`, target.username, ip, reason);
+      const exists = await q.get(`SELECT id,device_id FROM bans WHERE ip=? LIMIT 1`, ip);
+      if (!exists) {
+        await q.run(`INSERT INTO bans (username,ip,device_id,reason) VALUES (?,?,?,?)`, target.username, ip, deviceId, reason);
+      } else {
+        await q.run(`UPDATE bans SET username=?,device_id=?,reason=? WHERE id=?`, target.username, deviceId, reason, exists.id);
+      }
     } else {
-      await q.run(`DELETE FROM bans WHERE ip=?`, ip);
+      await q.run(`DELETE FROM bans WHERE ip=? OR (?<>'' AND device_id=?)`, ip, deviceId, deviceId);
     }
   } else {
     await q.run(`UPDATE users SET banned=? WHERE id=?`, banned, target.id);
     if (banned) {
       const exists = await q.get(`SELECT id FROM bans WHERE username=? AND (ip='' OR ip IS NULL) LIMIT 1`, target.username);
-      if (!exists) await q.run(`INSERT INTO bans (username,ip,reason) VALUES (?, '', ?)`, target.username, reason);
+      if (!exists) {
+        await q.run(`INSERT INTO bans (username,ip,device_id,reason) VALUES (?, '', ?, ?)`, target.username, deviceId, reason);
+      } else {
+        await q.run(`UPDATE bans SET device_id=?,reason=? WHERE id=?`, deviceId, reason, exists.id);
+      }
     } else {
-      await q.run(`DELETE FROM bans WHERE username=? AND (ip='' OR ip IS NULL)`, target.username);
+      await q.run(`DELETE FROM bans WHERE (username=? AND (ip='' OR ip IS NULL)) OR (?<>'' AND device_id=?)`, target.username, deviceId, deviceId);
     }
   }
 
   if (banned) {
-    for (const socket of socketsForModerationTarget(target)) {
-      socket.emit('banned', { text: byIp ? 'تم حظر عنوان IP الخاص بك بواسطة الإدارة' : 'تم حظر حسابك بواسطة الإدارة' });
-      setTimeout(() => socket.disconnect(true), 80);
+    // إبطال كل رموز الحساب/IP/الجهاز حتى لا تبقى واجهات API صالحة بعد الفصل.
+    for (const [token, auth] of CHAT_TOKENS) {
+      const sameUser = +auth.uid === +target.id;
+      const sameIp = byIp && validIp(auth.ip) === validIp(ip);
+      const sameDevice = deviceId && validDeviceId(auth.deviceId) === deviceId;
+      if (sameUser || sameIp || sameDevice) CHAT_TOKENS.delete(token);
     }
+    const socketsToBan = [...io.sockets.sockets.values()].filter(activeSocket => {
+      const directlyTargeted = targetSockets.includes(activeSocket);
+      const sameDevice = deviceId && validDeviceId(activeSocket.data.deviceId) === deviceId;
+      return directlyTargeted || sameDevice;
+    });
+
+    const requestedRoomId = +req.body.room_id || 0;
+    const removedUserIds = new Set(moderationTargetIds);
+    const affectedRoomIds = new Set();
+    let wasInRequestedRoom = requestedRoomId > 0
+      && moderationTargetIds.some(id => roomUsers[requestedRoomId] && roomUsers[requestedRoomId].has(+id));
+
+    // أرسل قالب الحظر أولاً، ثم أخرج كل جلسات الشخص فوراً من جميع الغرف.
+    // حذف joinedRooms يمنع مؤقت disconnect من إرسال «خرج من الغرفة» بعد 8 ثوانٍ.
+    for (const activeSocket of socketsToBan) {
+      const activeUid = +activeSocket.data.userId;
+      if (activeUid) removedUserIds.add(activeUid);
+      const joinedRooms = [...(activeSocket.data.joinedRooms || [])].map(Number).filter(Boolean);
+      if (requestedRoomId && joinedRooms.includes(requestedRoomId)) wasInRequestedRoom = true;
+      activeSocket.emit('banned', {
+        banned: true,
+        persistent: true,
+        text: 'تم حظرك بسبب سلوكك السيئ',
+        reason
+      });
+      for (const joinedRoomId of joinedRooms) {
+        affectedRoomIds.add(joinedRoomId);
+        cancelPendingRoomLeave(activeUid, joinedRoomId);
+        if (activeSocket.data.joinedRooms) activeSocket.data.joinedRooms.delete(joinedRoomId);
+        if (activeSocket.data.hiddenRooms) activeSocket.data.hiddenRooms.delete(joinedRoomId);
+        activeSocket.leave('room_' + joinedRoomId);
+      }
+      setTimeout(() => activeSocket.disconnect(true), 150);
+    }
+    if (requestedRoomId && wasInRequestedRoom) affectedRoomIds.add(requestedRoomId);
+
+    // إزالة الاسم فوراً من قوائم المتصلين وإنهاء أي بث له قبل تحديث الغرفة.
+    for (const affectedRoomId of affectedRoomIds) {
+      for (const removedUid of removedUserIds) {
+        cancelPendingRoomLeave(removedUid, affectedRoomId);
+        if (roomUsers[affectedRoomId]) roomUsers[affectedRoomId].delete(removedUid);
+        cleanupBroadcastForUser(affectedRoomId, removedUid);
+      }
+    }
+
+    // إعلان واحد في الغرفة التي نُفذ منها زر الحظر، بعد إخراج المحظور منها.
+    if (requestedRoomId && wasInRequestedRoom) {
+      affectedRoomIds.add(requestedRoomId);
+      emitRoomSystemEvent(
+        requestedRoomId,
+        'ban',
+        `تم حظر ${target.username} بواسطة ${req.moderator.username}`,
+        { target_id: +target.id, moderator: req.moderator.username }
+      );
+    }
+    for (const affectedRoomId of affectedRoomIds) await emitRoomUsers(affectedRoomId);
+    if (affectedRoomIds.size) await emitRoomCounts();
   }
-  res.json({ ok: true, banned, by_ip: byIp ? 1 : 0 });
+  res.json({ ok: true, banned, by_ip: byIp ? 1 : 0, by_device: deviceId ? 1 : 0 });
 });
 
 app.post('/api/admin/users/:id/mute', requireModerator, async (req, res) => {
@@ -2383,10 +2848,21 @@ app.post('/api/admin/users/:id/kick', requireModerator, async (req, res) => {
     if (!socket.rooms.has('room_' + roomId)) continue;
     socket.emit('kicked', { roomId, text: 'تم طردك من هذه الغرفة بواسطة الإدارة' });
     if (socket.data.joinedRooms) socket.data.joinedRooms.delete(roomId);
+    if (socket.data.hiddenRooms) socket.data.hiddenRooms.delete(roomId);
+    cancelPendingRoomLeave(+socket.data.userId, roomId);
     socket.leave('room_' + roomId);
   }
-  affectedIds.forEach(id => roomUsers[roomId].delete(id));
-  emitRoomSystemEvent(roomId, 'leave', `${target.username} خرج من الغرفة`);
+  affectedIds.forEach(id => {
+    cancelPendingRoomLeave(id, roomId);
+    roomUsers[roomId].delete(id);
+    cleanupBroadcastForUser(roomId, id);
+  });
+  emitRoomSystemEvent(
+    roomId,
+    'kick',
+    `تم طرد ${target.username} بواسطة ${req.moderator.username}`,
+    { target_id: +target.id, moderator: req.moderator.username }
+  );
   await emitRoomUsers(roomId);
   await emitRoomCounts();
   res.json({ ok: true, by_ip: byIp ? 1 : 0 });
@@ -2406,13 +2882,18 @@ app.get('/api/admin/bans', requireAdmin, async (req, res) => res.json(await q.al
 app.delete('/api/admin/bans/:id', requireAdmin, async (req, res) => {
   const b = await q.get(`SELECT * FROM bans WHERE id=?`, req.params.id);
   if (b) {
+    const deviceId = validDeviceId(b.device_id);
+    await q.run(`DELETE FROM bans WHERE id=?`, b.id);
     if (b.ip) {
-      await q.run(`DELETE FROM bans WHERE ip=?`, b.ip);
-      await q.run(`UPDATE users SET banned=0 WHERE registered=0 AND ip=?`, b.ip);
-    } else {
-      await q.run(`DELETE FROM bans WHERE id=?`, b.id);
+      await q.run(
+        `UPDATE users SET banned=0 WHERE registered=0 AND (ip=? OR (?<>'' AND device_id=?))`,
+        b.ip, deviceId, deviceId
+      );
+    } else if (b.username) {
       await q.run(`UPDATE users SET banned=0 WHERE username=?`, b.username);
     }
+    // لا نحذف معرّف الجهاز نفسه؛ إزالة سجل bans هي التي تفك الحظر، وبذلك
+    // يمكن إعادة حظر الجهاز لاحقاً من دون تغيير هويته.
   }
   res.json({ ok: true });
 });
@@ -3207,7 +3688,10 @@ app.get('/api/public-settings', async (req, res) => {
     radio_enabled: s.radio_enabled !== undefined ? s.radio_enabled : '0',
     radio_name: s.radio_name || '',
     radio_url: s.radio_url || '',
-    msg_max: +s.msg_max || 500,
+    msg_max: normalizePublicMessageMaxLength(s.msg_max),
+    public_message_spacing_px: normalizePublicMessageSpacing(s.public_message_spacing_px),
+    public_message_name_size_px: normalizePublicMessageNameSize(s.public_message_name_size_px),
+    public_message_body_width: normalizePublicMessageBodyWidth(s.public_message_body_width),
     call_cost: Math.max(1, parseInt(s.call_cost) || 2),
     register_gold: Math.max(0, parseInt(s.register_gold) !== undefined ? +s.register_gold : 10),
     favicon_url: s.favicon_url || '',
@@ -3216,6 +3700,10 @@ app.get('/api/public-settings', async (req, res) => {
     premium_cost: +s.premium_cost || 20,
     plus_cost: +s.plus_cost || 10
   };
+  for (const badgeSizeKey of PUBLIC_MESSAGE_BADGE_SETTING_KEYS) {
+    const fallbackSize = badgeSizeKey === 'msg_badge_hidden_admin_size' ? 28 : 24;
+    sanitized[badgeSizeKey] = normalizePublicMessageBadgeSize(s[badgeSizeKey], fallbackSize);
+  }
   res.json({
     ok: true,
     status: 'synced',
@@ -3337,6 +3825,9 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
 }
 
 app.get('/', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   try {
     const html = await renderSeoChatHtml('default', req);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -3347,6 +3838,9 @@ app.get('/', async (req, res) => {
 });
 
 app.get('/:slug', async (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   const slug = String(req.params.slug || '').trim().toLowerCase();
   if (RESERVED_SLUGS.has(slug) || slug.includes('.')) return next();
   try {
@@ -3987,6 +4481,18 @@ async function maybeReplyWithRoomBot(roomId, text, sender, originalText, quotedR
 }
 
 io.on('connection', async (socket) => {
+  // كل حدث تطبيق وارد يمر من هنا قبل مستمعه. تزال & فقط من حقول النصوص
+  // الظاهرة، بينما تبقى حزم WebRTC والروابط والمسارات وبيانات البروتوكول سليمة.
+  socket.use((packet, next) => {
+    try {
+      sanitizeSocketEventPacket(packet);
+      next();
+    } catch (error) {
+      console.warn('[Packet sanitizer] تم رفض حزمة نصية غير قابلة للتنظيف:', error.message);
+      next(new Error('حزمة نصية غير صالحة'));
+    }
+  });
+
   const isChatPage = socket.handshake.auth && socket.handshake.auth.client === 'chat';
   const socketToken = isChatPage ? String(socket.handshake.auth.token || '') : '';
   const tokenAuth = isChatPage ? chatAuthByToken(socketToken) : null;
@@ -3995,17 +4501,24 @@ io.on('connection', async (socket) => {
   if (!uid) { socket.disconnect(); return; }
   let me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
   if (!me) { socket.disconnect(); return; }
-  const clientIp = validIp(tokenAuth && tokenAuth.ip)
-    || validIp(requestIp(socket.request))
+  const clientIp = validIp(requestIp(socket.request))
+    || validIp(tokenAuth && tokenAuth.ip)
     || validIp(socket.handshake.address)
     || 'غير معروف';
-  if (me.banned || await guestIpBan(clientIp)) { socket.disconnect(); return; }
+  const clientDeviceId = validDeviceId(tokenAuth && tokenAuth.deviceId) || requestDeviceId(socket.request);
+  const activeBan = await deviceBan(clientDeviceId) || await persistentBanForRequest(socket.request, me);
+  if (activeBan) {
+    socket.emit('banned', persistentBanPayload(activeBan));
+    setTimeout(() => socket.disconnect(true), 100);
+    return;
+  }
   if (tokenAuth && CHAT_TOKENS.has(socketToken)) CHAT_TOKENS.get(socketToken).rank = me.rank;
   socket.data.chatToken = socketToken;
   socket.data.userId = uid;
   socket.data.userRank = me.rank;
   socket.data.registered = me.registered ? 1 : 0;
   socket.data.clientIp = clientIp;
+  socket.data.deviceId = clientDeviceId;
   socket.data.connectedAt = Date.now();
   socket.data.joinedRooms = new Set();
   socket.data.hiddenRooms = new Set();
@@ -4330,7 +4843,18 @@ io.on('connection', async (socket) => {
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
     if (me.muted) return socket.emit('err', 'أنت مكتوم ولا يمكنك الكتابة');
     const hiddenAdmin = socket.data.hiddenRooms.has(roomId) && (me.rank === 'superadmin' || me.rank === 'admin' || me.rank === 'supermaster');
-    text = String(text || '').slice(0, 500).trim();
+    const rawText = String(text || '').trim();
+    const textLength = Array.from(rawText).length;
+    if (textLength > PUBLIC_MESSAGE_MAX_LENGTH) {
+      return socket.emit('message_too_long', {
+        text: `الرسالة طويلة، يجب أن تكون ${PUBLIC_MESSAGE_MAX_LENGTH} حرف أو أقل`,
+        max_length: PUBLIC_MESSAGE_MAX_LENGTH,
+        actual_length: textLength,
+        attempted_text: rawText.slice(0, 20000),
+        room_id: roomId
+      });
+    }
+    text = rawText;
     const mediaType = media && ['image', 'audio'].includes(media.type) ? media.type : '';
     const requestedMediaPath = String((media && media.path) || '').slice(0, 180);
     const mediaExt = path.extname(requestedMediaPath).toLowerCase();
@@ -4347,6 +4871,27 @@ io.on('connection', async (socket) => {
       return socket.emit('err', 'عضويتك غير مسموح لها بإرسال الصور في العام');
     if (cleanMedia && cleanMedia.type === 'audio' && !await canUseMembershipFeature(uid, 'voice_allowed_memberships'))
       return socket.emit('err', 'عضويتك غير مسموح لها بإرسال المقاطع الصوتية');
+
+    // منع إرسال رسالتين عامتين بسرعة من الشخص نفسه. المحاولة المرفوضة لا
+    // تمدد المهلة؛ القياس دائماً من آخر رسالة نُشرت فعلياً.
+    if (PUBLIC_MESSAGE_COOLDOWN_MS > 0) {
+      const identityKey = publicMessageIdentityKey(socket, me);
+      const now = Date.now();
+      const lastSentAt = PUBLIC_MESSAGE_LAST_SENT.get(identityKey) || 0;
+      const retryAfterMs = PUBLIC_MESSAGE_COOLDOWN_MS - (now - lastSentAt);
+      if (retryAfterMs > 0) {
+        return socket.emit('slow_down', {
+          text: 'لا تتحدث بسرعة، خذ استراحة',
+          retry_after_ms: retryAfterMs,
+          cooldown_seconds: PUBLIC_MESSAGE_COOLDOWN_MS / 1000,
+          attempted_text: text,
+          room_id: roomId
+        });
+      }
+      // الحجز قبل أي await تالٍ يمنع نجاح رسالتين وصلتا في اللحظة نفسها.
+      PUBLIC_MESSAGE_LAST_SENT.set(identityKey, now);
+    }
+
     // فلترة الكلمات (لا تطبق على رابط الإيموجي المصور)
     if (text && !text.startsWith('em::') && BANNED_WORDS_CACHE.length > 0) {
       for (const w of BANNED_WORDS_CACHE) {

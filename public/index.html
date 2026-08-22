@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>شات نجوم العرب</title>
-<link rel="stylesheet" href="/icons/framework7-icons.css">
-<link rel="stylesheet" href="/css/fonts.css">
-<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/icons/framework7-icons.css?v=20260822-0265">
+<link rel="stylesheet" href="/css/fonts.css?v=20260822-0265">
+<link rel="stylesheet" href="/css/style.css?v=20260822-0265">
 </head>
 <body>
 <div id="frame">
@@ -961,6 +961,27 @@
     </div>
   </div>
 
+  <!-- عارض وسائط الحائط: لا يُحمّل الفيديو/YouTube إلا بعد النقر على المعاينة -->
+  <div class="wall-media-viewer hidden" id="wallMediaViewer" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="wall-media-viewer-card">
+      <div class="wall-media-viewer-head">
+        <div class="wall-media-viewer-title"><i class="f7-icons" id="wallMediaViewerTypeIcon">play_rectangle_fill</i><span id="wallMediaViewerTitle">عرض الوسائط</span></div>
+        <button type="button" id="wallMediaViewerClose" aria-label="إغلاق"><i class="f7-icons">xmark</i></button>
+      </div>
+      <div class="wall-media-viewer-stage">
+        <img id="wallMediaViewerImage" alt="صورة الحائط" hidden>
+        <video id="wallMediaViewerVideo" controls playsinline preload="metadata" hidden></video>
+        <iframe id="wallMediaViewerYoutube" title="فيديو YouTube" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen hidden></iframe>
+        <div class="wall-media-viewer-loading" id="wallMediaViewerLoading"><span></span><span></span><span></span><b>جارٍ تجهيز الوسائط...</b></div>
+        <div class="wall-media-viewer-error" id="wallMediaViewerError" hidden><i class="f7-icons">exclamationmark_triangle_fill</i><b>تعذر تشغيل الفيديو داخل المتصفح</b><span>قد يكون ترميز الملف غير مدعوم. يمكنك فتح الملف الأصلي من الزر بالأسفل.</span></div>
+      </div>
+      <div class="wall-media-viewer-foot">
+        <span id="wallMediaViewerHint">انقر تشغيل لبدء المشاهدة</span>
+        <a id="wallMediaViewerOriginal" href="#" target="_blank" rel="noopener"><i class="f7-icons">arrow_up_right_square_fill</i><span>فتح الملف الأصلي</span></a>
+      </div>
+    </div>
+  </div>
+
   <!-- توثيق حسابي -->
   <div class="overlay full" id="verifyOv">
     <div class="pvpage verifypage">
@@ -1221,6 +1242,44 @@
     </div>
   </div>
 
+  <!-- تنبيه تجاوز الحد الأقصى لأحرف الرسالة -->
+  <div class="message-length-overlay hidden" id="messageLengthOverlay" role="alertdialog" aria-modal="true" aria-hidden="true">
+    <div class="message-length-card">
+      <div class="message-length-icon"><i class="f7-icons">exclamationmark_bubble_fill</i></div>
+      <h3>الرسالة طويلة</h3>
+      <p>يجب أن تكون الرسالة <b id="messageLengthMax">200</b> حرف أو أقل</p>
+      <div class="message-length-stats"><span>عدد الأحرف المكتوبة</span><b><em id="messageLengthActual">0</em> / <em id="messageLengthLimit">200</em></b></div>
+      <button type="button" id="messageLengthEdit"><i class="f7-icons">pencil</i><span>العودة لتعديل الرسالة</span></button>
+    </div>
+  </div>
+
+  <!-- تنبيه الفاصل الزمني عند إرسال رسالتين عامتين بسرعة -->
+  <div class="slow-down-overlay hidden" id="slowDownOverlay" role="alertdialog" aria-modal="true" aria-hidden="true">
+    <div class="slow-down-card">
+      <div class="slow-down-icon"><i class="f7-icons">timer</i></div>
+      <h3>لا تتحدث بسرعة</h3>
+      <p>خذ استراحة قصيرة قبل إرسال الرسالة التالية</p>
+      <div class="slow-down-counter"><b id="slowDownSeconds">1</b><span>ثانية</span></div>
+      <div class="slow-down-progress"><span id="slowDownProgress"></span></div>
+    </div>
+  </div>
+
+  <!-- قالب حظر دائم مرتبط بالحساب والجهاز، بلا زر إغلاق -->
+  <div class="persistent-ban-overlay hidden" id="persistentBanOverlay" role="alertdialog" aria-modal="true" aria-hidden="true">
+    <div class="persistent-ban-card">
+      <div class="persistent-ban-mark"><i class="f7-icons">nosign</i></div>
+      <div class="persistent-ban-label">تم إيقاف الوصول</div>
+      <h2>تم حظرك بسبب سلوكك السيئ</h2>
+      <p>لن تتمكن من دخول الدردشة من هذا الحساب أو الجهاز حتى تقوم الإدارة بفك الحظر.</p>
+      <div class="persistent-ban-reason">
+        <span>سبب الحظر</span>
+        <b id="persistentBanReason">سلوك سيئ داخل الدردشة</b>
+      </div>
+      <div class="persistent-ban-device"><i class="f7-icons">lock_shield_fill</i><span>الحظر مرتبط بالحساب والجهاز ويستمر عند تغيير عنوان IP</span></div>
+      <button type="button" id="persistentBanRecheck"><i class="f7-icons">arrow_clockwise</i><span>إعادة التحقق بعد فك الحظر</span></button>
+    </div>
+  </div>
+
   <!-- استعادة اتصال WebSocket دون فقد الغرفة أو هوية هذه الصفحة -->
   <div class="connection-overlay hidden" id="connectionOverlay" role="alertdialog" aria-modal="true" aria-hidden="true">
     <div class="connection-card">
@@ -1235,6 +1294,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 </div>
 <script src="/socket.io/socket.io.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=20260822-0265"></script>
 </body>
 </html>

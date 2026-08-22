@@ -40,6 +40,9 @@ db.serialize(() => {
   db.run(`ALTER TABLE users ADD COLUMN broadcast_allowed INTEGER DEFAULT 0`, () => { });
   // استهلاك المكالمة المجانية الأولى (دقيقة واحدة تجريبية)
   db.run(`ALTER TABLE users ADD COLUMN free_call_used INTEGER DEFAULT 0`, () => { });
+  // معرف جهاز دائم للحظر الإداري حتى عند تغيّر عنوان IP.
+  db.run(`ALTER TABLE users ADD COLUMN device_id TEXT DEFAULT ''`, () => { });
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_device_id ON users (device_id)`);
 
   // ---------- الغرف ----------
   db.run(`CREATE TABLE IF NOT EXISTS rooms (
@@ -266,9 +269,12 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT,
     ip TEXT DEFAULT '',
+    device_id TEXT DEFAULT '',
     reason TEXT DEFAULT '',
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+  db.run(`ALTER TABLE bans ADD COLUMN device_id TEXT DEFAULT ''`, () => { });
+  db.run(`CREATE INDEX IF NOT EXISTS idx_bans_device_id ON bans (device_id)`);
 
   // ---------- كتم الزوار حسب عنوان IP ----------
   db.run(`CREATE TABLE IF NOT EXISTS ip_mutes (
@@ -454,6 +460,23 @@ const defaultSettings = {
   enable_bots: '1',
   public_msgs_link: '',
   msg_max: '500',
+  // عدد الثواني الإلزامي بين رسالتين عامتين من الشخص نفسه (0 = تعطيل).
+  public_message_cooldown_seconds: '3',
+  // مظهر رسائل العام: المسافة، حجم اسم المرسل، وعرض جسم الرسالة.
+  public_message_spacing_px: '4',
+  public_message_name_size_px: '14',
+  public_message_body_width: 'fit',
+  // أحجام شارات الرتب والعضويات داخل الرسالة العامة (لكل شارة بشكل مستقل).
+  msg_badge_superadmin_size: '24',
+  msg_badge_admin_size: '24',
+  msg_badge_roomadmin_size: '24',
+  msg_badge_mmez_size: '24',
+  msg_badge_vip_size: '24',
+  msg_badge_premium_size: '24',
+  msg_badge_plus_size: '24',
+  msg_badge_register_size: '24',
+  msg_badge_guest_size: '24',
+  msg_badge_hidden_admin_size: '28',
   seo_title: 'شات عربي | دردشة صوتية وكتابية مجانية بدون تسجيل',
   seo_description: 'أفضل موقع شات عربي للتواصل الصوتي والكتابي المباشر مجاناً بدون تسجيل. غرف محادثة متميزة وآمنة على مدار الساعة.',
   seo_keywords: 'شات, دردشة, شات عربي, دردشة صوتية, شات صوتي, دردشة كتابية, تعارف, شات مجاني, غرف دردشة',

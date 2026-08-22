@@ -1770,6 +1770,34 @@ const inpRow = (icon, color, label, key, type = 'number', suffix = 'رصيد') =
       ${suffix ? `<span class="suffix">${t(suffix)}</span>` : ''}
     </span>
   </div>`;
+const MESSAGE_BADGE_SIZE_SETTINGS = [
+  ['superadmin', 'سوبر أدمن / المالك', 'superadmin.png', 'msg_badge_superadmin_size'],
+  ['admin', 'أدمن', 'admin.png', 'msg_badge_admin_size'],
+  ['roomadmin', 'أدمن غرفة', 'roomadmin.png', 'msg_badge_roomadmin_size'],
+  ['mmez', 'عضوية مميز', 'mmez.png', 'msg_badge_mmez_size'],
+  ['vip', 'عضوية VIP', 'vip.png', 'msg_badge_vip_size'],
+  ['premium', 'عضوية Premium', 'premium.png', 'msg_badge_premium_size'],
+  ['plus', 'عضوية Plus', 'plus.png', 'msg_badge_plus_size'],
+  ['register', 'عضو مسجل', 'register.png', 'msg_badge_register_size'],
+  ['guest', 'زائر', 'guest.png', 'msg_badge_guest_size'],
+  ['hidden_admin', 'شارة الدخول المخفي', '/img/mgfi.png', 'msg_badge_hidden_admin_size', 28]
+];
+const messageBadgeSizeEditor = () => `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:9px;margin:10px 0 16px">
+    ${MESSAGE_BADGE_SIZE_SETTINGS.map(([kind, label, image, key, fallback = 24]) => {
+      const size = Math.min(80, Math.max(12, +(SETTINGS[key] || fallback)));
+      const imageSrc = String(image).startsWith('/') ? image : `/badges/${image}`;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #e5e7ef;border-radius:12px;background:#fafbff">
+        <span style="width:90px;height:90px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#fff;border:1px solid #eef0f5;overflow:hidden;flex:none">
+          <img src="${imageSrc}" data-badge-preview="${kind}" style="width:${size}px;height:${size}px;object-fit:contain;transition:.2s" alt="${esc(label)}">
+        </span>
+        <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+          <b style="color:#343a4d;font-size:11px">${esc(label)}</b>
+          <span style="display:flex;align-items:center;gap:6px"><input class="inp num" type="number" min="12" max="80" step="1" data-key="${key}" data-badge-size="${kind}" value="${size}" style="width:82px"><small>بكسل</small></span>
+        </span>
+      </div>`;
+    }).join('')}
+  </div>`;
 const ACCESS_MEMBERSHIPS = [
   ['guest', 'الزائر'], ['registered', 'عضو مسجل'], ['mmez', 'مميز'],
   ['plus', 'Plus'], ['premium', 'Premium'], ['vip', 'VIP']
@@ -2370,11 +2398,69 @@ const PAGES = {
       ${swRow('clock_fill', '#60a5fa', 'إظهار الوقت مع الرسالة (espumh)', 'show_time')}
       ${swRow('search', '#f472b6', 'تفعيل مراقبة الرسائل قبل نشرها (mrs eab)', 'msg_review')}
       ${inpRow('textformat_size', '#818cf8', 'الحد الأقصى لأحرف الرسالة', 'msg_max', 'number', 'حرف')}
+      ${inpRow('timer', '#f59e0b', 'الفاصل الزمني بين رسائل الشخص في العام', 'public_message_cooldown_seconds', 'number', 'ثانية')}
+      <div class="info-box" style="background:#fffbeb;border-color:#fde68a;color:#92400e;margin:10px 0 16px">
+        اكتب عدداً من 1 إلى 60 ثانية. القيمة 0 تعطل الفاصل. عند الإرسال بسرعة تظهر للمستخدم رسالة «لا تتحدث بسرعة، خذ استراحة» ولا تُنشر رسالته الثانية.
+      </div>
+      <div class="section-title" style="margin-top:22px"><i class="f7-icons mi" style="color:#0ea5e9">rectangle_3_group_fill</i> مظهر رسائل العام</div>
+      ${inpRow('arrow_up_and_down', '#0ea5e9', 'المسافة بين كل رسالة عامة والتي تليها', 'public_message_spacing_px', 'number', 'بكسل')}
+      ${inpRow('textformat_size', '#8b5cf6', 'حجم اسم المرسل', 'public_message_name_size_px', 'number', 'بكسل')}
+      <div class="row">
+        <span class="lbl"><i class="f7-icons mi" style="color:#10b981">rectangle_expand_vertical</i> عرض جسم الرسالة :</span>
+        <select class="inp" data-key="public_message_body_width" style="max-width:260px">
+          <option value="fit" ${String(SETTINGS.public_message_body_width || 'fit') === 'fit' ? 'selected' : ''}>حسب طول الرسالة</option>
+          <option value="full" ${String(SETTINGS.public_message_body_width || '') === 'full' ? 'selected' : ''}>بطول صفحة الدردشة</option>
+        </select>
+      </div>
+      <div class="info-box" style="background:#eff6ff;border-color:#bfdbfe;color:#1e40af;margin:10px 0 16px">
+        المسافة من 0 إلى 40 بكسل، وحجم الاسم من 10 إلى 36 بكسل. وضع «بطول الصفحة» يمدد <b>mbody</b> إلى كامل المساحة المتاحة، ووضع «حسب طول الرسالة» يجعله على قدر المحتوى.
+      </div>
+      <div class="section-title" style="margin-top:22px"><i class="f7-icons mi" style="color:#f59e0b">rosette</i> حجم شارات الرتب والعضويات في العام</div>
+      <div class="info-box" style="background:#fff7ed;border-color:#fed7aa;color:#9a3412;margin:8px 0 10px">
+        حدد حجماً مستقلاً لكل صورة شارة من 12 إلى 80 بكسل. تتغير صورة المعاينة أثناء الكتابة، ويُطبق الحجم على الرسائل القديمة والجديدة فور الحفظ.
+      </div>
+      ${messageBadgeSizeEditor()}
+      <button class="btn btn-gray" id="resetMessageBadgeSizes" type="button" style="margin-bottom:14px"><i class="f7-icons">arrow_clockwise</i> توحيد جميع الشارات على 24px</button>
       ${inpRow('link', '#4ade80', 'رابط الرسائل العامة (puurl)', 'public_msgs_link', 'text', '')}
       <div class="btn-row" style="justify-content:flex-start">
         <button class="btn btn-purple" id="saveMsg"><i class="f7-icons">square_arrow_down_fill</i> حفظ الاعدادات</button>
       </div>`,
-    bind: () => { $('#saveMsg').onclick = async () => { await saveSwitches(); await saveKeys(['msg_max', 'public_msgs_link']); toast('تم حفظ اعدادات الرسائل'); }; }
+    bind: () => {
+      const maxLengthInput = document.querySelector('input[data-key="msg_max"]');
+      const cooldownInput = document.querySelector('input[data-key="public_message_cooldown_seconds"]');
+      const spacingInput = document.querySelector('input[data-key="public_message_spacing_px"]');
+      const nameSizeInput = document.querySelector('input[data-key="public_message_name_size_px"]');
+      if (maxLengthInput) { maxLengthInput.min = '1'; maxLengthInput.max = '5000'; maxLengthInput.step = '1'; if (maxLengthInput.value === '') maxLengthInput.value = '500'; }
+      if (cooldownInput) { cooldownInput.min = '0'; cooldownInput.max = '60'; cooldownInput.step = '1'; if (cooldownInput.value === '') cooldownInput.value = '3'; }
+      if (spacingInput) { spacingInput.min = '0'; spacingInput.max = '40'; spacingInput.step = '1'; if (spacingInput.value === '') spacingInput.value = '4'; }
+      if (nameSizeInput) { nameSizeInput.min = '10'; nameSizeInput.max = '36'; nameSizeInput.step = '1'; if (nameSizeInput.value === '') nameSizeInput.value = '14'; }
+      const badgeSizeInputs = [...document.querySelectorAll('input[data-badge-size]')];
+      badgeSizeInputs.forEach(input => {
+        input.oninput = () => {
+          const size = Math.min(80, Math.max(12, Math.round(+input.value || 24)));
+          const preview = document.querySelector(`[data-badge-preview="${input.dataset.badgeSize}"]`);
+          if (preview) { preview.style.width = size + 'px'; preview.style.height = size + 'px'; }
+        };
+      });
+      $('#resetMessageBadgeSizes').onclick = () => {
+        badgeSizeInputs.forEach(input => { input.value = '24'; input.dispatchEvent(new Event('input')); });
+        toast('تم ضبط معاينة جميع الشارات على 24px — اضغط حفظ لتطبيقها');
+      };
+      $('#saveMsg').onclick = async () => {
+        if (maxLengthInput) maxLengthInput.value = String(Math.min(5000, Math.max(1, Math.round(+maxLengthInput.value || 500))));
+        if (cooldownInput) cooldownInput.value = String(Math.min(60, Math.max(0, Math.round(+cooldownInput.value || 0))));
+        if (spacingInput) spacingInput.value = String(Math.min(40, Math.max(0, Math.round(+spacingInput.value || 0))));
+        if (nameSizeInput) nameSizeInput.value = String(Math.min(36, Math.max(10, Math.round(+nameSizeInput.value || 14))));
+        badgeSizeInputs.forEach(input => { input.value = String(Math.min(80, Math.max(12, Math.round(+input.value || 24)))); });
+        await saveSwitches();
+        await saveKeys([
+          'msg_max', 'public_message_cooldown_seconds', 'public_message_spacing_px',
+          'public_message_name_size_px', 'public_message_body_width', 'public_msgs_link',
+          ...MESSAGE_BADGE_SIZE_SETTINGS.map(item => item[3])
+        ]);
+        toast('تم حفظ إعدادات الرسائل وأحجام الشارات وتطبيقها مباشرة');
+      };
+    }
   },
 
   // ====== وضع الشعار ======
@@ -3428,6 +3514,7 @@ const PAGES = {
             <span><i class="f7-icons">nosign</i> ${esc(b.username || 'زائر')}</span>
             <span style="display:flex;gap:6px;flex-wrap:wrap">
               ${b.ip ? `<span class="chip" dir="ltr">IP: ${esc(b.ip)}</span>` : '<span class="chip">حظر حساب</span>'}
+              ${b.device_id ? '<span class="chip" style="color:#7c3aed">🔒 حظر جهاز دائم عند تغيير IP</span>' : ''}
               <span class="chip">${esc(b.reason || 'بدون سبب')}</span>
             </span>
           </span>
@@ -4344,6 +4431,7 @@ async function saveSwitches() {
   const body = {};
   $$('.switch input[data-key]').forEach(i => { body[i.dataset.key] = i.checked ? '1' : '0'; SETTINGS[i.dataset.key] = body[i.dataset.key]; });
   $$('input[data-key]:not([type=checkbox])').forEach(i => { body[i.dataset.key] = i.value; SETTINGS[i.dataset.key] = i.value; });
+  $$('select[data-key]').forEach(i => { body[i.dataset.key] = i.value; SETTINGS[i.dataset.key] = i.value; });
   await api('/api/admin/settings', 'POST', body);
 }
 

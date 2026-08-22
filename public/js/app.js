@@ -4,11 +4,41 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 let ME = null, MYBADGE = 'guest.png', SOCKET = null;
+let CONNECTION_INTERRUPTED = false;
 // رمز هوية خاص بهذه الصفحة فقط؛ لا يُحفظ في localStorage أو sessionStorage.
 // عند التحديث أو فتح تبويب جديد يجب إدخال الاسم من جديد.
 let CHAT_TOKEN = '';
-let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_call_allowed_memberships: 'mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip' };
-let PREFS = { snd_all: 1, snd_msg: 0, snd_join: 1, show_time: 1, pm_recv: 1 };
+
+// مفتاح جديد لكل مصافحة Engine.IO/Socket.IO. يجب أن يبقى مطابقاً للتحقق في
+// server.js: أول 10 خانات هي x، وبقية القيمة هي x * 257.
+var d = () => (
+  (x => x + String(x * 257))(
+    (Math.floor(Math.random() * 9000000000) + 1000000000)
+  )
+);
+const ISSUED_SOCKET_HANDSHAKE_KEYS = new Set();
+function nextSocketHandshakeKey() {
+  let key = d();
+  let x = Number(key.slice(0, 10));
+  // ضمان ألا تحمل أي محاولة في عمر الصفحة رقماً سبق استعماله، حتى لو أعاد
+  // Math.random القيمة ذاتها. عند التصادم ننتقل للرقم التالي مع بقاء الصيغة صحيحة.
+  while (ISSUED_SOCKET_HANDSHAKE_KEYS.has(key)) {
+    x = x >= 9999999999 ? 1000000000 : x + 1;
+    key = String(x) + String(x * 257);
+  }
+  ISSUED_SOCKET_HANDSHAKE_KEYS.add(key);
+  return key;
+}
+function refreshSocketHandshakeKey(socket) {
+  const key = nextSocketHandshakeKey();
+  if (socket && socket.io && socket.io.opts) {
+    socket.io.opts.query = { ...(socket.io.opts.query || {}), key };
+  }
+  return key;
+}
+
+let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, public_message_spacing_px: 4, public_message_name_size_px: 14, public_message_body_width: 'fit', msg_badge_superadmin_size: 24, msg_badge_admin_size: 24, msg_badge_roomadmin_size: 24, msg_badge_mmez_size: 24, msg_badge_vip_size: 24, msg_badge_premium_size: 24, msg_badge_plus_size: 24, msg_badge_register_size: 24, msg_badge_guest_size: 24, msg_badge_hidden_admin_size: 28, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_call_allowed_memberships: 'mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip' };
+let PREFS = { snd_all: 1, snd_msg: 1, snd_join: 1, snd_leave: 1, show_time: 1, pm_recv: 1 };
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
 let ROOMS = [], ROOM_COUNTS = {}, CUR_ROOM = null, CUR_TAB = 'default';
@@ -539,6 +569,107 @@ function initLanguage() {
   }
 }
 
+// ---------- قالب تجاوز الحد الأقصى لأحرف الرسالة ----------
+function hideMessageLengthTemplate() {
+  const overlay = $('#messageLengthOverlay');
+  if (!overlay) return;
+  overlay.classList.add('hidden');
+  overlay.setAttribute('aria-hidden', 'true');
+  const input = $('#msgInput');
+  if (input) input.focus();
+}
+function showMessageLengthTemplate(payload = {}) {
+  hideSlowDownTemplate();
+  const maxLength = Math.max(1, +payload.max_length || +(SETTINGS.msg_max || 500));
+  const attemptedText = String(payload.attempted_text || '');
+  const actualLength = Math.max(0, +payload.actual_length || Array.from(attemptedText).length);
+  const input = $('#msgInput');
+  if (input && attemptedText && CUR_ROOM && (!payload.room_id || +CUR_ROOM.id === +payload.room_id)) input.value = attemptedText;
+  $('#messageLengthMax').textContent = String(maxLength);
+  $('#messageLengthLimit').textContent = String(maxLength);
+  $('#messageLengthActual').textContent = String(actualLength);
+  const overlay = $('#messageLengthOverlay');
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+const messageLengthEditButton = $('#messageLengthEdit');
+if (messageLengthEditButton) messageLengthEditButton.onclick = hideMessageLengthTemplate;
+
+// ---------- قالب الفاصل الزمني بين رسائل العام ----------
+let SLOW_DOWN_TIMER = null;
+function hideSlowDownTemplate() {
+  if (SLOW_DOWN_TIMER) clearInterval(SLOW_DOWN_TIMER);
+  SLOW_DOWN_TIMER = null;
+  const overlay = $('#slowDownOverlay');
+  if (!overlay) return;
+  overlay.classList.add('hidden');
+  overlay.setAttribute('aria-hidden', 'true');
+}
+function showSlowDownTemplate(payload = {}) {
+  const retryAfterMs = Math.max(100, +payload.retry_after_ms || 1000);
+  const totalMs = Math.max(retryAfterMs, (+payload.cooldown_seconds || 1) * 1000);
+  const deadline = Date.now() + retryAfterMs;
+  const overlay = $('#slowDownOverlay');
+  if (!overlay) return;
+
+  // لأن حقل الكتابة يُفرغ عند الضغط على إرسال، نعيد الرسالة المرفوضة كي لا تضيع.
+  const input = $('#msgInput');
+  if (input && !input.value && payload.attempted_text && CUR_ROOM && +CUR_ROOM.id === +payload.room_id) {
+    input.value = String(payload.attempted_text).slice(0, 500);
+  }
+
+  overlay.classList.remove('hidden');
+  overlay.setAttribute('aria-hidden', 'false');
+  if (SLOW_DOWN_TIMER) clearInterval(SLOW_DOWN_TIMER);
+  const update = () => {
+    const remaining = Math.max(0, deadline - Date.now());
+    const seconds = Math.max(0, Math.ceil(remaining / 1000));
+    const counter = $('#slowDownSeconds');
+    const progress = $('#slowDownProgress');
+    if (counter) counter.textContent = String(seconds);
+    if (progress) progress.style.width = `${Math.min(100, Math.max(0, (remaining / totalMs) * 100))}%`;
+    if (remaining <= 0) hideSlowDownTemplate();
+  };
+  update();
+  SLOW_DOWN_TIMER = setInterval(update, 100);
+}
+
+// ---------- قالب الحظر الدائم ----------
+let PERSISTENT_BAN_ACTIVE = false;
+function showPersistentBanTemplate(reason = '') {
+  PERSISTENT_BAN_ACTIVE = true;
+  hideMessageLengthTemplate();
+  hideSlowDownTemplate();
+  CHAT_TOKEN = '';
+  CONNECTION_INTERRUPTED = false;
+  if (SOCKET) {
+    const blockedSocket = SOCKET;
+    SOCKET = null;
+    try { blockedSocket.disconnect(); } catch (error) { }
+  }
+  const overlay = $('#persistentBanOverlay');
+  if (!overlay) return;
+  const reasonBox = $('#persistentBanReason');
+  if (reasonBox) reasonBox.textContent = String(reason || 'سلوك سيئ داخل الدردشة').slice(0, 150);
+  document.body.classList.add('persistent-banned');
+  overlay.classList.remove('hidden');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+async function recheckPersistentBan() {
+  const button = $('#persistentBanRecheck');
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch('/api/ban-status', { credentials: 'same-origin', cache: 'no-store' });
+    const state = await response.json().catch(() => ({}));
+    if (!state.banned) return location.reload();
+    showPersistentBanTemplate(state.reason || state.error);
+  } catch (error) { }
+  finally { if (button) button.disabled = false; }
+}
+const persistentBanRecheckButton = $('#persistentBanRecheck');
+if (persistentBanRecheckButton) persistentBanRecheckButton.onclick = recheckPersistentBan;
+
 // ---------- أدوات ----------
 async function api(url, method = 'GET', body, isForm = false) {
   const o = { method, credentials: 'same-origin', headers: { 'X-Chat-Client': '1' } };
@@ -547,7 +678,10 @@ async function api(url, method = 'GET', body, isForm = false) {
   if (body && isForm) o.body = body;
   const r = await fetch(url, o);
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw d;
+  if (!r.ok) {
+    if (d && d.banned) showPersistentBanTemplate(d.reason || d.error);
+    throw d;
+  }
   return d;
 }
 let ACTIVE_UPLOAD_ID = 0, UPLOAD_HIDE_TIMER = null;
@@ -757,6 +891,16 @@ function parseClientSettings(res) {
 // =====================================================
 (async function init() {
   initLanguage();
+  // يفحص حظر الجهاز قبل تحميل الدردشة؛ لذلك يظهر القالب أيضاً بعد تغيير IP
+  // أو تحديث الصفحة، ولا يختفي إلا بعد فك الحظر من لوحة الإدارة.
+  try {
+    const response = await fetch('/api/ban-status', { credentials: 'same-origin', cache: 'no-store' });
+    const banState = await response.json().catch(() => ({}));
+    if (banState.banned) {
+      showPersistentBanTemplate(banState.reason || banState.error);
+      return;
+    }
+  } catch (error) { }
   try {
     SETTINGS = parseClientSettings(await api('/api/public-settings'));
     const userExplicitLang = localStorage.getItem("chat_language");
@@ -780,15 +924,64 @@ function parseClientSettings(res) {
 
 function applySettings() {
   const isLtr = APP_LANG !== 'ar';
-  document.body.className = 'skin-' + (SETTINGS.skin || 'default') + (isLtr ? ' lang-' + APP_LANG + ' lang-ltr' : '');
+  if (document.body) document.body.className = 'skin-' + (SETTINGS.skin || 'default') + (isLtr ? ' lang-' + APP_LANG + ' lang-ltr' : '');
   const activeSiteName = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة';
-  $('#siteName').textContent = activeSiteName;
-  if (SETTINGS.logo_url) {
-    $('#siteLogo').innerHTML = `<img src="${esc(SETTINGS.logo_url)}" alt="">`;
+
+  // لا نستبدل innerHTML للشعار بالكامل؛ لأن ذلك كان يحذف #siteName ثم تسبب
+  // أي settings_changed لاحق في خطأ null. نحدّث الصورة والاسم مع إبقاء العقد.
+  const siteLogo = $('#siteLogo');
+  let siteName = $('#siteName');
+  if (siteLogo && !siteName) {
+    siteName = document.createElement('span');
+    siteName.id = 'siteName';
+    siteName.className = 'r-logo-txt';
+    siteLogo.appendChild(siteName);
   }
-  if (SETTINGS.show_smiles !== '1') $('#btnEmoji').style.display = 'none';
-  if (SETTINGS.show_voice !== '1') $('#btnMic').style.display = 'none';
-  if (SETTINGS.show_image !== '1') $('#btnCam').style.display = 'none';
+  if (siteName) siteName.textContent = activeSiteName;
+  if (siteLogo) {
+    let logoIcon = siteLogo.querySelector('.r-logo-ico');
+    let logoImage = siteLogo.querySelector('.site-logo-image') || siteLogo.querySelector(':scope > img');
+    if (SETTINGS.logo_url) {
+      if (!logoImage) {
+        logoImage = document.createElement('img');
+        siteLogo.insertBefore(logoImage, siteName || siteLogo.firstChild);
+      }
+      logoImage.className = 'site-logo-image';
+      logoImage.src = String(SETTINGS.logo_url);
+      logoImage.alt = activeSiteName;
+      if (logoIcon) logoIcon.style.display = 'none';
+    } else {
+      if (logoImage) logoImage.remove();
+      if (!logoIcon) {
+        logoIcon = document.createElement('span');
+        logoIcon.className = 'r-logo-ico';
+        const icon = document.createElement('i');
+        icon.className = 'f7-icons';
+        icon.textContent = 'smiley_fill';
+        logoIcon.appendChild(icon);
+        siteLogo.insertBefore(logoIcon, siteName || siteLogo.firstChild);
+      }
+      logoIcon.style.display = '';
+    }
+  }
+  // مفاتيح لوحة الإدارة تتحكم فوراً في ظهور الأزرار، في الاتجاهين:
+  // الإيقاف يخفي الزر والتفعيل يعيده دون حاجة لتحديث الصفحة.
+  const smilesEnabled = SETTINGS.show_smiles === '1';
+  const voiceEnabled = SETTINGS.show_voice === '1';
+  const imageEnabled = SETTINGS.show_image === '1';
+  const emojiButton = $('#btnEmoji');
+  const micButton = $('#btnMic');
+  const cameraButton = $('#btnCam');
+  if (emojiButton) { emojiButton.style.display = smilesEnabled ? '' : 'none'; emojiButton.disabled = !smilesEnabled; }
+  if (micButton) { micButton.style.display = voiceEnabled ? '' : 'none'; micButton.disabled = !voiceEnabled; }
+  if (cameraButton) { cameraButton.style.display = imageEnabled ? '' : 'none'; cameraButton.disabled = !imageEnabled; }
+  if (!smilesEnabled) $('#emojiPanel')?.classList.remove('open');
+  if (!voiceEnabled && $('#voiceRecorderOverlay') && !$('#voiceRecorderOverlay').classList.contains('hidden') && typeof closeVoiceRecorder === 'function') closeVoiceRecorder();
+  if (!imageEnabled && $('#publicMediaReview') && !$('#publicMediaReview').classList.contains('hidden') && typeof closePublicMediaReview === 'function') closePublicMediaReview();
+  if (SETTINGS.hidden_super !== '1' && HIDDEN_ENTRY_PENDING) {
+    HIDDEN_ENTRY_PENDING = null;
+    closeOv('hiddenEntryOv');
+  }
 
   const defaultTitles = { ar: "الدردشة المباشرة", en: "Live Chat", es: "Chat en Vivo", tr: "Canlı Sohbet" };
   const customTitle = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.title) || SETTINGS.seo_title || SETTINGS.site_name || defaultTitles[APP_LANG];
@@ -806,7 +999,23 @@ function applySettings() {
   }
 
   const fs = Math.min(40, Math.max(10, +(SETTINGS.font_size || 14)));
+  const publicMessageSpacing = Math.min(40, Math.max(0, Math.round(+(SETTINGS.public_message_spacing_px ?? 4))));
+  const publicNameSize = Math.min(36, Math.max(10, Math.round(+(SETTINGS.public_message_name_size_px ?? 14))));
+  const publicBodyWidth = String(SETTINGS.public_message_body_width || 'fit') === 'full' ? 'full' : 'fit';
   document.documentElement.style.setProperty('--msg-font-size', fs + 'px');
+  document.documentElement.style.setProperty('--public-msg-spacing', publicMessageSpacing + 'px');
+  document.documentElement.style.setProperty('--public-name-size', publicNameSize + 'px');
+  const publicBadgeKinds = ['superadmin', 'admin', 'roomadmin', 'mmez', 'vip', 'premium', 'plus', 'register', 'guest', 'hidden_admin'];
+  publicBadgeKinds.forEach(kind => {
+    const fallbackSize = kind === 'hidden_admin' ? 28 : 24;
+    const value = Math.min(80, Math.max(12, Math.round(+(SETTINGS[`msg_badge_${kind}_size`] ?? fallbackSize))));
+    document.documentElement.style.setProperty(`--msg-badge-${kind}-size`, value + 'px');
+  });
+  const publicMessageArea = $('#msgArea');
+  if (publicMessageArea) {
+    publicMessageArea.classList.toggle('msg-body-full', publicBodyWidth === 'full');
+    publicMessageArea.classList.toggle('msg-body-fit', publicBodyWidth !== 'full');
+  }
   $$('#msgArea .mtext, #msgArea .message-content').forEach(el => {
     el.style.fontSize = fs + 'px';
   });
@@ -826,7 +1035,6 @@ function applyPrefsToSwitches() {
   });
 }
 
-let CONNECTION_INTERRUPTED = false;
 function showConnectionOverlay(status, loading = true) {
   if (!ME || !CHAT_TOKEN) return;
   const overlay = $('#connectionOverlay');
@@ -891,6 +1099,7 @@ function requestSocketReconnect() {
   if (!SOCKET) return connectSocketRetry();
   SOCKET.auth = { client: 'chat', token: CHAT_TOKEN };
   if (SOCKET.connected) return restoreCurrentRoom(SOCKET);
+  refreshSocketHandshakeKey(SOCKET);
   SOCKET.connect();
 }
 $('#reconnectBtn').onclick = requestSocketReconnect;
@@ -909,6 +1118,7 @@ function connectSocket() {
   // إعادة الاتصال غير محدودة مع تدرج زمني، مع بقاء الرمز في ذاكرة هذه الصفحة فقط.
   const socket = io({
     auth: { client: 'chat', token: CHAT_TOKEN },
+    query: { key: nextSocketHandshakeKey() },
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 800,
@@ -934,6 +1144,7 @@ function connectSocket() {
       if (m.type === 'gift') triggerGiftCelebration(parseExtra(m));
       else if (m.type === 'join' && PREFS.snd_join && SETTINGS.snd_join === '1') beep(520, .1);
       else if (m.type === 'msg' && PREFS.snd_msg && SETTINGS.snd_msg === '1') beep(740, .07);
+      else if (m.type === 'leave' && PREFS.snd_leave && SETTINGS.snd_leave === '1') beep(360, .1);
     }
   });
   SOCKET.on('roomUsers', ({ roomId, users, count }) => {
@@ -1013,6 +1224,25 @@ function connectSocket() {
     renderRooms();
     if (CUR_ROOM) renderUsers();
   });
+  // تحديث مباشر لمفاتيح ضبط الإعدادات من لوحة الإدارة دون انتظار إعادة تحميل.
+  SOCKET.on('settings_changed', changes => {
+    if (!changes || typeof changes !== 'object') return;
+    try {
+      Object.assign(SETTINGS, changes);
+      for (const soundKey of ['snd_join', 'snd_msg', 'snd_leave']) {
+        if (changes[soundKey] === undefined) continue;
+        // تغيير الإدارة ينعكس فوراً على المفتاح المحلي الظاهر للمستخدم أيضاً.
+        PREFS[soundKey] = changes[soundKey] === '1' ? 1 : 0;
+      }
+      savePrefs();
+      applyPrefsToSwitches();
+      applySettings();
+    } catch (error) {
+      // لا نترك Promise غير معالج إذا كان قالب خارجي قد حذف عنصراً من الصفحة.
+      console.error('[settings_changed] تعذر تطبيق الإعدادات مباشرة:', error);
+    }
+  });
+
   // مزامنة فورية: أي تعديل من لوحة الإدارة يطبَّق مباشرة دون تحديث الصفحة
   SOCKET.on('sync', async () => {
     try {
@@ -1102,11 +1332,9 @@ function connectSocket() {
     showScreen('rooms');
     toast(text || 'تم طردك من الغرفة', false);
   });
-  SOCKET.on('banned', ({ text }) => {
-    toast(text || 'تم حظرك بواسطة الإدارة', false);
-    CHAT_TOKEN = '';
+  SOCKET.on('banned', ({ text, reason }) => {
     hideConnectionOverlay();
-    setTimeout(() => location.reload(), 2200);
+    showPersistentBanTemplate(reason || text || 'سلوك سيئ داخل الدردشة');
   });
   socket.on('disconnect', reason => {
     if (socket !== SOCKET || !ME || !CHAT_TOKEN || reason === 'io client disconnect') return;
@@ -1114,7 +1342,10 @@ function connectSocket() {
     showConnectionOverlay(navigator.onLine ? 'جارٍ إعادة الاتصال...' : 'بانتظار عودة اتصال الإنترنت...', true);
     // فصل الخادم لا يعاد تلقائياً بواسطة Socket.IO، لذا نشغّل المحاولة يدوياً.
     if (reason === 'io server disconnect') setTimeout(() => {
-      if (socket === SOCKET && ME && CHAT_TOKEN && !socket.connected) socket.connect();
+      if (socket === SOCKET && ME && CHAT_TOKEN && !socket.connected) {
+        refreshSocketHandshakeKey(socket);
+        socket.connect();
+      }
     }, 900);
   });
   socket.on('connect_error', () => {
@@ -1124,6 +1355,8 @@ function connectSocket() {
   });
   socket.io.on('reconnect_attempt', attempt => {
     if (socket !== SOCKET || !ME || !CHAT_TOKEN) return;
+    // كل محاولة Engine.IO جديدة يجب أن تحمل key جديداً كي لا تُعد تكراراً.
+    refreshSocketHandshakeKey(socket);
     CONNECTION_INTERRUPTED = true;
     const status = APP_LANG === 'en' ? `Reconnection attempt ${attempt}...` : `محاولة إعادة الاتصال رقم ${attempt}...`;
     showConnectionOverlay(status, true);
@@ -1133,6 +1366,8 @@ function connectSocket() {
       showConnectionOverlay('تعذر الاتصال، اضغط على زر اتصال للمحاولة مجددًا', false);
   });
   SOCKET.on('err', (t) => toast(t, false));
+  SOCKET.on('message_too_long', payload => showMessageLengthTemplate(payload));
+  SOCKET.on('slow_down', payload => showSlowDownTemplate(payload));
 
   // ===== أحداث المكالمات الصوتية الخاصة (1-to-1 WebRTC) =====
   SOCKET.on('call:incoming', ({ from }) => {
@@ -2372,6 +2607,9 @@ function renderMsg(m) {
   if (m.type === 'msg') {
     const u = m.user || parseExtra(m);
     const badge = u.badge || badgeOf(u);
+    const badgeKindCandidate = String(badge || '').replace(/\.png$/i, '').toLowerCase();
+    const badgeKind = ['superadmin', 'admin', 'roomadmin', 'mmez', 'vip', 'premium', 'plus', 'register', 'guest'].includes(badgeKindCandidate)
+      ? badgeKindCandidate : 'register';
     const color = userColor(u);
     const uname = m.username || u.username || '';
     const rp = m.reply || u.reply || null;   // اقتباس «الرد على الرسالة»
@@ -2399,7 +2637,7 @@ function renderMsg(m) {
         <div class="mline2">
           ${hiddenAdmin
             ? '<img class="hidden-admin-badge" src="/img/mgfi.png" alt="دخول مخفي">'
-            : ((badge && badge !== 'register.png' && badge !== 'guest.png') ? `<img class="mmark" src="/badges/${badge}" alt="">` : '')}
+            : (badge ? `<img class="mmark" data-badge-kind="${badgeKind}" src="/badges/${badge}" alt="">` : '')}
           ${isCustomEmoji
             ? `<img class="mcustom-emoji" src="${esc(m.text.slice(4))}" alt="emoji">`
             : `<span class="mtext message-content" style="color:${tcol || color};font-size:${currentFontSize}px">${m.text ? messageTextWithCustomEmojis(m.text) : ''}${messageMedia && messageMedia.type === 'image' ? `<button class="chat-public-image" type="button" data-src="${esc(messageMedia.path)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>` : ''}${messageMedia && messageMedia.type === 'audio' ? `<span class="chat-audio-player" data-duration="${+messageMedia.duration || 0}"><button class="chat-audio-play" type="button" aria-label="تشغيل"><i class="f7-icons">play_fill</i></button><span class="chat-audio-time chat-audio-current">00:00</span><input class="chat-audio-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="موضع المقطع"><span class="chat-audio-time chat-audio-duration">00:00</span><audio class="chat-audio-element" src="${esc(messageMedia.path)}" preload="metadata"></audio></span>` : ''}</span>`}
@@ -2447,6 +2685,26 @@ function renderMsg(m) {
       </div>
       <div class="font_msg system-event-body">
         <div class="u-msg system-event-message">${esc(m.text)}</div>
+      </div>`;
+  } else if (m.type === 'kick') {
+    el.className = 'system-event mute-system kick-system';
+    el.innerHTML = `
+      <div class="system-event-head skin_f2">
+        <i class="icon f7-icons skin_color system-event-icon">speaker_3_fill</i>
+        <span>نظام الطرد</span>
+      </div>
+      <div class="font_msg system-event-body">
+        <div class="u-msg system-event-message" style="color:#ff0000">${esc(m.text)}</div>
+      </div>`;
+  } else if (m.type === 'ban') {
+    el.className = 'system-event mute-system ban-system';
+    el.innerHTML = `
+      <div class="system-event-head skin_f2">
+        <i class="icon f7-icons skin_color system-event-icon">speaker_3_fill</i>
+        <span>نظام الحظر</span>
+      </div>
+      <div class="font_msg system-event-body">
+        <div class="u-msg system-event-message" style="color:#ff0000">${esc(m.text)}</div>
       </div>`;
   } else if (m.type === 'mute') {
     el.className = 'system-event mute-system';
@@ -2788,8 +3046,8 @@ $('#usBan').onclick = async () => {
   const target = CUR_TARGET;
   closeOv('userSheet');
   try {
-    const d = await api(`/api/admin/users/${target.id}/ban`, 'POST', { banned: true, reason: 'حظر من الغرفة', room_id: CUR_ROOM ? CUR_ROOM.id : 0 });
-    toast('تم حظر ' + target.username + (d.by_ip ? ' حسب عنوان IP' : ''));
+    const d = await api(`/api/admin/users/${target.id}/ban`, 'POST', { banned: true, reason: 'سلوك سيئ داخل الدردشة', room_id: CUR_ROOM ? CUR_ROOM.id : 0 });
+    toast('تم حظر ' + target.username + (d.by_device ? ' على الحساب والجهاز' : (d.by_ip ? ' حسب عنوان IP' : '')));
   } catch (e) { toast(e.error || 'لا تملك صلاحية الحظر', false); }
 };
 $('#usUserCard').onclick = () => { if (CUR_TARGET) { closeOv('userSheet'); openProfile(CUR_TARGET.id); } };
@@ -5135,6 +5393,130 @@ function wallTime(timestamp) {
   const date = new Date((+timestamp || Date.now() / 1000) * 1000);
   return date.toLocaleString(APP_LANG === 'en' ? 'en-US' : 'ar-JO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 }
+function wallYoutubeVideoId(url) {
+  const raw = String(url || '');
+  const match = raw.match(/(?:youtube\.com\/embed\/|youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{6,20})/i);
+  return match ? match[1] : '';
+}
+function wallMediaDescriptor(post) {
+  if (!post) return null;
+  if (post.youtube_url) {
+    const id = wallYoutubeVideoId(post.youtube_url);
+    return {
+      type: 'youtube',
+      src: String(post.youtube_url),
+      poster: id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : '',
+      original: id ? `https://www.youtube.com/watch?v=${id}` : String(post.youtube_url),
+      label: 'فيديو YouTube',
+      hint: 'اضغط للمشاهدة في العارض الكامل',
+      icon: 'play_rectangle_fill'
+    };
+  }
+  if (post.video) {
+    return {
+      type: 'video', src: String(post.video), poster: String(post.image || ''), original: String(post.video),
+      label: 'فيديو مرفوع', hint: 'اضغط لتشغيل الفيديو كاملاً', icon: 'videocam_fill'
+    };
+  }
+  if (post.image) {
+    return {
+      type: 'image', src: String(post.image), poster: String(post.image), original: String(post.image),
+      label: 'صورة', hint: 'اضغط لعرض الصورة كاملة', icon: 'photo_fill'
+    };
+  }
+  return null;
+}
+function wallMediaCardMarkup(post) {
+  const media = wallMediaDescriptor(post);
+  if (!media) return '';
+  const visual = `<span class="wall-media-card-placeholder"><i class="f7-icons">${media.icon}</i></span>`
+    + (media.poster ? `<img src="${esc(media.poster)}" loading="lazy" alt="${esc(media.label)}">` : '');
+  const actionIcon = media.type === 'image' ? 'viewfinder' : 'play_fill';
+  return `<button class="wall-media-card type-${media.type}" type="button"
+    data-media-type="${media.type}" data-src="${esc(media.src)}" data-poster="${esc(media.poster)}"
+    data-original="${esc(media.original)}" data-title="${esc(media.label)}">
+    <span class="wall-media-card-visual">${visual}<span class="wall-media-card-shade"></span></span>
+    <span class="wall-media-card-badge"><i class="f7-icons">${media.icon}</i>${esc(media.label)}</span>
+    <span class="wall-media-card-play"><i class="f7-icons">${actionIcon}</i></span>
+    <span class="wall-media-card-caption"><span>${esc(media.hint)}</span><span>فتح الوسائط</span></span>
+  </button>`;
+}
+function closeWallMediaViewer() {
+  const viewer = $('#wallMediaViewer');
+  if (!viewer) return;
+  const image = $('#wallMediaViewerImage');
+  const video = $('#wallMediaViewerVideo');
+  const youtube = $('#wallMediaViewerYoutube');
+  image.onload = null; image.onerror = null;
+  video.onloadeddata = null; video.oncanplay = null; video.onerror = null;
+  youtube.onload = null; youtube.onerror = null;
+  try { video.pause(); } catch (error) { }
+  image.removeAttribute('src');
+  video.removeAttribute('src'); video.removeAttribute('poster'); video.load();
+  youtube.removeAttribute('src');
+  image.hidden = true; video.hidden = true; youtube.hidden = true;
+  $('#wallMediaViewerError').hidden = true;
+  $('#wallMediaViewerLoading').hidden = false;
+  viewer.classList.add('hidden');
+  viewer.setAttribute('aria-hidden', 'true');
+}
+function openWallMediaViewer(media) {
+  if (!media || !media.src) return;
+  const viewer = $('#wallMediaViewer');
+  const image = $('#wallMediaViewerImage');
+  const video = $('#wallMediaViewerVideo');
+  const youtube = $('#wallMediaViewerYoutube');
+  const loading = $('#wallMediaViewerLoading');
+  const errorBox = $('#wallMediaViewerError');
+  const original = $('#wallMediaViewerOriginal');
+  if (!viewer || !image || !video || !youtube) return;
+
+  closeWallMediaViewer();
+  viewer.classList.remove('hidden');
+  viewer.setAttribute('aria-hidden', 'false');
+  loading.hidden = false;
+  errorBox.hidden = true;
+  $('#wallMediaViewerTitle').textContent = media.title || 'عرض الوسائط';
+  $('#wallMediaViewerTypeIcon').textContent = media.type === 'image' ? 'photo_fill' : (media.type === 'youtube' ? 'play_rectangle_fill' : 'videocam_fill');
+  $('#wallMediaViewerHint').textContent = media.type === 'image' ? 'يمكنك تكبير الصورة من المتصفح' : 'استخدم أزرار المشغل للتحكم بالصوت والمشاهدة';
+  original.href = media.original || media.src;
+  original.querySelector('span').textContent = media.type === 'youtube' ? 'فتح في YouTube' : (media.type === 'image' ? 'فتح الصورة الأصلية' : 'فتح الفيديو الأصلي');
+
+  const showError = () => {
+    loading.hidden = true;
+    errorBox.hidden = false;
+    image.hidden = true; video.hidden = true; youtube.hidden = true;
+  };
+  if (media.type === 'image') {
+    image.hidden = false;
+    image.onload = () => { loading.hidden = true; };
+    image.onerror = showError;
+    image.src = media.src;
+  } else if (media.type === 'youtube') {
+    youtube.hidden = false;
+    youtube.onload = () => { loading.hidden = true; };
+    youtube.onerror = showError;
+    const separator = media.src.includes('?') ? '&' : '?';
+    youtube.src = media.src + separator + 'autoplay=1&rel=0';
+  } else {
+    video.hidden = false;
+    video.poster = media.poster || '';
+    video.onloadeddata = () => { loading.hidden = true; video.play().catch(() => { }); };
+    video.oncanplay = () => { loading.hidden = true; };
+    video.onerror = showError;
+    video.src = media.src;
+    video.load();
+  }
+}
+const wallMediaViewerCloseButton = $('#wallMediaViewerClose');
+const wallMediaViewerOverlay = $('#wallMediaViewer');
+if (wallMediaViewerCloseButton) wallMediaViewerCloseButton.onclick = closeWallMediaViewer;
+if (wallMediaViewerOverlay) wallMediaViewerOverlay.onclick = event => { if (event.target === wallMediaViewerOverlay) closeWallMediaViewer(); };
+document.addEventListener('keydown', event => {
+  const viewer = $('#wallMediaViewer');
+  if (event.key === 'Escape' && viewer && !viewer.classList.contains('hidden')) closeWallMediaViewer();
+});
+
 async function openWall() {
   if (!ME) return openLogin();
   $('#wallComposeAvatar').innerHTML = avatarHtml(ME.avatar);
@@ -5208,10 +5590,7 @@ function wallPostMarkup(post) {
     </div>`;
   }).join('');
   const moreComments = (post.comments || []).length > 2 ? `<button class="wall-comments-more" type="button">إظهار المزيد (${(post.comments || []).length - 2})</button>` : '';
-  const image = post.image ? `<div class="wall-post-image"><img src="${esc(post.image)}" loading="lazy" alt=""></div>` : '';
-  const media = post.youtube_url
-    ? `<div class="wall-media"><iframe src="${esc(post.youtube_url)}" title="YouTube" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`
-    : (post.video ? `<div class="wall-media"><video src="${esc(post.video)}" controls playsinline preload="metadata"></video></div>` : '');
+  const wallMedia = wallMediaCardMarkup(post);
   const myReaction = post.my_reaction || '';
   return `<article class="wall-post" data-id="${post.id}">
     <div class="wall-post-head">
@@ -5221,8 +5600,7 @@ function wallPostMarkup(post) {
       ${post.can_delete ? '<button class="wall-post-delete" type="button" title="حذف المنشور"><i class="f7-icons">trash_fill</i></button>' : ''}
     </div>
     ${post.text ? `<div class="wall-post-text">${esc(post.text)}</div>` : ''}
-    ${image}
-    ${media}
+    ${wallMedia}
     <div class="wall-reaction-summary"><span class="wall-reaction-emojis">${reactions}</span><span>${post.reaction_count || 0} تفاعل • ${(post.comments || []).length} تعليق</span></div>
     <div class="wall-post-actions">
       <button class="wall-action wall-like${myReaction === '👍' ? ' active' : ''}" type="button"><i class="f7-icons">hand_thumbsup_fill</i><span>إعجاب</span></button>
@@ -5240,6 +5618,16 @@ function bindWallPostCard(card, post) {
   if (!card || !post) return;
   const postId = +post.id;
   bindWallMoreComments(card);
+  const mediaCard = card.querySelector('.wall-media-card');
+  const mediaPreviewImage = mediaCard && mediaCard.querySelector('.wall-media-card-visual > img');
+  if (mediaPreviewImage) mediaPreviewImage.onerror = () => mediaPreviewImage.remove();
+  if (mediaCard) mediaCard.onclick = () => openWallMediaViewer({
+    type: mediaCard.dataset.mediaType,
+    src: mediaCard.dataset.src,
+    poster: mediaCard.dataset.poster || '',
+    original: mediaCard.dataset.original || mediaCard.dataset.src,
+    title: mediaCard.dataset.title || 'عرض الوسائط'
+  });
   card.querySelector('.wall-like').onclick = async () => {
     const updated = await api(`/api/wall/${postId}/reaction`, 'POST', { reaction: '👍' });
     Object.assign(post, updated);
@@ -5305,6 +5693,56 @@ async function fetchAndInsertWallPost(postId) {
     return false;
   }
 }
+async function createWallVideoThumbnail(file) {
+  if (!file || !String(file.type || '').startsWith('video/')) return null;
+  return new Promise(resolve => {
+    const video = document.createElement('video');
+    const objectUrl = URL.createObjectURL(file);
+    let finished = false;
+    let capturing = false;
+    const finish = result => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      try { video.pause(); } catch (error) { }
+      video.removeAttribute('src');
+      URL.revokeObjectURL(objectUrl);
+      resolve(result || null);
+    };
+    const capture = () => {
+      if (capturing || finished) return;
+      capturing = true;
+      try {
+        if (!video.videoWidth || !video.videoHeight) return finish(null);
+        const maxWidth = 960;
+        const scale = Math.min(1, maxWidth / video.videoWidth);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+        canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => {
+          if (!blob) return finish(null);
+          finish(new File([blob], `wall_video_${Date.now()}.jpg`, { type: 'image/jpeg' }));
+        }, 'image/jpeg', .84);
+      } catch (error) { finish(null); }
+    };
+    const timeout = setTimeout(() => finish(null), 9000);
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.onerror = () => finish(null);
+    video.onloadedmetadata = () => {
+      const target = Number.isFinite(video.duration) && video.duration > .2 ? Math.min(1, video.duration * .2) : 0;
+      if (target > 0) {
+        video.onseeked = capture;
+        try { video.currentTime = target; } catch (error) { capture(); }
+      }
+    };
+    video.onloadeddata = () => { if (!video.onseeked || !video.duration) capture(); };
+    video.src = objectUrl;
+    video.load();
+  });
+}
 function resetWallComposer() {
   $('#wallPostText').value = '';
   $('#wallYoutubeSearch').value = '';
@@ -5319,6 +5757,7 @@ function resetWallComposer() {
   $('#wallImageFile').value = '';
   WALL_VIDEO_PATH = '';
   $('#wallVideoElement').removeAttribute('src');
+  $('#wallVideoElement').removeAttribute('poster');
   $('#wallVideoPreview').hidden = true;
   $('#wallVideoFile').value = '';
 }
@@ -5355,9 +5794,14 @@ $('#wallYoutubeSearchBtn').onclick = async () => {
       const video = WALL_YOUTUBE_RESULTS[+result.dataset.index]; if (!video) return;
       WALL_YOUTUBE_URL = video.embed_url;
       WALL_VIDEO_PATH = '';
+      WALL_IMAGE_PATH = '';
       $('#wallVideoElement').removeAttribute('src');
+      $('#wallVideoElement').removeAttribute('poster');
       $('#wallVideoPreview').hidden = true;
       $('#wallVideoFile').value = '';
+      $('#wallImageElement').removeAttribute('src');
+      $('#wallImagePreview').hidden = true;
+      $('#wallImageFile').value = '';
       $('#wallYoutubeSelected').innerHTML = `<img src="${esc(video.thumbnail)}" alt=""><span>${esc(video.title)}</span><button type="button"><i class="f7-icons">xmark</i></button>`;
       $('#wallYoutubeSelected').hidden = false;
       $('#wallYoutubeResults').innerHTML = '';
@@ -5376,6 +5820,15 @@ $('#wallImageFile').onchange = async () => {
     toast('جاري رفع الصورة...');
     const uploaded = await uploadFormWithProgress('/api/wall/upload-image', form, 'جاري رفع صورة الحائط...');
     WALL_IMAGE_PATH = uploaded.path;
+    WALL_VIDEO_PATH = '';
+    WALL_YOUTUBE_URL = '';
+    $('#wallVideoElement').removeAttribute('src');
+    $('#wallVideoElement').removeAttribute('poster');
+    $('#wallVideoPreview').hidden = true;
+    $('#wallVideoFile').value = '';
+    $('#wallYoutubeSelected').hidden = true;
+    $('#wallYoutubeSelected').innerHTML = '';
+    $('#wallYoutubeResults').innerHTML = '';
     $('#wallImageElement').src = uploaded.path;
     $('#wallImagePreview').hidden = false;
     toast('تم رفع الصورة بنجاح');
@@ -5392,24 +5845,45 @@ $('#wallAddVideo').onclick = () => $('#wallVideoFile').click();
 $('#wallVideoFile').onchange = async () => {
   const file = $('#wallVideoFile').files[0]; if (!file) return;
   const form = new FormData(); form.append('video', file);
+  const thumbnailPromise = createWallVideoThumbnail(file);
   $('#wallAddVideo').disabled = true;
   try {
     toast('جاري رفع الفيديو...');
     const uploaded = await uploadFormWithProgress('/api/wall/upload-video', form, 'جاري رفع فيديو الحائط...');
     WALL_VIDEO_PATH = uploaded.path;
     WALL_YOUTUBE_URL = '';
+    WALL_IMAGE_PATH = '';
     $('#wallYoutubeSelected').hidden = true;
     $('#wallYoutubeSelected').innerHTML = '';
     $('#wallYoutubeResults').innerHTML = '';
+    $('#wallImageElement').removeAttribute('src');
+    $('#wallImagePreview').hidden = true;
+    $('#wallImageFile').value = '';
+
+    // إنشاء صورة ثابتة من لقطة الفيديو ورفعها كبوستر للبطاقة. إذا كان ترميز
+    // الفيديو غير قابل للقراءة في المتصفح يبقى القالب العام الجميل كبديل.
+    const thumbnailFile = await thumbnailPromise;
+    if (thumbnailFile) {
+      try {
+        const thumbnailForm = new FormData();
+        thumbnailForm.append('image', thumbnailFile);
+        const thumbnail = await uploadFormWithProgress('/api/wall/upload-image', thumbnailForm, 'جاري تجهيز صورة معاينة الفيديو...');
+        WALL_IMAGE_PATH = thumbnail.path;
+      } catch (error) { WALL_IMAGE_PATH = ''; }
+    }
     $('#wallVideoElement').src = uploaded.path;
+    if (WALL_IMAGE_PATH) $('#wallVideoElement').poster = WALL_IMAGE_PATH;
+    else $('#wallVideoElement').removeAttribute('poster');
     $('#wallVideoPreview').hidden = false;
-    toast('تم رفع الفيديو بنجاح');
+    toast(WALL_IMAGE_PATH ? 'تم رفع الفيديو وتجهيز صورة المعاينة بنجاح' : 'تم رفع الفيديو بنجاح');
   } catch (e) { toast(e.error || 'تعذر رفع الفيديو', false); }
   finally { $('#wallAddVideo').disabled = false; }
 };
 $('#wallVideoRemove').onclick = () => {
   WALL_VIDEO_PATH = '';
+  WALL_IMAGE_PATH = '';
   $('#wallVideoElement').removeAttribute('src');
+  $('#wallVideoElement').removeAttribute('poster');
   $('#wallVideoPreview').hidden = true;
   $('#wallVideoFile').value = '';
 };
@@ -5885,6 +6359,16 @@ function sendMsg() {
   if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
   const t = $('#msgInput').value.trim();
   if (!t) return;
+  const maxLength = Math.max(1, Math.min(5000, +(SETTINGS.msg_max || 500)));
+  const actualLength = Array.from(t).length;
+  if (actualLength > maxLength) {
+    return showMessageLengthTemplate({
+      max_length: maxLength,
+      actual_length: actualLength,
+      attempted_text: t,
+      room_id: CUR_ROOM.id
+    });
+  }
   if (!canUseMembershipFeature('public_message_allowed_memberships'))
     return toast('عضويتك غير مسموح لها بإرسال الرسائل في العام', false);
   SOCKET.emit('msg', { roomId: CUR_ROOM.id, text: t, reply: REPLY_TO, color: MY_COLOR || null });

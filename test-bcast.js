@@ -1,5 +1,6 @@
 /* اختبار آلي شامل لاستقلالية البثوث (فيديو) عبر Socket.IO */
 const io = require('socket.io-client');
+const d = () => ((x => x + String(x * 257))((Math.floor(Math.random() * 9000000000) + 1000000000)));
 
 const BASE = process.env.BASE || 'https://localhost:2083';
 const ROOM_ID = 1; // غرفة افتراضية (فيديو)
@@ -23,7 +24,7 @@ async function login(username, password) {
 
 function connect(token) {
   return new Promise((resolve, reject) => {
-    const sock = io(BASE, { auth: { client: 'chat', token }, transports: ['websocket'], rejectUnauthorized: false });
+    const sock = io(BASE, { auth: { client: 'chat', token }, query: { key: d() }, transports: ['websocket'], rejectUnauthorized: false });
     sock.on('connect', () => resolve(sock));
     sock.on('connect_error', reject);
     setTimeout(() => reject(new Error('timeout')), 8000);

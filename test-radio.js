@@ -1,5 +1,6 @@
 /* اختبار الراديو: الاتصال بالدردشة + لوحة الإدارة -> public-settings (مفكوك التشفير) -> sync الفوري */
 const io = require('socket.io-client');
+const d = () => ((x => x + String(x * 257))((Math.floor(Math.random() * 9000000000) + 1000000000)));
 let passed = 0, failed = 0;
 const ok = (n, c, e = '') => { c ? (passed++, console.log('  ✔ ' + n)) : (failed++, console.log('  ✘ ' + n + ' ' + e)); };
 const BASE = process.env.BASE || 'https://localhost:2083';
@@ -23,7 +24,7 @@ async function pubSettings() {
   const data = await res.json();
   ok('تسجيل الدخول (دردشة + إدارة)', res.status === 200 && !!data.tab_token && !!data.admin_access_token);
 
-  const sock = io(BASE, { auth: { client: 'chat', token: data.tab_token }, transports: ['websocket'], rejectUnauthorized: false });
+  const sock = io(BASE, { auth: { client: 'chat', token: data.tab_token }, query: { key: d() }, transports: ['websocket'], rejectUnauthorized: false });
   await new Promise((r, j) => { sock.on('connect', r); sock.on('connect_error', j); });
   ok('الاتصال بالدردشة نشط', sock.connected);
 
