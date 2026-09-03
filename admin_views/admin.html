@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة التحكم الإدارية</title>
+<link rel="stylesheet" href="/icons/framework7-icons.css">
+<link rel="stylesheet" href="/css/fonts.css">
+<link rel="stylesheet" href="/css/admin.css?v=20260829-giftstyle">
+</head>
+<body>
+
+<!-- شاشة تسجيل دخول المشرف -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo"><i class="f7-icons">shield_fill</i></div>
+    <h2 id="adminLoginTitle">لوحة التحكم الإدارية</h2>
+    <p class="login-sub" id="adminLoginSub">نظام إدارة الدردشة المتكامل</p>
+    
+    <div class="login-lang-row" id="loginLangRow">
+      <button class="login-lang-btn active" data-lang="ar" type="button">🇸🇦 العربية</button>
+      <button class="login-lang-btn" data-lang="en" type="button">🇺🇸 English</button>
+      <button class="login-lang-btn" data-lang="es" type="button">🇪🇸 Español</button>
+      <button class="login-lang-btn" data-lang="tr" type="button">🇹🇷 Türkçe</button>
+    </div>
+
+    <div class="login-field">
+      <i class="f7-icons">person_fill</i>
+      <input type="text" id="loginUser" placeholder="اسم المستخدم" autocomplete="username">
+    </div>
+    <div class="login-field">
+      <i class="f7-icons">lock_fill</i>
+      <input type="password" id="loginPass" placeholder="كلمة المرور" autocomplete="current-password">
+    </div>
+    <button class="btn-grad-purple btn-block" id="loginBtn"><i class="f7-icons">arrow_right_to_line</i> <span id="loginBtnText">دخول</span></button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- هيكل اللوحة -->
+<div id="panel" style="display:none">
+  <!-- شريط رأس الصفحة المتجاوب للأجهزة الذكية والجوال -->
+  <header class="admin-mobile-header" id="adminMobileHeader">
+    <button class="admin-hamburger-btn" id="sbToggleBtn" type="button" aria-label="القائمة"><i class="f7-icons">bars</i></button>
+    <div class="admin-mobile-title"><i class="f7-icons">shield_fill</i> <span id="mobileHeaderTitle">لوحة التحكم</span></div>
+    <button class="admin-mobile-logout-btn" id="mobileLogoutBtn" type="button" aria-label="خروج" title="تسجيل الخروج"><i class="f7-icons">power</i></button>
+  </header>
+
+  <!-- خلفية معتمة لإغلاق القائمة عند النقر خارجها في الجوال -->
+  <div class="sidebar-backdrop" id="sbBackdrop"></div>
+
+  <!-- الشريط الجانبي -->
+  <aside class="sidebar">
+    <div class="sb-header">
+      <i class="f7-icons">shield_fill</i>
+      <span id="sbPanelTitle">لوحة التحكم</span>
+      <button class="sb-mobile-close-btn" id="sbMobileCloseBtn" type="button" aria-label="إغلاق"><i class="f7-icons">xmark</i></button>
+    </div>
+
+    <!-- شريط التبديل السريع للغات -->
+    <div class="sb-lang-bar" id="sbLangBar">
+      <button class="sb-lang-btn active" data-lang="ar" title="العربية" type="button">🇸🇦 AR</button>
+      <button class="sb-lang-btn" data-lang="en" title="English" type="button">🇺🇸 EN</button>
+      <button class="sb-lang-btn" data-lang="es" title="Español" type="button">🇪🇸 ES</button>
+      <button class="sb-lang-btn" data-lang="tr" title="Türkçe" type="button">🇹🇷 TR</button>
+    </div>
+
+    <div class="sb-user">
+      <div class="sb-user-name"><i class="f7-icons">person_crop_circle_fill</i> <span id="sbUserName">-</span></div>
+      <div class="sb-user-rank"><span class="star">★</span> <span id="sbRankLabel">الصلاحية :</span> <b id="sbUserRank">-</b></div>
+    </div>
+    <nav class="sb-menu" id="sbMenu"></nav>
+    <button class="sb-logout" id="logoutBtn"><i class="f7-icons">power</i> <span id="logoutBtnText">تسجيل الخروج</span></button>
+  </aside>
+
+  <!-- المحتوى -->
+  <main class="content" id="content"></main>
+</div>
+
+<!-- نافذة التوليد الذكي لبيانات السيو (AI SEO Generator Modal) -->
+<div class="admin-modal-overlay" id="seoAiModal" style="display:none">
+  <div class="admin-modal-card seo-ai-card">
+    <div class="admin-modal-header">
+      <div class="admin-modal-title">
+        <div class="seo-ai-icon"><i class="f7-icons">wand_stars</i></div>
+        <div>
+          <h3 id="seoAiModalTitle">مُوَلّد SEO والأرشفة بالذكاء الاصطناعي 🤖</h3>
+          <p id="seoAiModalSub">توليد عناوين، أوصاف، وكلمات مفتاحية قوية جداً متوافقة بنسبة 100% مع محركات بحث Google</p>
+        </div>
+      </div>
+      <button class="admin-modal-close" id="closeSeoAiModal" type="button"><i class="f7-icons">xmark</i></button>
+    </div>
+
+    <div class="seo-ai-body">
+      <!-- Input bar -->
+      <div class="seo-ai-input-wrap">
+        <label id="seoAiInputLabel"><i class="f7-icons mi" style="color:#6366f1">textformat</i> اكتب اسم الدردشة أو الكلمة المستهدفة (مثال: شات الأردن، chat1، شات الرياض، دردشة بنات):</label>
+        <div class="seo-ai-search-row">
+          <input type="text" class="inp" id="seoAiInput" placeholder="اكتب اسم الدردشة أو المسار أو الكلمة هنا...">
+          <button class="btn btn-purple" id="seoAiTriggerBtn" type="button"><i class="f7-icons">sparkles</i> <span id="seoAiTriggerText">توليد النماذج الآن</span></button>
+        </div>
+        <div class="seo-ai-quick-tags" id="seoAiQuickTags">
+          <span class="seo-quick-btn" data-val="عربي عام">🌍 عربي عام</span>
+          <span class="seo-quick-btn" data-val="صوتي وبثوث">🎙️ صوتي ومايكات</span>
+          <span class="seo-quick-btn" data-val="تعارف وصداقة">🤝 تعارف وصداقة</span>
+          <span class="seo-quick-btn" data-val="جوال سريع">⚡ جوال سريع</span>
+          <span class="seo-quick-btn" data-val="شات الخليج">👑 خليجي راقي</span>
+        </div>
+      </div>
+
+      <!-- Generated Variations Container -->
+      <div class="seo-ai-results" id="seoAiResults">
+        <div class="seo-ai-placeholder">
+          <i class="f7-icons">sparkles</i>
+          <p id="seoAiPlaceholderText">أدخل اسم الدردشة أو الكلمة المستهدفة أعلاه واضغط "توليد النماذج الآن" لإنشاء باقات سيو قوية متوافقة مع Google.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<script src="/js/admin.js?v=20260829-giftstyle"></script>
+</body>
+</html>
