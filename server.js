@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const net = require('net');
+const dns = require('dns');
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
@@ -1055,9 +1056,59 @@ async function externalVpnCheck(ip) {
   return blocked;
 }
 
+// ---------- استثناء روبوتات البحث الموثّقة (Googlebot وأمثالها) ----------
+// بوابة VPN/الاستضافة تعتبر شبكات Google Cloud نطاقات استضافة (hosting)،
+// ومنها تعمل روبوتات جوجل الزاحفة؛ وكشف المتصفح يرصد «Googlebot» متصفحاً
+// مجهولاً. النتيجة بدون استثناء صريح: كل مسارات الأرشفة (/chat1 ...) تعود
+// 403 مع noindex للروبوت، فتفشل طلبات الفهرسة في «أدوات مشرفي المواقع»
+// برسالة «حدث خطأ ما». لذلك نعتمد الروبوت فقط بعد تحقق عكسي من العنوان:
+// rDNS يطابق نطاق جوجل/بينغ المعروف، ثم تأكيد طردي أن الاسم يحلّ لنفس IP،
+// حتى لا يستطيع مستخدم VPN انتحال يوزر-أجنت الروبوت وتجاوز البوابة.
+const SEARCH_CRAWLER_RULES = [
+  { ua: /googlebot|googleother|apis-google|adsbot-google|mediapartners-google|feedfetcher-google/i, domains: ['googlebot.com', 'google.com'] },
+  { ua: /bingbot|bingpreview|msnbot|adindexer/i, domains: ['search.msn.com', 'bing.com'] },
+  { ua: /yandexbot|yandexrenderterm|yandeximages/i, domains: ['yandex.ru', 'yandex.net', 'yandex.com'] },
+  { ua: /baiduspider|baiduimage/i, domains: ['baidu.jp'] },
+  { ua: /duckduckbot/i, domains: ['duckduckgo.com'] }
+];
+const VERIFIED_CRAWLER_CACHE = new Map(); // ip -> { allowed, expires }
+const CRAWLER_OK_TTL_MS = 24 * 60 * 60 * 1000; // نتيجة موجبة: يوم كامل
+const CRAWLER_FAIL_TTL_MS = 10 * 60 * 1000;     // نتيجة سالبة: دقائق حتى لا نثقل DNS
+
+async function isVerifiedSearchCrawler(req) {
+  const ua = String(requestHeader(req, 'user-agent') || '');
+  const rule = SEARCH_CRAWLER_RULES.find(r => r.ua.test(ua));
+  if (!rule) return false;
+  const ip = validIp(requestIp(req));
+  if (!ip || ip === 'غير معروف') return false;
+  const now = Date.now();
+  const cached = VERIFIED_CRAWLER_CACHE.get(ip);
+  if (cached && now < cached.expires) return cached.allowed;
+  let allowed = false;
+  try {
+    const hostnames = await dns.promises.reverse(ip);
+    const host = String((hostnames && hostnames[0]) || '').toLowerCase().replace(/\.$/, '');
+    const rdnsOk = !!host && rule.domains.some(d => host === d || host.endsWith('.' + d));
+    if (rdnsOk) {
+      try {
+        const addrs = await (net.isIPv6(ip) ? dns.promises.resolve6(host) : dns.promises.resolve4(host));
+        allowed = Array.isArray(addrs) && (addrs.length === 0 || addrs.includes(ip)); // تعذر التأكيد الطردي لا يلغي تطابق rDNS
+      } catch (e) { allowed = true; }
+    }
+  } catch (e) { allowed = false; } // فشل DNS = يُعامل كمستخدم عادي وتسري عليه البوابة
+  VERIFIED_CRAWLER_CACHE.set(ip, { allowed, expires: now + (allowed ? CRAWLER_OK_TTL_MS : CRAWLER_FAIL_TTL_MS) });
+  if (VERIFIED_CRAWLER_CACHE.size > 5000) {
+    for (const [k, v] of VERIFIED_CRAWLER_CACHE) if (v.expires < now) VERIFIED_CRAWLER_CACHE.delete(k);
+  }
+  if (allowed) console.log(`[AccessGate] زحف موثّق لمحركات البحث من ${ip} (${ua.slice(0, 60)})`);
+  return allowed;
+}
+
 // قرار نهائي للوصول: يعيد قائمة أسباب المنع (ربما فارغة = مسموح).
 async function accessBlockReasons(req) {
   const reasons = [];
+  // روبوت بحث موثّق → يُسمح له دائماً حتى ترى محركات البحث المسار كاملاً.
+  if (await isVerifiedSearchCrawler(req)) return reasons;
   if (!isBrowserAllowed(requestHeader(req, 'user-agent'))) reasons.push('browser');
   if (String(ACCESS_SETTINGS.block_vpn_proxy) === '1') {
     const mode = String(ACCESS_SETTINGS.vpn_proxy_check || 'both').toLowerCase();
