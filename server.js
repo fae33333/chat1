@@ -4295,12 +4295,9 @@ app.post('/api/admin/users/:id/mute', requireModerator, async (req, res) => {
     affectedIds = [uid];
   }
   for (const id of affectedIds) await refreshUserEverywhere(id);
-  // الكتم ينزل المذيع فوراً من أي بث قائم؛ لا يبقى إلا مستمعاً حتى فك الكتم.
-  if (muted) {
-    for (const id of affectedIds) {
-      for (const broadcastRoomId of Object.keys(roomBroadcast)) removeHostFromBroadcast(+broadcastRoomId, +id, 'muted_by_admin');
-    }
-  }
+  // الكتم يُسكّت ميكروفون المذيع مؤقتاً دون إسقاطه من البث: يبقى داخل البث
+  // (وهو صامت) حتى يُفكّ الكتم فيستأنف بثّه فوراً — بدل قطع الصوت وإعادة بنائها من الصفر.
+  // الطرف الآخر يُصمت عبر 'mute_changed' (يبطّل تدفّقه المحلي) دون إنهاء البث للجميع.
   for (const socket of socketsForModerationTarget(target)) socket.emit('mute_changed', { muted });
   const roomId = +req.body.room_id;
   if (roomId && roomUsers[roomId]) {
@@ -6141,6 +6138,31 @@ function cancelPendingRoomLeave(uid, roomId) {
   PENDING_ROOM_LEAVES.delete(key);
   return true;
 }
+// مهلة سماح للبث الصوتي/المرئي عند انقطاع مؤقت في WebSocket (تجميد تبويب خلفي/تقلّب الشبكة):
+// لا نُنزل المذيع من البث ولا نُغلق اتصالات WebRTC فوراً بل ننتظر لحظات؛ فإن عاد اتصاله
+// قبل انتهاء المهلة يستمر بثّه بلا انقطاع، وإلا نُنظّف بثّه كالمعتاد.
+const PENDING_BCAST_CLEANUP = new Map();
+const BCAST_DISCONNECT_GRACE_MS = 5000;
+function cancelPendingBroadcastCleanup(uid, roomId) {
+  const key = roomLeaveKey(uid, roomId);
+  const pending = PENDING_BCAST_CLEANUP.get(key);
+  if (!pending) return false;
+  clearTimeout(pending);
+  PENDING_BCAST_CLEANUP.delete(key);
+  return true;
+}
+function scheduleBroadcastCleanup(uid, roomId) {
+  const key = roomLeaveKey(uid, roomId);
+  const existing = PENDING_BCAST_CLEANUP.get(key);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    PENDING_BCAST_CLEANUP.delete(key);
+    // إن عاد المستخدم بجلسة ظاهرة قبل انتهاء المهلة يُلغى التنظيف تلقائياً؛
+    // وإلا نُزيله من البث ونخبر الأطراف المعنية.
+    if (!userStillHasVisibleSocketInRoom(uid, roomId)) cleanupBroadcastForUser(roomId, uid);
+  }, BCAST_DISCONNECT_GRACE_MS);
+  PENDING_BCAST_CLEANUP.set(key, timer);
+}
 // =====================================================
 //  البث المباشر (فيديو/صوت) داخل الغرف — إشارات WebRTC عبر Socket.IO
 //  - الغرف الافتراضية (type != 'voice'): بث فيديو، المشاهدة تتطلب طلب وموافقة المذيع.
@@ -6859,6 +6881,8 @@ io.on('connection', async (socket) => {
     }
     roomId = +roomId;
     const restoredConnection = cancelPendingRoomLeave(uid, roomId);
+    // عاد المستخدم قبل انتهاء مهلة سماح البث؟ ألغِ أي تنظيف مجدول له لكي يستمر بثّه/استماعه دون انقطاع.
+    cancelPendingBroadcastCleanup(uid, roomId);
     if (socket.data.joinedRooms.has(roomId)) {
       const lastMsgRow = await q.get(`SELECT COALESCE(MAX(id),0) lastId FROM messages WHERE room_id=?`, roomId);
       return done({ ok: true, hidden: socket.data.hiddenRooms.has(roomId), restored: restoredConnection, broadcast: broadcastPublicState(roomId), lastMsgId: +lastMsgRow.lastId || 0 });
@@ -6920,6 +6944,7 @@ io.on('connection', async (socket) => {
       if (roomUsers[roomId]) roomUsers[roomId].delete(uid);
       emitRoomSystemEvent(roomId, 'leave', `${me.username} خرج من الغرفة`);
     }
+    cancelPendingBroadcastCleanup(uid, roomId); // مغادرة صريحة: ألغِ أي مهلة سماح معلّقة ونظّف فوراً
     cleanupBroadcastForUser(roomId, uid);
     emitRoomUsers(roomId);
     emitRoomCounts();
@@ -7501,8 +7526,9 @@ io.on('connection', async (socket) => {
     // جلسة لوحة الإدارة إطلاقاً — الجلسة تبقى حية ما دامت الصفحة لم تُحدّث،
     // والشرط الصارم «داخل الدردشة الآن» يُفحص فقط عند تحديث صفحة /admin.
     for (const roomId of joinedRooms) {
-      // انقطاع الاتصال ينهي بث هذا المستخدم فوراً إن كان مذيعاً، أو يزيله من قائمة مشاهدي/مستمعي بث الغير.
-      if (!userStillHasVisibleSocketInRoom(uid, roomId)) cleanupBroadcastForUser(roomId, uid);
+      // انقطاع مؤقت للاتصال (تجميد تبويب/تقلّب شبكة) لا يُنهي بث المستخدم فوراً — نمنحه مهلة سماح
+      // ليعود؛ فإن عاد قبل نهايتها يستمر بثّه/استماعه دون انقطاع. (المغادرة الصريحة عبر 'leave' تُنظَّف فوراً)
+      if (!userStillHasVisibleSocketInRoom(uid, roomId)) scheduleBroadcastCleanup(uid, roomId);
       // خروج الجلسة المخفية لا يظهر كرسالة نظام ولا يغيّر قائمة المتصلين.
       if (!hiddenRooms.has(+roomId) && !userStillHasVisibleSocketInRoom(uid, roomId)) {
         cancelPendingRoomLeave(uid, roomId);

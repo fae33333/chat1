@@ -77,6 +77,10 @@ const RTC_ICE_CONFIG = {
 let ROOM_BCAST = {};        // roomId -> {mode, hosts:[{id,username,avatar,badge},...], viewers} آخر حالة معروفة للبث بكل غرفة
 let BCAST = null;           // الحالة الحية للبث الجاري (فيديو أو صوت) في الغرفة الحالية، أو null
 let BCAST_SIGNAL_QUEUE = []; // إشارات وصلت قبل تهيئة BCAST (سباق زمني عند الدخول لغرفة فيها بث نشط) — تُطبَّق فور التهيئة
+// سجلّ دائم بتدفّقات كل مذيع (hostId -> MediaStream) مستقلّ عن كائن BCAST المؤقت،
+// حتى تعيد الواجهة ربط عنصر الصوت بالتدفّق إذا انقطع أو أُعيد بناء الحالة.
+const BCAST_STREAMS = new Map();
+let BCAST_AUDIO_WATCHDOG = null; // مؤقّت دوري يعيد تشغيل/ربط صوت المذيعين إذا توقّف بسبب تحديث الصفحة أو فتح قالب
 // شكل BCAST: {
 //   roomId, mode:'video'|'audio', isHost:bool,
 //   hostId, hostInfo, localStream, peers:Map('dir:userId'->RTCPeerConnection),
@@ -2058,9 +2062,15 @@ function forceReconnectNow() {
   if (SOCKET.active) { try { SOCKET.disconnect(); } catch (e) { } }
   SOCKET.connect();
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') forceReconnectNow(); });
-window.addEventListener('pageshow', () => forceReconnectNow());
-window.addEventListener('focus', () => forceReconnectNow());
+// عودة المستخدم للتبويب: أعد تشغيل صوت البث المباشر فوراً (المتصفح يجمّده في التبويب الخلفي)
+function bcastResumeAllAudio() {
+  const pool = document.getElementById('bcastAudioPool');
+  if (!pool) return;
+  pool.querySelectorAll('audio').forEach(el => { if (el.paused && el.srcObject) bcastTryPlayAudioEl(el); });
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { bcastResumeAllAudio(); forceReconnectNow(); } });
+window.addEventListener('pageshow', () => { bcastResumeAllAudio(); forceReconnectNow(); });
+window.addEventListener('focus', () => { bcastResumeAllAudio(); forceReconnectNow(); });
 window.addEventListener('offline', () => {
   if (!ME || !CHAT_TOKEN) return;
   CONNECTION_INTERRUPTED = true;
@@ -2357,9 +2367,14 @@ function connectSocket() {
   SOCKET.on('mute_changed', ({ muted }) => {
     if (!ME) return;
     ME.muted = muted ? 1 : 0;
-    // إن كُتم المذيع وهو يبث، أوقف التدفّق المحلي فوراً؛ الخادم أنزله أيضاً من البث.
-    if (ME.muted && BCAST && BCAST.isHost) { bcastResetState(); bcastRenderBar(); }
-    toast(muted ? 'قامت الإدارة بكتمك' : 'قامت الإدارة بإلغاء كتمك', !muted);
+    // الكتم لا يُنهي البث، بل يُسكّت ميكروفون المذيع مؤقتاً فقط (يظل داخل البث حتى يُفكّ الكتم فيستأنف).
+    if (BCAST && BCAST.isHost && BCAST.localStream) {
+      BCAST.localStream.getAudioTracks().forEach(t => { t.enabled = !muted; });
+      AUDIO_BCAST_HOST_MUTED = !!muted;
+      bcastUpdateHostMuteButton();
+    }
+    bcastRenderBar();
+    toast(muted ? 'قامت الإدارة بكتمك — تم كتم ميكروفونك' : 'قامت الإدارة بإلغاء كتمك — عاد ميكروفونك', !muted);
   });
   SOCKET.on('kicked', ({ roomId, text }) => {
     if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
@@ -2879,6 +2894,8 @@ function bcastResetState() {
   }
   BCAST = null;
   BCAST_SIGNAL_QUEUE = [];
+  BCAST_STREAMS.clear();     // انتهى البث — امسح سجلّ التدفّقات حتى لا يُحيي العداد أصواتاً قديمة
+  bcastStopAudioWatchdog();  // أوقف عدّاد حماية الصوت
   SPEAK_REQUEST_PENDING = false;
   AUDIO_BCAST_HOST_MUTED = false;
   bcastLevelDetachAll();
@@ -3015,19 +3032,72 @@ function bcastEnsureAudioEl(hostId) {
 function bcastRemoveAudioEl(hostId) {
   const el = document.getElementById('bcastAudio_' + hostId);
   if (el) el.remove();
+  BCAST_STREAMS.delete(String(hostId)); // المذيع غادر/أُزيل — انسَ تدفّقه
   bcastLevelDetach(hostId);
 }
 // يعرض تدفق وسائط وارداً من طرف معيّن (مذيع أرسل عرضاً لي كمشاهد/كمذيع أشاهده) في المكان المناسب
 function bcastAttachRemoteStream(fromUserId, stream) {
   if (!BCAST) return;
+  // نحتفظ بالتدفّق في سجلّ دائم مستقل عن BCAST حتى لا يضيع الصوت عند إعادة بناء الحالة.
+  if (stream) BCAST_STREAMS.set(String(fromUserId), stream);
   // مؤشر «يتحدث»: تحليل مستوى صوت هذا الطرف (مذيع/مستمع)
   bcastLevelAttach(fromUserId, stream);
-  if (BCAST.mode === 'audio') bcastEnsureAudioEl(fromUserId).srcObject = stream;
-  else {
+  if (BCAST.mode === 'audio') {
+    const el = bcastEnsureAudioEl(fromUserId);
+    el.srcObject = stream;
+    // إعادة تشغيل صريحة - لا نعتمد على autoplay فقط الذي قد تفشله بعض المتصفحات.
+    bcastTryPlayAudioEl(el);
+    bcastEnsureAudioWatchdog();
+  } else {
     // أنشئ البلاطة فوراً إن لم تكن موجودة (قد يصل التدفق قبل تسجيل معلومات المذيع)
     if (!document.getElementById(bcastTileId(fromUserId))) bcastEnsureTile(fromUserId, BCAST.hosts.get(fromUserId) || null);
     bcastAttachStreamToTile(fromUserId, stream);
   }
+}
+
+// محاولة تشغيل عنصر صوت بلا استثناء (أعدّ سمة muted حتى لا تطلب إذن المستخدم)
+function bcastTryPlayAudioEl(el) {
+  if (!el || !el.srcObject) return;
+  try {
+    el.muted = AUDIO_BCAST_MUTED;
+    const p = el.play();
+    if (p && typeof p.catch === 'function') p.catch(() => { /* تجاهل رفض التشغيل المتقلّب */ });
+  } catch (e) { /* تجاهل */ }
+}
+
+// Watchdog دوري: يضمن بقاء صوت كل مذيع في بث صوتي نشط متصلاً وليس ناقصاً أو موقوفاً.
+// يعالج انقطاع الصوت عند: تحديث أي شيء في الصفحة، فتح قالب/نافذة منبثقة، عودة المستخدم
+// من تبويب خلفي جمّده المتصفح، أو أي إعادة بناء لعناصر الصوت — يعيد إنشاء/ربط/تشغيل العنصر.
+function bcastEnsureAudioWatchdog() {
+  if (BCAST_AUDIO_WATCHDOG) return;
+  BCAST_AUDIO_WATCHDOG = setInterval(function () {
+    const pool = document.getElementById('bcastAudioPool');
+    // لا شيء نفعله إن انتهى البث فعلاً أو لم نعد في وضع صوتي.
+    if (!pool || !BCAST || BCAST.mode !== 'audio') return;
+    // نطاق المذيعين المسجّلين فعلياً في هذا البث — لا نُحيي أصوات مذيعين غادروا.
+    BCAST.hosts.forEach(function (host, uid) {
+      const stream = BCAST_STREAMS.get(String(uid));
+      if (!stream) return;
+      let el = document.getElementById('bcastAudio_' + uid);
+      if (!el) {
+        // أُزيل العنصر من DOM (إعادة بناء/مسح) لكن المذيع ما زال يبث — أنشئه من جديد.
+        el = document.createElement('audio');
+        el.id = 'bcastAudio_' + uid;
+        el.autoplay = true; el.playsInline = true; el.muted = AUDIO_BCAST_MUTED;
+        pool.appendChild(el);
+        el.srcObject = stream;
+      } else if (el.srcObject !== stream) {
+        el.srcObject = stream;
+      }
+      // أعد التشغيل إن توقف لسببٍ ما، مع احترام كتم المستخدم.
+      if (el.paused) bcastTryPlayAudioEl(el);
+    });
+  }, 900);
+}
+
+// إيقاف العدّاد بالكامل
+function bcastStopAudioWatchdog() {
+  if (BCAST_AUDIO_WATCHDOG) { clearInterval(BCAST_AUDIO_WATCHDOG); BCAST_AUDIO_WATCHDOG = null; }
 }
 
 // بطاقة طلب مشاهدة واردة (تظهر لكل مذيع مشارك) مع زرّي قبول/رفض
@@ -3229,6 +3299,8 @@ function bcastViewerAutoConnectAudio(roomId, hosts) {
   // المستمع الصوتي يستقبل الصوت في الخلفية فقط؛ النافذة العائمة مخصصة للمذيع.
   bcastSetFloatingMode('audio');
   (hosts || []).forEach(h => bcastRegisterHost(h));
+  // نُشغّل عدّاد حماية الصوت منذ البداية حتى لا ينقطع صوت المذيعين عند أي تحديث.
+  bcastEnsureAudioWatchdog();
   // العروض (offers) ستصل من كل مذيع تلقائياً عبر bcast:signal — نطبّق أولاً أي عرض وصل مبكراً قبل التهيئة
   bcastFlushSignalQueue();
 }
