@@ -1253,101 +1253,12 @@
       </div>
       <div class="buy-intro"><i class="f7-icons">money_dollar_circle_fill</i> اشترِ الذهب الافتراضي لترقية حسابك أو حساب أصدقائك وإرسال الهدايا</div>
       <div class="buy-sub">باقات شحن الذهب المميزة</div>
-      <p class="buy-terms">اختر الباقة المناسبة وادفع عبر البطاقة البنكية أو بطاقة الصراف لشحن رصيدك فورياً</p>
+      <p class="buy-terms">اختر الباقة المناسبة وادفع عبر PayPal لشحن رصيدك فورياً بعد تأكيد الدفع</p>
       <div class="gold-grid" id="goldGrid"></div>
       <div class="buy-strip" id="buyStrip">متابعة شراء <b>10 Gold</b> <span>$10</span></div>
-      <button class="debit-btn" id="buyDebit" type="button" style="min-height:46px;font-size:14.5px;font-weight:900;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,0.18);margin-top:10px"><i class="f7-icons">creditcard_fill</i> الدفع عبر البطاقة البنكية / Debit or Credit Card</button>
-      <div class="powered"><i class="f7-icons" style="font-size:13px;vertical-align:middle;margin-inline-end:4px">lock_shield_fill</i> دفع إلكتروني مباشر ومشفر 256-Bit SSL</div>
-    </div>
-  </div>
-
-  <!-- نافذة الدفع ببطاقة الصراف الآلي والبطاقات البنكية (Debit or Credit Card Checkout) -->
-  <div class="overlay center card-payment-overlay" id="cardPaymentOv">
-    <div class="dialog card-payment-dialog" id="cardPaymentCard">
-      <div class="card-pay-head">
-        <div class="card-pay-head-info">
-          <div class="card-pay-icon"><i class="f7-icons">creditcard_fill</i></div>
-          <div>
-            <div class="card-pay-title" id="cardPayTitle">الدفع بالبطاقة البنكية 💳</div>
-            <div class="card-pay-sub" id="cardPaySubtitle">خصم آمن وفوري وشحن مباشر للرصيد</div>
-          </div>
-        </div>
-        <button class="card-pay-close" data-close="cardPaymentOv" type="button" aria-label="إغلاق"><i class="f7-icons">xmark</i></button>
-      </div>
-
-      <!-- بطاقة مصرفية تفاعلية -->
-      <div class="virtual-card" id="virtualCardGraphic">
-        <div class="vc-top">
-          <div class="vc-chip"></div>
-          <div class="vc-brand" id="vcCardBrand">VISA</div>
-        </div>
-        <div class="vc-number" id="vcCardNumber">•••• •••• •••• ••••</div>
-        <div class="vc-bottom">
-          <div class="vc-holder">
-            <span class="vc-lbl">حامل البطاقة</span>
-            <span class="vc-val" id="vcCardHolder">CARDHOLDER NAME</span>
-          </div>
-          <div class="vc-exp">
-            <span class="vc-lbl">تاريخ الانتهاء</span>
-            <span class="vc-val" id="vcCardExp">MM/YY</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ملخص الباقة المختارة -->
-      <div class="card-package-summary" id="cardPackageSummary">
-        <div class="cp-sum-row">
-          <span class="cp-sum-lbl"><i class="f7-icons">cube_box_fill</i> الباقة المختارة:</span>
-          <span class="cp-sum-val" id="cardPayPkgName">باقة الذهب</span>
-        </div>
-        <div class="cp-sum-row">
-          <span class="cp-sum-lbl"><i class="f7-icons">money_dollar_circle_fill</i> الذهب المستلم:</span>
-          <span class="cp-sum-val gold" id="cardPayPkgGold">100 ذهب 🪙</span>
-        </div>
-        <div class="cp-sum-row">
-          <span class="cp-sum-lbl"><i class="f7-icons">tag_fill</i> المبلغ المطلوب خصمه:</span>
-          <span class="cp-sum-val price" id="cardPayPkgPrice">$10.00</span>
-        </div>
-        <div class="cp-merchant-note" id="cardPayMerchantNote">
-          <i class="f7-icons">shield_fill</i> الإيداع على حساب الدردشة المعتمد: <b id="cardPayBankName">البنك التجاري</b>
-        </div>
-      </div>
-
-      <!-- نموذج إدخال بيانات بطاقة الصراف -->
-      <form class="card-pay-form" id="cardPayForm" onsubmit="return false;">
-        <div class="cp-field">
-          <label><i class="f7-icons mi">person_crop_circle_fill</i> اسم صاحب البطاقة (كما هو على البطاقة):</label>
-          <input type="text" class="inp" id="cardInputHolder" placeholder="مثال: MOHAMMED AL-AHMAD" maxlength="40" required autocomplete="cc-name">
-        </div>
-        <div class="cp-field">
-          <label><i class="f7-icons mi">creditcard</i> رقم بطاقة الصراف / الائتمان (16 رقم):</label>
-          <div class="cp-card-num-wrap">
-            <input type="text" class="inp" id="cardInputNumber" placeholder="4263 1234 5678 9012" maxlength="19" inputmode="numeric" required autocomplete="cc-number">
-            <span class="cp-card-brand-icon" id="cardBrandIcon"><i class="f7-icons">creditcard_fill</i></span>
-          </div>
-        </div>
-        <div class="cp-grid2">
-          <div class="cp-field">
-            <label><i class="f7-icons mi">calendar</i> تاريخ الانتهاء:</label>
-            <input type="text" class="inp" id="cardInputExp" placeholder="MM/YY" maxlength="5" inputmode="numeric" required autocomplete="cc-exp">
-          </div>
-          <div class="cp-field">
-            <label><i class="f7-icons mi">lock_fill</i> رمز الأمان (CVV):</label>
-            <input type="password" class="inp" id="cardInputCvv" placeholder="•••" maxlength="4" inputmode="numeric" required autocomplete="cc-csc">
-          </div>
-        </div>
-
-        <div class="cp-secure-note">
-          <i class="f7-icons">lock_shield_fill</i> المعاملة مشفرة ومحمية بتشفير 256-Bit SSL المصرفي
-        </div>
-
-        <div class="cp-actions">
-          <button class="btn btn-gray cp-cancel-btn" data-close="cardPaymentOv" type="button">إلغاء</button>
-          <button class="btn cp-submit-btn" id="cardPaySubmitBtn" type="button">
-            <i class="f7-icons">lock_fill</i> تأكيد الخصم والدفع (<span id="cardPayBtnPrice">$10.00</span>)
-          </button>
-        </div>
-      </form>
+      <div id="paypal-button-container" class="paypal-btn-wrap"></div>
+      <div id="buyPaypalNote" class="paypal-note" style="display:none;margin-top:14px;text-align:center;color:#64748b;font-size:13px">جاري تحميل بوابة الدفع الآمن...</div>
+      <div class="powered"><i class="f7-icons" style="font-size:13px;vertical-align:middle;margin-inline-end:4px">lock_shield_fill</i> دفع إلكتروني آمن ومشفر عبر PayPal</div>
     </div>
   </div>
 

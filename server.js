@@ -3069,121 +3069,254 @@ app.get('/api/gold-packages', async (req, res) => {
   try {
     const packages = await q.all(`SELECT * FROM gold_packages WHERE active=1 ORDER BY sort ASC, id ASC`);
     const settings = await getSettings();
+    // PayPal بوابة الدفع الفعلية (بطاقات/حساب PayPal). نكشف للواجهة فقط client_id
+    // (العام) دون secret، والواجهة تحمّل زر PayPal وتنشئ العملية عبر الخادم.
     res.json({
       ok: true,
       packages: packages || [],
-      currency: settings.card_currency || '$',
+      currency: settings.paypal_currency || 'USD',
       merchant_bank: settings.merchant_bank_name || 'البنك التجاري المعتمد',
       merchant_holder: settings.merchant_holder_name || 'إدارة الدردشة المعتمدة',
-      merchant_card_masked: settings.merchant_card_number ? (settings.merchant_card_number.slice(0, 4) + ' •••• •••• ' + settings.merchant_card_number.slice(-4)) : '4263 •••• •••• 5678',
-      card_payment_enabled: settings.card_payment_enabled !== '0'
+      card_payment_enabled: false, // أُلغيت خاصية الدفع بالبطاقة (غير حقيقية) نهائياً
+      paypal_enabled: settings.paypal_enabled !== '0',
+      paypal_client_id: settings.paypal_client_id || '',
+      paypal_mode: settings.paypal_mode || 'live',
+      paypal_currency: settings.paypal_currency || 'USD'
     });
   } catch (e) {
     res.status(500).json({ error: 'تعذر جلب باقات الشراء' });
   }
 });
 
-app.post('/api/pay-with-card', requireUser, async (req, res) => {
+//  بوابة الدفع الفعلية عبر PayPal (Orders API v2)
+//  — خصم حقيقي وموثّق من حساب/بطاقة المشتري عبر PayPal،
+//  ويُشحن الذهب فقط بعد تأكيد إتمام الدفع من PayPal.
+// =====================================================
+function paypalApiBase(mode) {
+  return mode === 'sandbox' ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
+}
+
+// الحصول على توكن وصول OAuth2 من PayPal بصيغة Client Credentials.
+async function paypalAccessToken(clientId, secret, mode) {
+  const auth = Buffer.from(`${clientId}:${secret}`).toString('base64');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
   try {
-    const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
-    if (!me) return res.status(401).json({ error: 'المستخدم غير مسجل' });
-
-    const { package_id, card_number, card_holder, exp_month, exp_year, cvv } = req.body || {};
-    const pkgId = +package_id;
-    const pkg = await q.get(`SELECT * FROM gold_packages WHERE id=? AND active=1`, pkgId);
-    if (!pkg) return res.status(400).json({ error: 'باقة الذهب المختارة غير متوفرة أو معطلة' });
-
-    const settings = await getSettings();
-    if (settings.card_payment_enabled === '0') {
-      return res.status(400).json({ error: 'خدمة الدفع بالبطاقات البنكية متوقفة حالياً للصيانة' });
-    }
-
-    const cleanCardNum = String(card_number || '').replace(/\D/g, '');
-    if (cleanCardNum.length < 13 || cleanCardNum.length > 19) {
-      return res.status(400).json({ error: 'رقم بطاقة الصراف / الائتمان غير صحيح (يجب أن يتكون من 16 رقم)' });
-    }
-    const cleanHolder = String(card_holder || '').trim();
-    if (!cleanHolder || cleanHolder.length < 3) {
-      return res.status(400).json({ error: 'يرجى كتابة اسم صاحب البطاقة كما هو مطبوع عليها' });
-    }
-    const cleanCvv = String(cvv || '').trim();
-    if (cleanCvv.length < 3 || cleanCvv.length > 4) {
-      return res.status(400).json({ error: 'رمز الأمان (CVV) غير صالح' });
-    }
-
-    // تحديد نوع البطاقة البنكية
-    let cardBrand = 'Credit Card';
-    if (/^4/.test(cleanCardNum)) cardBrand = 'VISA';
-    else if (/^(5[1-5]|2[2-7])/.test(cleanCardNum)) cardBrand = 'Mastercard';
-    else if (/^(5888|5889|5890|9682|4847|5043|4008)/.test(cleanCardNum)) cardBrand = 'Mada مدى';
-    else if (/^(5078|3585)/.test(cleanCardNum)) cardBrand = 'Meeza ميزة';
-    else if (/^(34|37)/.test(cleanCardNum)) cardBrand = 'American Express';
-
-    const cardLast4 = cleanCardNum.slice(-4);
-    const depositCard = settings.merchant_card_number || '4263 8890 1234 5678';
-    const bonusGold = +pkg.bonus || 0;
-    const totalGold = (+pkg.gold || 0) + bonusGold;
-    const amountPaid = +pkg.price || 0;
-    const currency = pkg.currency || settings.card_currency || '$';
-
-    // شحن الذهب مباشرة في رصيد المستخدم
-    await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, totalGold, me.id);
-    const newBal = (me.balance || 0) + totalGold;
-
-    if (onlineUsers[me.id]) {
-      onlineUsers[me.id].balance = newBal;
-    }
-
-    // تسجيل العملية في جدول المعاملات
-    const tx = await q.run(`
-      INSERT INTO payment_transactions
-      (user_id, username, package_id, package_name, gold_amount, bonus_amount, total_gold, amount_paid, currency, card_last4, card_brand, card_holder, deposit_card, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')
-    `, me.id, me.username, pkg.id, pkg.name, pkg.gold, bonusGold, totalGold, amountPaid, currency, cardLast4, cardBrand, cleanHolder, depositCard);
-
-    // إشعار المستخدم بالعملية
-    const notif = await createUserNotification(
-      me.id,
-      `تم شحن ${totalGold} ذهب بنجاح عبر البطاقة (${cardBrand} •••• ${cardLast4}) بقيمة ${amountPaid} ${currency} (الرصيد: ${newBal}) 🪙`,
-      'creditcard_fill'
-    );
-    io.to('user_' + me.id).emit('notify', { ...notif, balance: newBal });
-    io.to('user_' + me.id).emit('call:gold_deducted', { balance: newBal, amount: 0, isPayment: true });
-
-    // إشعار المشرفين
-    const adminRows = await q.all(`SELECT id FROM users WHERE rank IN ('admin','superadmin','supermaster')`);
-    for (const adm of adminRows) {
-      io.to('user_' + adm.id).emit('notify', {
-        text: `عملية شراء ناجحة: ${me.username} قام بشحن ${totalGold} ذهب بمبلغ ${amountPaid} ${currency} 💳`,
-        icon: 'creditcard_fill'
-      });
-    }
-
-    res.json({
-      ok: true,
-      balance: newBal,
-      total_gold: totalGold,
-      package_name: pkg.name,
-      amount_paid: amountPaid,
-      currency,
-      card_brand: cardBrand,
-      card_last4: cardLast4,
-      transaction_id: tx.lastID
+    const res = await fetch(`${paypalApiBase(mode)}/v1/oauth2/token`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: 'grant_type=client_credentials',
+      signal: controller.signal
     });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.access_token) {
+      const msg = data.error_description || data.error || 'تعذر الاتصال بـ PayPal';
+      throw new Error(msg);
+    }
+    return data.access_token;
+  } catch (e) { clearTimeout(timer); throw e; }
+}
+
+// إنشاء عملية دفع PayPal (Capture intent) وإرجاع الرابط/المعرّف.
+async function paypalCreateOrder(accessToken, amount, currency, mode, userInfo) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(`${paypalApiBase(mode)}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        intent: 'CAPTURE',
+        purchase_units: [{
+          amount: { currency_code: currency, value: Number(amount).toFixed(2) },
+          description: userInfo.description || 'شحن رصيد ذهب — نجوم العرب'
+        }],
+        application_context: {
+          brand_name: userInfo.brand_name || 'نجوم العرب',
+          user_action: 'PAY_NOW',
+          shipping_preference: 'NO_SHIPPING'
+        }
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.id) {
+      const msg = (data.details && data.details[0] && data.details[0].description) || data.message || 'تعذر إنشاء طلب الدفع';
+      throw new Error(msg);
+    }
+    return data;
+  } catch (e) { clearTimeout(timer); throw e; }
+}
+
+// تأكيد (Capturing) عملية دفع بعد موافقة المشتري — يتحقق PayPal فعلياً من الخصم.
+async function paypalCaptureOrder(accessToken, orderId, mode) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(`${paypalApiBase(mode)}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.status !== 'COMPLETED') {
+      const msg = (data.details && data.details[0] && data.details[0].description) ||
+        (data.name === 'ORDER_ALREADY_CAPTURED' ? 'تم تأكيد هذه العملية من قبل' : data.message) ||
+        'لم يكتمل الدفع من PayPal';
+      throw new Error(msg);
+    }
+    return data;
+  } catch (e) { clearTimeout(timer); throw e; }
+}
+
+// هل اكتمل الدفع وأُضيف رصيد؟ نتحقق من رمز internal لإرجاع معلومات جاهزة.
+function paymentCaptureInfo(captured) {
+  const unit = captured && captured.purchase_units && captured.purchase_units[0] || {};
+  const pay = unit.payments && unit.payments.captures && unit.payments.captures[0] || {};
+  return {
+    orderId: captured.id || '',
+    captureId: pay.id || '',
+    status: captured.status || '',
+    amount: pay.amount && pay.amount.value || '0',
+    currency: pay.amount && pay.amount.currency_code || ''
+  };
+}
+
+// إرجاع الحالة العامة لتشفير/إخفاء المفتاح السري في الواجهة.
+async function paypalPublicConfig() {
+  const s = await getSettings();
+  return {
+    paypal_enabled: s.paypal_enabled !== '0',
+    paypal_client_id: s.paypal_client_id || '',
+    paypal_mode: s.paypal_mode || 'live',
+    paypal_currency: s.paypal_currency || 'USD'
+  };
+}
+
+// إعدادات PayPal للعموم (client_id العام فقط — لا يُكشف secret أبداً).
+app.get('/api/paypal/config', async (req, res) => {
+  const cfg = await paypalPublicConfig();
+  res.json({ ok: true, ...cfg });
+});
+
+// إنشاء عملية دفع PayPal (يستدعيها زر الدفع في الواجهة).
+app.post('/api/paypal/create-order', requireUser, async (req, res) => {
+  try {
+    const me = await q.get(`SELECT id, username FROM users WHERE id=?`, req.authUid);
+    if (!me) return res.status(401).json({ error: 'المستخدم غير مسجل' });
+    const s = await getSettings();
+    if (s.paypal_enabled === '0') return res.status(400).json({ error: 'خدمة الدفع عبر PayPal متوقفة حالياً' });
+    if (!s.paypal_client_id || !s.paypal_secret) return res.status(400).json({ error: 'لم يتم إعداد مفاتيح PayPal في لوحة الإدارة' });
+
+    const pkgId = +(req.body && req.body.package_id);
+    const pkg = await q.get(`SELECT * FROM gold_packages WHERE id=? AND active=1`, pkgId);
+    if (!pkg) return res.status(400).json({ error: 'باقة الذهب المختارة غير متوفرة' });
+
+    const amount = +pkg.price || 0;
+    if (amount <= 0) return res.status(400).json({ error: 'قيمة الباقة غير صالحة' });
+    // عملة مصدرة بثلاثة أحرف فقط (مثل USD)؛ وإلا نستبدلها بعملة الإعداد.
+    const rawCurrency = String(pkg.currency || '').toUpperCase();
+    const currency = /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : String(s.paypal_currency || 'USD').toUpperCase();
+
+    const token = await paypalAccessToken(s.paypal_client_id, s.paypal_secret, s.paypal_mode || 'live');
+    const order = await paypalCreateOrder(token, amount, currency, s.paypal_mode || 'live', {
+      brand_name: s.site_name || 'نجوم العرب',
+      description: `شحن ${pkg.gold} ذهب + ${pkg.bonus || 0} هدية (باقة ${pkg.name})`
+    });
+
+    res.json({ ok: true, order_id: order.id, approve_url: order.links && order.links.find(l => l.rel === 'approve') && order.links.find(l => l.rel === 'approve').href || null });
   } catch (err) {
-    res.status(500).json({ error: 'تعذر معالجة الدفع: ' + (err.message || 'خطأ في النظام') });
+    res.status(500).json({ error: 'تعذر إنشاء الدفع عبر PayPal: ' + (err.message || 'خطأ') });
   }
 });
 
-// شراء الذهب الافتراضي (دفع تجريبي قديم)
+// تأكيد الدفع بعد موافقة المشتري في PayPal ثم شحن الذهب فعلياً.
+app.post('/api/paypal/capture-order', requireUser, async (req, res) => {
+  try {
+    const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
+    if (!me) return res.status(401).json({ error: 'المستخدم غير مسجل' });
+    const s = await getSettings();
+    if (s.paypal_enabled === '0') return res.status(400).json({ error: 'خدمة الدفع عبر PayPal متوقفة حالياً' });
+    if (!s.paypal_client_id || !s.paypal_secret) return res.status(400).json({ error: 'لم يتم إعداد مفاتيح PayPal' });
+
+    const orderId = String((req.body && req.body.order_id) || '').trim();
+    if (!orderId) return res.status(400).json({ error: 'معرّف العملية مفقود' });
+    const pkgId = +(req.body && req.body.package_id);
+    const pkg = await q.get(`SELECT * FROM gold_packages WHERE id=? AND active=1`, pkgId);
+    if (!pkg) return res.status(400).json({ error: 'باقة الذهب غير متوفرة' });
+
+    // منع تكرار شحن العملية نفسها (idempotency).
+    const already = await q.get(`SELECT id FROM payment_transactions WHERE order_ref=? AND status='completed'`, orderId);
+    if (already) {
+      const bal = await q.get(`SELECT balance FROM users WHERE id=?`, me.id);
+      const nb = bal ? bal.balance : me.balance;
+      return res.json({ ok: true, balance: nb, total_gold: (+pkg.gold || 0) + (+pkg.bonus || 0), already_processed: true });
+    }
+
+    const token = await paypalAccessToken(s.paypal_client_id, s.paypal_secret, s.paypal_mode || 'live');
+    const captured = await paypalCaptureOrder(token, orderId, s.paypal_mode || 'live');
+    const cap = paymentCaptureInfo(captured);
+    const amountPaid = +pkg.price || 0;
+    const bonusGold = +pkg.bonus || 0;
+    const totalGold = (+pkg.gold || 0) + bonusGold;
+    const currency = cap.currency || (pkg.currency || s.paypal_currency || 'USD');
+
+    // التحقق من أن المبلغ المخصوم يطابق سعر الباقة (حماية من التلاعب).
+    const capturedVal = parseFloat(cap.amount);
+    const expectedVal = parseFloat(amountPaid);
+    if (Math.abs(capturedVal - expectedVal) > 0.005) {
+      await q.run(`INSERT INTO payment_transactions (user_id, username, package_id, package_name, gold_amount, bonus_amount, total_gold, amount_paid, currency, card_last4, card_brand, card_holder, deposit_card, status, order_ref)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, me.id, me.username, pkg.id, pkg.name, pkg.gold, bonusGold, totalGold, amountPaid, currency, '', 'PayPal', '', '', 'amount_mismatch', orderId).catch(() => {});
+      return res.status(400).json({ error: 'المبلغ المدفوع لا يطابق سعر الباقة' });
+    }
+
+    await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, totalGold, me.id);
+    const newBal = (me.balance || 0) + totalGold;
+    if (onlineUsers[me.id]) onlineUsers[me.id].balance = newBal;
+
+    const tx = await q.run(`INSERT INTO payment_transactions
+      (user_id, username, package_id, package_name, gold_amount, bonus_amount, total_gold, amount_paid, currency, card_last4, card_brand, card_holder, deposit_card, status, order_ref)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      me.id, me.username, pkg.id, pkg.name, pkg.gold, bonusGold, totalGold, amountPaid, currency, '', 'PayPal', '', '', 'completed', orderId);
+
+    const notif = await createUserNotification(me.id,
+      `تم شحن ${totalGold} ذهب بنجاح عبر PayPal بقيمة ${amountPaid} ${currency} (الرصيد: ${newBal}) 🪙`, 'creditcard_fill');
+    io.to('user_' + me.id).emit('notify', { ...notif, balance: newBal });
+    io.to('user_' + me.id).emit('call:gold_deducted', { balance: newBal, amount: amountPaid, isPayment: true });
+
+    const adminRows = await q.all(`SELECT id FROM users WHERE rank IN ('admin','superadmin','supermaster')`);
+    for (const adm of adminRows) {
+      io.to('user_' + adm.id).emit('notify', { text: `عملية شراء ناجحة: ${me.username} شحن ${totalGold} ذهب بمبلغ ${amountPaid} ${currency} عبر PayPal 💳`, icon: 'creditcard_fill' });
+    }
+
+    res.json({ ok: true, balance: newBal, total_gold: totalGold, package_name: pkg.name, amount_paid: amountPaid, currency, transaction_id: tx.lastID, capture_id: cap.captureId });
+  } catch (err) {
+    res.status(500).json({ error: 'تعذر تأكيد الدفع عبر PayPal: ' + (err.message || 'خطأ') });
+  }
+});
+
+// مساران قديمان تمت إزالتهما: الدفع بالبطاقة كان غير حقيقي ويُسلِّم ذهباً بلا خصم،
+// وشراء الذهب الافتراضي يُضيف رصيداً بلا دفع. كلاهما أُلغي نهائياً.
+app.post('/api/pay-with-card', requireUser, async (req, res) => {
+  return res.status(400).json({ error: 'الدفع بالبطاقة البنكية أُلغي واستُبدل ببوابة PayPal الآمنة' });
+});
 app.post('/api/buy-gold', requireUser, async (req, res) => {
-  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
-  if (!me || !me.registered) return res.status(403).json({ error: 'يتطلب عضوية مسجلة' });
-  const gold = Math.min(10000, Math.max(0, parseInt(req.body.gold) || 0));
-  if (!gold) return res.status(400).json({ error: 'كمية غير صالحة' });
-  await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, gold, me.id);
-  const notification = await createUserNotification(me.id, `تمت إضافة ${gold} ذهب افتراضي الى رصيدك`, 'creditcard_fill');
-  res.json({ ok: true, balance: me.balance + gold, notification_id: notification.id, notification_created_at: notification.created_at });
+  return res.status(400).json({ error: 'شراء الذهب الافتراضي المجاني أُلغي — استخدم PayPal للدفع الفعلي' });
 });
 
 // الشكاوى
@@ -5533,22 +5666,32 @@ app.get('/api/admin/payment-settings', requireSuperAdmin, async (req, res) => {
   const s = await getSettings();
   res.json({
     merchant_bank_name: s.merchant_bank_name || 'البنك التجاري المعتمد',
-    merchant_card_number: s.merchant_card_number || '4263 8890 1234 5678',
     merchant_holder_name: s.merchant_holder_name || 'إدارة الدردشة المعتمدة',
     merchant_iban: s.merchant_iban || '',
-    card_payment_enabled: s.card_payment_enabled !== '0' ? 1 : 0,
-    card_currency: s.card_currency || '$'
+    paypal_enabled: s.paypal_enabled !== '0' ? 1 : 0,
+    paypal_client_id: s.paypal_client_id || '',
+    paypal_mode: s.paypal_mode || 'live',
+    paypal_currency: s.paypal_currency || 'USD'
   });
 });
 
 app.post('/api/admin/payment-settings', requireSuperAdmin, async (req, res) => {
-  const { merchant_bank_name, merchant_card_number, merchant_holder_name, merchant_iban, card_payment_enabled, card_currency } = req.body || {};
+  const { merchant_bank_name, merchant_holder_name, merchant_iban, paypal_client_id, paypal_secret, paypal_mode, paypal_currency, paypal_enabled } = req.body || {};
+  // لو تُرك حقل secret فارغاً نُبقي المفتاح الحالي (لا نمسحه دون قصد).
+  const cur = await getSettings();
+  const finalSecret = String(paypal_secret || '').trim() || cur.paypal_secret || '';
+  const finalClientId = String(paypal_client_id || '').trim() || cur.paypal_client_id || '';
+  // نُبقي حقول الحساب المصرفي/الآيبان (معلومات إيداع إضافية) كما هي، ثم نحفظ مفاتيح PayPal.
   await q.run(`INSERT INTO settings (key,value) VALUES ('merchant_bank_name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(merchant_bank_name || ''));
-  await q.run(`INSERT INTO settings (key,value) VALUES ('merchant_card_number',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(merchant_card_number || ''));
   await q.run(`INSERT INTO settings (key,value) VALUES ('merchant_holder_name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(merchant_holder_name || ''));
   await q.run(`INSERT INTO settings (key,value) VALUES ('merchant_iban',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(merchant_iban || ''));
-  await q.run(`INSERT INTO settings (key,value) VALUES ('card_payment_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, card_payment_enabled ? '1' : '0');
-  await q.run(`INSERT INTO settings (key,value) VALUES ('card_currency',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(card_currency || '$'));
+  await q.run(`INSERT INTO settings (key,value) VALUES ('paypal_client_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, finalClientId);
+  await q.run(`INSERT INTO settings (key,value) VALUES ('paypal_secret',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, finalSecret);
+  await q.run(`INSERT INTO settings (key,value) VALUES ('paypal_mode',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(paypal_mode || 'live') === 'sandbox' ? 'sandbox' : 'live');
+  await q.run(`INSERT INTO settings (key,value) VALUES ('paypal_currency',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(paypal_currency || 'USD').toUpperCase());
+  await q.run(`INSERT INTO settings (key,value) VALUES ('paypal_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, paypal_enabled ? '1' : '0');
+  // إزالة مفاتيح الدفع بالبطاقة غير الحقيقية نهائياً.
+  await q.run(`DELETE FROM settings WHERE key IN ('card_payment_enabled','card_currency','merchant_card_number')`);
   io.emit('sync');
   res.json({ ok: true });
 });

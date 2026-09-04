@@ -104,11 +104,13 @@ const ADMIN_I18N_EN = {
   "باقات الذهب والدفع": "Gold Packages & Payments",
   "إدارة باقات الذهب": "Manage Gold Packages",
   "إدارة باقات شراء الذهب": "Manage Gold Packages",
-  "إعدادات بطاقة الإيداع والدفع": "Deposit Card & Payment Settings",
+  "إعدادات بطاقة الإيداع والدفع": "PayPal Payment Settings",
   "إعدادات بطاقة الإيداع وبوابة الدفع": "Deposit Card & Payment Gateway",
   "إعدادات بطاقة الإيداع وبوابة الدفع البنكية": "Deposit Card & Payment Gateway",
-  "سجل مدفوعات البطاقات": "Card Payment Transactions",
-  "سجل مدفوعات البطاقات البنكية": "Card Payment Transactions Log",
+  "سجل مدفوعات البطاقات": "PayPal Payment Transactions",
+  "سجل مدفوعات البطاقات البنكية": "PayPal Payment Log",
+  "إعدادات بوابة الدفع PayPal": "PayPal Payment Settings",
+  "سجل مدفوعات PayPal": "PayPal Payment Transactions",
   "تكاليف العضويات والمكالمات": "Memberships & Call Costs",
   "الاعدادات الاساسيه": "Basic Settings",
   "إعدادات اللغة والترجمة": "Language & Translation",
@@ -569,11 +571,13 @@ const ADMIN_I18N_ES = {
   "باقات الذهب والدفع": "Paquetes de Oro y Pagos",
   "إدارة باقات الذهب": "Gestionar Paquetes de Oro",
   "إدارة باقات شراء الذهب": "Gestionar Paquetes de Oro",
-  "إعدادات بطاقة الإيداع والدفع": "Configuración de Tarjeta y Pagos",
+  "إعدادات بطاقة الإيداع والدفع": "Configuración de Pagos de PayPal",
   "إعدادات بطاقة الإيداع وبوابة الدفع": "Configuración de Tarjeta y Pagos",
   "إعدادات بطاقة الإيداع وبوابة الدفع البنكية": "Configuración de Tarjeta y Pagos",
-  "سجل مدفوعات البطاقات": "Registro de Transacciones de Tarjetas",
-  "سجل مدفوعات البطاقات البنكية": "Registro de Transacciones de Tarjetas",
+  "سجل مدفوعات البطاقات": "Registro de Pagos de PayPal",
+  "سجل مدفوعات البطاقات البنكية": "Registro de Pagos de PayPal",
+  "إعدادات بوابة الدفع PayPal": "Configuración de Pagos de PayPal",
+  "سجل مدفوعات PayPal": "Registro de Pagos de PayPal",
   "تكاليف العضويات والمكالمات": "Costos de Membresías y Llamadas",
   "الاعدادات الاساسيه": "Configuración Básica",
   "إعدادات اللغة والترجمة": "Idioma y Traducción",
@@ -1646,8 +1650,8 @@ function bindLangSwitchers() {
 const MENU = [
   { icon: 'creditcard_fill', color: '#fbbf24', label: 'باقات الذهب والدفع', superAdminOnly: true, subs: [
     { id: 'goldPackages', icon: 'cube_box_fill', label: 'إدارة باقات الذهب', superAdminOnly: true },
-    { id: 'paymentSettings', icon: 'creditcard_fill', label: 'إعدادات بطاقة الإيداع والدفع', superAdminOnly: true },
-    { id: 'paymentTransactions', icon: 'doc_plaintext', label: 'سجل مدفوعات البطاقات', superAdminOnly: true },
+    { id: 'paymentSettings', icon: 'paypal', label: 'إعدادات بوابة الدفع PayPal', superAdminOnly: true },
+    { id: 'paymentTransactions', icon: 'doc_plaintext', label: 'سجل مدفوعات PayPal', superAdminOnly: true },
     { id: 'memberships', icon: 'money_dollar_circle_fill', label: 'تكاليف العضويات والمكالمات', superAdminOnly: true }
   ]},
   { icon: 'gear_alt_fill', color: '#94a3b8', label: 'الاعدادات الاساسيه', superAdminOnly: true, subs: [
@@ -2276,80 +2280,102 @@ const PAGES = {
   // ====== إعدادات بطاقة الإيداع وبوابة الدفع ======
   paymentSettings: {
     build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#3b82f6">creditcard_fill</i> إعدادات بطاقة الإيداع وبوابة الدفع البنكية</div>
+      <div class="page-title"><i class="f7-icons mi" style="color:#3b82f6">paypal</i> إعدادات بوابة الدفع PayPal</div>
       <div class="info-box" style="background:#eff6ff;border-color:#bfdbfe;color:#1e40af;margin-bottom:18px">
-        حدد هنا بيانات بطاقة الصراف الآلي والحساب البنكي المعتمد الذي يتم استقبال مدفوعات وإيداعات شراء الذهب عليه من المستخدمين.
+        أُنشئت بوابة الدفع عبر <b>PayPal</b> كبديل حقيقي وآمن للبطاقات. أدخل مفاتيح تطبيق PayPal لديك (Client ID + Secret) من لوحة PayPal Developer، وستُخصم المبالغ فعلياً من حساب/بطاقة المشتري ويُشحن الذهب فقط بعد تأكيد الدفع.
       </div>
 
       <div class="section">
-        <div class="section-title"><i class="f7-icons mi" style="color:#10b981">shield_fill</i> بيانات الحساب وبطاقة الإيداع المعتمدة</div>
-        
+        <div class="section-title"><i class="f7-icons mi" style="color:#10b981">creditcard_fill</i> مفاتيح PayPal (Rest API App)</div>
+
         <div class="grid2">
           <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#3b82f6">building_2_fill</i> اسم البنك / مزود الخدمة المعتمد:</label>
-            <input class="inp" id="payBankName" placeholder="مثال: البنك الأهلي التجاري أو البنك العربي">
+            <label><i class="f7-icons mi" style="color:#3b82f6">key_fill</i> Client ID:</label>
+            <input class="inp" id="payPaypalClientId" placeholder="مثال: AQ7vH2..." style="direction:ltr;text-align:left;font-family:monospace">
           </div>
           <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#10b981">person_crop_circle_fill</i> اسم صاحب الحساب / المستفيد:</label>
-            <input class="inp" id="payHolderName" placeholder="مثال: إدارة الدردشة المعتمدة">
+            <label><i class="f7-icons mi" style="color:#10b981">lock_fill</i> Secret:</label>
+            <input class="inp" type="password" id="payPaypalSecret" placeholder="مثال: EO9xK3..." style="direction:ltr;text-align:left;font-family:monospace">
           </div>
         </div>
 
         <div class="grid2">
           <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#f59e0b">creditcard_fill</i> رقم بطاقة الصراف الآلي للإيداع (Receiver Card Number):</label>
-            <input class="inp" id="payCardNumber" placeholder="مثال: 4263 8890 1234 5678" style="direction:ltr;text-align:left;font-family:monospace">
-          </div>
-          <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#8b5cf6">number</i> رقم الآيبان (IBAN) / رقم الحساب الدولي:</label>
-            <input class="inp" id="payIban" placeholder="مثال: JO94 ARAB 1234 5678 9012 3456" style="direction:ltr;text-align:left;font-family:monospace">
-          </div>
-        </div>
-
-        <div class="grid2">
-          <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#6366f1">money_dollar</i> العملة الافتراضية للدفع:</label>
-            <select class="inp" id="payCurrency">
-              <option value="$">$ (الدولار الأمريكي)</option>
-              <option value="د.أ">د.أ (الدينار الأردني)</option>
-              <option value="ر.س">ر.س (الريال السعودي)</option>
-              <option value="د.إ">د.إ (الدرهم الإماراتي)</option>
-              <option value="ج.م">ج.م (الجنيه المصري)</option>
+            <label><i class="f7-icons mi" style="color:#f59e0b">server_alt</i> وضع التشغيل:</label>
+            <select class="inp" id="payPaypalMode">
+              <option value="live">وضع حي (Live) — مدفوعات حقيقية</option>
+              <option value="sandbox">وضع تجريبي (Sandbox) — للاختبار</option>
             </select>
           </div>
+          <div class="fgroup">
+            <label><i class="f7-icons mi" style="color:#8b5cf6">money_dollar</i> العملة:</label>
+            <select class="inp" id="payPaypalCurrency">
+              <option value="USD">USD (الدولار الأمريكي)</option>
+              <option value="EUR">EUR (اليورو)</option>
+              <option value="GBP">GBP (الجنيه الإسترليني)</option>
+              <option value="JOD">JOD (الدينار الأردني)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid2">
           <div class="fgroup" style="display:flex;align-items:center;margin-top:24px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:800;color:#1e293b">
-              <input type="checkbox" id="payCardEnabled" checked style="width:18px;height:18px;accent-color:#10b981">
-              تفعيل بوابة الدفع ببطاقات الصراف والائتمان في المتجر
+              <input type="checkbox" id="payPaypalEnabled" checked style="width:18px;height:18px;accent-color:#10b981">
+              تفعيل الدفع عبر PayPal في المتجر
             </label>
           </div>
         </div>
 
         <div class="btn-row" style="justify-content:flex-start;margin-top:16px">
-          <button class="btn btn-purple" id="savePaymentSettingsBtn"><i class="f7-icons">square_arrow_down_fill</i> حفظ إعدادات بطاقة الإيداع والدفع</button>
+          <button class="btn btn-purple" id="savePaymentSettingsBtn"><i class="f7-icons">square_arrow_down_fill</i> حفظ إعدادات PayPal</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title"><i class="f7-icons mi" style="color:#64748b">building_2_fill</i> بيانات الحساب المصرفي للإيداع (اختياري — للمراسلة)</div>
+        <div class="grid2">
+          <div class="fgroup">
+            <label><i class="f7-icons mi" style="color:#3b82f6">building_2_fill</i> اسم البنك:</label>
+            <input class="inp" id="payBankName" placeholder="مثال: البنك الأهلي التجاري">
+          </div>
+          <div class="fgroup">
+            <label><i class="f7-icons mi" style="color:#10b981">person_crop_circle_fill</i> اسم المستفيد:</label>
+            <input class="inp" id="payHolderName" placeholder="مثال: إدارة الدردشة المعتمدة">
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="fgroup">
+            <label><i class="f7-icons mi" style="color:#8b5cf6">number</i> رقم الآيبان (IBAN):</label>
+            <input class="inp" id="payIban" placeholder="مثال: JO94 ARAB 1234 5678 9012 3456" style="direction:ltr;text-align:left;font-family:monospace">
+          </div>
         </div>
       </div>`,
     bind: async () => {
       try {
         const res = await api('/api/admin/payment-settings');
+        $('#payPaypalClientId').value = res.paypal_client_id || '';
+        $('#payPaypalSecret').value = '';
+        $('#payPaypalMode').value = res.paypal_mode || 'live';
+        $('#payPaypalCurrency').value = res.paypal_currency || 'USD';
+        $('#payPaypalEnabled').checked = res.paypal_enabled !== 0;
         $('#payBankName').value = res.merchant_bank_name || '';
         $('#payHolderName').value = res.merchant_holder_name || '';
-        $('#payCardNumber').value = res.merchant_card_number || '';
         $('#payIban').value = res.merchant_iban || '';
-        $('#payCurrency').value = res.card_currency || '$';
-        $('#payCardEnabled').checked = res.card_payment_enabled !== 0;
       } catch (e) {}
 
       $('#savePaymentSettingsBtn').onclick = async () => {
         await api('/api/admin/payment-settings', 'POST', {
+          paypal_client_id: $('#payPaypalClientId').value.trim(),
+          paypal_secret: $('#payPaypalSecret').value.trim(),
+          paypal_mode: $('#payPaypalMode').value,
+          paypal_currency: $('#payPaypalCurrency').value,
+          paypal_enabled: $('#payPaypalEnabled').checked ? 1 : 0,
           merchant_bank_name: $('#payBankName').value.trim(),
           merchant_holder_name: $('#payHolderName').value.trim(),
-          merchant_card_number: $('#payCardNumber').value.trim(),
-          merchant_iban: $('#payIban').value.trim(),
-          card_currency: $('#payCurrency').value,
-          card_payment_enabled: $('#payCardEnabled').checked ? 1 : 0
+          merchant_iban: $('#payIban').value.trim()
         });
-        toast('تم حفظ إعدادات بطاقة الإيداع والدفع البنكي بنجاح ✓');
+        toast('تم حفظ إعدادات بوابة الدفع PayPal بنجاح ✓');
       };
     }
   },
@@ -2357,9 +2383,9 @@ const PAGES = {
   // ====== سجل مدفوعات البطاقات ======
   paymentTransactions: {
     build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#10b981">doc_plaintext</i> سجل مدفوعات البطاقات البنكية</div>
+      <div class="page-title"><i class="f7-icons mi" style="color:#10b981">doc_plaintext</i> سجل مدفوعات PayPal</div>
       <div class="section">
-        <div class="section-title"><i class="f7-icons mi" style="color:#64748b">list_bullet</i> العمليات المنفذة بنجاح</div>
+        <div class="section-title"><i class="f7-icons mi" style="color:#64748b">list_bullet</i> العمليات المؤكّدة من PayPal</div>
         <div id="transactionsList"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل سجل العمليات...</div></div>
       </div>`,
     bind: async () => {
@@ -2379,23 +2405,30 @@ const PAGES = {
                   <th>الباقة</th>
                   <th>الذهب المشحون</th>
                   <th>المبلغ المدفوع</th>
-                  <th>البطاقة المستخدمة</th>
-                  <th>حساب الإيداع</th>
+                  <th>بوابة الدفع</th>
+                  <th>مرجع العملية (PayPal)</th>
                   <th>التاريخ</th>
                 </tr>
               </thead>
               <tbody>
                 ${txs.map(t => {
                   const date = new Date((+t.created_at || Date.now() / 1000) * 1000).toLocaleString('ar-JO');
+                  // عملية PayPal: card_brand=PayPal و order_ref يحوي معرّف العملية.
+                  const isPayPal = (t.card_brand || '').toLowerCase() === 'paypal';
+                  const reference = t.order_ref || '';
+                  const paidVia = isPayPal ? 'PayPal 🅿️' : (t.card_brand || 'بطاقة');
+                  const refDisplay = isPayPal
+                    ? `<span class="chip" style="direction:ltr;font-family:monospace;font-size:11px">${esc(reference || '—')}</span>`
+                    : `<span class="chip">${paidVia} •••• ${esc(t.card_last4 || '****')}</span>`;
                   return `
                     <tr>
                       <td><span class="chip">#${t.id}</span></td>
                       <td><b>${esc(t.username)}</b></td>
                       <td><span class="chip" style="background:#eff6ff;color:#1d4ed8">${esc(t.package_name || 'باقة ذهب')}</span></td>
                       <td><b style="color:#f59e0b">${t.total_gold} ذهب 🪙</b></td>
-                      <td><b style="color:#16a34a">${t.amount_paid} ${esc(t.currency || '$')}</b></td>
-                      <td><span class="chip">${esc(t.card_brand || 'Card')} •••• ${esc(t.card_last4 || '****')}</span></td>
-                      <td><span class="chip" style="font-size:11px">${esc(t.deposit_card || 'حساب الإدارة')}</span></td>
+                      <td><b style="color:#16a34a">${t.amount_paid} ${esc(t.currency || 'USD')}</b></td>
+                      <td><span class="chip" style="background:#111827;color:#fff;font-weight:700">${isPayPal ? 'PayPal 🅿️' : esc(paidVia)}</span></td>
+                      <td>${refDisplay}</td>
                       <td style="font-size:12px;color:#64748b">${esc(date)}</td>
                     </tr>
                   `;

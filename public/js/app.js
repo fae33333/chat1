@@ -7990,6 +7990,12 @@ async function openBuy() {
   const defaultPkg = STORE_PACKAGES.find(p => p.badge && p.badge.includes('الأكثر طلباً')) || STORE_PACKAGES[0];
   SELECTED_PACKAGE = defaultPkg;
   renderGoldPackages();
+
+  // تفعيل زر PayPal بعد تحميل الباقات (يُعرض فقط إن فعّلت الإدارة البوابة).
+  PAYPAL_BUTTONS_RENDERED = false;
+  const pw = $('#paypal-button-container');
+  if (pw) pw.innerHTML = '';
+  activatePayPal();
 }
 
 function renderGoldPackages() {
@@ -8039,178 +8045,119 @@ function renderGoldPackages() {
   }
 }
 
-// فتح نافذة الدفع ببطاقة الصراف والبطاقة البنكية
-function openCardPaymentModal() {
-  if (!ME || !ME.registered) {
-    return toast(translateDynamicText('يجب تسجيل الدخول بحساب مسجل لإتمام عملية الشراء'), false);
-  }
-  if (!SELECTED_PACKAGE) {
-    return toast(translateDynamicText('اختر باقة الذهب أولاً'), false);
-  }
+// -----------------------------------------------------------
+//  الدفع الفعلي عبر PayPal — يُنشئ الطلب عبر الخادم (الذي يحمل secret)
+//  ثم يُثبّت الدفع ويُشحن الذهب فقط بعد تأكيد PayPal للعملية.
+//  لا يلمس الكود أي بيانات بطاقة، وليس هناك أي دفع تجميلي.
+// -----------------------------------------------------------
+let PAYPAL_SDK_LOADED = false;
+let PAYPAL_BUTTONS_RENDERED = false;
 
-  const curr = SELECTED_PACKAGE.currency || STORE_PAYMENT_INFO.currency || '$';
-  const totalG = (+SELECTED_PACKAGE.gold || 0) + (+SELECTED_PACKAGE.bonus || 0);
-  const goldLabel = APP_LANG === 'en' ? 'Gold' : (APP_LANG === 'es' ? 'Oro' : (APP_LANG === 'tr' ? 'Altın' : 'ذهب'));
-  const bonusLabel = APP_LANG === 'en' ? 'bonus' : (APP_LANG === 'es' ? 'de regalo' : (APP_LANG === 'tr' ? 'hediye' : 'هدية'));
-
-  // تحديث بيانات الباقة في نافذة الدفع
-  $('#cardPayPkgName').textContent = translateDynamicText(SELECTED_PACKAGE.name);
-  $('#cardPayPkgGold').textContent = `${totalG} ${goldLabel} 🪙` + (SELECTED_PACKAGE.bonus ? ` (+${SELECTED_PACKAGE.bonus} ${bonusLabel})` : '');
-  $('#cardPayPkgPrice').textContent = `${SELECTED_PACKAGE.price} ${curr}`;
-  $('#cardPayBtnPrice').textContent = `${SELECTED_PACKAGE.price} ${curr}`;
-  $('#cardPayBankName').textContent = STORE_PAYMENT_INFO.merchant_bank || 'البنك المعتمد';
-
-  // إعادة ضبط حقول البطاقة
-  $('#cardInputHolder').value = (ME.username || 'CARDHOLDER').toUpperCase();
-  $('#cardInputNumber').value = '';
-  $('#cardInputExp').value = '';
-  $('#cardInputCvv').value = '';
-
-  // تحديث شكل البطاقة المصرفية التفاعلية
-  $('#vcCardHolder').textContent = (ME.username || 'CARDHOLDER').toUpperCase();
-  $('#vcCardNumber').textContent = '•••• •••• •••• ••••';
-  $('#vcCardExp').textContent = 'MM/YY';
-  $('#vcCardBrand').textContent = 'CARD';
-  $('#cardBrandIcon').innerHTML = '<i class="f7-icons">creditcard_fill</i>';
-
-  openOv('cardPaymentOv');
+// تحميل مكتبة زر PayPal (SDK) بالـ client_id والعملة من إعدادات الخادم.
+function loadPayPalSdk(cfg, cb) {
+  if (window.paypal || PAYPAL_SDK_LOADED) { cb && cb(); return true; }
+  if (!cfg.paypal_client_id) return false;
+  const script = document.createElement('script');
+  const base = cfg.paypal_mode === 'sandbox' ? 'https://www.sandbox.paypal.com/sdk/js' : 'https://www.paypal.com/sdk/js';
+  script.src = `${base}?client-id=${encodeURIComponent(cfg.paypal_client_id)}&currency=${encodeURIComponent(cfg.paypal_currency || 'USD')}&intent=capture&commit=true`;
+  script.async = true;
+  script.onload = () => { PAYPAL_SDK_LOADED = true; PAYPAL_BUTTONS_RENDERED = false; cb && cb(); };
+  script.onerror = () => { PAYPAL_SDK_LOADED = false; const n = $('#buyPaypalNote'); if (n) { n.style.display = 'block'; n.textContent = 'تعذر تحميل بوابة الدفع، حاول مجدداً لاحقاً'; } };
+  document.head.appendChild(script);
+  return true;
 }
 
-// معالجة وتنسيق حقول البطاقة البنكية مباشرة أثناء الكتابة
-function initCardInputFormatting() {
-  const numInput = $('#cardInputNumber');
-  const holderInput = $('#cardInputHolder');
-  const expInput = $('#cardInputExp');
-  const cvvInput = $('#cardInputCvv');
+// عرض زر PayPal داخل حاوية الدفع.
+function renderPayPalButtons() {
+  if (!window.paypal || !SELECTED_PACKAGE) return;
+  if (PAYPAL_BUTTONS_RENDERED) return;
+  const wrap = $('#paypal-button-container');
+  if (!wrap) return;
+  const note = $('#buyPaypalNote');
+  if (note) note.style.display = 'none';
 
-  if (numInput) {
-    numInput.oninput = () => {
-      let v = numInput.value.replace(/\D/g, '').slice(0, 16);
-      let parts = [];
-      for (let i = 0; i < v.length; i += 4) parts.push(v.slice(i, i + 4));
-      numInput.value = parts.join(' ');
-
-      // كشف نوع البطاقة
-      let brand = 'CARD';
-      let icon = 'creditcard_fill';
-      if (/^4/.test(v)) { brand = 'VISA'; icon = 'creditcard_fill'; }
-      else if (/^(5[1-5]|2[2-7])/.test(v)) { brand = 'Mastercard'; icon = 'creditcard_fill'; }
-      else if (/^(5888|5889|5890|9682|4847|5043|4008)/.test(v)) { brand = 'Mada مدى'; icon = 'creditcard_fill'; }
-      else if (/^(5078|3585)/.test(v)) { brand = 'Meeza ميزة'; icon = 'creditcard_fill'; }
-      else if (/^(34|37)/.test(v)) { brand = 'AMEX'; icon = 'creditcard_fill'; }
-
-      $('#vcCardBrand').textContent = brand;
-      $('#cardBrandIcon').innerHTML = `<i class="f7-icons">${icon}</i>`;
-
-      if (parts.length) {
-        let display = parts.join(' ');
-        while (display.length < 19) {
-          if (display.endsWith(' ') || (display.length + 1) % 5 === 0) display += ' ';
-          display += '•';
+  PAYPAL_BUTTONS_RENDERED = true;
+  try {
+    paypal.Buttons({
+      style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal', height: 44 },
+      // 1) إنشاء طلب دفع عبر الخادم (الخادم يحمل الـ secret ويتحقق من الباقة).
+      createOrder: async (data, actions) => {
+        if (!ME || !ME.registered) {
+          toast('يجب تسجيل الدخول بحساب مسجل لإتمام عملية الشراء', false);
+          return actions && actions.reject ? actions.reject() : null;
         }
-        $('#vcCardNumber').textContent = display.slice(0, 19);
-      } else {
-        $('#vcCardNumber').textContent = '•••• •••• •••• ••••';
+        try {
+          const order = await api('/api/paypal/create-order', 'POST', { package_id: SELECTED_PACKAGE.id });
+          if (!order || !order.order_id) throw new Error((order && order.error) || 'تعذر إنشاء العملية');
+          return order.order_id;
+        } catch (e) {
+          toast((e && e.error) || 'تعذر إنشاء عملية الدفع، تحقق من إعدادات PayPal', false);
+          return actions && actions.reject ? actions.reject() : null;
+        }
+      },
+      // 2) بعد موافقة المشتري في PayPal نُثبّت الدفع، ثم يُشحن الذهب من الخادم.
+      onApprove: async (data) => {
+        try {
+          const res = await api('/api/paypal/capture-order', 'POST', { order_id: data.orderID, package_id: SELECTED_PACKAGE.id });
+          if (res && res.ok) {
+            if (ME) ME.balance = res.balance;
+            const mb = $('#menuBal');
+            if (mb) mb.textContent = res.balance;
+            // تحديث أي عناصر قد تعتمد الرصيد
+            if (window.SOCKET && SOCKET) SOCKET.emit('call:balance_update', { balance: res.balance });
+            if (typeof updateBalanceUI === 'function') updateBalanceUI(res.balance);
+
+            closeOv('buyOv');
+            toast(`🎉 تمت عملية الدفع بنجاح! شحن ${res.total_gold} ذهب (${res.amount_paid} ${res.currency}) إلى رصيدك 🪙`);
+            if (typeof beep === 'function') beep(880, .2);
+            PAYPAL_BUTTONS_RENDERED = false;
+            const wrap2 = $('#paypal-button-container'); if (wrap2) wrap2.innerHTML = '';
+          } else {
+            toast((res && res.error) || 'لم يكتمل تأكيد الدفع، لم يُشحن أي رصيد', false);
+          }
+        } catch (e) {
+          toast(e.error || 'تعذر تأكيد الدفع، يرجى إعادة المحاولة', false);
+        }
+      },
+      onError: (err) => {
+        toast('حدث خطأ أثناء الدفع، لم يتم الخصم ولم يُشحن أي رصيد', false);
+        if (note) { note.style.display = 'block'; note.textContent = 'لم تنجح العملية، حاول مجدداً.'; }
+      },
+      onCancel: () => {
+        toast('ألغيت عملية الدفع — لم يُخصم أي مبلغ', false);
       }
-    };
-  }
-
-  if (holderInput) {
-    holderInput.oninput = () => {
-      const v = holderInput.value.trim().toUpperCase();
-      $('#vcCardHolder').textContent = v || 'CARDHOLDER NAME';
-    };
-  }
-
-  if (expInput) {
-    expInput.oninput = () => {
-      let v = expInput.value.replace(/\D/g, '').slice(0, 4);
-      if (v.length >= 2) v = v.slice(0, 2) + '/' + v.slice(2, 4);
-      expInput.value = v;
-      $('#vcCardExp').textContent = v || 'MM/YY';
-    };
-  }
-}
-
-// تنفيذ الدفع بالبطاقة وشحن الذهب
-async function executeCardPayment() {
-  if (!ME || !ME.registered) return toast('يجب تسجيل الدخول أولاً', false);
-  if (!SELECTED_PACKAGE) return toast('اختر باقة الذهب أولاً', false);
-
-  const cardNum = $('#cardInputNumber').value.replace(/\D/g, '');
-  const holder = $('#cardInputHolder').value.trim();
-  const exp = $('#cardInputExp').value.trim();
-  const cvv = $('#cardInputCvv').value.trim();
-
-  if (cardNum.length < 13 || cardNum.length > 19) {
-    return toast('يرجى إدخال رقم بطاقة صراف صحيح (16 رقم)', false);
-  }
-  if (!holder || holder.length < 3) {
-    return toast('يرجى كتابة اسم صاحب البطاقة', false);
-  }
-  if (!/^\d{2}\/\d{2}$/.test(exp)) {
-    return toast('يرجى كتابة تاريخ الانتهاء بصيغة MM/YY', false);
-  }
-  if (cvv.length < 3 || cvv.length > 4) {
-    return toast('يرجى كتابة رمز الأمان CVV المكون من 3 أرقام', false);
-  }
-
-  const btn = $('#cardPaySubmitBtn');
-  const originalText = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<i class="f7-icons">arrow2_circlepath</i> جاري الخصم وإيداع الذهب فورياً...';
-
-  try {
-    const res = await api('/api/pay-with-card', 'POST', {
-      package_id: SELECTED_PACKAGE.id,
-      card_number: cardNum,
-      card_holder: holder,
-      exp_date: exp,
-      cvv: cvv
-    });
-
-    btn.disabled = false;
-    btn.innerHTML = originalText;
-
-    if (res && res.ok) {
-      if (ME) ME.balance = res.balance;
-      const mb = $('#menuBal');
-      if (mb) mb.textContent = res.balance;
-
-      closeOv('cardPaymentOv');
-      closeOv('buyOv');
-
-      toast(`🎉 تمت عملية الدفع بنجاح! تم شحن ${res.total_gold} ذهب إلى رصيدك فوراً 🪙`);
-      beep(880, .2);
-    }
+    }).render('#paypal-button-container');
   } catch (err) {
-    btn.disabled = false;
-    btn.innerHTML = originalText;
-    toast(err.error || 'تعذر إتمام الدفع، يرجى التحقق من بيانات البطاقة', false);
+    if (note) { note.style.display = 'block'; note.textContent = 'تعذر عرض زر الدفع، حاول مجدداً.'; }
   }
 }
 
-async function buyGold() {
-  if (!ME || !ME.registered) {
-    return toast('يجب تسجيل الدخول بحساب مسجل لطلب شراء الذهب', false);
+// عند فتح المتجر بعد تحميل الباقات، نفعّل زر PayPal إن كان مفعّلاً من لوحة الإدارة.
+function activatePayPal() {
+  const wrap = $('#paypal-button-container');
+  const note = $('#buyPaypalNote');
+
+  if (!STORE_PAYMENT_INFO.paypal_enabled) {
+    if (wrap) wrap.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-weight:700;background:#fef2f2;border:1px solid #fecaca;border-radius:12px">الدفع الإلكتروني غير متاح حالياً — تواصل مع الإدارة</div>`;
+    return;
   }
-  if (!SELECTED_PACKAGE) return toast('اختر باقة الذهب أولاً', false);
-  try {
-    const d = await api('/api/buy-gold-request', 'POST', { gold: SELECTED_PACKAGE.gold });
-    closeOv('buyOv');
-    toast(`تم إرسال طلب شراء ${SELECTED_PACKAGE.gold} ذهب إلى الإدارة ⏳ سيصلك إشعار فور الموافقة وشحن الرصيد`);
-  } catch (e) {
-    toast(e.error || 'تعذر إرسال الطلب', false);
+  if (!STORE_PAYMENT_INFO.paypal_client_id) {
+    if (wrap) wrap.innerHTML = `<div style="padding:14px;text-align:center;color:#b45309;font-weight:700;background:#fffbeb;border:1px solid #fde68a;border-radius:12px">بوابة الدفع لم تُفعّل بعد — يرجى التواصل مع الإدارة</div>`;
+    return;
+  }
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (note) { note.style.display = 'block'; note.textContent = 'جاري تحميل بوابة الدفع الآمن...'; }
+
+  const cfg = STORE_PAYMENT_INFO;
+  const ok = loadPayPalSdk(cfg, () => renderPayPalButtons());
+  if (!ok && !window.paypal) {
+    if (note) note.textContent = 'تعذر تحميل بوابة الدفع، حاول مجدداً لاحقاً';
+  } else if (ok && window.paypal) {
+    PAYPAL_BUTTONS_RENDERED = false;
+    renderPayPalButtons();
   }
 }
-
-const buyPaypalBtn = $('#buyPaypal');
-if (buyPaypalBtn) buyPaypalBtn.onclick = buyGold;
-const buyDebitBtn = $('#buyDebit');
-if (buyDebitBtn) buyDebitBtn.onclick = openCardPaymentModal;
-const cardPayBtn = $('#cardPaySubmitBtn');
-if (cardPayBtn) cardPayBtn.onclick = executeCardPayment;
-initCardInputFormatting();
 
 $$('#setList .switch').forEach(sw => sw.onclick = () => {
   const k = sw.dataset.set;

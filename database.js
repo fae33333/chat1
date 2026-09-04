@@ -565,8 +565,12 @@ db.serialize(() => {
     card_holder TEXT DEFAULT '',
     deposit_card TEXT DEFAULT '',
     status TEXT DEFAULT 'completed',
+    order_ref TEXT DEFAULT '',
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+
+  // ترحيل: إضافة عمود مرجع عملية PayPal (order_ref) لقواعد البيانات القديمة التي أُنشئت قبله.
+  db.run(`ALTER TABLE payment_transactions ADD COLUMN order_ref TEXT DEFAULT ''`, () => { });
 
   // ---------- الرمزيات والصور المصنفة ----------
   db.run(`CREATE TABLE IF NOT EXISTS avatars (
