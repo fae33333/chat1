@@ -1903,6 +1903,8 @@ async function renderCashoutRequests() {
         statusChip = '<span class="chip" style="background:#fef3c7;color:#92400e">⏳ قيد المراجعة</span>';
       } else if (r.status === 'completed') {
         statusChip = '<span class="chip" style="background:#dcfce7;color:#166534">✅ مكتمل</span>';
+      } else if (r.status === 'failed') {
+        statusChip = '<span class="chip" style="background:#fee2e2;color:#991b1b">⛔ تعذر التحويل الآلي</span>';
       } else {
         statusChip = `<span class="chip" style="background:#fee2e2;color:#991b1b">⛔ مرفوض${r.note ? ' — ' + esc(r.note) : ''}</span>`;
       }
@@ -1956,7 +1958,7 @@ async function renderCashoutRequests() {
     }).join('');
 
     $$('#cashoutList [data-cashout-complete]').forEach(b => b.onclick = async () => {
-      if (!confirm(`سيتم حذف الهدايا المحددة فقط (${b.dataset.count || 0} هدية) من حساب المستلمة بعد اتمام تحويل $${b.dataset.usd} إلى ${b.dataset.acc}.\nهل أتممت التحويل من حساب الإدارة بالفعل؟`)) return;
+      if (!confirm(`هذا طلب استلام عبر حساب بنكي — التحويل يدوي من حساب الإدارة (لا يُرسل آليًا).\n\nالصرف الحالي: $${b.dataset.usd} إلى ${b.dataset.acc}.\nبعد الضغط سيُحذف ${b.dataset.count || 0} هدية من حساب المستلمة نهائيًا.\n\nهل تلقّت المستلمة المبلغ فعلاً على حسابها البنكي؟`)) return;
       b.disabled = true;
       try {
         const r = await api('/api/admin/gift-cashout/' + b.dataset.cashoutComplete + '/complete', 'POST');

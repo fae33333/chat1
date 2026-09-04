@@ -7819,7 +7819,7 @@ function renderCashoutStep2(goldMin, usd) {
     <div class="gc-note" style="margin-bottom:10px"><i class="f7-icons">info_circle_fill</i> ${isPaypal ? 'سيُرسل المبلغ تلقائيًا من حساب الإدارة إلى حساب الباي بال الخاص بك،' : 'عند قيام الإدارة بالتحويل،'} يُخصم <b>المحدد فقط</b> (${summaryParts || '—'}) من حسابك وتبقى بقية الهدايا المتكررة كما هي.</div>
     <div class="gc-methods">
       <label class="gc-method${isPaypal ? ' sel' : ''}${CASHOUT_PAYPAL_ENABLED ? '' : ' disabled'}" data-method="paypal"><input type="radio" name="gcMethod" value="paypal" ${isPaypal ? 'checked' : ''} ${CASHOUT_PAYPAL_ENABLED ? '' : 'disabled'}> <i class="f7-icons">paypal</i> <span>حساب باي بال (تحويل تلقائي من حساب الإدارة)${CASHOUT_PAYPAL_ENABLED ? '' : ' — غير متاح حاليًا'}</span></label>
-      <label class="gc-method${!isPaypal ? ' sel' : ''}" data-method="bank"><input type="radio" name="gcMethod" value="bank" ${!isPaypal ? 'checked' : ''}> <i class="f7-icons">bank_fill</i> <span>حساب بنكي</span></label>
+      <label class="gc-method${!isPaypal ? ' sel' : ''}" data-method="bank"><input type="radio" name="gcMethod" value="bank" ${!isPaypal ? 'checked' : ''}> <i class="f7-icons">bank_fill</i> <span>حساب بنكي (تحويل يدوي من الإدارة — ليس فوريًا)</span></label>
     </div>
     <div class="gc-fields" id="gcFields">
       ${isPaypal
@@ -7827,7 +7827,7 @@ function renderCashoutStep2(goldMin, usd) {
            <div class="gc-note" style="margin-top:6px"><i class="f7-icons">checkmark_circle_fill</i> سيُرسل المبلغ مباشرة إلى حساب PayPal هذا من حساب الإدارة.</div>`
         : `<input id="gcAccountNumber" inputmode="numeric" maxlength="19" placeholder="رقم الحساب البنكي / رقم البطاقة (8-19 رقمًا)">
            <input id="gcAccountName" maxlength="60" placeholder="اسم صاحب الحساب">
-           <div class="gc-note" style="margin-top:6px"><i class="f7-icons">info_circle_fill</i> لاستلام بنكي فوري آلي، يُفضَّل استخدام «حساب باي بال» أعلاه.</div>`}
+           <div class="gc-note" style="margin-top:6px"><i class="f7-icons">info_circle_fill</i> هذا استلام عبر حساب بنكي: يبقى قيد المعالجة حتى تُحوّل الإدارة المبلغ يدويًا ثم تُحذف هداياك. للتحويل الفوري التلقائي اختاري «حساب باي بال».</div>`}
     </div>
     <div style="display:flex;gap:8px">
       <button class="gc-btn gc-btn-back" id="gcBackStepBtn" type="button" style="flex:0 0 auto;background:#e5e7ef;color:#475569;padding: 0px 2px;width: 35px;"><i class="f7-icons">chevron_right</i></button>

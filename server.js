@@ -2338,7 +2338,17 @@ async function applyCashoutCompletion(cashoutId, adminName, avoidDuplicate = tru
     }
   }
 
-  const usdAmount = Math.max(0, parseFloat(request.usd_amount || request.net_usd) || 0);
+  // المبلغ: إن كانت دفعة PayPal أُرسلت فعلاً (رقم batch) نستخدم المبلغ الذي أُرسل كما هو؛
+  // أما التحويل اليدوي (بنك) فالمبلغ كان يُجمَّد وقت التقديم وقد يكون قديماً/خاطئاً،
+  // لذلك نعيد حسابه من إعداد الإدارة الحالي (مبلغ التسكير المقابل للحد الأدنى × الذهب).
+  let usdAmount = Math.max(0, parseFloat(request.usd_amount || request.net_usd) || 0);
+  if (!request.payout_batch_id && !request.paypal_email) {
+    try {
+      const settings = await getSettings();
+      usdAmount = await cashoutUsdForGold(request.gold_total || 0, settings);
+      if (usdAmount > 0) await q.run(`UPDATE gift_cashouts SET usd_amount=?, net_usd=? WHERE id=?`, usdAmount, usdAmount, +cashoutId);
+    } catch (e) { /* أبقي المبلغ القديم */ }
+  }
   const destination = String(request.payout_method) === 'paypal' && request.paypal_email
     ? `حسابك في PayPal (${request.paypal_email})`
     : `حسابك ${request.account_number}`;
@@ -2521,7 +2531,7 @@ app.post('/api/gift-cashout', requireUser, async (req, res) => {
         return res.json({ ok: true, id: cashoutId, usd: usdForSelection, gold: selectedGold, count: selectedCount, payout_method: payoutMethod, completed: true, deleted: done ? done.deleted : 0, batch_id: payoutBatchId });
       }
       if (check.status === 'FAILED' || check.status === 'DENIED') {
-        await q.run(`UPDATE gift_cashouts SET payout_status='failed', updated_at=strftime('%s','now') WHERE id=?`, cashoutId);
+        await q.run(`UPDATE gift_cashouts SET status='failed', payout_status='failed', updated_at=strftime('%s','now') WHERE id=?`, cashoutId);
         const notif = await createUserNotification(me.id, `⚠️ تعذر إرسال المبلغ عبر PayPal (فشلت الدفعة) — لم تُحذف هداياك. اختاري «حساب بنكي» أو تواصلي مع الإدارة`, 'exclamationmark_triangle_fill');
         io.to('user_' + me.id).emit('notify', notif);
         notifyAdminAccounts(`⚠️ فشل تسكير هدايا تلقائي لـ ${me.username}: ${selectedCount} هدية ($${usdForSelection}) عبر PayPal — لم يُحذف شيء`);
@@ -2535,7 +2545,7 @@ app.post('/api/gift-cashout', requireUser, async (req, res) => {
       return res.json({ ok: true, id: cashoutId, usd: usdForSelection, gold: selectedGold, count: selectedCount, payout_method: payoutMethod, completed: false, batch_id: payoutBatchId, message: 'تم إرسال المبلغ عبر PayPal وهو قيد المعالجة — سيصلك إشعار فور اكتماله' });
     } catch (err) {
       const status = err && err.httpStatus ? ` (HTTP ${err.httpStatus})` : '';
-      await q.run(`UPDATE gift_cashouts SET payout_status='failed', updated_at=strftime('%s','now') WHERE id=?`, cashoutId);
+      await q.run(`UPDATE gift_cashouts SET status='failed', payout_status='failed', updated_at=strftime('%s','now') WHERE id=?`, cashoutId);
       const notif = await createUserNotification(me.id, `⚠️ تعذر إرسال المبلغ عبر PayPal: ${((err && err.message) || 'خطأ')}${status} — لم تُحذف هداياك`, 'exclamationmark_triangle_fill');
       io.to('user_' + me.id).emit('notify', notif);
       notifyAdminAccounts(`⚠️ فشل تسكير هدايا تلقائي لـ ${me.username}: $${usdForSelection} عبر PayPal (${status || err.message})`);
@@ -3451,7 +3461,7 @@ async function watchPayoutBatch(cashoutId, mode, attempts = 120, delayMs = 3000)
         return;
       }
       if (check.status === 'FAILED' || check.status === 'DENIED') {
-        await q.run(`UPDATE gift_cashouts SET payout_status='failed', updated_at=strftime('%s','now') WHERE id=?`, +cashoutId);
+        await q.run(`UPDATE gift_cashouts SET status='failed', payout_status='failed', updated_at=strftime('%s','now') WHERE id=?`, +cashoutId);
         const r = await q.get(`SELECT user_id FROM gift_cashouts WHERE id=?`, +cashoutId);
         if (r) {
           const notif = await createUserNotification(r.user_id, '⚠️ تعذر إتمام التحويل الآلي عبر PayPal (فشلت الدفعة) — لم تُحذف هداياك. تواصلي مع الإدارة.', 'exclamationmark_triangle_fill');
@@ -3777,6 +3787,15 @@ app.get('/api/admin/gift-cashouts', requireSuperAdmin, async (req, res) => {
     ORDER BY (gc.status = 'pending') DESC, gc.created_at DESC
   `);
   const settings = await getSettings();
+  // للطلبات «المرتبة/غير المكتملة» نعيد احتساب المبلغ من إعداد الإدارة الحالي
+  // حتى لا يظهر مبلغ قديم/خاطئ (مثل 0.05) وأن يدفع الإداري المبلغ الصحيح الحالي.
+  for (const r of list) {
+    if (String(r.status) === 'pending') {
+      const gold = +r.gold_total || 0;
+      const recalc = await cashoutUsdForGold(gold, settings);
+      if (recalc > 0) { r.usd_amount = recalc; r.net_usd = recalc; }
+    }
+  }
   res.json({
     list,
     settings: {
