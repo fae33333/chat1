@@ -1081,16 +1081,97 @@ async function externalVpnCheck(ip) {
 // برسالة «حدث خطأ ما». لذلك نعتمد الروبوت فقط بعد تحقق عكسي من العنوان:
 // rDNS يطابق نطاق جوجل/بينغ المعروف، ثم تأكيد طردي أن الاسم يحلّ لنفس IP،
 // حتى لا يستطيع مستخدم VPN انتحال يوزر-أجنت الروبوت وتجاوز البوابة.
+// ولأن DNS العكسي قد يفشل أحياناً على بعض الاستضافات/خلف البروكسي، نضيف
+// طبقة احتياطية: تحقق من نطاقات IP الرسمية للمحركات (CIDR) — أي روبوت من
+// هذه النطاقات يُعدّ موثّقاً حتى لو تعذّر فكّ rDNS لحظياً.
 const SEARCH_CRAWLER_RULES = [
-  { ua: /googlebot|googleother|apis-google|adsbot-google|mediapartners-google|feedfetcher-google/i, domains: ['googlebot.com', 'google.com'] },
-  { ua: /bingbot|bingpreview|msnbot|adindexer/i, domains: ['search.msn.com', 'bing.com'] },
-  { ua: /yandexbot|yandexrenderterm|yandeximages/i, domains: ['yandex.ru', 'yandex.net', 'yandex.com'] },
-  { ua: /baiduspider|baiduimage/i, domains: ['baidu.jp'] },
-  { ua: /duckduckbot/i, domains: ['duckduckgo.com'] }
+  {
+    ua: /googlebot|googleother|apis-google|adsbot-google|mediapartners-google|feedfetcher-google/i,
+    domains: ['googlebot.com', 'google.com'],
+    cidrs: [
+      // نطاقات Googlebot الرسمية (IPv4 + IPv6) — تُنشر رسمياً من Google
+      '66.249.64.0/19', '66.249.64.0/20', '66.249.70.0/24', '66.249.71.0/24',
+      '66.249.72.0/22', '66.249.76.0/22', '66.249.80.0/20', '66.249.64.0/19',
+      '64.233.160.0/19', '216.239.32.0/19',
+      '2001:4860:4801::/48', '2001:4860:4805::/48'
+    ]
+  },
+  {
+    ua: /bingbot|bingpreview|msnbot|adindexer/i,
+    domains: ['search.msn.com', 'bing.com'],
+    cidrs: ['40.77.167.0/24', '40.77.160.0/19', '40.77.163.0/24', '157.55.39.0/24', '207.46.13.0/24', '66.249.64.0/20']
+  },
+  {
+    ua: /yandexbot|yandexrenderterm|yandeximages/i,
+    domains: ['yandex.ru', 'yandex.net', 'yandex.com'],
+    cidrs: ['77.88.0.0/18', '5.255.192.0/18', '37.9.64.0/18', '95.108.128.0/17']
+  },
+  {
+    ua: /baiduspider|baiduimage/i,
+    domains: ['baidu.jp'],
+    cidrs: ['220.181.108.0/24', '220.181.38.0/24', '123.125.71.0/24', '180.76.15.0/24']
+  },
+  {
+    ua: /duckduckbot/i,
+    domains: ['duckduckgo.com'],
+    cidrs: ['40.77.167.0/24', '40.77.160.0/19']
+  }
 ];
+
+// فحص هل عنوان IP داخل نطاق CIDR (يدعم IPv4 وIPv6).
+function ipInCidr(ip, cidr) {
+  try {
+    const ipStr = String(ip || '');
+    if (!net.isIP(ipStr)) return false;
+    const [range, bitsStr] = String(cidr).split('/');
+    const bits = parseInt(bitsStr, 10);
+    if (typeof bits !== 'number' || isNaN(bits)) return false;
+    const toBytes = (addr) => {
+      if (net.isIPv4(addr)) return addr.split('.').map(Number);
+      // IPv6: نوسّع الترميز المضغوط '::' ثم نحول كل مجموعة hex إلى بايتين.
+      let a = String(addr).toLowerCase();
+      if (a.includes('::')) {
+        const [left = '', right = ''] = a.split('::');
+        const l = left ? left.split(':') : [];
+        const r = right ? right.split(':') : [];
+        const missing = 8 - (l.length + r.length);
+        const zeros = new Array(Math.max(0, missing)).fill('0');
+        a = (l.length ? left : '') + ':' + zeros.join(':') + (r.length ? ':' + right : '');
+        a = a.replace(/^:|:$/g, '');
+      }
+      const out = [];
+      for (const g of a.split(':')) {
+        const val = parseInt(g || '0', 16);
+        out.push((val >> 8) & 255, val & 255);
+      }
+      return out.slice(0, 16);
+    };
+    const ipBytes = toBytes(ipStr);
+    const rangeBytes = toBytes(range);
+    if (ipBytes.length !== rangeBytes.length) return false;
+    const totalBits = ipBytes.length * 8;
+    let matchedBits = 0;
+    for (let i = 0; i < totalBits; i++) {
+      if (i >= bits) break;
+      const byte = i >> 3;
+      const bit = 7 - (i & 7);
+      const ipBit = (ipBytes[byte] >> bit) & 1;
+      const rangeBit = (rangeBytes[byte] >> bit) & 1;
+      if (ipBit !== rangeBit) return false;
+      matchedBits++;
+    }
+    return true;
+  } catch (e) { return false; }
+}
+
+// يبحث عن أي نطاق CIDR من القائمة يطابق IP الروبوت.
+function crawlerIpMatchesCidr(rule, ip) {
+  if (!rule || !Array.isArray(rule.cidrs) || !rule.cidrs.length) return false;
+  return rule.cidrs.some(c => ipInCidr(ip, c));
+}
 const VERIFIED_CRAWLER_CACHE = new Map(); // ip -> { allowed, expires }
 const CRAWLER_OK_TTL_MS = 24 * 60 * 60 * 1000; // نتيجة موجبة: يوم كامل
-const CRAWLER_FAIL_TTL_MS = 10 * 60 * 1000;     // نتيجة سالبة: دقائق حتى لا نثقل DNS
+const CRAWLER_FAIL_TTL_MS = 2 * 60 * 1000;     // نتيجة سالبة: دقيقتان حتى لا نثقل DNS ولا نُهدر وقت مربط الزحف
 
 async function isVerifiedSearchCrawler(req) {
   const ua = String(requestHeader(req, 'user-agent') || '');
@@ -1112,7 +1193,11 @@ async function isVerifiedSearchCrawler(req) {
         allowed = Array.isArray(addrs) && (addrs.length === 0 || addrs.includes(ip)); // تعذر التأكيد الطردي لا يلغي تطابق rDNS
       } catch (e) { allowed = true; }
     }
-  } catch (e) { allowed = false; } // فشل DNS = يُعامل كمستخدم عادي وتسري عليه البوابة
+  } catch (e) { allowed = false; } // فشل DNS العكسي (لا PTR للعنوان أو مشكلة DNS)
+  // طبقة احتياطية: إن تعذّر فكّ rDNS يبقى الروبوت موثّقاً إذا كان عنوانه ضمن
+  // نطاقات المحرك الرسمية. هذا يمنع إفشال طلب «الفهرسة» في أدوات مشرفي المواقع،
+  // بينما يبقى منع VPN سليماً لأن هذه النطاقات مملوكة للمحركات فعلاً.
+  if (!allowed && crawlerIpMatchesCidr(rule, ip)) allowed = true;
   VERIFIED_CRAWLER_CACHE.set(ip, { allowed, expires: now + (allowed ? CRAWLER_OK_TTL_MS : CRAWLER_FAIL_TTL_MS) });
   if (VERIFIED_CRAWLER_CACHE.size > 5000) {
     for (const [k, v] of VERIFIED_CRAWLER_CACHE) if (v.expires < now) VERIFIED_CRAWLER_CACHE.delete(k);
