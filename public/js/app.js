@@ -8241,7 +8241,12 @@ function renderPayPalButtons() {
           return order.order_id;
         } catch (e) {
           // احفظ السبب الحقيقي (رسالة الخادم) لعرضه في onError وفوق زر الدفع.
-          PAYPAL_LAST_ERROR = (e && (e.error || e.message)) || 'تعذر إنشاء عملية الدفع، تحقق من إعدادات PayPal';
+          let baseErr = (e && (e.error || e.message)) || 'تعذر إنشاء عملية الدفع، تحقق من إعدادات PayPal';
+          // إن كان بيرPayPal قد قيّد الحساب التجاري، نعرض توجيهاً واضحاً بدل الرسالة الإنجليزية المجردة.
+          if (/merchant account is restricted|account is restricted|restricted/i.test(baseErr)) {
+            baseErr = 'الحساب التجاري مقيد لدى PayPal ولا يستطيع قبول الدفعات — يرجى حل القيد من حساب PayPal (تفعيل الحساب وإكمال بيانات العمل) أو استخدام وضع «تجريبي» بحساب Business مُفعّل.';
+          }
+          PAYPAL_LAST_ERROR = baseErr;
           toast(PAYPAL_LAST_ERROR, false);
           if (note) { note.style.display = 'block'; note.textContent = PAYPAL_LAST_ERROR; }
           return actions && actions.reject ? actions.reject() : null;

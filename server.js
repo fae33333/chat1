@@ -5723,20 +5723,30 @@ app.post('/api/admin/paypal/test', requireSuperAdmin, async (req, res) => {
   const secret = String(s.paypal_secret || '').trim();
   try {
     const token = await paypalAccessToken(clientId, secret, mode);
-    // N.B.: نسجّل أن عملة الباقة قد لا يدعمها الموقع؛ نكتفي هنا بالتحقق من التوكن.
+    // نجرّب فعلياً إنشاء طلب دفع بمبلغ رمزي (لا يُخصم أي مبلغ — إنشاء أمر فقط)
+    // حتى نكشف قيد «الحساب التجاري مقيد» (merchant account is restricted) الذي
+    // يمنع قبول الدفعات رغم صحة المفاتيح.
+    const currency = String(s.paypal_currency || 'USD').toUpperCase();
+    const testOrder = await paypalCreateOrder(token, 1.00, currency, mode, {
+      brand_name: s.site_name || 'نجوم العرب',
+      description: 'اختبار صلاحية الحساب التجاري (لا يُخصم أي مبلغ)'
+    });
     const base = paypalApiBase(mode);
     return res.json({
       ok: true,
       mode,
       base,
-      message: `نجح الاتصال بـ PayPal (${mode === 'sandbox' ? 'وضع تجريبي' : 'وضع حي'}). المفاتيح صحيحة، ويمكن الآن إنشاء عمليات الدفع.`
+      message: `جيّد! المفاتيح صحيحة ويمكن للحساب التجاري إنشاء عمليات دفع (${mode === 'sandbox' ? 'وضع تجريبي' : 'وضع حي'}).`
     });
   } catch (err) {
     const status = err && err.httpStatus ? ` (HTTP ${err.httpStatus})` : '';
     const msg = ((err && err.message) || 'تعذر الاتصال بـ PayPal') + status;
-    const hint = /401|unauthorized|invalid client|invalid_client/i.test(msg)
-      ? ' — يرجى التحقق من صحة Client ID وSecret، وأنهما لتطبيق REST نفسه، وأن الوضع (حي/تجريبي) يطابق نوع الحساب.'
-      : (mode === 'live' ? ' — تأكد أن الحساب تجاري موثّق (Business) وأن الوضع «حي».' : '');
+    const isRestricted = /merchant account is restricted|account is restricted|restricted/i.test(msg);
+    const hint = isRestricted
+      ? ' — الحساب التجاري مقيد/محدود لدى PayPal ولا يستطيع قبول الدفعات. يجب حل هذا القيد من لوحة حساب PayPal نفسه: فعّل الحساب (verify)، أكمل بيانات العمل، وتأكد أن التطبيق REST «Live» تابع لحساب تجاري موثّق. إن كنت تستخدم وضع «تجريبي»، أنشئ حساب Business مفعّل في Sandbox بدل حساب شخصي.'
+      : (/401|unauthorized|invalid client|invalid_client/i.test(msg)
+        ? ' — يرجى التحقق من صحة Client ID وSecret، وأنهما لتطبيق REST نفسه، وأن الوضع (حي/تجريبي) يطابق نوع الحساب.'
+        : (mode === 'live' ? ' — تأكد أن الحساب تجاري موثّق (Business) وأن الوضع «حي».' : ''));
     return res.json({ ok: false, message: msg + hint });
   }
 });
