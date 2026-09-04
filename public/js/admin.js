@@ -2294,8 +2294,11 @@ const PAGES = {
             <input class="inp" id="payPaypalClientId" placeholder="مثال: AQ7vH2..." style="direction:ltr;text-align:left;font-family:monospace">
           </div>
           <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#10b981">lock_fill</i> Secret:</label>
+            <label><i class="f7-icons mi" style="color:#10b981">lock_fill</i> Secret:
+              <span id="paySecretStatus" style="font-size:11px;font-weight:700;color:#64748b"></span>
+            </label>
             <input class="inp" type="password" id="payPaypalSecret" placeholder="مثال: EO9xK3..." style="direction:ltr;text-align:left;font-family:monospace">
+            <small style="display:block;margin-top:4px;color:#64748b;font-size:11px">اتركه فارغاً للإبقاء على المفتاح الحالي.</small>
           </div>
         </div>
 
@@ -2352,30 +2355,46 @@ const PAGES = {
         </div>
       </div>`,
     bind: async () => {
-      try {
-        const res = await api('/api/admin/payment-settings');
-        $('#payPaypalClientId').value = res.paypal_client_id || '';
-        $('#payPaypalSecret').value = '';
-        $('#payPaypalMode').value = res.paypal_mode || 'live';
-        $('#payPaypalCurrency').value = res.paypal_currency || 'USD';
-        $('#payPaypalEnabled').checked = res.paypal_enabled !== 0;
-        $('#payBankName').value = res.merchant_bank_name || '';
-        $('#payHolderName').value = res.merchant_holder_name || '';
-        $('#payIban').value = res.merchant_iban || '';
-      } catch (e) {}
+      const refresh = async () => {
+        try {
+          const res = await api('/api/admin/payment-settings');
+          $('#payPaypalClientId').value = res.paypal_client_id || '';
+          $('#payPaypalSecret').value = '';
+          $('#paySecretStatus').textContent = res.paypal_has_secret ? '✓ المفتاح محفوظ' : 'لم يُحفظ بعد';
+          $('#paySecretStatus').style.color = res.paypal_has_secret ? '#059669' : '#dc2626';
+          $('#payPaypalMode').value = res.paypal_mode || 'live';
+          $('#payPaypalCurrency').value = res.paypal_currency || 'USD';
+          $('#payPaypalEnabled').checked = res.paypal_enabled !== 0;
+          $('#payBankName').value = res.merchant_bank_name || '';
+          $('#payHolderName').value = res.merchant_holder_name || '';
+          $('#payIban').value = res.merchant_iban || '';
+        } catch (e) {}
+      };
+      await refresh();
 
       $('#savePaymentSettingsBtn').onclick = async () => {
-        await api('/api/admin/payment-settings', 'POST', {
-          paypal_client_id: $('#payPaypalClientId').value.trim(),
-          paypal_secret: $('#payPaypalSecret').value.trim(),
-          paypal_mode: $('#payPaypalMode').value,
-          paypal_currency: $('#payPaypalCurrency').value,
-          paypal_enabled: $('#payPaypalEnabled').checked ? 1 : 0,
-          merchant_bank_name: $('#payBankName').value.trim(),
-          merchant_holder_name: $('#payHolderName').value.trim(),
-          merchant_iban: $('#payIban').value.trim()
-        });
-        toast('تم حفظ إعدادات بوابة الدفع PayPal بنجاح ✓');
+        try {
+          const r = await api('/api/admin/payment-settings', 'POST', {
+            paypal_client_id: $('#payPaypalClientId').value.trim(),
+            paypal_secret: $('#payPaypalSecret').value.trim(),
+            paypal_mode: $('#payPaypalMode').value,
+            paypal_currency: $('#payPaypalCurrency').value,
+            paypal_enabled: $('#payPaypalEnabled').checked ? 1 : 0,
+            merchant_bank_name: $('#payBankName').value.trim(),
+            merchant_holder_name: $('#payHolderName').value.trim(),
+            merchant_iban: $('#payIban').value.trim()
+          });
+          if (r && r.ok) {
+            toast('تم حفظ إعدادات بوابة الدفع PayPal بنجاح ✓');
+            // أعد قراءة الحالة المحفوظة فوراً: يظهر الـ Client ID و«المفتاح محفوظ ✓»
+            // حتى يرى المستخدم أن القيم ذُخّرت فعلاً في الخادم.
+            await refresh();
+          } else {
+            toast((r && r.error) || 'تعذر حفظ إعدادات PayPal', false);
+          }
+        } catch (e) {
+          toast((e && e.error) || 'تعذر حفظ إعدادات PayPal', false);
+        }
       };
     }
   },

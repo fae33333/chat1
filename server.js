@@ -5667,6 +5667,9 @@ app.get('/api/admin/payment-settings', requireSuperAdmin, async (req, res) => {
     merchant_iban: s.merchant_iban || '',
     paypal_enabled: s.paypal_enabled !== '0' ? 1 : 0,
     paypal_client_id: s.paypal_client_id || '',
+    // لا نُعيد قيمة الـ secret أبداً لأسباب أمنية، لكن نُعلم الواجهة إن كان
+    // مفتاحاً محفوظاً مسبقاً كي تعرض «المفتاح محفوظ ✓» وتُبقيه عند الحفظ الفارغ.
+    paypal_has_secret: !!s.paypal_secret,
     paypal_mode: s.paypal_mode || 'live',
     paypal_currency: s.paypal_currency || 'USD'
   });
