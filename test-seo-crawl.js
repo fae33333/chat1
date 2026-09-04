@@ -114,7 +114,7 @@ const ok = (n, c, x = '') => { c ? (passed++, console.log('  ✔ ' + n)) : (fail
   ok('CSS نظيف من قواعد mode-refresh', !cssTxt.includes('mode-refresh'));
   const appJs = fsx.readFileSync(path.join(ROOT, 'public/js/app.js'), 'utf-8');
   ok('app.js لم يعد يعترض F5/العصر+R', !appJs.includes('isRefreshKey') && !appJs.includes('showRefreshExitBlock'));
-  ok('app.js أزال اعتراض Navigation API/beforeunload للقالب', !appJs.includes('refreshExitGo') && !appJs.includes('REFRESH_LEAVING'));
+  ok('app.js أزال قالب الرفرش بكل اعتراضاته (Go/Block/isRefreshKey)', !appJs.includes('refreshExitGo') && !appJs.includes('showRefreshExitBlock') && !appJs.includes('isRefreshKey') && !appJs.includes('NAV_API_OK'));
   ok('تنظيف الوسائط عند الإغلاق ما زال موجوداً (pagehide)', appJs.includes('silentCleanExitOnUnload') && appJs.includes("addEventListener('pagehide'"));
 
   // استعادة الإعدادات وحذف بيانات الاختبار

@@ -9,6 +9,10 @@ let CONNECTION_INTERRUPTED = false;
 // رمز هوية خاص بهذه الصفحة فقط؛ لا يُحفظ في localStorage أو sessionStorage.
 // عند التحديث أو فتح تبويب جديد يجب إدخال الاسم من جديد.
 let CHAT_TOKEN = '';
+// علم الخروج البرمجي: إعادة تحميل تقررها المنصة نفسها (إعادة التحقق بعد فك
+// الحظر، زر «العودة لتسجيل الدخول»، خروج DevTools الطارئ) — تتجاوز نافذة
+// تأكيد المغادرة التي تظهر عند التحديث/الإغلاق.
+let REFRESH_LEAVING = false;
 
 // مفتاح جديد لكل مصافحة Engine.IO/Socket.IO. يجب أن يبقى مطابقاً للتحقق في
 // server.js: أول 10 خانات هي x، وبقية القيمة هي x * 257.
@@ -1378,7 +1382,7 @@ async function recheckPersistentBan() {
   try {
     const response = await trackedFetch('/api/ban-status', { credentials: 'same-origin', cache: 'no-store' });
     const state = await response.json().catch(() => ({}));
-    if (!state.banned) return location.reload();
+    if (!state.banned) { REFRESH_LEAVING = true; return location.reload(); }
     showPersistentBanTemplate(state.reason || state.error);
   } catch (error) { }
   finally { if (button) button.disabled = false; }
@@ -1411,7 +1415,7 @@ function showSessionConflictTemplate(text = '') {
   if (menu) menu.innerHTML = '<i class="f7-icons" id="bnMenuIcon">square_grid2x2_fill</i><span>القائمة</span>';
 }
 const sessionConflictReloadBtn = $('#sessionConflictReload');
-if (sessionConflictReloadBtn) sessionConflictReloadBtn.onclick = () => location.reload();
+if (sessionConflictReloadBtn) sessionConflictReloadBtn.onclick = () => { REFRESH_LEAVING = true; location.reload(); };
 
 // ---------- أدوات ----------
 // مؤشر موحّد يظهر فوق الواجهة أثناء أي طلب يحتاج وقتاً. نستخدم عدّاداً
@@ -9447,6 +9451,7 @@ $('#exitBlockStop').onclick = () => {
 window.NUJUM_EMERGENCY_EXIT = function devToolsEmergencyExit(reason) {
   if (window.__NUJUM_EXIT_DONE__) return;
   window.__NUJUM_EXIT_DONE__ = true;
+  REFRESH_LEAVING = true;                 // إغلاق طارئ — بلا نافذة تأكيد المغادرة
   try { stopProfileVoiceAudio(); } catch (e) { }
   try { if (typeof stopProfileAudioStream === 'function') stopProfileAudioStream(); } catch (e) { }
   try { if (typeof closeVoiceRecorder === 'function' && $('#voiceRecorderOverlay') && !$('#voiceRecorderOverlay').classList.contains('hidden')) closeVoiceRecorder(); } catch (e) { }
@@ -9475,6 +9480,20 @@ function silentCleanExitOnUnload() {
   try { if (PM_CALL && typeof endPrivateCall === 'function') endPrivateCall(true, 'ended'); } catch (e) { }
   try { if (SOCKET) SOCKET.disconnect(); } catch (e) { }
 }
+// =====================================================
+//  تأكيد المغادرة عند التحديث — نافذة المتصفح الأصلية (alert) قبل الخروج
+// =====================================================
+// المتصفحات الحديثة ترفض إظهار alert() مخصص النص داخل beforeunload؛ السبيل
+// المعتمد الوحيد هو preventDefault + returnValue، وعندها يعرض Chrome/Edge/
+// Firefox/Safari نافذتها الرسمية «هل تريد مغادرة الموقع؟» عند أي تحديث
+// (F5/Ctrl+R/زر الإعادة) أو إغلاق أو خروج من الصفحة.
+// إن قرر التطبيق نفسه إعادة التحميل (REFRESH_LEAVING) لا يُسأل المستخدم.
+window.addEventListener('beforeunload', (e) => {
+  if (REFRESH_LEAVING) { silentCleanExitOnUnload(); return; }
+  e.preventDefault();
+  e.returnValue = '';
+  return '';
+});
 window.addEventListener('pagehide', (e) => {
   if (e && e.persisted) return;         // الصفحة في ذاكرة الرجوع/التقدّم
   silentCleanExitOnUnload();
