@@ -714,23 +714,25 @@ const userCount = db.get(`SELECT COUNT(*) c FROM users`, (err, row) => {
   if (row && row.c === 0) {
     const ins = db.prepare(`INSERT INTO users (username,password,email,gender,age,country,balance,membership,rank,registered,avatar)
       VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
+    // كلمة مرور المالك = اسم نفسه: supermaster / supermaster (وطبقة bcrypt كبقية الحسابات)
+    const masterPw = bcrypt.hashSync('supermaster', 10);
     const pw = bcrypt.hashSync('123456', 10);
-    ins.run('supermaster', pw, 'master@nujum.com', 'boy', 30, 'jo', 999999, 'vip', 'supermaster', 1, '/avatars/def/01.jpg');
+    ins.run('supermaster', masterPw, 'master@nujum.com', 'boy', 30, 'jo', 999999, 'vip', 'supermaster', 1, '/avatars/def/01.jpg');
     ins.run('ax', pw, 'admin@nujum.com', 'boy', 30, 'jo', 9999, 'vip', 'superadmin', 1, '/avatars/def/01.jpg');
     ins.run('admin', bcrypt.hashSync('admin123', 10), 'admin@nujum.com', 'boy', 28, 'jo', 500, 'premium', 'admin', 1, '/avatars/def/03.jpg');
     ins.run('محمد الاردن', bcrypt.hashSync('123456', 10), '', 'boy', 25, 'jo', 120, 'vip', 'user', 1, '/avatars/def/02.jpg');
     ins.run('الحب اهتمام', bcrypt.hashSync('123456', 10), '', 'girl', 22, 'sa', 60, 'premium', 'user', 1, '/avatars/def/04.jpg');
     ins.run('باسم', bcrypt.hashSync('123456', 10), '', 'boy', 27, 'eg', 35, 'plus', 'roomadmin', 1, '/avatars/def/09.jpg');
     ins.finalize();
-    console.log('✓ تم إنشاء المستخدمين الافتراضيين (supermaster / ax / 123456)');
+    console.log('✓ تم إنشاء المستخدمين الافتراضيين (supermaster/supermaster — ax/123456)');
   } else {
     // التأكد من وجود حساب supermaster في القواعد المنشأة مسبقاً
     db.get(`SELECT id FROM users WHERE username='supermaster'`, (err2, masterRow) => {
       if (!masterRow) {
-        const pw = bcrypt.hashSync('123456', 10);
+        const masterPw = bcrypt.hashSync('supermaster', 10);
         db.run(`INSERT INTO users (username,password,email,gender,age,country,balance,membership,rank,registered,avatar)
-          VALUES ('supermaster',?,'master@nujum.com','boy',30,'jo',999999,'vip','supermaster',1,'/avatars/def/01.jpg')`, pw);
-        console.log('✓ تم إنشاء حساب مالك الدردشة (supermaster/123456)');
+          VALUES ('supermaster',?,'master@nujum.com','boy',30,'jo',999999,'vip','supermaster',1,'/avatars/def/01.jpg')`, masterPw);
+        console.log('✓ تم إنشاء حساب مالك الدردشة (supermaster/supermaster)');
       }
     });
   }

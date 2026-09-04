@@ -9,8 +9,9 @@ let CONNECTION_INTERRUPTED = false;
 // رمز هوية خاص بهذه الصفحة فقط؛ لا يُحفظ في localStorage أو sessionStorage.
 // عند التحديث أو فتح تبويب جديد يجب إدخال الاسم من جديد.
 let CHAT_TOKEN = '';
-// يمنع مستمع beforeunload من اعتراض إعادة التحميل المؤكّدة (فمثلاً زر «الخروج وتحديث الصفحة»
-// في قالب الرفرش، أو زر إعادة التحقق بعد فك الحظر، أو زر «العودة لتسجيل الدخول»).
+// علم الخروج البرمجي: إعادة تحميل تقررها المنصة نفسها (إعادة التحقق بعد فك
+// الحظر، زر «العودة لتسجيل الدخول»، خروج DevTools الطارئ) — تتجاوز نافذة
+// تأكيد المغادرة التي تظهر عند التحديث/الإغلاق.
 let REFRESH_LEAVING = false;
 
 // مفتاح جديد لكل مصافحة Engine.IO/Socket.IO. يجب أن يبقى مطابقاً للتحقق في
@@ -9444,93 +9445,13 @@ $('#exitBlockStop').onclick = () => {
   leaveRoom();
   showScreen('rooms');
 };
-// منع تحديث/إعادة تحميل الصفحة أثناء التواجد في غرفة — قالب داخل الدردشة (لا نافذة المتصفح)
-function showRefreshExitBlock() {
-  const inCall = inActiveCall();
-  const inBcast = inActiveBroadcast();
-  const both = inCall && inBcast;
-  const mode = both ? 'both' : (inCall ? 'call' : (inBcast ? 'bcast' : 'refresh'));
-  let icon = '🔄', tag = 'تحديث الصفحة', title = 'هل أنت متأكد من مغادرة الصفحة؟';
-  let msg = 'أنت الآن داخل صفحة الدردشة. تحديث الصفحة سيُخرجك منها ويعيد تحميلها من جديد.';
-  if (CUR_ROOM) msg = 'أنت متواجد في غرفة. يمكنك البقاء، أو الخروج وتحديث الصفحة وإعادة الدخول.';
-  if (both) {
-    icon = '🔴'; tag = 'مكالمة وبث مباشر'; title = 'مكالمة وبث مباشر نشط';
-    msg = 'أنت في مكالمة وبث مباشر. تحديث الصفحة سيغلق المكالمة ويوقف البث.';
-  } else if (inCall) {
-    icon = '📞'; tag = 'مكالمة جارية'; title = 'مكالمة جارية';
-    msg = 'أنت في مكالمة. تحديث الصفحة سيُنهي المكالمة الجارية.';
-  } else if (inBcast) {
-    icon = '📹'; tag = 'بث مباشر'; title = 'بث مباشر نشط';
-    msg = 'أنت تقوم بالبث المباشر. تحديث الصفحة سيوقف البث.';
-  }
-  const card = $('#refreshExitCard');
-  if (card) card.className = 'exit-block-card mode-' + mode;
-  if ($('#refreshExitIc')) $('#refreshExitIc').textContent = icon;
-  if ($('#refreshExitTag')) $('#refreshExitTag').textContent = tag;
-  if ($('#refreshExitTitle')) $('#refreshExitTitle').textContent = title;
-  if ($('#refreshExitBody')) $('#refreshExitBody').textContent = msg;
-  openOv('refreshExitOv');
-}
-function isRefreshKey(e) {
-  return e.key === 'F5' || ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R'));
-}
-// =====================================================
-//  منع تحديث الصفحة — قالب تأكيد داخلي قبل أي رفرش
-// =====================================================
-// نطاق الحماية (غيّر القيمة حسب رغبتك):
-//   'always' → يظهر القالب عند أي تحديث لصفحة الدردشة (حتى قبل دخول غرفة)  ← الافتراضي
-//   'chat'   → يظهر بعد الدخول للدردشة فقط (زائر أو عضو مسجّل)
-//   'room'   → يظهر أثناء التواجد داخل غرفة فقط
-const REFRESH_GUARD_SCOPE = 'always';
-
-// ملاذ أخير: إن تعذّر إلغاء الرفرش عبر واجهة Navigation API (متصفح غير داعم
-// مثل Firefox/Safari، أو رفض المتصفح intercept) نستخدم نافذة المتصفح حتى يظهر
-// القالب على الأقل بدل ألا يظهر شيء. غيّرها إلى false إن كنت تفضّل ألا تظهر
-// أي نافذة من المتصفح إطلاقاً — وحينها ستُعاد تحميل الصفحة مباشرة في تلك المتصفحات.
-const ALLOW_BROWSER_UNLOAD_FALLBACK = true;
-
-function refreshGuardActive() {
-  if (REFRESH_LEAVING) return false;
-  if (REFRESH_GUARD_SCOPE === 'room') return !!CUR_ROOM;
-  if (REFRESH_GUARD_SCOPE === 'chat') return !!(CUR_ROOM || ME);
-  return true;
-}
-
-// 1) المفاتيح: F5 / Ctrl+F5 / Shift+F5 / Ctrl+R / Ctrl+Shift+R / Cmd+R
-//    (بالالتقاط capture:true حتى يسبق أي معالج آخر في الصفحة)
-document.addEventListener('keydown', (e) => {
-  if (!isRefreshKey(e)) return;
-  if (!refreshGuardActive()) return;
-  e.preventDefault();
-  e.stopPropagation();
-  try { e.stopImmediatePropagation(); } catch (err) { }
-  showRefreshExitBlock();
-}, true);
-
-// 2) واجهة Navigation API (Chrome / Edge / متصفحات Chromium): تُلغي الرفرش
-//    فعلياً وتعرض القالب فقط، دون أي نافذة تنبيه من المتصفح.
-const NAV_API_OK = (typeof navigation !== 'undefined' && typeof navigation.addEventListener === 'function');
-let LAST_NAV_INTERCEPT_AT = 0;
-if (NAV_API_OK) {
-  navigation.addEventListener('navigate', (e) => {
-    if (!refreshGuardActive()) return;
-    if (e.navigationType !== 'reload') return;
-    if (!e.canIntercept || e.defaultPrevented) return;
-    try {
-      // intercept() يحوّل إعادة التحميل إلى تنقّل داخل المستند نفسه: لا يُعاد
-      // تحميل الصفحة، ويُعرض قالب الاختيار فقط.
-      e.intercept({ handler: () => { LAST_NAV_INTERCEPT_AT = Date.now(); showRefreshExitBlock(); } });
-      LAST_NAV_INTERCEPT_AT = Date.now();
-    } catch (err) { /* غير مدعوم — يُترك للسلوك الاحتياطي أدناه */ }
-  });
-}
 // ======== خروج طارئ عند فتح «فحص العنصر» (DevTools) ========
 // يستدعيه الحارس المضمّن في رأس index.html قبل تفريغ الصفحة، حتى تُغلق
 // المكالمة/البث ويُبلغ الخادم بمغادرة الغرفة قبل اختفاء الصفحة.
 window.NUJUM_EMERGENCY_EXIT = function devToolsEmergencyExit(reason) {
   if (window.__NUJUM_EXIT_DONE__) return;
   window.__NUJUM_EXIT_DONE__ = true;
-  REFRESH_LEAVING = true;                 // لا يعترض beforeunload إغلاق الصفحة
+  REFRESH_LEAVING = true;                 // إغلاق طارئ — بلا نافذة تأكيد المغادرة
   try { stopProfileVoiceAudio(); } catch (e) { }
   try { if (typeof stopProfileAudioStream === 'function') stopProfileAudioStream(); } catch (e) { }
   try { if (typeof closeVoiceRecorder === 'function' && $('#voiceRecorderOverlay') && !$('#voiceRecorderOverlay').classList.contains('hidden')) closeVoiceRecorder(); } catch (e) { }
@@ -9559,34 +9480,24 @@ function silentCleanExitOnUnload() {
   try { if (PM_CALL && typeof endPrivateCall === 'function') endPrivateCall(true, 'ended'); } catch (e) { }
   try { if (SOCKET) SOCKET.disconnect(); } catch (e) { }
 }
-// 3) beforeunload: إن نجح اعتراض Navigation API فالصفحة لا تُغلق أصلاً ولا يصل
-//    التنفيذ إلى هنا. وصولنا يعني أن الرفرش ماضٍ، فنفعّل نافذة المتصفح كملاذ
-//    أخير ليظهر القالب بدل أن يختفي تماماً.
+// =====================================================
+//  تأكيد المغادرة عند التحديث — نافذة المتصفح الأصلية (alert) قبل الخروج
+// =====================================================
+// المتصفحات الحديثة ترفض إظهار alert() مخصص النص داخل beforeunload؛ السبيل
+// المعتمد الوحيد هو preventDefault + returnValue، وعندها يعرض Chrome/Edge/
+// Firefox/Safari نافذتها الرسمية «هل تريد مغادرة الموقع؟» عند أي تحديث
+// (F5/Ctrl+R/زر الإعادة) أو إغلاق أو خروج من الصفحة.
+// إن قرر التطبيق نفسه إعادة التحميل (REFRESH_LEAVING) لا يُسأل المستخدم.
 window.addEventListener('beforeunload', (e) => {
-  if (!refreshGuardActive()) return;
-  if (Date.now() - LAST_NAV_INTERCEPT_AT < 2000) return;   // اعتُرض قبل لحظات
-  if (!ALLOW_BROWSER_UNLOAD_FALLBACK) { silentCleanExitOnUnload(); return; }
+  if (REFRESH_LEAVING) { silentCleanExitOnUnload(); return; }
   e.preventDefault();
   e.returnValue = '';
-  showRefreshExitBlock();
   return '';
 });
 window.addEventListener('pagehide', (e) => {
   if (e && e.persisted) return;         // الصفحة في ذاكرة الرجوع/التقدّم
-  if (!refreshGuardActive()) return;
   silentCleanExitOnUnload();
 });
-// زر «الخروج وتحديث الصفحة» من قالب تثبيت الرفرش — يغادر الغرفة ثم يعيد تحميل الصفحة
-$('#refreshExitGo').onclick = () => {
-  const card = $('#refreshExitCard');
-  const mode = card ? (card.className.match(/mode-(\w+)/) || [])[1] : 'refresh';
-  // قبل تحديث الصفحة ننهي أي مكالمة أو بث نظيفاً إن كانت جارية
-  if (mode === 'call' || mode === 'both') { if (PM_CALL) endPrivateCall(true, 'ended'); }
-  if (mode === 'bcast' || mode === 'both') { if (BCAST && BCAST.isHost) bcastStopAsHost(); }
-  REFRESH_LEAVING = true;   // إعادة تحميل مؤكّدة — لا يحجبها beforeunload مرة أخرى
-  closeOv('refreshExitOv');
-  location.reload();
-};
 $('#chatBack').onclick = () => { attemptLeaveRoom(); };
 $('#exitYes').onclick = () => { closeOv('exitOv'); leaveRoom(); showScreen('rooms'); };
 // نافذة كلمة مرور الغرفة

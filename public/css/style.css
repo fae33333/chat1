@@ -1635,18 +1635,6 @@ body.lang-en .notif-info { direction:ltr; text-align:left; }
   background:linear-gradient(135deg,#ef4444,#b91c1c);
   box-shadow:0 8px 18px rgba(239,68,68,.28);
 }
-/* وضع «تحديث الصفحة» — لون أزرق هادئ للقالب العام */
-.exit-block-card.mode-refresh::before { background:linear-gradient(90deg,#1479f2,#3b8cff); }
-.exit-block-card.mode-refresh .ebc-glow { background:radial-gradient(closest-side, rgba(20,121,242,.16), transparent); }
-.exit-block-card.mode-refresh .ebc-ic {
-  background:linear-gradient(145deg,#1479f2,#3b8cff);
-  box-shadow:0 13px 30px rgba(20,121,242,.32), inset 0 0 0 7px rgba(255,255,255,.16);
-}
-.exit-block-card.mode-refresh .ebc-tag { background:#e5efff; color:#1d4ed8; }
-.exit-block-card.mode-refresh .ebc-btn.solid {
-  background:linear-gradient(135deg,#1479f2,#3b8cff);
-  box-shadow:0 8px 18px rgba(20,121,242,.28);
-}
 
 /* ============ ملف المستخدم الآخر (مطابق لمرجع الملف والهدايا) ============ */
 .vp-top {direction:ltr;height:132px;box-sizing:border-box;display:flex;align-items:flex-start;padding:22px 14px 8px;gap:9px;}
