@@ -40,6 +40,28 @@ function toast(msg, ok = true) {
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+// معاينة حيّة للجلد المختار (ثيم جاهز أو لون مخصص) داخل لوحة الإدارة.
+function renderSkinLive(sel) {
+  const box = $('#skinLive');
+  if (!box || !window.SkinLib) return;
+  const v = window.SkinLib.computeSkinVars(sel || 'default');
+  if (!v) return;
+  box.style.background = v['--skin-bg-light'];
+  box.style.borderColor = v['--skin-border'];
+  box.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+      <span style="width:24px;height:24px;border-radius:50%;background:${v['--main']};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:900;box-shadow:0 2px 8px ${v['--skin-glow']}">ن</span>
+      <span style="font-weight:800;color:${v['--main']};font-size:14px">نجوم العرب</span>
+      <span style="font-size:10px;color:#8a90a3">الآن</span>
+    </div>
+    <div style="max-width:82%;padding:9px 12px;border-radius:4px 12px 12px 12px;background:${v['--skin-btn']};color:#fff;font-size:13px;box-shadow:0 3px 10px ${v['--skin-glow']}">هذه معاينة للون الجلد الجديد 🎨</div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+      <span style="padding:7px 14px;border-radius:10px;background:${v['--skin-btn']};color:#fff;font-size:12px;font-weight:800;box-shadow:0 2px 8px ${v['--skin-glow']}">زر أساسي</span>
+      <span style="padding:7px 14px;border-radius:10px;background:#fff;color:${v['--main']};border:1.5px solid ${v['--skin-border']};font-size:12px;font-weight:800">زر ثانوي</span>
+      <span style="font-size:11px;color:#6b7280;font-weight:800">${v['--main']}</span>
+    </div>`;
+}
+
 // =====================================================
 //  نظام اللغات والترجمة الشامل في لوحة الإدارة (Admin i18n Engine)
 // =====================================================
@@ -82,11 +104,13 @@ const ADMIN_I18N_EN = {
   "باقات الذهب والدفع": "Gold Packages & Payments",
   "إدارة باقات الذهب": "Manage Gold Packages",
   "إدارة باقات شراء الذهب": "Manage Gold Packages",
-  "إعدادات بطاقة الإيداع والدفع": "Deposit Card & Payment Settings",
+  "إعدادات بطاقة الإيداع والدفع": "PayPal Payment Settings",
   "إعدادات بطاقة الإيداع وبوابة الدفع": "Deposit Card & Payment Gateway",
   "إعدادات بطاقة الإيداع وبوابة الدفع البنكية": "Deposit Card & Payment Gateway",
-  "سجل مدفوعات البطاقات": "Card Payment Transactions",
-  "سجل مدفوعات البطاقات البنكية": "Card Payment Transactions Log",
+  "سجل مدفوعات البطاقات": "PayPal Payment Transactions",
+  "سجل مدفوعات البطاقات البنكية": "PayPal Payment Log",
+  "إعدادات بوابة الدفع PayPal": "PayPal Payment Settings",
+  "سجل مدفوعات PayPal": "PayPal Payment Transactions",
   "تكاليف العضويات والمكالمات": "Memberships & Call Costs",
   "الاعدادات الاساسيه": "Basic Settings",
   "إعدادات اللغة والترجمة": "Language & Translation",
@@ -547,11 +571,13 @@ const ADMIN_I18N_ES = {
   "باقات الذهب والدفع": "Paquetes de Oro y Pagos",
   "إدارة باقات الذهب": "Gestionar Paquetes de Oro",
   "إدارة باقات شراء الذهب": "Gestionar Paquetes de Oro",
-  "إعدادات بطاقة الإيداع والدفع": "Configuración de Tarjeta y Pagos",
+  "إعدادات بطاقة الإيداع والدفع": "Configuración de Pagos de PayPal",
   "إعدادات بطاقة الإيداع وبوابة الدفع": "Configuración de Tarjeta y Pagos",
   "إعدادات بطاقة الإيداع وبوابة الدفع البنكية": "Configuración de Tarjeta y Pagos",
-  "سجل مدفوعات البطاقات": "Registro de Transacciones de Tarjetas",
-  "سجل مدفوعات البطاقات البنكية": "Registro de Transacciones de Tarjetas",
+  "سجل مدفوعات البطاقات": "Registro de Pagos de PayPal",
+  "سجل مدفوعات البطاقات البنكية": "Registro de Pagos de PayPal",
+  "إعدادات بوابة الدفع PayPal": "Configuración de Pagos de PayPal",
+  "سجل مدفوعات PayPal": "Registro de Pagos de PayPal",
   "تكاليف العضويات والمكالمات": "Costos de Membresías y Llamadas",
   "الاعدادات الاساسيه": "Configuración Básica",
   "إعدادات اللغة والترجمة": "Idioma y Traducción",
@@ -1624,8 +1650,8 @@ function bindLangSwitchers() {
 const MENU = [
   { icon: 'creditcard_fill', color: '#fbbf24', label: 'باقات الذهب والدفع', superAdminOnly: true, subs: [
     { id: 'goldPackages', icon: 'cube_box_fill', label: 'إدارة باقات الذهب', superAdminOnly: true },
-    { id: 'paymentSettings', icon: 'creditcard_fill', label: 'إعدادات بطاقة الإيداع والدفع', superAdminOnly: true },
-    { id: 'paymentTransactions', icon: 'doc_plaintext', label: 'سجل مدفوعات البطاقات', superAdminOnly: true },
+    { id: 'paymentSettings', icon: 'paypal', label: 'إعدادات بوابة الدفع PayPal', superAdminOnly: true },
+    { id: 'paymentTransactions', icon: 'doc_plaintext', label: 'سجل مدفوعات PayPal', superAdminOnly: true },
     { id: 'memberships', icon: 'money_dollar_circle_fill', label: 'تكاليف العضويات والمكالمات', superAdminOnly: true }
   ]},
   { icon: 'gear_alt_fill', color: '#94a3b8', label: 'الاعدادات الاساسيه', superAdminOnly: true, subs: [
@@ -1647,7 +1673,6 @@ const MENU = [
     { id: 'aiSettings', icon: 'sparkles', label: 'إعدادات الذكاء الاصطناعي (AI)', superAdminOnly: true }]},
   { icon: 'desktopcomputer', color: '#38bdf8', label: 'اعدادات النظام', superAdminOnly: true, subs: [
     { id: 'system', icon: 'wrench_fill', label: 'اعدادات النظام الاساسي', superAdminOnly: true },
-    { id: 'protect', icon: 'shield_fill', label: 'الحماية والوصول (VPN/المتصفح)', superAdminOnly: true },
     { id: 'legal', icon: 'doc_text_fill', label: 'الشروط والخصوصية', superAdminOnly: true }]},
   { icon: 'person2_fill', color: '#818cf8', label: 'ادارة المستخدمين', subs: [
     { id: 'userAdd', icon: 'plus_circle_fill', label: 'اضافه مستخدم' },
@@ -1748,6 +1773,27 @@ const swRow = (icon, color, label, key) => `
     <span class="lbl"><i class="f7-icons mi" style="color:${color}">${icon}</i> ${t(label)} :</span>
     <label class="switch"><input type="checkbox" data-key="${key}" ${SETTINGS[key] === '1' ? 'checked' : ''}><span class="tr"><span class="th"></span></span></label>
   </div>`;
+// صف إشعار صوتي: مفتاح تشغيل + رفع صوت مخصص + معاينة/استماع + إزالة
+const soundRow = (icon, color, label, key, hint = '') => {
+  const urlKey = key + '_url';
+  const url = SETTINGS[urlKey] || '';
+  const on = SETTINGS[key] === '1';
+  return `
+    <div class="sound-card">
+      <div class="sound-top">
+        <span class="lbl"><i class="f7-icons mi" style="color:${color}">${icon}</i> ${t(label)}</span>
+        <label class="switch"><input type="checkbox" data-key="${key}" ${on ? 'checked' : ''}><span class="tr"><span class="th"></span></span></label>
+      </div>
+      <div class="sound-controls">
+        <span class="sound-status ${url ? 'has' : ''}">${url ? '✓ صوت مخصص مرفوع' : (on ? '🔊 نغمة افتراضية' : '🔇 مكتوم (مفصول)')}</span>
+        <button type="button" class="btn btn-sm btn-green sound-up" data-urlkey="${urlKey}"><i class="f7-icons">arrow_up</i> رفع صوت</button>
+        <audio class="sound-audio" data-urlkey="${urlKey}" src="${esc(url)}" controls preload="none" ${url ? '' : 'style="display:none"'}></audio>
+        <button type="button" class="btn btn-sm btn-red sound-del" data-urlkey="${urlKey}" ${url ? '' : 'style="display:none"'}><i class="f7-icons">trash_fill</i> إزالة</button>
+        <input type="hidden" data-key="${urlKey}" value="${esc(url)}">
+      </div>
+      ${hint ? `<div class="sound-hint">${hint}</div>` : ''}
+    </div>`;
+};
 const inpRow = (icon, color, label, key, type = 'number', suffix = 'رصيد') => `
   <div class="row">
     <span class="lbl"><i class="f7-icons mi" style="color:${color}">${icon}</i> ${t(label)} :</span>
@@ -1882,23 +1928,32 @@ async function renderCashoutRequests() {
             return '';
           })()}
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f8f9fd;border:1px dashed #d4d9ea;border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:800;color:#4b5563">
-            <i class="f7-icons" style="color:#38bdf8">bank_fill</i>
-            <span>الحساب: <b style="direction:ltr;display:inline-block">${esc(r.account_number)}</b> — <b>${esc(r.account_name || '-')}</b></span>
+            <i class="f7-icons" style="color:#38bdf8">${r.payout_method === 'paypal' ? 'paypal' : 'bank_fill'}</i>
+            ${r.payout_method === 'paypal'
+              ? `<span>الاستلام عبر: <b style="direction:ltr;display:inline-block">${esc(r.paypal_email)}</b> — تحويل تلقائي من حساب الإدارة (PayPal Payouts)</span>`
+              : `<span>الحساب: <b style="direction:ltr;display:inline-block">${esc(r.account_number)}</b> — <b>${esc(r.account_name || '-')}</b> (تحويل يدوي)</span>`}
+            ${(r.payout_status === 'submitted' || r.payout_batch_id) ? `<span style="color:#166534"><i class="f7-icons">checkmark_circle_fill</i> دفعة مرسلة ${esc(r.payout_batch_id || '')}</span>` : ''}
+            ${r.payout_status === 'failed' ? `<span style="color:#b91c1c"><i class="f7-icons">xmark_circle_fill</i> تعذر الإرسال الآلي</span>` : ''}
           </div>
           ${isPending ? `
           <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
-            <button class="btn btn-green" data-cashout-complete="${r.id}" data-usd="${fmt(r.usd_amount || r.net_usd)}" data-acc="${esc(r.account_number)}" data-count="${r.gifts_count || 0}"><i class="f7-icons">checkmark_circle_fill</i> اتمام التحويل ($${fmt(r.usd_amount || r.net_usd)})</button>
+            <button class="btn btn-green" data-cashout-complete="${r.id}" data-usd="${fmt(r.usd_amount || r.net_usd)}" data-acc="${esc(r.payout_method === 'paypal' ? r.paypal_email : r.account_number)}" data-count="${r.gifts_count || 0}"><i class="f7-icons">checkmark_circle_fill</i> ${r.payout_method === 'paypal' ? 'إرسال الدفعة (PayPal)' : 'اتمام التحويل'} ($${fmt(r.usd_amount || r.net_usd)})</button>
             <button class="btn btn-gray" data-cashout-reject="${r.id}"><i class="f7-icons">xmark_circle_fill</i> رفض الطلب</button>
           </div>` : ''}
         </div>`;
     }).join('');
 
     $$('#cashoutList [data-cashout-complete]').forEach(b => b.onclick = async () => {
-      if (!confirm(`سيتم حذف الهدايا المحددة فقط (${b.dataset.count || 0} هدية) من حساب المستلمة بعد اتمام تحويل $${b.dataset.usd} إلى ${b.dataset.acc}.\nهل أتممت التحويل من حساب الإدارة بالفعل؟`)) return;
+      const acc = b.dataset.acc || '';
+      const viaPaypal = /@/.test(acc);
+      if (!confirm(viaPaypal
+        ? `سيُرسل $${b.dataset.usd} تلقائياً من حساب PayPal للإدارة إلى ${acc} (PayPal Payouts) ثم تُحذف الهدايا المحددة فقط (${b.dataset.count || 0} هدية) من حساب المستلمة.\nمتابعة الإرسال الآلي؟`
+        : `سيتم حذف الهدايا المحددة فقط (${b.dataset.count || 0} هدية) من حساب المستلمة بعد اتمام تحويل $${b.dataset.usd} إلى ${acc}.\nهل أتممت التحويل من حساب الإدارة بالفعل؟`)) return;
       b.disabled = true;
       try {
         const r = await api('/api/admin/gift-cashout/' + b.dataset.cashoutComplete + '/complete', 'POST');
-        toast(`تم اتمام التسكير — تم حذف ${r.deleted} هدية من حساب المستلمة ✓`);
+        if (r.pending) toast(`تم إرسال دفعة PayPal (رقم ${r.payout_batch_id}) وهي قيد المعالجة — ستُحذف الهدايا فور اكتمالها ✓`);
+        else toast(r.via_paypal ? `تم الإرسال الآلي عبر PayPal (دفعة ${r.payout_batch_id}) وحُذف ${r.deleted} هدية ✓` : `تم اتمام التسكير — تم حذف ${r.deleted} هدية من حساب المستلمة ✓`);
         renderCashoutRequests();
       } catch (e) { toast(e.error || 'تعذر اتمام العملية', false); b.disabled = false; }
     });
@@ -2234,80 +2289,162 @@ const PAGES = {
   // ====== إعدادات بطاقة الإيداع وبوابة الدفع ======
   paymentSettings: {
     build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#3b82f6">creditcard_fill</i> إعدادات بطاقة الإيداع وبوابة الدفع البنكية</div>
+      <div class="page-title"><i class="f7-icons mi" style="color:#3b82f6">paypal</i> إعدادات بوابة الدفع PayPal</div>
       <div class="info-box" style="background:#eff6ff;border-color:#bfdbfe;color:#1e40af;margin-bottom:18px">
-        حدد هنا بيانات بطاقة الصراف الآلي والحساب البنكي المعتمد الذي يتم استقبال مدفوعات وإيداعات شراء الذهب عليه من المستخدمين.
+        أُنشئت بوابة الدفع عبر <b>PayPal</b> كبديل حقيقي وآمن للبطاقات. أدخل مفاتيح تطبيق PayPal لديك (Client ID + Secret) من لوحة PayPal Developer، وستُخصم المبالغ فعلياً من حساب/بطاقة المشتري ويُشحن الذهب فقط بعد تأكيد الدفع.
       </div>
 
       <div class="section">
-        <div class="section-title"><i class="f7-icons mi" style="color:#10b981">shield_fill</i> بيانات الحساب وبطاقة الإيداع المعتمدة</div>
-        
+        <div class="section-title"><i class="f7-icons mi" style="color:#10b981">creditcard_fill</i> مفاتيح PayPal (Rest API App)</div>
+
         <div class="grid2">
           <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#3b82f6">building_2_fill</i> اسم البنك / مزود الخدمة المعتمد:</label>
-            <input class="inp" id="payBankName" placeholder="مثال: البنك الأهلي التجاري أو البنك العربي">
+            <label><i class="f7-icons mi" style="color:#3b82f6">key_fill</i> Client ID:</label>
+            <input class="inp" id="payPaypalClientId" placeholder="مثال: AQ7vH2..." style="direction:ltr;text-align:left;font-family:monospace">
           </div>
           <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#10b981">person_crop_circle_fill</i> اسم صاحب الحساب / المستفيد:</label>
-            <input class="inp" id="payHolderName" placeholder="مثال: إدارة الدردشة المعتمدة">
+            <label><i class="f7-icons mi" style="color:#10b981">lock_fill</i> Secret:
+              <span id="paySecretStatus" style="font-size:11px;font-weight:700;color:#64748b"></span>
+            </label>
+            <input class="inp" type="password" id="payPaypalSecret" placeholder="مثال: EO9xK3..." style="direction:ltr;text-align:left;font-family:monospace">
+            <small style="display:block;margin-top:4px;color:#64748b;font-size:11px">اتركه فارغاً للإبقاء على المفتاح الحالي.</small>
           </div>
         </div>
 
         <div class="grid2">
           <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#f59e0b">creditcard_fill</i> رقم بطاقة الصراف الآلي للإيداع (Receiver Card Number):</label>
-            <input class="inp" id="payCardNumber" placeholder="مثال: 4263 8890 1234 5678" style="direction:ltr;text-align:left;font-family:monospace">
-          </div>
-          <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#8b5cf6">number</i> رقم الآيبان (IBAN) / رقم الحساب الدولي:</label>
-            <input class="inp" id="payIban" placeholder="مثال: JO94 ARAB 1234 5678 9012 3456" style="direction:ltr;text-align:left;font-family:monospace">
-          </div>
-        </div>
-
-        <div class="grid2">
-          <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#6366f1">money_dollar</i> العملة الافتراضية للدفع:</label>
-            <select class="inp" id="payCurrency">
-              <option value="$">$ (الدولار الأمريكي)</option>
-              <option value="د.أ">د.أ (الدينار الأردني)</option>
-              <option value="ر.س">ر.س (الريال السعودي)</option>
-              <option value="د.إ">د.إ (الدرهم الإماراتي)</option>
-              <option value="ج.م">ج.م (الجنيه المصري)</option>
+            <label><i class="f7-icons mi" style="color:#f59e0b">server_alt</i> وضع التشغيل:</label>
+            <select class="inp" id="payPaypalMode">
+              <option value="live">وضع حي (Live) — مدفوعات حقيقية</option>
+              <option value="sandbox">وضع تجريبي (Sandbox) — للاختبار</option>
             </select>
           </div>
+          <div class="fgroup">
+            <label><i class="f7-icons mi" style="color:#8b5cf6">money_dollar</i> العملة:</label>
+            <select class="inp" id="payPaypalCurrency">
+              <option value="USD">USD (الدولار الأمريكي)</option>
+              <option value="EUR">EUR (اليورو)</option>
+              <option value="GBP">GBP (الجنيه الإسترليني)</option>
+              <option value="JOD">JOD (الدينار الأردني)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid2">
           <div class="fgroup" style="display:flex;align-items:center;margin-top:24px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:800;color:#1e293b">
-              <input type="checkbox" id="payCardEnabled" checked style="width:18px;height:18px;accent-color:#10b981">
-              تفعيل بوابة الدفع ببطاقات الصراف والائتمان في المتجر
+              <input type="checkbox" id="payPaypalEnabled" checked style="width:18px;height:18px;accent-color:#10b981">
+              تفعيل الدفع عبر PayPal في المتجر
             </label>
           </div>
         </div>
 
-        <div class="btn-row" style="justify-content:flex-start;margin-top:16px">
-          <button class="btn btn-purple" id="savePaymentSettingsBtn"><i class="f7-icons">square_arrow_down_fill</i> حفظ إعدادات بطاقة الإيداع والدفع</button>
+        <div class="btn-row" style="justify-content:flex-start;margin-top:16px;flex-wrap:wrap">
+          <button class="btn btn-purple" id="savePaymentSettingsBtn"><i class="f7-icons">square_arrow_down_fill</i> حفظ إعدادات PayPal</button>
+          <button class="btn" id="testPaymentSettingsBtn" style="background:#0ea5e9;color:#fff"><i class="f7-icons">checkmark_circle_fill</i> اختبار الاتصال بالبوابة</button>
+        </div>
+        <div id="payTestResult" style="margin-top:12px;padding:12px;border-radius:12px;font-size:13px;font-weight:700;display:none"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title"><i class="f7-icons mi" style="color:#64748b">building_2_fill</i> بيانات الحساب المصرفي للإيداع (اختياري — للمراسلة)</div>
+        <div class="grid2">
+          <div class="fgroup">
+            <label><i class="f7-icons mi" style="color:#3b82f6">building_2_fill</i> اسم البنك:</label>
+            <input class="inp" id="payBankName" placeholder="مثال: البنك الأهلي التجاري">
+          </div>
+          <div class="fgroup">
+            <label><i class="f7-icons mi" style="color:#10b981">person_crop_circle_fill</i> اسم المستفيد:</label>
+            <input class="inp" id="payHolderName" placeholder="مثال: إدارة الدردشة المعتمدة">
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="fgroup">
+            <label><i class="f7-icons mi" style="color:#8b5cf6">number</i> رقم الآيبان (IBAN):</label>
+            <input class="inp" id="payIban" placeholder="مثال: JO94 ARAB 1234 5678 9012 3456" style="direction:ltr;text-align:left;font-family:monospace">
+          </div>
         </div>
       </div>`,
     bind: async () => {
-      try {
-        const res = await api('/api/admin/payment-settings');
-        $('#payBankName').value = res.merchant_bank_name || '';
-        $('#payHolderName').value = res.merchant_holder_name || '';
-        $('#payCardNumber').value = res.merchant_card_number || '';
-        $('#payIban').value = res.merchant_iban || '';
-        $('#payCurrency').value = res.card_currency || '$';
-        $('#payCardEnabled').checked = res.card_payment_enabled !== 0;
-      } catch (e) {}
+      const refresh = async () => {
+        try {
+          const res = await api('/api/admin/payment-settings');
+          $('#payPaypalClientId').value = res.paypal_client_id || '';
+          $('#payPaypalSecret').value = '';
+          $('#paySecretStatus').textContent = res.paypal_has_secret ? '✓ المفتاح محفوظ' : 'لم يُحفظ بعد';
+          $('#paySecretStatus').style.color = res.paypal_has_secret ? '#059669' : '#dc2626';
+          $('#payPaypalMode').value = res.paypal_mode || 'live';
+          $('#payPaypalCurrency').value = res.paypal_currency || 'USD';
+          $('#payPaypalEnabled').checked = res.paypal_enabled !== 0;
+          $('#payBankName').value = res.merchant_bank_name || '';
+          $('#payHolderName').value = res.merchant_holder_name || '';
+          $('#payIban').value = res.merchant_iban || '';
+        } catch (e) {}
+      };
+      await refresh();
 
       $('#savePaymentSettingsBtn').onclick = async () => {
-        await api('/api/admin/payment-settings', 'POST', {
-          merchant_bank_name: $('#payBankName').value.trim(),
-          merchant_holder_name: $('#payHolderName').value.trim(),
-          merchant_card_number: $('#payCardNumber').value.trim(),
-          merchant_iban: $('#payIban').value.trim(),
-          card_currency: $('#payCurrency').value,
-          card_payment_enabled: $('#payCardEnabled').checked ? 1 : 0
-        });
-        toast('تم حفظ إعدادات بطاقة الإيداع والدفع البنكي بنجاح ✓');
+        try {
+          const r = await api('/api/admin/payment-settings', 'POST', {
+            paypal_client_id: $('#payPaypalClientId').value.trim(),
+            paypal_secret: $('#payPaypalSecret').value.trim(),
+            paypal_mode: $('#payPaypalMode').value,
+            paypal_currency: $('#payPaypalCurrency').value,
+            paypal_enabled: $('#payPaypalEnabled').checked ? 1 : 0,
+            merchant_bank_name: $('#payBankName').value.trim(),
+            merchant_holder_name: $('#payHolderName').value.trim(),
+            merchant_iban: $('#payIban').value.trim()
+          });
+          if (r && r.ok) {
+            toast('تم حفظ إعدادات بوابة الدفع PayPal بنجاح ✓');
+            // أعد قراءة الحالة المحفوظة فوراً: يظهر الـ Client ID و«المفتاح محفوظ ✓»
+            // حتى يرى المستخدم أن القيم ذُخّرت فعلاً في الخادم.
+            await refresh();
+          } else {
+            toast((r && r.error) || 'تعذر حفظ إعدادات PayPal', false);
+          }
+        } catch (e) {
+          toast((e && e.error) || 'تعذر حفظ إعدادات PayPal', false);
+        }
+      };
+
+      // اختبار الاتصال بالبوابة: يُشخّص فوراً سبب فشل الدفع (مفاتيح/وضع غير صحيح).
+      const testBtn = $('#testPaymentSettingsBtn');
+      if (testBtn) testBtn.onclick = async () => {
+        const box = $('#payTestResult');
+        if (box) { box.style.display = 'none'; }
+        try {
+          // أولاً نحفظ القيم الحالية حتى يُجرَّب الاختبار على مفاتيح مُدخلة في الحقول.
+          await api('/api/admin/payment-settings', 'POST', {
+            paypal_client_id: $('#payPaypalClientId').value.trim(),
+            paypal_secret: $('#payPaypalSecret').value.trim(),
+            paypal_mode: $('#payPaypalMode').value,
+            paypal_currency: $('#payPaypalCurrency').value,
+            paypal_enabled: $('#payPaypalEnabled').checked ? 1 : 0,
+            merchant_bank_name: $('#payBankName').value.trim(),
+            merchant_holder_name: $('#payHolderName').value.trim(),
+            merchant_iban: $('#payIban').value.trim()
+          });
+          const r = await api('/api/admin/paypal/test', 'POST');
+          if (box) {
+            box.style.display = 'block';
+            box.style.background = r.ok ? '#ecfdf5' : '#fef2f2';
+            box.style.borderColor = r.ok ? '#10b981' : '#dc2626';
+            box.style.color = r.ok ? '#065f46' : '#b91c1c';
+            box.textContent = r.ok ? `✅ ${r.message}` : `❌ ${r.message}`;
+          }
+          if (r.ok) toast('تم التحقق من مفاتيح PayPal بنجاح ✓');
+          else toast('فشل الاتصال بـ PayPal — راجع التفاصيل على الشاشة', false);
+        } catch (e) {
+          if (box) {
+            box.style.display = 'block';
+            box.style.background = '#fef2f2';
+            box.style.borderColor = '#dc2626';
+            box.style.color = '#b91c1c';
+            box.textContent = '❌ ' + ((e && e.error) || 'تعذر اختبار الاتصال بالبوابة');
+          }
+          toast('تعذر اختبار الاتصال بالبوابة', false);
+        }
       };
     }
   },
@@ -2315,9 +2452,9 @@ const PAGES = {
   // ====== سجل مدفوعات البطاقات ======
   paymentTransactions: {
     build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#10b981">doc_plaintext</i> سجل مدفوعات البطاقات البنكية</div>
+      <div class="page-title"><i class="f7-icons mi" style="color:#10b981">doc_plaintext</i> سجل مدفوعات PayPal</div>
       <div class="section">
-        <div class="section-title"><i class="f7-icons mi" style="color:#64748b">list_bullet</i> العمليات المنفذة بنجاح</div>
+        <div class="section-title"><i class="f7-icons mi" style="color:#64748b">list_bullet</i> العمليات المؤكّدة من PayPal</div>
         <div id="transactionsList"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل سجل العمليات...</div></div>
       </div>`,
     bind: async () => {
@@ -2337,23 +2474,30 @@ const PAGES = {
                   <th>الباقة</th>
                   <th>الذهب المشحون</th>
                   <th>المبلغ المدفوع</th>
-                  <th>البطاقة المستخدمة</th>
-                  <th>حساب الإيداع</th>
+                  <th>بوابة الدفع</th>
+                  <th>مرجع العملية (PayPal)</th>
                   <th>التاريخ</th>
                 </tr>
               </thead>
               <tbody>
                 ${txs.map(t => {
                   const date = new Date((+t.created_at || Date.now() / 1000) * 1000).toLocaleString('ar-JO');
+                  // عملية PayPal: card_brand=PayPal و order_ref يحوي معرّف العملية.
+                  const isPayPal = (t.card_brand || '').toLowerCase() === 'paypal';
+                  const reference = t.order_ref || '';
+                  const paidVia = isPayPal ? 'PayPal 🅿️' : (t.card_brand || 'بطاقة');
+                  const refDisplay = isPayPal
+                    ? `<span class="chip" style="direction:ltr;font-family:monospace;font-size:11px">${esc(reference || '—')}</span>`
+                    : `<span class="chip">${paidVia} •••• ${esc(t.card_last4 || '****')}</span>`;
                   return `
                     <tr>
                       <td><span class="chip">#${t.id}</span></td>
                       <td><b>${esc(t.username)}</b></td>
                       <td><span class="chip" style="background:#eff6ff;color:#1d4ed8">${esc(t.package_name || 'باقة ذهب')}</span></td>
                       <td><b style="color:#f59e0b">${t.total_gold} ذهب 🪙</b></td>
-                      <td><b style="color:#16a34a">${t.amount_paid} ${esc(t.currency || '$')}</b></td>
-                      <td><span class="chip">${esc(t.card_brand || 'Card')} •••• ${esc(t.card_last4 || '****')}</span></td>
-                      <td><span class="chip" style="font-size:11px">${esc(t.deposit_card || 'حساب الإدارة')}</span></td>
+                      <td><b style="color:#16a34a">${t.amount_paid} ${esc(t.currency || 'USD')}</b></td>
+                      <td><span class="chip" style="background:#111827;color:#fff;font-weight:700">${isPayPal ? 'PayPal 🅿️' : esc(paidVia)}</span></td>
+                      <td>${refDisplay}</td>
                       <td style="font-size:12px;color:#64748b">${esc(date)}</td>
                     </tr>
                   `;
@@ -2523,13 +2667,17 @@ const PAGES = {
       ${swRow('dot_radiowaves_right', '#38bdf8', 'تفعيل الموجة المتحركة على قوالب الرسائل', 'wave_enabled')}
       ${swRow('eye_slash_fill', '#c084fc', 'دخول مخفي للإدمن والسوبر أدمن', 'hidden_super')}
       <div class="section-title" style="margin-top:24px"><i class="f7-icons mi" style="color:#60a5fa">speaker2_fill</i> الإشعارات الصوتية</div>
-      ${swRow('person_badge_plus_fill', '#60a5fa', 'صوت عند دخول المستخدم (b1)', 'snd_join')}
-      ${swRow('paperplane_fill', '#94a3b8', 'صوت عند ارسال رسالة (b4)', 'snd_msg')}
-      ${swRow('square_arrow_right_fill', '#fb923c', 'صوت عند خروج المستخدم (b5)', 'snd_leave')}
+      ${soundRow('person_badge_plus_fill', '#60a5fa', 'صوت عند دخول المستخدم (b1)', 'snd_join', 'يُشغَّل تلقائياً عند دخول أي مستخدم إلى الغرفة.')}
+      ${soundRow('paperplane_fill', '#94a3b8', 'صوت عند ارسال رسالة (b4)', 'snd_msg', 'يُشغَّل تلقائياً عند وصول رسالة جديدة في العام.')}
+      ${soundRow('square_arrow_right_fill', '#fb923c', 'صوت عند خروج المستخدم (b5)', 'snd_leave', 'يُشغَّل تلقائياً عند مغادرة أي مستخدم للغرفة.')}
+      <div class="style-hint" style="margin:6px 4px 14px">⬆️ ارفع ملفاً صوتياً لتشغيله بدل النغمة الافتراضية. الحقل يدعم MP3 / WAV / OGG / M4A / AAC / OPUS حتى 12 ميجا.</div>
       <div class="btn-row" style="justify-content:flex-start">
         <button class="btn btn-purple" id="saveGen"><i class="f7-icons">square_arrow_down_fill</i> حفظ الاعدادات</button>
       </div>`,
-    bind: () => { $('#saveGen').onclick = async () => { await saveSwitches(); toast('تم حفظ الاعدادات بنجاح'); }; }
+    bind: () => {
+      bindSoundUploads();
+      $('#saveGen').onclick = async () => { await saveSwitches(); toast('تم حفظ الاعدادات بنجاح'); };
+    }
   },
 
   // ====== صلاحيات الميزات حسب العضوية ======
@@ -3098,22 +3246,65 @@ const PAGES = {
   },
 
   skin: {
-    build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#c084fc">paintbrush_fill</i> وضع الجلد</div>
-      <div class="section-title">اختر لون جلد الشات</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap" id="skins">
-        ${[['default', '#9c1f46', 'عنابي (افتراضي)'], ['blue', '#1d4ed8', 'أزرق ملكي'], ['green', '#15803d', 'أخضر زمردي'], ['purple', '#7c3aed', 'بنفسجي أنيق'], ['black', '#111827', 'أسود ليلي'], ['orange', '#ea580c', 'برتقالي جذاب'], ['pink', '#db2777', 'وردي فخم'], ['teal', '#0d9488', 'تركواز بحري']]
-          .map(([k, c, n]) => `
+    build: () => {
+      const themes = window.SKIN_THEMES || {};
+      const palette = window.SKIN_COLOR_PALETTE || [];
+      const current = SETTINGS.skin || 'default';
+      const themeSwatches = Object.keys(themes).map(k => {
+        const t = themes[k];
+        const sel = current === k;
+        return `
           <div class="skin-box" data-skin="${k}" style="cursor:pointer;text-align:center">
-            <div style="width:90px;height:90px;border-radius:16px;background:${c};border:${(SETTINGS.skin === k || (!SETTINGS.skin && k === 'default')) ? '4px solid #4f46e5' : '3px solid #e5e7eb'};box-shadow:0 6px 16px ${c}55"></div>
-            <div style="font-size:13px;font-weight:800;color:#374151;margin-top:7px">${n}</div>
-          </div>`).join('')}
-      </div>
-      <div class="btn-row" style="justify-content:flex-start;margin-top:26px">
-        <button class="btn btn-purple" id="saveSkin"><i class="f7-icons">square_arrow_down_fill</i> حفظ الجلد</button>
-      </div>`,
+            <div class="skin-swatch" data-skin="${k}" style="background:linear-gradient(135deg, ${t.primary}, ${t.secondary});border:${sel ? '4px solid #4f46e5' : '3px solid #e5e7eb'};box-shadow:${sel ? '0 6px 18px ' : '0 6px 12px '}${t.primary}66"></div>
+            <div style="font-size:12px;font-weight:800;color:#374151;margin-top:7px">${t.label}</div>
+          </div>`;
+      }).join('');
+      const colorSwatches = palette.map(c => `
+        <button class="skin-dot${current === c ? ' sel' : ''}" data-c="${c}" style="background:${c}" title="${c}"></button>`).join('');
+      return `
+        <div class="page-title"><i class="f7-icons mi" style="color:#c084fc">paintbrush_fill</i> وضع الجلد</div>
+
+        <div class="section-title">🎨 الثيمات الجميلة الجاهزة</div>
+        <div class="section">
+          <div style="display:flex;gap:14px;flex-wrap:wrap" id="skins">${themeSwatches}</div>
+        </div>
+
+        <div class="section-title">🌈 كل الألوان — اختر لون جلد الشات</div>
+        <div class="section">
+          <div class="skin-color-grid" id="skinColors">
+            <button class="skin-dot auto${current === 'default' ? ' sel' : ''}" data-c="" style="background:linear-gradient(135deg,#9c1e46,#c22e5e)" title="تلقائي (عنابي)">تلقائي</button>
+            ${colorSwatches}
+          </div>
+          <div class="skin-hint">اضغط أي نقطة لاستخدامها كلون كامل للجلد — دون الحاجة إلى ثيم جاهز.</div>
+        </div>
+
+        <div class="section-title">🖥️ معاينة حية</div>
+        <div class="section">
+          <div class="skin-live-preview" id="skinLive"></div>
+        </div>
+
+        <div class="btn-row" style="justify-content:flex-start;margin-top:26px">
+          <button class="btn btn-purple" id="saveSkin"><i class="f7-icons">square_arrow_down_fill</i> حفظ الجلد</button>
+          <button class="btn" id="resetSkin"><i class="f7-icons">arrow_clockwise</i> إعادة العنابي</button>
+        </div>`;
+    },
     bind: () => {
-      $$('.skin-box').forEach(b => b.onclick = () => { SETTINGS.skin = b.dataset.skin; loadPage('skin'); });
+      renderSkinLive(SETTINGS.skin || 'default');
+      $$('.skin-box').forEach(b => {
+        const k = b.dataset.skin;
+        b.onmouseenter = () => renderSkinLive(k);
+        b.onclick = () => { SETTINGS.skin = k; loadPage('skin'); };
+      });
+      $$('.skin-swatch').forEach(s => s.style.cursor = 'pointer');
+      $$('#skinColors .skin-dot').forEach(d => {
+        const c = d.dataset.c;
+        d.onmouseenter = () => renderSkinLive(c || 'default');
+        d.onclick = () => {
+          SETTINGS.skin = c || 'default';
+          loadPage('skin');
+        };
+      });
+      $('#resetSkin').onclick = () => { SETTINGS.skin = 'default'; loadPage('skin'); };
       $('#saveSkin').onclick = async () => { await saveKeys(['skin']); toast('تم حفظ الجلد'); };
     }
   },
@@ -3835,37 +4026,8 @@ const PAGES = {
     bind: () => { $('#saveSys').onclick = async () => { await saveSwitches(); await saveKeys(['public_msgs_link']); toast('تم حفظ اعدادات النظام'); }; }
   },
 
-  // ====== الحماية والوصول (VPN / بروكسي + قائمة المتصفحات) ======
-  protect: {
-    build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#60a5fa">shield_fill</i> الحماية والوصول (VPN / المتصفحات)</div>
-      <div class="info-box" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3;margin:10px 0 16px">
-        تحكّم من هنا في منع الاتصال عبر برامج VPN والبوروكسيات، وتحديد المتصفحات المسموح تشغيل الدردشة بها. تُطبَّق القيود فوراً على صفحة الدردشة واتصال Socket.IO دون إعادة تشغيل الخادم.
-      </div>
-      ${swRow('network_alt', '#ef4444', 'منع الاتصال عبر VPN / بروكسي', 'block_vpn_proxy')}
-      <div class="row">
-        <span class="lbl"><i class="f7-icons mi" style="color:#38bdf8">scope</i> طريقة كشف VPN / بروكسي :</span>
-        <select class="inp" data-key="vpn_proxy_check" style="max-width:320px">
-          <option value="both" ${String(SETTINGS.vpn_proxy_check || 'both') !== 'headers' && String(SETTINGS.vpn_proxy_check || 'both') !== 'api' ? 'selected' : ''}>الاثنان معاً — فحص الهيدر + فحص عنوان IP (الموصى به، يمسك VPN الحقيقية)</option>
-          <option value="api" ${String(SETTINGS.vpn_proxy_check || '') === 'api' ? 'selected' : ''}>فحص عنوان IP فقط (يُمسك VPN، يحتاج إنترنت)</option>
-          <option value="headers" ${String(SETTINGS.vpn_proxy_check || '') === 'headers' ? 'selected' : ''}>فحص الهيدر فقط (سريع لكنه لا يمسك معظم VPN)</option>
-        </select>
-      </div>
-      ${swRow('cloud_fill', '#f59e0b', 'اعتبار عناوين الاستضافة/السحابة (hosting) ضمن VPN المحظور', 'vpn_proxy_block_hosting')}
-      <div class="row">
-        <span class="lbl"><i class="f7-icons mi" style="color:#10b981">globe</i> المتصفحات المسموحة :</span>
-        <input class="inp" type="text" data-key="allowed_browsers" value="${esc(SETTINGS.allowed_browsers || '')}" placeholder="مثال: chrome,firefox,safari,edge,opera" style="max-width:340px">
-      </div>
-      <div class="info-box" style="background:#fffbeb;border-color:#fde68a;color:#92400e;margin:10px 0 16px">
-        <b>لماذا لا يُمسك VPN؟</b> برامج VPN تعمل على مستوى الشبكة ولا تُرسل أي هيدر، لذلك يجب تفعيل <b>«فحص عنوان IP»</b> إلى جانب الهيدر. يتحقق الخادم من عنوان الزائر عبر خدمة خارجية، وإذا كان من نطاق VPN/بوروكسي/استضافة يُحجب فوراً.<br><br>
-        اكتب أسماء المتصفحات المسموح مفصولة بفواصل: <b>chrome</b>، <b>firefox</b>، <b>safari</b>، <b>edge</b>، <b>opera</b>. اترك الحقل فارغاً للسماح بجميع المتصفحات، أو اكتب <b>all</b> لفتح الدردشة على الجميع.<br><br>
-        ⚠️ ملاحظة: خيار «عنوان الاستضافة» يوقف مستخدمي الخوادم/السحابية أيضاً. أطفئه إن كان يمنع عملائك.
-      </div>
-      <div class="btn-row" style="justify-content:flex-start">
-        <button class="btn btn-purple" id="saveProtect"><i class="f7-icons">square_arrow_down_fill</i> حفظ إعدادات الحماية</button>
-      </div>`,
-    bind: () => { $('#saveProtect').onclick = async () => { await saveSwitches(); toast('تم حفظ إعدادات الحماية والوصول'); }; }
-  },
+  // *** أُلغيت صفحة «الحماية والوصول (VPN / المتصفحات)» بالكامل حسب طلب المالك ***
+  // لم يعد هناك حظر على VPN/بروكسي/متصفحات، لذا لا صفحة إعدادات لهذه الخاصية.
 
   // ====== الشروط والخصوصية ======
   legal: {
@@ -5282,6 +5444,42 @@ async function saveSwitches() {
   $$('textarea[data-key]').forEach(i => { body[i.dataset.key] = i.value; SETTINGS[i.dataset.key] = i.value; });
   $$('select[data-key]').forEach(i => { body[i.dataset.key] = i.value; SETTINGS[i.dataset.key] = i.value; });
   await api('/api/admin/settings', 'POST', body);
+}
+
+// ربط أزرار رفع/إزالة أصوات الإشعارات في صفحة «ضبط الاعدادات».
+function bindSoundUploads() {
+  $$('.sound-up').forEach(btn => {
+    btn.onclick = () => {
+      const key = btn.dataset.urlkey;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'audio/*,.mp3,.wav,.ogg,.m4a,.aac,.opus,.webm';
+      input.onchange = async () => {
+        const f = input.files && input.files[0];
+        if (!f) return;
+        const fd = new FormData(); fd.append('file', f);
+        toast('جاري رفع الصوت...');
+        try {
+          const d = await api('/api/admin/upload/sound', 'POST', fd, true);
+          SETTINGS[key] = d.path;
+          const hidden = $('#content input[data-key="' + key + '"]');
+          if (hidden) hidden.value = d.path;
+          toast('تم رفع صوت الإشعار ✓');
+          loadPage(CURRENT_PAGE_ID);
+        } catch (e) { toast(e.error || 'تعذر رفع الصوت', false); }
+      };
+      input.click();
+    };
+  });
+  $$('.sound-del').forEach(btn => {
+    btn.onclick = () => {
+      const key = btn.dataset.urlkey;
+      SETTINGS[key] = '';
+      const hidden = $('#content input[data-key="' + key + '"]');
+      if (hidden) hidden.value = '';
+      loadPage(CURRENT_PAGE_ID);
+    };
+  });
 }
 
 const ADMIN_ALLOWED_PAGES = new Set(['roomAdd', 'userAdd', 'kicks', 'bans', 'broadcast', 'words', 'verified']);

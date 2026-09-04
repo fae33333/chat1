@@ -77,6 +77,10 @@ const RTC_ICE_CONFIG = {
 let ROOM_BCAST = {};        // roomId -> {mode, hosts:[{id,username,avatar,badge},...], viewers} آخر حالة معروفة للبث بكل غرفة
 let BCAST = null;           // الحالة الحية للبث الجاري (فيديو أو صوت) في الغرفة الحالية، أو null
 let BCAST_SIGNAL_QUEUE = []; // إشارات وصلت قبل تهيئة BCAST (سباق زمني عند الدخول لغرفة فيها بث نشط) — تُطبَّق فور التهيئة
+// سجلّ دائم بتدفّقات كل مذيع (hostId -> MediaStream) مستقلّ عن كائن BCAST المؤقت،
+// حتى تعيد الواجهة ربط عنصر الصوت بالتدفّق إذا انقطع أو أُعيد بناء الحالة.
+const BCAST_STREAMS = new Map();
+let BCAST_AUDIO_WATCHDOG = null; // مؤقّت دوري يعيد تشغيل/ربط صوت المذيعين إذا توقّف بسبب تحديث الصفحة أو فتح قالب
 // شكل BCAST: {
 //   roomId, mode:'video'|'audio', isHost:bool,
 //   hostId, hostInfo, localStream, peers:Map('dir:userId'->RTCPeerConnection),
@@ -1714,12 +1718,41 @@ function beep(freq = 660, dur = .12) {
   if (!PREFS.snd_all) return;
   try {
     AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended' && AC.resume) AC.resume();
     const o = AC.createOscillator(), g = AC.createGain();
     o.connect(g); g.connect(AC.destination);
     o.frequency.value = freq; g.gain.value = .06;
     o.start(); g.gain.exponentialRampToValueAtTime(.0001, AC.currentTime + dur);
     o.stop(AC.currentTime + dur + .02);
   } catch (e) { }
+}
+
+// النغمة الافتراضية لكل نوع إشعار (دخول/رسالة/خروج).
+function beepDefaultFor(kind) {
+  const freq = kind === 'join' ? 520 : (kind === 'msg' ? 740 : (kind === 'leave' ? 360 : 880));
+  const dur = kind === 'msg' ? .07 : .1;
+  beep(freq, dur);
+}
+
+// تشغيل صوت إشعار: يفضل الصوت المخصص المرفوع من لوحة الإدارة، وإلا النغمة الافتراضية.
+// kind = 'join' | 'msg' | 'leave'
+function playNotifSound(kind) {
+  if (!PREFS.snd_all) return;
+  const setting = 'snd_' + kind;
+  const urlKey = setting + '_url';
+  const enabled = SETTINGS[setting] === '1' || SETTINGS[setting] === undefined; // مفعّل افتراضياً إذا لم يُحدَّد
+  if (!enabled) return;
+  const url = SETTINGS[urlKey] || '';
+  if (url) {
+    try {
+      const a = new Audio(url);
+      a.volume = 0.85;
+      const p = a.play();
+      if (p && p.catch) p.catch(() => beepDefaultFor(kind));
+      return;
+    } catch (e) { /* فشل التشغيل → نغمة افتراضية */ }
+  }
+  beepDefaultFor(kind);
 }
 
 const OBFUSCATE_KEY = 'NujumSecretSyncKey2026';
@@ -1788,12 +1821,40 @@ function parseClientSettings(res) {
   await loadRooms();
 })();
 
+// متغيرات CSS الخاصة بالجلد — تُضبط ديناميكياً عند اختيار لون مخصص.
+const SKIN_VAR_KEYS = ['--main', '--main2', '--skin-primary', '--skin-secondary', '--skin-glow', '--skin-bg-light', '--skin-border', '--skin-btn'];
+// يطبّق الجلد المختار (اسم ثيم جاهز أو لون HEX) على عنصر body.
+// الثيمات الجاهزة تُحسب أيضاً ديناميكياً حتى يبقى الشكل موحّداً، وأي لون
+// من لوحة الألوان يُستخدم مباشرة كجلد كامل.
+function applySkinToBody(sel) {
+  if (!document.body) return;
+  const themes = window.SKIN_THEMES || {};
+  const skinLib = window.SkinLib;
+  // أزل أي جلد سابق (ثيمات + اللون المخصص) دون المساس بكلاسات أخرى (lang-...).
+  document.body.classList.remove('skin-custom');
+  for (const n in themes) document.body.classList.remove('skin-' + n);
+  const isCustomHex = skinLib && skinLib.isHexColor(sel);
+  const isKnownTheme = !!themes[sel];
+  if (isCustomHex) document.body.classList.add('skin-custom');
+  else document.body.classList.add('skin-' + (sel || 'default'));
+  // لو القيمة لون/ثيم معروف، نحسب المتغيرات ونطبقها مباشرة.
+  if (skinLib && skinLib.computeSkinVars && (isCustomHex || isKnownTheme)) {
+    const vars = skinLib.computeSkinVars(sel);
+    for (const k of SKIN_VAR_KEYS) document.body.style.setProperty(k, vars[k]);
+  } else {
+    for (const k of SKIN_VAR_KEYS) document.body.style.removeProperty(k);
+  }
+}
 function applySettings() {
   // تشغيل/إيقاف الموجة يُدار من لوحة الإدارة ويُطبَّق فوراً على القوالب الموجودة
   const waveOn = SETTINGS.wave_enabled !== '0';
   document.querySelectorAll('#msgArea .mwave').forEach(el => { el.style.display = waveOn ? '' : 'none'; });
   const isLtr = APP_LANG !== 'ar';
-  if (document.body) document.body.className = 'skin-' + (SETTINGS.skin || 'default') + (isLtr ? ' lang-' + APP_LANG + ' lang-ltr' : '');
+  // أيقونة زر قائمة الألوان + لون الجلد: ندعم الآن أي لون HEX أو ثيم جاهز.
+  applySkinToBody(SETTINGS.skin || 'default');
+  if (document.body && isLtr) {
+    document.body.classList.add('lang-' + APP_LANG, 'lang-ltr');
+  }
   const activeSiteName = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة';
 
   // لا نستبدل innerHTML للشعار بالكامل؛ لأن ذلك كان يحذف #siteName ثم تسبب
@@ -2001,9 +2062,15 @@ function forceReconnectNow() {
   if (SOCKET.active) { try { SOCKET.disconnect(); } catch (e) { } }
   SOCKET.connect();
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') forceReconnectNow(); });
-window.addEventListener('pageshow', () => forceReconnectNow());
-window.addEventListener('focus', () => forceReconnectNow());
+// عودة المستخدم للتبويب: أعد تشغيل صوت البث المباشر فوراً (المتصفح يجمّده في التبويب الخلفي)
+function bcastResumeAllAudio() {
+  const pool = document.getElementById('bcastAudioPool');
+  if (!pool) return;
+  pool.querySelectorAll('audio').forEach(el => { if (el.paused && el.srcObject) bcastTryPlayAudioEl(el); });
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { bcastResumeAllAudio(); forceReconnectNow(); } });
+window.addEventListener('pageshow', () => { bcastResumeAllAudio(); forceReconnectNow(); });
+window.addEventListener('focus', () => { bcastResumeAllAudio(); forceReconnectNow(); });
 window.addEventListener('offline', () => {
   if (!ME || !CHAT_TOKEN) return;
   CONNECTION_INTERRUPTED = true;
@@ -2072,9 +2139,9 @@ function connectSocket() {
         if (m.type === 'msg') NEW_MSGS_BELOW++;
         updateScrollDownBtn();
       }
-      if (m.type === 'join' && PREFS.snd_join && SETTINGS.snd_join === '1') beep(520, .1);
-      else if (m.type === 'msg' && PREFS.snd_msg && SETTINGS.snd_msg === '1') beep(740, .07);
-      else if (m.type === 'leave' && PREFS.snd_leave && SETTINGS.snd_leave === '1') beep(360, .1);
+      if (m.type === 'join' && PREFS.snd_join) playNotifSound('join');
+      else if (m.type === 'msg' && PREFS.snd_msg) playNotifSound('msg');
+      else if (m.type === 'leave' && PREFS.snd_leave) playNotifSound('leave');
     }
   });
   SOCKET.on('roomUsers', ({ roomId, users, count }) => {
@@ -2297,12 +2364,31 @@ function connectSocket() {
       if (CURRENT_STATUS && CURRENT_STATUS.id === s.id) $('#statusViewCount').textContent = s.view_count;
     }
   });
+  // مُنع هذا المستخدم من الصعود إلى البث — إن كان يبث الآن نوقفه فوراً.
+  SOCKET.on('broadcast_banned', ({ user_id }) => {
+    if (!ME || +ME.id !== +user_id) return;
+    ME.broadcast_banned = 1;
+    if (BCAST && BCAST.isHost) { bcastResetState(); bcastRenderBar(); }
+    toast('منعت الإدارة صعودك إلى البث — أُنهي بثك الحالي', false);
+  });
+  // أُلغيت صلاحية الصعود إلى البث لمستخدمٍ ما (فكّ منع) — حدّث زر «فك من البث» إن كانت ورقته مفتوحة.
+  SOCKET.on('broadcast_ban_cleared', ({ user_id }) => {
+    if (CUR_TARGET && +CUR_TARGET.id === +user_id) { CUR_TARGET.broadcast_banned = 0; syncUserActionSheet(); }
+    const ru = ROOM_USERS.find(u => u.id === +user_id);
+    if (ru) { ru.broadcast_banned = 0; renderUsers(); }
+    if (ME && +ME.id === +user_id) toast('أُلغيت صلاحية الصعود إلى البث — يمكنك البث مجدداً', true);
+  });
   SOCKET.on('mute_changed', ({ muted }) => {
     if (!ME) return;
     ME.muted = muted ? 1 : 0;
-    // إن كُتم المذيع وهو يبث، أوقف التدفّق المحلي فوراً؛ الخادم أنزله أيضاً من البث.
-    if (ME.muted && BCAST && BCAST.isHost) { bcastResetState(); bcastRenderBar(); }
-    toast(muted ? 'قامت الإدارة بكتمك' : 'قامت الإدارة بإلغاء كتمك', !muted);
+    // الكتم لا يُنهي البث، بل يُسكّت ميكروفون المذيع مؤقتاً فقط (يظل داخل البث حتى يُفكّ الكتم فيستأنف).
+    if (BCAST && BCAST.isHost && BCAST.localStream) {
+      BCAST.localStream.getAudioTracks().forEach(t => { t.enabled = !muted; });
+      AUDIO_BCAST_HOST_MUTED = !!muted;
+      bcastUpdateHostMuteButton();
+    }
+    bcastRenderBar();
+    toast(muted ? 'قامت الإدارة بكتمك — تم كتم ميكروفونك' : 'قامت الإدارة بإلغاء كتمك — عاد ميكروفونك', !muted);
   });
   SOCKET.on('kicked', ({ roomId, text }) => {
     if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
@@ -2585,10 +2671,10 @@ function connectSocket() {
     bcastRenderBar();
     setTimeout(() => { try { bcastRenderBar(); } catch (e) {} }, 150);
   });
-  // [للمتحدث الذي أُزيل] أعادني المضيف الأساسي إلى وضع الاستماع
+  // [للمتحدث الذي أُزيل] أعادني المضيف الأساسي/المشرف إلى وضع الاستماع
   SOCKET.on('bcast:speaker_removed', ({ roomId }) => {
     if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
-    toast('أنهى المضيف الأساسي مشاركتك كمتحدث', false);
+    toast('أنهيت من البث — أُعدت إلى وضع المستمع', false);
     bcastResetState();
     const state = ROOM_BCAST[roomId];
     if (state && state.mode === 'audio') bcastViewerAutoConnectAudio(roomId, state.hosts);
@@ -2645,18 +2731,21 @@ function bcastRenderBar() {
       // بالنقر على صورته، فلا يشاهد إلا من وافق على طلبه تحديداً — ويمكنه متابعة أكثر من مذيع في نفس الوقت،
       // فكل بث وُوفق على طلبه يعمل بشكل طبيعي بجانب البثوث الأخرى.
       const pickable = !!(state && state.mode === 'video');
-      hostsBox.innerHTML = hosts.map(h => `<span class="lb-host-chip${pickable ? ' watchable' : ''}" data-hid="${h.id}" title="${esc(h.username)}">
+      const modClickable = canModerateRank(); // المشرف ينقر على المذيع لفتح أزرار السحب/المنع
+      hostsBox.innerHTML = hosts.map(h => `<span class="lb-host-chip${pickable ? ' watchable' : ''}${modClickable ? ' mod' : ''}" data-hid="${h.id}" title="${esc(h.username)}">
         <span class="lb-host-photo">${bcastAvatarChip(h.avatar)}</span><small class="lb-host-label">${esc(h.username)}</small>
       </span>`).join('');
       // إعادة تطبيق حالة «يتحدث» على الشرائح الجديدة (إعادة البناء تمسح الصفات)
       try { bcastApplySpeaking(); } catch (e) {}
-    if (pickable) hostsBox.querySelectorAll('.lb-host-chip').forEach(chip => {
+    hostsBox.querySelectorAll('.lb-host-chip').forEach(chip => {
       chip.onclick = (e) => {
         e.stopPropagation();
         const h = hosts.find(x => x.id === +chip.dataset.hid);
         if (!h) return;
         if (ME && h.id === ME.id) { if (iAmHost) openOv('bcastOv'); return; } // صورتي أنا: أعد فتح شاشة بثي
-        bcastOpenWatchConfirm(h);
+        // المشرف: ينقر على المذيع لفتح ورقة المستخدم فيها أزرار «سحب المايك / سحب مع منع صعود / فك من البث».
+        if (modClickable) return openUserSheet(+h.id);
+        if (pickable) return bcastOpenWatchConfirm(h);
       };
     });
   }
@@ -2822,6 +2911,8 @@ function bcastResetState() {
   }
   BCAST = null;
   BCAST_SIGNAL_QUEUE = [];
+  BCAST_STREAMS.clear();     // انتهى البث — امسح سجلّ التدفّقات حتى لا يُحيي العداد أصواتاً قديمة
+  bcastStopAudioWatchdog();  // أوقف عدّاد حماية الصوت
   SPEAK_REQUEST_PENDING = false;
   AUDIO_BCAST_HOST_MUTED = false;
   bcastLevelDetachAll();
@@ -2958,19 +3049,72 @@ function bcastEnsureAudioEl(hostId) {
 function bcastRemoveAudioEl(hostId) {
   const el = document.getElementById('bcastAudio_' + hostId);
   if (el) el.remove();
+  BCAST_STREAMS.delete(String(hostId)); // المذيع غادر/أُزيل — انسَ تدفّقه
   bcastLevelDetach(hostId);
 }
 // يعرض تدفق وسائط وارداً من طرف معيّن (مذيع أرسل عرضاً لي كمشاهد/كمذيع أشاهده) في المكان المناسب
 function bcastAttachRemoteStream(fromUserId, stream) {
   if (!BCAST) return;
+  // نحتفظ بالتدفّق في سجلّ دائم مستقل عن BCAST حتى لا يضيع الصوت عند إعادة بناء الحالة.
+  if (stream) BCAST_STREAMS.set(String(fromUserId), stream);
   // مؤشر «يتحدث»: تحليل مستوى صوت هذا الطرف (مذيع/مستمع)
   bcastLevelAttach(fromUserId, stream);
-  if (BCAST.mode === 'audio') bcastEnsureAudioEl(fromUserId).srcObject = stream;
-  else {
+  if (BCAST.mode === 'audio') {
+    const el = bcastEnsureAudioEl(fromUserId);
+    el.srcObject = stream;
+    // إعادة تشغيل صريحة - لا نعتمد على autoplay فقط الذي قد تفشله بعض المتصفحات.
+    bcastTryPlayAudioEl(el);
+    bcastEnsureAudioWatchdog();
+  } else {
     // أنشئ البلاطة فوراً إن لم تكن موجودة (قد يصل التدفق قبل تسجيل معلومات المذيع)
     if (!document.getElementById(bcastTileId(fromUserId))) bcastEnsureTile(fromUserId, BCAST.hosts.get(fromUserId) || null);
     bcastAttachStreamToTile(fromUserId, stream);
   }
+}
+
+// محاولة تشغيل عنصر صوت بلا استثناء (أعدّ سمة muted حتى لا تطلب إذن المستخدم)
+function bcastTryPlayAudioEl(el) {
+  if (!el || !el.srcObject) return;
+  try {
+    el.muted = AUDIO_BCAST_MUTED;
+    const p = el.play();
+    if (p && typeof p.catch === 'function') p.catch(() => { /* تجاهل رفض التشغيل المتقلّب */ });
+  } catch (e) { /* تجاهل */ }
+}
+
+// Watchdog دوري: يضمن بقاء صوت كل مذيع في بث صوتي نشط متصلاً وليس ناقصاً أو موقوفاً.
+// يعالج انقطاع الصوت عند: تحديث أي شيء في الصفحة، فتح قالب/نافذة منبثقة، عودة المستخدم
+// من تبويب خلفي جمّده المتصفح، أو أي إعادة بناء لعناصر الصوت — يعيد إنشاء/ربط/تشغيل العنصر.
+function bcastEnsureAudioWatchdog() {
+  if (BCAST_AUDIO_WATCHDOG) return;
+  BCAST_AUDIO_WATCHDOG = setInterval(function () {
+    const pool = document.getElementById('bcastAudioPool');
+    // لا شيء نفعله إن انتهى البث فعلاً أو لم نعد في وضع صوتي.
+    if (!pool || !BCAST || BCAST.mode !== 'audio') return;
+    // نطاق المذيعين المسجّلين فعلياً في هذا البث — لا نُحيي أصوات مذيعين غادروا.
+    BCAST.hosts.forEach(function (host, uid) {
+      const stream = BCAST_STREAMS.get(String(uid));
+      if (!stream) return;
+      let el = document.getElementById('bcastAudio_' + uid);
+      if (!el) {
+        // أُزيل العنصر من DOM (إعادة بناء/مسح) لكن المذيع ما زال يبث — أنشئه من جديد.
+        el = document.createElement('audio');
+        el.id = 'bcastAudio_' + uid;
+        el.autoplay = true; el.playsInline = true; el.muted = AUDIO_BCAST_MUTED;
+        pool.appendChild(el);
+        el.srcObject = stream;
+      } else if (el.srcObject !== stream) {
+        el.srcObject = stream;
+      }
+      // أعد التشغيل إن توقف لسببٍ ما، مع احترام كتم المستخدم.
+      if (el.paused) bcastTryPlayAudioEl(el);
+    });
+  }, 900);
+}
+
+// إيقاف العدّاد بالكامل
+function bcastStopAudioWatchdog() {
+  if (BCAST_AUDIO_WATCHDOG) { clearInterval(BCAST_AUDIO_WATCHDOG); BCAST_AUDIO_WATCHDOG = null; }
 }
 
 // بطاقة طلب مشاهدة واردة (تظهر لكل مذيع مشارك) مع زرّي قبول/رفض
@@ -3027,6 +3171,7 @@ function bcastRenderSpeakersList() {
   const others = [...BCAST.hosts.values()].filter(h => !ME || h.id !== ME.id);
   if (!others.length) { box.hidden = true; box.innerHTML = ''; return; }
   box.hidden = false;
+  const modClickable = canModerateRank();
   box.innerHTML = `<div class="bcast-speakers-title">المتحدثون الحاليون</div>` + others.map(h => `
     <div class="bcast-speaker-row" data-uid="${h.id}">
       <span class="req-avatar">${bcastAvatarChip(h.avatar)}</span>
@@ -3035,6 +3180,11 @@ function bcastRenderSpeakersList() {
     </div>`).join('');
   box.querySelectorAll('.bcast-speaker-remove').forEach(btn => {
     btn.onclick = () => SOCKET.emit('bcast:remove_speaker', CUR_ROOM.id, +btn.dataset.uid);
+  });
+  // المشرف: النقر على صف المذيع يعرض أزرار «سحب المايك / سحب مع منع صعود / فك من البث».
+  if (modClickable) box.querySelectorAll('.bcast-speaker-row').forEach(row => {
+    row.style.cursor = 'pointer';
+    row.onclick = () => openUserSheet(+row.dataset.uid);
   });
   // إعادة تطبيق حالة «يتحدث» على الصفوف الجديدة (إعادة البناء تمسح الصفات)
   try { bcastApplySpeaking(); } catch (e) {}
@@ -3172,6 +3322,8 @@ function bcastViewerAutoConnectAudio(roomId, hosts) {
   // المستمع الصوتي يستقبل الصوت في الخلفية فقط؛ النافذة العائمة مخصصة للمذيع.
   bcastSetFloatingMode('audio');
   (hosts || []).forEach(h => bcastRegisterHost(h));
+  // نُشغّل عدّاد حماية الصوت منذ البداية حتى لا ينقطع صوت المذيعين عند أي تحديث.
+  bcastEnsureAudioWatchdog();
   // العروض (offers) ستصل من كل مذيع تلقائياً عبر bcast:signal — نطبّق أولاً أي عرض وصل مبكراً قبل التهيئة
   bcastFlushSignalQueue();
 }
@@ -3847,7 +3999,7 @@ function renderMsg(m) {
     bindChatAudioPlayer(el.querySelector('.chat-audio-player'));
     // النقر على الصورة أو على الاسم يفتح قائمة خيارات المستخدم والرد على الرسالة
     if (!hiddenAdmin) {
-      const msgUserData = { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted };
+      const msgUserData = { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted, broadcast_banned: (m.user && m.user.broadcast_banned) || (u.broadcast_banned) || 0 };
       const openSenderSheet = (e) => {
         if (e) e.stopPropagation();
         const uid = m.user_id || (m.user && m.user.id);
@@ -4516,6 +4668,9 @@ function syncUserActionSheet() {
 
   // أدوات الإشراف تظهر للسوبر/الادمن/ادمن الغرفة، ويعيد الخادم التحقق من النطاق والرتبة.
   $$('.user-action-sheet .us-moderation').forEach(b => { b.style.display = canModerateRank() ? 'flex' : 'none'; });
+  // أدوات التحكم بالمذيع (سحب المايك / سحب مع منع صعود) تظهر لمشرف على مذيعٍ يبث فعلاً الآن،
+  // و«فك من البث» تظهر لمشرف على مستخدمٍ ممنوع من الصعود.
+  syncUserBroadcastControlButtons();
   // «كشف نكات» للإدارة العامة فقط (ادمن / سوبر ادمن / سوبر ماستر) وليس لأدمن الغرفة،
   // ولا يظهر عند النقر على النفس. الخادم يعيد التحقق من الرتبة أيضاً.
   $$('.user-action-sheet .us-staff-only').forEach(b => {
@@ -4524,12 +4679,26 @@ function syncUserActionSheet() {
   });
   syncUserStatusAction();
 }
+
+// يعرض/يخفي أزرار التحكم بالمذيع في ورقة المستخدم حسب حالة البث الحية ومنع الصعود.
+function syncUserBroadcastControlButtons() {
+  if (!ME || !CUR_TARGET || CUR_TARGET.id === ME.id) return;
+  if (!canModerateRank()) return;
+  const notSelf = +CUR_TARGET.id !== +ME.id;
+  const state = CUR_ROOM ? ROOM_BCAST[CUR_ROOM.id] : null;
+  const isLiveHost = !!(state && (state.hosts || []).some(h => +h.id === +CUR_TARGET.id));
+  const isBanned = !!CUR_TARGET.broadcast_banned;
+  const p1 = $('#usBcastPull'), p2 = $('#usBcastPullBan'), ub = $('#usBcastUnban');
+  if (p1) p1.style.display = (notSelf && isLiveHost) ? 'flex' : 'none';
+  if (p2) p2.style.display = (notSelf && isLiveHost) ? 'flex' : 'none';
+  if (ub) ub.style.display = (notSelf && isBanned) ? 'flex' : 'none';
+}
 function openUserSheet(uid, msg) {
   setUsersPanel(false);
   // النقر على اسمي/صورتي يفتح «تغيير الحالة» بدل ورقة المستخدم
   if (ME && uid === ME.id) { openOv('quickOv'); return; }
   let u = ROOM_USERS.find(x => x.id === uid);
-  if (!u && msg) u = { id: uid, username: msg.username, avatar: msg.avatar || '', rank: msg.rank || 'user', membership: msg.membership || 'none', gender: msg.gender || 'secret', registered: msg.registered === undefined ? 1 : msg.registered, muted: msg.muted ? 1 : 0 };
+  if (!u && msg) u = { id: uid, username: msg.username, avatar: msg.avatar || '', rank: msg.rank || 'user', membership: msg.membership || 'none', gender: msg.gender || 'secret', registered: msg.registered === undefined ? 1 : msg.registered, muted: msg.muted ? 1 : 0, broadcast_banned: msg.broadcast_banned ? 1 : 0 };
   if (!u) return;
   CUR_TARGET = u;
   US_MSG = msg || null;
@@ -4604,6 +4773,41 @@ $('#usIgnore').onclick = async () => {
   } catch (e) { toast(e.error || 'تعذر تحديث قائمة التجاهل', false); }
   finally { button.disabled = false; }
 };
+// [مشرف] سحب المايك من مذيع (إعادته مستمعاً فقط)
+$('#usBcastPull').onclick = async () => {
+  if (!CUR_TARGET || !CUR_ROOM || !canModerateRank()) return toast('لا تملك صلاحية سحب المايك', false);
+  const target = CUR_TARGET;
+  closeOv('userSheet');
+  try {
+    SOCKET.emit('bcast:mod_pull', CUR_ROOM.id, +target.id, false);
+    toast('تم سحب المايك من ' + target.username);
+  } catch (e) { toast('تعذر سحب المايك', false); }
+};
+// [مشرف] سحب المايك مع منع الصعود إلى البث مستقبلاً
+$('#usBcastPullBan').onclick = async () => {
+  if (!CUR_TARGET || !CUR_ROOM || !canModerateRank()) return toast('لا تملك صلاحية سحب المايك مع المنع', false);
+  const target = CUR_TARGET;
+  closeOv('userSheet');
+  try {
+    SOCKET.emit('bcast:mod_pull', CUR_ROOM.id, +target.id, true);
+    target.broadcast_banned = 1;
+    toast('تم سحب المايك من ' + target.username + ' ومنع صعوده للبث');
+    renderUsers();
+  } catch (e) { toast('تعذر تنفيذ الإجراء', false); }
+};
+// [مشرف] فك منع الصعود إلى البث
+$('#usBcastUnban').onclick = async () => {
+  if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية فك المنع', false);
+  const target = CUR_TARGET;
+  closeOv('userSheet');
+  try {
+    SOCKET.emit('bcast:mod_unban', CUR_ROOM ? CUR_ROOM.id : 0, +target.id);
+    target.broadcast_banned = 0;
+    toast('سمحت لـ ' + target.username + ' بالصعود إلى البث');
+    renderUsers();
+  } catch (e) { toast('تعذر تنفيذ الإجراء', false); }
+};
+
 $('#usMute').onclick = async () => {
   if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية الكتم', false);
   const button = $('#usMute');
@@ -7424,8 +7628,11 @@ let CASHOUT_STEP = 1;               // 1 = اختيار الهدايا، 2 = ب�
 // (CASHOUT_GROUPS و CASHOUT_QTY تُعلن أدناه مع دوال الاختيار)
 function resetCashoutSelection() { CASHOUT_QTY = {}; CASHOUT_STEP = 1; }
 // معدل التحويل: usd_amount يقابل gold_min — المبلغ يتناسب طردياً مع الذهب المحدد (200 ذهب بمعدل 5$/100 = 10$)
-let CASHOUT_GOLD_MIN = 0, CASHOUT_USD = 0;
+let CASHOUT_GOLD_MIN = 0, CASHOUT_USD = 0, CASHOUT_RATE_PER_GOLD = 0;
 function cashoutUsdFor(gold) {
+  // المعدّل يتبع سعر شراء الذهب في المتجر (rate_per_gold) عندما يوفّره الخادم،
+  // وإلا يقع على نسبة الإدارة (USD/GOLD_MIN).
+  if (CASHOUT_RATE_PER_GOLD > 0) return Math.round((+gold || 0) * CASHOUT_RATE_PER_GOLD * 100) / 100;
   if (!CASHOUT_GOLD_MIN || !CASHOUT_USD) return 0;
   return Math.round((gold * CASHOUT_USD / CASHOUT_GOLD_MIN) * 100) / 100;
 }
@@ -7445,13 +7652,23 @@ async function renderGiftCashoutCard() {
   const fmt = n => (Math.round((+n || 0) * 100) / 100).toFixed(2);
   const goldTotal = +info.gold_total || 0;
   const goldMin = +info.gold_min || 0;
-  const usd = fmt(info.usd_amount);
+  // السعر يتبع سعر شراء الذهب في المتجر (rate_per_gold)، وإلا نسبة الإدارة.
+  const usd = fmt(info.usd_for_gold_min || info.usd_amount);
   CASHOUT_GOLD_MIN = goldMin;
   CASHOUT_USD = +info.usd_amount || 0;
+  CASHOUT_RATE_PER_GOLD = +(info.rate_per_gold || 0);
   const pct = goldMin > 0 ? Math.min(100, Math.round(goldTotal / goldMin * 100)) : 0;
 
   if (info.has_pending) {
     const p = info.pending || {};
+    const methodLabel = p.payout_method === 'paypal' ? 'حساب PayPal' : 'حساب بنكي';
+    const dest = p.payout_method === 'paypal' && p.paypal_email ? esc(p.paypal_email) : (p.account_number || '');
+    let statusLine = '';
+    if (p.payout_status === 'submitted' || p.payout_batch_id) {
+      statusLine = `<div class="gc-row"><span>حالة التحويل</span><b class="gc-ok">تم إرسال الدفعة (رقم الدفعة ${esc(p.payout_batch_id || '')})</b></div>`;
+    } else if (p.payout_status === 'failed') {
+      statusLine = `<div class="gc-row"><span>حالة التحويل</span><b class="gc-err">تعذر الإرسال الآلي</b></div>`;
+    }
     host.innerHTML = `
       <div class="gc-card gc-card-pending">
         <div class="gc-head"><span class="gc-ico"><i class="f7-icons">bank_fill</i></span><div><b>تسكير الهدايا</b><span>طلبك قيد المراجعة</span></div></div>
@@ -7459,6 +7676,8 @@ async function renderGiftCashoutCard() {
           <div class="gc-row"><span>هدايا محددة للتسكير</span><b>${p.gifts_count || 0}</b></div>
           <div class="gc-row"><span>ذهب الهدايا المحددة</span><b>${p.gold_total || 0} 🪙</b></div>
           <div class="gc-row gc-row-net"><span>المبلغ الذي سيُحوَّل إلى حسابك</span><b>$${fmt(p.usd_amount || 0)}</b></div>
+          <div class="gc-row"><span>طريقة الاستلام</span><b>${methodLabel} — ${dest || '—'}</b></div>
+          ${statusLine}
         </div>
         <div class="gc-note"><i class="f7-icons">clock_fill</i> بعد اتمام العملية: يُحوَّل المبلغ من حساب الإدارة إلى حسابك ثم تُحذف <b>الهدايا المحددة فقط</b> من حسابك (بقية هداياك تبقى).</div>
       </div>`;
@@ -7472,7 +7691,7 @@ async function renderGiftCashoutCard() {
 
   host.innerHTML = `
     <div class="gc-card${eligible ? '' : ' gc-card-locked'}">
-      <div class="gc-head"><span class="gc-ico"><i class="f7-icons">bank_fill</i></span><div><b>تسكير الهدايا إلى دولارات 💵</b><span>معدل التحويل: <b>$${usd} لكل ${goldMin} ذهب</b> — المبلغ يتناسب مع الكمية التي تحددينها</span></div></div>
+      <div class="gc-head"><span class="gc-ico"><i class="f7-icons">bank_fill</i></span><div><b>تسكير الهدايا إلى دولارات 💵</b><span>معدل التحويل: <b>$${usd} لكل ${goldMin} ذهب</b> (نفس سعر شراء الذهب في المتجر) — المبلغ يتناسب مع الكمية التي تحددينها</span></div></div>
       <div class="gc-rows">
         <div class="gc-row"><span>عدد الهدايا المستلمة</span><b>${info.gifts_count}</b></div>
         <div class="gc-row"><span>مجموع ذهب هداياك</span><b>${goldTotal} 🪙</b></div>
@@ -7568,7 +7787,8 @@ function renderCashoutStep1(goldMin, usd) {
   if (next) next.onclick = () => { CASHOUT_STEP = 2; renderCashoutStep2(goldMin, usd); };
 }
 
-// الخطوة 2: بيانات الحساب البنكي + تأكيد
+// الخطوة 2: بيانات حساب الاستلام (PayPal أو بنك) + تأكيد
+let CASHOUT_METHOD = 'paypal';
 function renderCashoutStep2(goldMin, usd) {
   const zone = $('#gcEligibleZone');
   if (!zone) return;
@@ -7578,6 +7798,7 @@ function renderCashoutStep2(goldMin, usd) {
     .filter(x => x.qty > 0)
     .map(x => `${x.g.name} ×${x.qty}`)
     .join('، ').slice(0, 160);
+  const isPaypal = CASHOUT_METHOD === 'paypal';
   zone.innerHTML = `
     <div class="gc-step-title"><i class="f7-icons">bank_fill</i> بيانات حساب الاستلام</div>
     <div class="gc-summary-chips">
@@ -7586,19 +7807,39 @@ function renderCashoutStep2(goldMin, usd) {
       <span class="chip" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534">💵 سيُحوَّل $${cashoutUsdFor(selectedGold).toFixed(2)}</span>
     </div>
     <div class="gc-note" style="margin-bottom:10px"><i class="f7-icons">info_circle_fill</i> عند اتمام الإدارة للتحويل: يُخصم <b>المحدد فقط</b> (${summaryParts || '—'}) من حسابك وتبقى بقية الهدايا المتكررة كما هي.</div>
-    <div class="gc-fields">
-      <input id="gcAccountNumber" inputmode="numeric" maxlength="19" placeholder="رقم الحساب البنكي / رقم البطاقة (8-19 رقمًا)">
-      <input id="gcAccountName" maxlength="60" placeholder="اسم صاحب الحساب">
+    <div class="gc-methods">
+      <label class="gc-method${isPaypal ? ' sel' : ''}" data-method="paypal"><input type="radio" name="gcMethod" value="paypal" ${isPaypal ? 'checked' : ''}> <i class="f7-icons">paypal</i> <span>حساب باي بال (تحويل تلقائي من حساب الإدارة)</span></label>
+      <label class="gc-method${!isPaypal ? ' sel' : ''}" data-method="bank"><input type="radio" name="gcMethod" value="bank" ${!isPaypal ? 'checked' : ''}> <i class="f7-icons">bank_fill</i> <span>حساب بنكي</span></label>
+    </div>
+    <div class="gc-fields" id="gcFields">
+      ${isPaypal
+        ? `<input id="gcPaypalEmail" type="email" maxlength="80" placeholder="بريد حساب PayPal الذي ستستلمين عليه المبلغ" autocomplete="off">
+           <div class="gc-note" style="margin-top:6px"><i class="f7-icons">checkmark_circle_fill</i> سيُرسل المبلغ مباشرة إلى حساب PayPal هذا من حساب الإدارة.</div>`
+        : `<input id="gcAccountNumber" inputmode="numeric" maxlength="19" placeholder="رقم الحساب البنكي / رقم البطاقة (8-19 رقمًا)">
+           <input id="gcAccountName" maxlength="60" placeholder="اسم صاحب الحساب">
+           <div class="gc-note" style="margin-top:6px"><i class="f7-icons">info_circle_fill</i> لاستلام بنكي فوري آلي، يُفضَّل استخدام «حساب باي بال» أعلاه.</div>`}
     </div>
     <div style="display:flex;gap:8px">
       <button class="gc-btn gc-btn-back" id="gcBackStepBtn" type="button" style="flex:0 0 auto;background:#e5e7ef;color:#475569;padding: 0px 2px;width: 35px;"><i class="f7-icons">chevron_right</i></button>
       <button class="gc-btn" id="gcSubmitBtn" type="button" style="flex:1"><i class="f7-icons">bank_fill</i> إرسال طلب التسكير ($${cashoutUsdFor(selectedGold).toFixed(2)})</button>
     </div>`;
+  $$('#gcEligibleZone .gc-method').forEach(lbl => {
+    lbl.onclick = (e) => {
+      e.preventDefault();
+      CASHOUT_METHOD = lbl.dataset.method;
+      renderCashoutStep2(goldMin, usd);
+    };
+  });
   $('#gcBackStepBtn').onclick = () => { CASHOUT_STEP = 1; renderCashoutStep1(goldMin, usd); };
   $('#gcSubmitBtn').onclick = async () => {
     const btn = $('#gcSubmitBtn');
-    const num = ($('#gcAccountNumber').value || '').replace(/[\s-]/g, '');
-    if (!/^\d{8,19}$/.test(num)) return toast('رقم الحساب غير صحيح — يجب أن يتكون من 8 إلى 19 رقمًا', false);
+    const isPaypalNow = CASHOUT_METHOD === 'paypal';
+    const paypalEmail = ($('#gcPaypalEmail') && $('#gcPaypalEmail').value || '').trim();
+    const num = ($('#gcAccountNumber') && $('#gcAccountNumber').value || '').replace(/[\s-]/g, '');
+    const accName = ($('#gcAccountName') && $('#gcAccountName').value || '').trim();
+    const EMAIL_RE = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+    if (isPaypalNow && !EMAIL_RE.test(paypalEmail)) return toast('أدخلي بريدك الإلكتروني المرتبط بحساب PayPal بشكل صحيح', false);
+    if (!isPaypalNow && !/^\d{8,19}$/.test(num)) return toast('رقم الحساب غير صحيح — يجب أن يتكون من 8 إلى 19 رقمًا', false);
     const selection = buildCashoutSelection();
     if (!selection.length) return toast('حددي كمية الهدايا المراد تسكيرها أولاً', false);
     btn.disabled = true;
@@ -7606,7 +7847,9 @@ function renderCashoutStep2(goldMin, usd) {
     try {
       await api('/api/gift-cashout', 'POST', {
         account_number: num,
-        account_name: $('#gcAccountName').value.trim(),
+        account_name: accName,
+        payout_method: isPaypalNow ? 'paypal' : 'bank',
+        paypal_email: isPaypalNow ? paypalEmail : '',
         selection
       });
       toast('تم إرسال طلب التسكير ✓ سيصلك إشعار فور اتمام التحويل');
@@ -7933,6 +8176,12 @@ async function openBuy() {
   const defaultPkg = STORE_PACKAGES.find(p => p.badge && p.badge.includes('الأكثر طلباً')) || STORE_PACKAGES[0];
   SELECTED_PACKAGE = defaultPkg;
   renderGoldPackages();
+
+  // تفعيل زر PayPal بعد تحميل الباقات (يُعرض فقط إن فعّلت الإدارة البوابة).
+  PAYPAL_BUTTONS_RENDERED = false;
+  const pw = $('#paypal-button-container');
+  if (pw) pw.innerHTML = '';
+  activatePayPal();
 }
 
 function renderGoldPackages() {
@@ -7982,178 +8231,143 @@ function renderGoldPackages() {
   }
 }
 
-// فتح نافذة الدفع ببطاقة الصراف والبطاقة البنكية
-function openCardPaymentModal() {
-  if (!ME || !ME.registered) {
-    return toast(translateDynamicText('يجب تسجيل الدخول بحساب مسجل لإتمام عملية الشراء'), false);
-  }
-  if (!SELECTED_PACKAGE) {
-    return toast(translateDynamicText('اختر باقة الذهب أولاً'), false);
-  }
+// -----------------------------------------------------------
+//  الدفع الفعلي عبر PayPal — يُنشئ الطلب عبر الخادم (الذي يحمل secret)
+//  ثم يُثبّت الدفع ويُشحن الذهب فقط بعد تأكيد PayPal للعملية.
+//  لا يلمس الكود أي بيانات بطاقة، وليس هناك أي دفع تجميلي.
+// -----------------------------------------------------------
+let PAYPAL_SDK_LOADED = false;
+let PAYPAL_BUTTONS_RENDERED = false;
+// آخر خطأ حقيقي من الخادم (إنشاء/تأكيد العملية) — يُعرض في onError بدل رسالة عامة فارغة.
+let PAYPAL_LAST_ERROR = '';
 
-  const curr = SELECTED_PACKAGE.currency || STORE_PAYMENT_INFO.currency || '$';
-  const totalG = (+SELECTED_PACKAGE.gold || 0) + (+SELECTED_PACKAGE.bonus || 0);
-  const goldLabel = APP_LANG === 'en' ? 'Gold' : (APP_LANG === 'es' ? 'Oro' : (APP_LANG === 'tr' ? 'Altın' : 'ذهب'));
-  const bonusLabel = APP_LANG === 'en' ? 'bonus' : (APP_LANG === 'es' ? 'de regalo' : (APP_LANG === 'tr' ? 'hediye' : 'هدية'));
-
-  // تحديث بيانات الباقة في نافذة الدفع
-  $('#cardPayPkgName').textContent = translateDynamicText(SELECTED_PACKAGE.name);
-  $('#cardPayPkgGold').textContent = `${totalG} ${goldLabel} 🪙` + (SELECTED_PACKAGE.bonus ? ` (+${SELECTED_PACKAGE.bonus} ${bonusLabel})` : '');
-  $('#cardPayPkgPrice').textContent = `${SELECTED_PACKAGE.price} ${curr}`;
-  $('#cardPayBtnPrice').textContent = `${SELECTED_PACKAGE.price} ${curr}`;
-  $('#cardPayBankName').textContent = STORE_PAYMENT_INFO.merchant_bank || 'البنك المعتمد';
-
-  // إعادة ضبط حقول البطاقة
-  $('#cardInputHolder').value = (ME.username || 'CARDHOLDER').toUpperCase();
-  $('#cardInputNumber').value = '';
-  $('#cardInputExp').value = '';
-  $('#cardInputCvv').value = '';
-
-  // تحديث شكل البطاقة المصرفية التفاعلية
-  $('#vcCardHolder').textContent = (ME.username || 'CARDHOLDER').toUpperCase();
-  $('#vcCardNumber').textContent = '•••• •••• •••• ••••';
-  $('#vcCardExp').textContent = 'MM/YY';
-  $('#vcCardBrand').textContent = 'CARD';
-  $('#cardBrandIcon').innerHTML = '<i class="f7-icons">creditcard_fill</i>';
-
-  openOv('cardPaymentOv');
+// تحميل مكتبة زر PayPal (SDK) بالـ client_id والعملة من إعدادات الخادم.
+function loadPayPalSdk(cfg, cb) {
+  if (window.paypal || PAYPAL_SDK_LOADED) { cb && cb(); return true; }
+  if (!cfg.paypal_client_id) return false;
+  const script = document.createElement('script');
+  const base = cfg.paypal_mode === 'sandbox' ? 'https://www.sandbox.paypal.com/sdk/js' : 'https://www.paypal.com/sdk/js';
+  // enable-funding: نُظهر خيارات الدفع كافة — بطاقات (Visa/Mastercard/Amex)، والائتمان، وPayPal.
+  // لا نضيف شرطاً على طريقة الدفع: يختار المشتري الدين بالبطاقة أو PayPal أو غيرها من خيارات الدفع.
+  const funding = encodeURIComponent('card,credit,paylater');
+  script.src = `${base}?client-id=${encodeURIComponent(cfg.paypal_client_id)}&currency=${encodeURIComponent(cfg.paypal_currency || 'USD')}&intent=capture&commit=true&enable-funding=${funding}`;
+  script.async = true;
+  script.onload = () => { PAYPAL_SDK_LOADED = true; PAYPAL_BUTTONS_RENDERED = false; cb && cb(); };
+  script.onerror = () => { PAYPAL_SDK_LOADED = false; const n = $('#buyPaypalNote'); if (n) { n.style.display = 'block'; n.textContent = 'تعذر تحميل بوابة الدفع، حاول مجدداً لاحقاً'; } };
+  document.head.appendChild(script);
+  return true;
 }
 
-// معالجة وتنسيق حقول البطاقة البنكية مباشرة أثناء الكتابة
-function initCardInputFormatting() {
-  const numInput = $('#cardInputNumber');
-  const holderInput = $('#cardInputHolder');
-  const expInput = $('#cardInputExp');
-  const cvvInput = $('#cardInputCvv');
+// عرض زر PayPal داخل حاوية الدفع.
+function renderPayPalButtons() {
+  if (!window.paypal || !SELECTED_PACKAGE) return;
+  if (PAYPAL_BUTTONS_RENDERED) return;
+  const wrap = $('#paypal-button-container');
+  if (!wrap) return;
+  const note = $('#buyPaypalNote');
+  if (note) note.style.display = 'none';
 
-  if (numInput) {
-    numInput.oninput = () => {
-      let v = numInput.value.replace(/\D/g, '').slice(0, 16);
-      let parts = [];
-      for (let i = 0; i < v.length; i += 4) parts.push(v.slice(i, i + 4));
-      numInput.value = parts.join(' ');
-
-      // كشف نوع البطاقة
-      let brand = 'CARD';
-      let icon = 'creditcard_fill';
-      if (/^4/.test(v)) { brand = 'VISA'; icon = 'creditcard_fill'; }
-      else if (/^(5[1-5]|2[2-7])/.test(v)) { brand = 'Mastercard'; icon = 'creditcard_fill'; }
-      else if (/^(5888|5889|5890|9682|4847|5043|4008)/.test(v)) { brand = 'Mada مدى'; icon = 'creditcard_fill'; }
-      else if (/^(5078|3585)/.test(v)) { brand = 'Meeza ميزة'; icon = 'creditcard_fill'; }
-      else if (/^(34|37)/.test(v)) { brand = 'AMEX'; icon = 'creditcard_fill'; }
-
-      $('#vcCardBrand').textContent = brand;
-      $('#cardBrandIcon').innerHTML = `<i class="f7-icons">${icon}</i>`;
-
-      if (parts.length) {
-        let display = parts.join(' ');
-        while (display.length < 19) {
-          if (display.endsWith(' ') || (display.length + 1) % 5 === 0) display += ' ';
-          display += '•';
+  PAYPAL_BUTTONS_RENDERED = true;
+  try {
+    // enableFunding: نعرض أيضاً خيار «بطاقة دين أو ائتمان» (Visa/Mastercard/Amex)
+    // وخيارات تمويل أخرى بحسب ما يسمح به PayPal. يبقى الدفع حقيقياً عبر PayPal نفسه.
+    paypal.Buttons({
+      enableFunding: ['card', 'credit', 'paylater'],
+      style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal', height: 44 },
+      // 1) إنشاء طلب دفع عبر الخادم (الخادم يحمل الـ secret ويتحقق من الباقة).
+      createOrder: async (data, actions) => {
+        if (!ME || !ME.registered) {
+          toast('يجب تسجيل الدخول بحساب مسجل لإتمام عملية الشراء', false);
+          return actions && actions.reject ? actions.reject() : null;
         }
-        $('#vcCardNumber').textContent = display.slice(0, 19);
-      } else {
-        $('#vcCardNumber').textContent = '•••• •••• •••• ••••';
+        try {
+          const order = await api('/api/paypal/create-order', 'POST', { package_id: SELECTED_PACKAGE.id });
+          if (!order || !order.order_id) throw new Error((order && order.error) || 'تعذر إنشاء العملية');
+          return order.order_id;
+        } catch (e) {
+          // احفظ السبب الحقيقي (رسالة الخادم) لعرضه في onError وفوق زر الدفع.
+          let baseErr = (e && (e.error || e.message)) || 'تعذر إنشاء عملية الدفع، تحقق من إعدادات PayPal';
+          // إن كان بيرPayPal قد قيّد الحساب التجاري، نعرض توجيهاً واضحاً بدل الرسالة الإنجليزية المجردة.
+          if (/merchant account is restricted|account is restricted|restricted/i.test(baseErr)) {
+            baseErr = 'الحساب التجاري مقيد لدى PayPal ولا يستطيع قبول الدفعات — يرجى حل القيد من حساب PayPal (تفعيل الحساب وإكمال بيانات العمل) أو استخدام وضع «تجريبي» بحساب Business مُفعّل.';
+          }
+          PAYPAL_LAST_ERROR = baseErr;
+          toast(PAYPAL_LAST_ERROR, false);
+          if (note) { note.style.display = 'block'; note.textContent = PAYPAL_LAST_ERROR; }
+          return actions && actions.reject ? actions.reject() : null;
+        }
+      },
+      // 2) بعد موافقة المشتري في PayPal نُثبّت الدفع، ثم يُشحن الذهب من الخادم.
+      onApprove: async (data) => {
+        try {
+          const res = await api('/api/paypal/capture-order', 'POST', { order_id: data.orderID, package_id: SELECTED_PACKAGE.id });
+          if (res && res.ok) {
+            if (ME) ME.balance = res.balance;
+            const mb = $('#menuBal');
+            if (mb) mb.textContent = res.balance;
+            // تحديث أي عناصر قد تعتمد الرصيد
+            if (window.SOCKET && SOCKET) SOCKET.emit('call:balance_update', { balance: res.balance });
+            if (typeof updateBalanceUI === 'function') updateBalanceUI(res.balance);
+
+            closeOv('buyOv');
+            toast(`🎉 تمت عملية الدفع بنجاح! شحن ${res.total_gold} ذهب (${res.amount_paid} ${res.currency}) إلى رصيدك 🪙`);
+            if (typeof beep === 'function') beep(880, .2);
+            PAYPAL_BUTTONS_RENDERED = false;
+            const wrap2 = $('#paypal-button-container'); if (wrap2) wrap2.innerHTML = '';
+          } else {
+            PAYPAL_LAST_ERROR = (res && res.error) || 'لم يكتمل تأكيد الدفع، لم يُشحن أي رصيد';
+            toast(PAYPAL_LAST_ERROR, false);
+            if (note) { note.style.display = 'block'; note.textContent = PAYPAL_LAST_ERROR; }
+          }
+        } catch (e) {
+          PAYPAL_LAST_ERROR = (e && (e.error || e.message)) || 'تعذر تأكيد الدفع، يرجى إعادة المحاولة';
+          toast(PAYPAL_LAST_ERROR, false);
+          if (note) { note.style.display = 'block'; note.textContent = PAYPAL_LAST_ERROR; }
+        }
+      },
+      onError: (err) => {
+        // اعرض سبباً أدق: آخر خطأ من الخادم إن وُجد، وإلا رسالة الـ SDK.
+        const sdkDetail = (err && (err.message || err.description || err.name)) || '';
+        const detail = PAYPAL_LAST_ERROR || sdkDetail;
+        PAYPAL_LAST_ERROR = '';
+        toast(detail ? ('حدث خطأ أثناء الدفع — ' + detail) : 'حدث خطأ أثناء الدفع، لم يتم الخصم ولم يُشحن أي رصيد', false);
+        if (note) { note.style.display = 'block'; note.textContent = 'لم تنجح العملية — ' + (detail || 'حاول مجدداً.') ; }
+      },
+      onCancel: () => {
+        toast('ألغيت عملية الدفع — لم يُخصم أي مبلغ', false);
       }
-    };
-  }
-
-  if (holderInput) {
-    holderInput.oninput = () => {
-      const v = holderInput.value.trim().toUpperCase();
-      $('#vcCardHolder').textContent = v || 'CARDHOLDER NAME';
-    };
-  }
-
-  if (expInput) {
-    expInput.oninput = () => {
-      let v = expInput.value.replace(/\D/g, '').slice(0, 4);
-      if (v.length >= 2) v = v.slice(0, 2) + '/' + v.slice(2, 4);
-      expInput.value = v;
-      $('#vcCardExp').textContent = v || 'MM/YY';
-    };
-  }
-}
-
-// تنفيذ الدفع بالبطاقة وشحن الذهب
-async function executeCardPayment() {
-  if (!ME || !ME.registered) return toast('يجب تسجيل الدخول أولاً', false);
-  if (!SELECTED_PACKAGE) return toast('اختر باقة الذهب أولاً', false);
-
-  const cardNum = $('#cardInputNumber').value.replace(/\D/g, '');
-  const holder = $('#cardInputHolder').value.trim();
-  const exp = $('#cardInputExp').value.trim();
-  const cvv = $('#cardInputCvv').value.trim();
-
-  if (cardNum.length < 13 || cardNum.length > 19) {
-    return toast('يرجى إدخال رقم بطاقة صراف صحيح (16 رقم)', false);
-  }
-  if (!holder || holder.length < 3) {
-    return toast('يرجى كتابة اسم صاحب البطاقة', false);
-  }
-  if (!/^\d{2}\/\d{2}$/.test(exp)) {
-    return toast('يرجى كتابة تاريخ الانتهاء بصيغة MM/YY', false);
-  }
-  if (cvv.length < 3 || cvv.length > 4) {
-    return toast('يرجى كتابة رمز الأمان CVV المكون من 3 أرقام', false);
-  }
-
-  const btn = $('#cardPaySubmitBtn');
-  const originalText = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<i class="f7-icons">arrow2_circlepath</i> جاري الخصم وإيداع الذهب فورياً...';
-
-  try {
-    const res = await api('/api/pay-with-card', 'POST', {
-      package_id: SELECTED_PACKAGE.id,
-      card_number: cardNum,
-      card_holder: holder,
-      exp_date: exp,
-      cvv: cvv
-    });
-
-    btn.disabled = false;
-    btn.innerHTML = originalText;
-
-    if (res && res.ok) {
-      if (ME) ME.balance = res.balance;
-      const mb = $('#menuBal');
-      if (mb) mb.textContent = res.balance;
-
-      closeOv('cardPaymentOv');
-      closeOv('buyOv');
-
-      toast(`🎉 تمت عملية الدفع بنجاح! تم شحن ${res.total_gold} ذهب إلى رصيدك فوراً 🪙`);
-      beep(880, .2);
-    }
+    }).render('#paypal-button-container');
   } catch (err) {
-    btn.disabled = false;
-    btn.innerHTML = originalText;
-    toast(err.error || 'تعذر إتمام الدفع، يرجى التحقق من بيانات البطاقة', false);
+    if (note) { note.style.display = 'block'; note.textContent = 'تعذر عرض زر الدفع، حاول مجدداً.'; }
   }
 }
 
-async function buyGold() {
-  if (!ME || !ME.registered) {
-    return toast('يجب تسجيل الدخول بحساب مسجل لطلب شراء الذهب', false);
+// عند فتح المتجر بعد تحميل الباقات، نفعّل زر PayPal إن كان مفعّلاً من لوحة الإدارة.
+function activatePayPal() {
+  const wrap = $('#paypal-button-container');
+  const note = $('#buyPaypalNote');
+
+  if (!STORE_PAYMENT_INFO.paypal_enabled) {
+    if (wrap) wrap.innerHTML = `<div style="padding:14px;text-align:center;color:#dc2626;font-weight:700;background:#fef2f2;border:1px solid #fecaca;border-radius:12px">الدفع الإلكتروني غير متاح حالياً — تواصل مع الإدارة</div>`;
+    return;
   }
-  if (!SELECTED_PACKAGE) return toast('اختر باقة الذهب أولاً', false);
-  try {
-    const d = await api('/api/buy-gold-request', 'POST', { gold: SELECTED_PACKAGE.gold });
-    closeOv('buyOv');
-    toast(`تم إرسال طلب شراء ${SELECTED_PACKAGE.gold} ذهب إلى الإدارة ⏳ سيصلك إشعار فور الموافقة وشحن الرصيد`);
-  } catch (e) {
-    toast(e.error || 'تعذر إرسال الطلب', false);
+  if (!STORE_PAYMENT_INFO.paypal_client_id) {
+    if (wrap) wrap.innerHTML = `<div style="padding:14px;text-align:center;color:#b45309;font-weight:700;background:#fffbeb;border:1px solid #fde68a;border-radius:12px">بوابة الدفع لم تُفعّل بعد — يرجى التواصل مع الإدارة</div>`;
+    return;
+  }
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (note) { note.style.display = 'block'; note.textContent = 'جاري تحميل بوابة الدفع الآمن...'; }
+
+  const cfg = STORE_PAYMENT_INFO;
+  const ok = loadPayPalSdk(cfg, () => renderPayPalButtons());
+  if (!ok && !window.paypal) {
+    if (note) note.textContent = 'تعذر تحميل بوابة الدفع، حاول مجدداً لاحقاً';
+  } else if (ok && window.paypal) {
+    PAYPAL_BUTTONS_RENDERED = false;
+    renderPayPalButtons();
   }
 }
-
-const buyPaypalBtn = $('#buyPaypal');
-if (buyPaypalBtn) buyPaypalBtn.onclick = buyGold;
-const buyDebitBtn = $('#buyDebit');
-if (buyDebitBtn) buyDebitBtn.onclick = openCardPaymentModal;
-const cardPayBtn = $('#cardPaySubmitBtn');
-if (cardPayBtn) cardPayBtn.onclick = executeCardPayment;
-initCardInputFormatting();
 
 $$('#setList .switch').forEach(sw => sw.onclick = () => {
   const k = sw.dataset.set;

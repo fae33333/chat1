@@ -447,6 +447,7 @@ fs.mkdirSync(path.join(__dirname, 'public/uploads/statuses'), { recursive: true 
 fs.mkdirSync(path.join(__dirname, 'public/uploads/wall'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/chat'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/calls'), { recursive: true });
+fs.mkdirSync(path.join(__dirname, 'public/uploads/sounds'), { recursive: true }); // أصوات الإشعارات (دخول/رسالة/خروج)
 // أيقونات المواقع المصغّرة (Favicon) الخاصة بمسارات الأرشفة — تُولَّد أو تُجلب تلقائياً
 fs.mkdirSync(path.join(__dirname, 'public/uploads/favicons'), { recursive: true });
 function safeUploadFilename(originalName, defaultExt = '.png') {
@@ -557,6 +558,22 @@ const uploadChatMedia = multer({
     const allowed = (CHAT_IMAGE_EXTENSIONS.has(ext) && (mime.startsWith('image/') || mime === 'application/octet-stream'))
       || (CHAT_AUDIO_EXTENSIONS.has(ext) && (mime.startsWith('audio/') || mime === 'application/octet-stream'));
     cb(allowed ? null : new Error('يمكن رفع صورة أو مقطع صوت فقط'), allowed);
+  }
+});
+// رفع أصوات الإشعارات (دخول/رسالة/خروج) من لوحة الإدارة إلى مجلد مستقل تحت uploads.
+const SOUND_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.webm']);
+const soundStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, 'public/uploads/sounds')),
+  filename: (req, file, cb) => cb(null, safeUploadFilename(file.originalname, '.mp3'))
+});
+const uploadSound = multer({
+  storage: soundStorage,
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const mime = String(file.mimetype || '');
+    const allowed = SOUND_EXTENSIONS.has(ext) && (mime.startsWith('audio/') || mime === 'application/octet-stream');
+    cb(allowed ? null : new Error('اختر ملفاً صوتياً صالحاً (MP3، WAV، OGG، M4A، AAC، OPUS)'), allowed);
   }
 });
 // رفع النبذة الصوتية للملف الشخصي (عضو مسجل فقط) — إلى مجلد مستقل تحت uploads.
@@ -941,18 +958,16 @@ setTimeout(() => refreshPublicMessageRules().catch(() => { }), 1200);
 //  بوابة الحماية: منع الاتصال عبر VPN/بروكسي + قائمة المتصفحات المسموحة
 //  تُدار من لوحة التحكم الإدارية وتُطبّق على صفحة الدردشة واتصال Socket.IO.
 // =====================================================
-let ACCESS_SETTINGS = { block_vpn_proxy: '0', vpn_proxy_check: 'both', vpn_proxy_block_hosting: '1', allowed_browsers: '' };
+// *** أُلغيت خاصية «الحماية والوصول (VPN / المتصفحات)» بالكامل حسب طلب المالك ***
+// نبقيه معطّلاً دائماً: لا نحفظ مفاتيح الحماية، ولا نعيد تمكينها من الإعدادات.
+let ACCESS_SETTINGS = { block_vpn_proxy: '0', vpn_proxy_check: 'both', vpn_proxy_block_hosting: '0', allowed_browsers: '' };
 async function refreshAccessGate() {
+  // لا شَيء: خاصية حظر VPN/المتصفحات أُلغيت نهائياً، فلا نقرأ مفاتيحها من قاعدة البيانات.
+  ACCESS_SETTINGS = { block_vpn_proxy: '0', vpn_proxy_check: 'both', vpn_proxy_block_hosting: '0', allowed_browsers: '' };
+  // تنظيف لمرة واحدة: إزالة مفاتيح الحماية القديمة من قاعدة البيانات كي لا تبقى معطّلة.
   try {
-    const settings = await getSettings();
-    ACCESS_SETTINGS = {
-      block_vpn_proxy: String(settings.block_vpn_proxy === '1' ? '1' : '0'),
-      vpn_proxy_check: String(settings.vpn_proxy_check || 'both'),
-      vpn_proxy_block_hosting: String(settings.vpn_proxy_block_hosting === '1' ? '1' : '0'),
-      allowed_browsers: String(settings.allowed_browsers || ''),
-      site_name: String(settings.site_name || 'الدردشة')
-    };
-  } catch (e) { }
+    await q.run(`DELETE FROM settings WHERE key IN ('block_vpn_proxy','vpn_proxy_check','vpn_proxy_block_hosting','allowed_browsers')`);
+  } catch (e) { /* تجاهل: لا يوجد جدول/مفاتيح */ }
 }
 refreshAccessGate().catch(() => { });
 setTimeout(() => refreshAccessGate().catch(() => { }), 1500);
@@ -1064,16 +1079,97 @@ async function externalVpnCheck(ip) {
 // برسالة «حدث خطأ ما». لذلك نعتمد الروبوت فقط بعد تحقق عكسي من العنوان:
 // rDNS يطابق نطاق جوجل/بينغ المعروف، ثم تأكيد طردي أن الاسم يحلّ لنفس IP،
 // حتى لا يستطيع مستخدم VPN انتحال يوزر-أجنت الروبوت وتجاوز البوابة.
+// ولأن DNS العكسي قد يفشل أحياناً على بعض الاستضافات/خلف البروكسي، نضيف
+// طبقة احتياطية: تحقق من نطاقات IP الرسمية للمحركات (CIDR) — أي روبوت من
+// هذه النطاقات يُعدّ موثّقاً حتى لو تعذّر فكّ rDNS لحظياً.
 const SEARCH_CRAWLER_RULES = [
-  { ua: /googlebot|googleother|apis-google|adsbot-google|mediapartners-google|feedfetcher-google/i, domains: ['googlebot.com', 'google.com'] },
-  { ua: /bingbot|bingpreview|msnbot|adindexer/i, domains: ['search.msn.com', 'bing.com'] },
-  { ua: /yandexbot|yandexrenderterm|yandeximages/i, domains: ['yandex.ru', 'yandex.net', 'yandex.com'] },
-  { ua: /baiduspider|baiduimage/i, domains: ['baidu.jp'] },
-  { ua: /duckduckbot/i, domains: ['duckduckgo.com'] }
+  {
+    ua: /googlebot|googleother|apis-google|adsbot-google|mediapartners-google|feedfetcher-google/i,
+    domains: ['googlebot.com', 'google.com'],
+    cidrs: [
+      // نطاقات Googlebot الرسمية (IPv4 + IPv6) — تُنشر رسمياً من Google
+      '66.249.64.0/19', '66.249.64.0/20', '66.249.70.0/24', '66.249.71.0/24',
+      '66.249.72.0/22', '66.249.76.0/22', '66.249.80.0/20', '66.249.64.0/19',
+      '64.233.160.0/19', '216.239.32.0/19',
+      '2001:4860:4801::/48', '2001:4860:4805::/48'
+    ]
+  },
+  {
+    ua: /bingbot|bingpreview|msnbot|adindexer/i,
+    domains: ['search.msn.com', 'bing.com'],
+    cidrs: ['40.77.167.0/24', '40.77.160.0/19', '40.77.163.0/24', '157.55.39.0/24', '207.46.13.0/24', '66.249.64.0/20']
+  },
+  {
+    ua: /yandexbot|yandexrenderterm|yandeximages/i,
+    domains: ['yandex.ru', 'yandex.net', 'yandex.com'],
+    cidrs: ['77.88.0.0/18', '5.255.192.0/18', '37.9.64.0/18', '95.108.128.0/17']
+  },
+  {
+    ua: /baiduspider|baiduimage/i,
+    domains: ['baidu.jp'],
+    cidrs: ['220.181.108.0/24', '220.181.38.0/24', '123.125.71.0/24', '180.76.15.0/24']
+  },
+  {
+    ua: /duckduckbot/i,
+    domains: ['duckduckgo.com'],
+    cidrs: ['40.77.167.0/24', '40.77.160.0/19']
+  }
 ];
+
+// فحص هل عنوان IP داخل نطاق CIDR (يدعم IPv4 وIPv6).
+function ipInCidr(ip, cidr) {
+  try {
+    const ipStr = String(ip || '');
+    if (!net.isIP(ipStr)) return false;
+    const [range, bitsStr] = String(cidr).split('/');
+    const bits = parseInt(bitsStr, 10);
+    if (typeof bits !== 'number' || isNaN(bits)) return false;
+    const toBytes = (addr) => {
+      if (net.isIPv4(addr)) return addr.split('.').map(Number);
+      // IPv6: نوسّع الترميز المضغوط '::' ثم نحول كل مجموعة hex إلى بايتين.
+      let a = String(addr).toLowerCase();
+      if (a.includes('::')) {
+        const [left = '', right = ''] = a.split('::');
+        const l = left ? left.split(':') : [];
+        const r = right ? right.split(':') : [];
+        const missing = 8 - (l.length + r.length);
+        const zeros = new Array(Math.max(0, missing)).fill('0');
+        a = (l.length ? left : '') + ':' + zeros.join(':') + (r.length ? ':' + right : '');
+        a = a.replace(/^:|:$/g, '');
+      }
+      const out = [];
+      for (const g of a.split(':')) {
+        const val = parseInt(g || '0', 16);
+        out.push((val >> 8) & 255, val & 255);
+      }
+      return out.slice(0, 16);
+    };
+    const ipBytes = toBytes(ipStr);
+    const rangeBytes = toBytes(range);
+    if (ipBytes.length !== rangeBytes.length) return false;
+    const totalBits = ipBytes.length * 8;
+    let matchedBits = 0;
+    for (let i = 0; i < totalBits; i++) {
+      if (i >= bits) break;
+      const byte = i >> 3;
+      const bit = 7 - (i & 7);
+      const ipBit = (ipBytes[byte] >> bit) & 1;
+      const rangeBit = (rangeBytes[byte] >> bit) & 1;
+      if (ipBit !== rangeBit) return false;
+      matchedBits++;
+    }
+    return true;
+  } catch (e) { return false; }
+}
+
+// يبحث عن أي نطاق CIDR من القائمة يطابق IP الروبوت.
+function crawlerIpMatchesCidr(rule, ip) {
+  if (!rule || !Array.isArray(rule.cidrs) || !rule.cidrs.length) return false;
+  return rule.cidrs.some(c => ipInCidr(ip, c));
+}
 const VERIFIED_CRAWLER_CACHE = new Map(); // ip -> { allowed, expires }
 const CRAWLER_OK_TTL_MS = 24 * 60 * 60 * 1000; // نتيجة موجبة: يوم كامل
-const CRAWLER_FAIL_TTL_MS = 10 * 60 * 1000;     // نتيجة سالبة: دقائق حتى لا نثقل DNS
+const CRAWLER_FAIL_TTL_MS = 2 * 60 * 1000;     // نتيجة سالبة: دقيقتان حتى لا نثقل DNS ولا نُهدر وقت مربط الزحف
 
 async function isVerifiedSearchCrawler(req) {
   const ua = String(requestHeader(req, 'user-agent') || '');
@@ -1095,7 +1191,11 @@ async function isVerifiedSearchCrawler(req) {
         allowed = Array.isArray(addrs) && (addrs.length === 0 || addrs.includes(ip)); // تعذر التأكيد الطردي لا يلغي تطابق rDNS
       } catch (e) { allowed = true; }
     }
-  } catch (e) { allowed = false; } // فشل DNS = يُعامل كمستخدم عادي وتسري عليه البوابة
+  } catch (e) { allowed = false; } // فشل DNS العكسي (لا PTR للعنوان أو مشكلة DNS)
+  // طبقة احتياطية: إن تعذّر فكّ rDNS يبقى الروبوت موثّقاً إذا كان عنوانه ضمن
+  // نطاقات المحرك الرسمية. هذا يمنع إفشال طلب «الفهرسة» في أدوات مشرفي المواقع،
+  // بينما يبقى منع VPN سليماً لأن هذه النطاقات مملوكة للمحركات فعلاً.
+  if (!allowed && crawlerIpMatchesCidr(rule, ip)) allowed = true;
   VERIFIED_CRAWLER_CACHE.set(ip, { allowed, expires: now + (allowed ? CRAWLER_OK_TTL_MS : CRAWLER_FAIL_TTL_MS) });
   if (VERIFIED_CRAWLER_CACHE.size > 5000) {
     for (const [k, v] of VERIFIED_CRAWLER_CACHE) if (v.expires < now) VERIFIED_CRAWLER_CACHE.delete(k);
@@ -1105,23 +1205,12 @@ async function isVerifiedSearchCrawler(req) {
 }
 
 // قرار نهائي للوصول: يعيد قائمة أسباب المنع (ربما فارغة = مسموح).
+// *** أُلغيت خاصية «الحماية والوصول (VPN / المتصفحات)» بالكامل حسب طلب المالك ***
+// لم نعد نحظر أي اتصال — لا ممن يستخدم VPN/بوروكسي، ولا ممن يفتح من متصفح
+// غير مذكور، ولا روبوتات محركات البحث. النتيجة: نجاح طلب الفهرسة في
+// «أدوات مشرفي المواقع» وزحف محركات البحث دون 403/noindex، والسماح لكل الزوار.
 async function accessBlockReasons(req) {
-  const reasons = [];
-  // روبوت بحث موثّق → يُسمح له دائماً حتى ترى محركات البحث المسار كاملاً.
-  if (await isVerifiedSearchCrawler(req)) return reasons;
-  if (!isBrowserAllowed(requestHeader(req, 'user-agent'))) reasons.push('browser');
-  if (String(ACCESS_SETTINGS.block_vpn_proxy) === '1') {
-    const mode = String(ACCESS_SETTINGS.vpn_proxy_check || 'both').toLowerCase();
-    let vpnBlocked = false;
-    // فحص الهيدر يلتقط البوروكسيات الصريحة فقط، بينما فحص IP هو الذي يمسك VPN الحقيقية.
-    if (mode === 'headers' || mode === 'both') vpnBlocked = headerProxyIndicatesVpn(req);
-    if (!vpnBlocked && (mode === 'api' || mode === 'both')) {
-      const ip = validIp(requestIp(req));
-      vpnBlocked = await externalVpnCheck(ip);
-    }
-    if (vpnBlocked) reasons.push('vpn');
-  }
-  return reasons;
+  return []; // لا حظر إطلاقاً
 }
 
 // صفحة HTML موحدة تظهر للمحظور (مفصّلة حسب السبب).
@@ -1287,6 +1376,7 @@ function pubUser(u) {
     muted: u.muted ? 1 : 0,
     color: String(u.color || ''),
     is_bot: u.is_bot ? 1 : 0,
+    broadcast_banned: u.broadcast_banned ? 1 : 0,
     verified: VERIFIED_SET.has(u.username) ? 1 : 0,
     verified_expired: VERIFIED_SET.has(u.username) ? expiredNow(VERIFIED_EXPIRES.get(u.username)) : 0,
     royal: ROYAL_MAP.has(u.username) ? 1 : 0,
@@ -2197,6 +2287,28 @@ async function giftCashoutTotals(userId) {
   const row = await q.get(`SELECT COUNT(*) AS cnt, COALESCE(SUM(price * qty), 0) AS gold FROM gifts_log WHERE to_id=?`, userId);
   return { count: +row.cnt || 0, gold: +row.gold || 0 };
 }
+// معدّل تحويل الذهب إلى دولار. يفضّل أن يطابق سعر الشراء في المتجر (باقات الذهب):
+// نأخذ الباقة القياسية ذات أكبر كمية ذهب لقيمة معينة ونحسب سعر الذهب الواحد.
+// إن لم توجد باقات، نقع على نموذج «cashout_usd_amount لكل cashout_gold_min» الذي تحدده الإدارة.
+async function cashoutRatePerGold(settings) {
+  settings = settings || await getSettings();
+  try {
+    const packages = await q.all(`SELECT gold, price FROM gold_packages WHERE active=1 AND gold>0 AND price>0 ORDER BY gold DESC, id ASC LIMIT 1`);
+    if (packages.length) {
+      const pkg = packages[0];
+      const rate = (+pkg.price) / (+pkg.gold);
+      if (rate > 0) return rate;
+    }
+  } catch (e) { /* لا جدول/باقات */ }
+  const goldMin = Math.max(0, parseInt(settings.cashout_gold_min) || 100);
+  const usdAmount = Math.max(0, parseFloat(settings.cashout_usd_amount) || 5);
+  return goldMin > 0 ? usdAmount / goldMin : 0;
+}
+// تحديد سعر الصرف بالدولار لمقدار ذهب معيّن (نفس سعر المتجر).
+async function cashoutUsdForGold(gold, settings) {
+  const rate = await cashoutRatePerGold(settings);
+  return Math.round((+gold || 0) * rate * 100) / 100;
+}
 async function giftCashoutInfo(me) {
   const settings = await getSettings();
   const enabled = String(settings.cashout_enabled) === '1';
@@ -2231,17 +2343,28 @@ async function giftCashoutInfo(me) {
     g.rows.push({ id: +row.id, qty: rqty });
   }
   const gift_groups = groupOrder.map(k => groups[k]);
+  // قيمة الدولار المطابقة لسعر شراء الذهب في المتجر (أو سعر الإدارة إن لم توجد باقات).
+  const ratePerGold = await cashoutRatePerGold(settings);
+  const usdForGoldMin = Math.round(goldMin * ratePerGold * 100) / 100;
+  let pendingFull = pending || null;
+  if (pending) {
+    const pp = await q.get(`SELECT account_number, account_name, payout_method, paypal_email, payout_batch_id, payout_status FROM gift_cashouts WHERE id=?`, pending.id);
+    pendingFull = { ...pending, ...(pp || {}) };
+  }
   return {
     enabled: enabled && isGirl,
     isGirl,
     gold_min: goldMin,
     usd_amount: usdAmount,
+    usd_for_gold_min: usdForGoldMin,            // قيمة دولار للحد الأدنى (بنفس سعر المتجر)
+    rate_per_gold: Math.round(ratePerGold * 10000) / 10000,
+    store_rate: true,                            // يُخبر الواجهة أن السعر يتبع سعر المتجر
     gold_total: gold,
     remaining_gold: Math.max(0, goldMin - gold),
     gifts_count: totals.count,
     gift_groups,
     has_pending: !!pending,
-    pending: pending || null,
+    pending: pendingFull || null,
     eligible: enabled && isGirl && goldMin > 0 && gold >= goldMin && !pending
   };
 }
@@ -2297,28 +2420,39 @@ app.post('/api/gift-cashout', requireUser, async (req, res) => {
     return res.status(400).json({ error: `مجموع ذهب الهدايا المحددة (${selectedGold}) أقل من المجموع المطلوب للتسكير (${info.gold_min}) — حددي كمية أكثر` });
   }
 
-  // المبلغ بالدولار يتناسب طردياً مع الذهب المحدد:
-  // usd_amount يقابل gold_min — مثال: 5$ لكل 100 ذهب → 200 ذهب = 10$
-  const usdForSelection = info.gold_min > 0
-    ? Math.round(selectedGold * info.usd_amount / info.gold_min * 100) / 100
-    : 0;
+  // المبلغ بالدولار يُحتسب بنفس سعر شراء الذهب في المتجر (باقات الذهب المفعّلة)،
+  // أو بسعر الإدارة إن لم توجد باقات (cashout_usd_amount لكل cashout_gold_min).
+  const usdForSelection = await cashoutUsdForGold(selectedGold, settings);
 
-  // التحقق من رقم الحساب المستلم (أرقام فقط، 8-19 خانة مثل أرقام الحسابات والبطاقات البنكية)
+  // طريقة الاستلام: paypal (تلقائي عبر Payouts) | bank (التحويل عبر حساب بنكي).
+  const payoutMethod = req.body.payout_method === 'bank' ? 'bank' : 'paypal';
+  const paypalEmail = String(req.body.paypal_email || '').trim().toLowerCase().slice(0, 80);
+  const EMAIL_RE = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+
   const account_number = String(req.body.account_number || '').replace(/[\s-]/g, '').slice(0, 40);
   const account_name = String(req.body.account_name || '').trim().slice(0, 60) || me.username;
-  if (!/^\d{8,19}$/.test(account_number)) {
-    return res.status(400).json({ error: 'رقم الحساب غير صحيح — يجب أن يتكون من 8 إلى 19 رقمًا (بدون أحرف)' });
+
+  if (payoutMethod === 'paypal') {
+    // الاستلام عبر PayPal: يلزم بريد PayPal صحيح (الدفع الآلي يذهب إليه).
+    if (!EMAIL_RE.test(paypalEmail)) return res.status(400).json({ error: 'أدخلي بريدك الإلكتروني المرتبط بحساب PayPal بشكل صحيح' });
+  } else {
+    // الاستلام عبر بنك: يلزم رقم حساب بنكي صحيح.
+    if (!/^\d{8,19}$/.test(account_number)) {
+      return res.status(400).json({ error: 'رقم الحساب غير صحيح — يجب أن يتكون من 8 إلى 19 رقمًا (بدون أحرف)' });
+    }
   }
 
   const ins = await q.run(
-    `INSERT INTO gift_cashouts (user_id,username,account_number,account_name,gross_usd,net_usd,gold_total,usd_amount,gifts_count,selected_gift_ids,selection_json,status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending')`,
+    `INSERT INTO gift_cashouts (user_id,username,account_number,account_name,gross_usd,net_usd,gold_total,usd_amount,gifts_count,selected_gift_ids,selection_json,status,payout_method,paypal_email)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)`,
     me.id, me.username, account_number, account_name,
-    0, usdForSelection, selectedGold, usdForSelection, selectedCount, giftIds.join(','), JSON.stringify(selection)
-  ); // 12 عمود = 11 قيمة + status ثابت
-  await createUserNotification(me.id, `تم إرسال طلب تسكير ${selectedCount} هدية (${selectedGold} ذهب ← $${usdForSelection}) وهو قيد مراجعة الإدارة ⏳`, 'bank_fill');
-  notifyAdminAccounts(`💰 طلب تسكير هدايا جديد: ${me.username} — ${selectedCount} هدية (${selectedGold} ذهب) ← $${usdForSelection}`);
-  res.json({ ok: true, id: ins.lastID, usd: usdForSelection, gold: selectedGold, count: selectedCount });
+    0, usdForSelection, selectedGold, usdForSelection, selectedCount, giftIds.join(','), JSON.stringify(selection),
+    payoutMethod, payoutMethod === 'paypal' ? paypalEmail : ''
+  );
+  const methodLabel = payoutMethod === 'paypal' ? `حساب PayPal (${paypalEmail})` : `حساب بنكي (${account_number})`;
+  await createUserNotification(me.id, `تم إرسال طلب تسكير ${selectedCount} هدية (${selectedGold} ذهب ← $${usdForSelection}) إلى ${methodLabel} وهو قيد مراجعة الإدارة ⏳`, 'bank_fill');
+  notifyAdminAccounts(`💰 طلب تسكير هدايا جديد: ${me.username} — ${selectedCount} هدية (${selectedGold} ذهب) ← $${usdForSelection} (${methodLabel})`);
+  res.json({ ok: true, id: ins.lastID, usd: usdForSelection, gold: selectedGold, count: selectedCount, payout_method: payoutMethod });
 });
 
 async function notifyAdminAccounts(text) {
@@ -2980,121 +3114,352 @@ app.get('/api/gold-packages', async (req, res) => {
   try {
     const packages = await q.all(`SELECT * FROM gold_packages WHERE active=1 ORDER BY sort ASC, id ASC`);
     const settings = await getSettings();
+    // PayPal بوابة الدفع الفعلية (بطاقات/حساب PayPal). نكشف للواجهة فقط client_id
+    // (العام) دون secret، والواجهة تحمّل زر PayPal وتنشئ العملية عبر الخادم.
     res.json({
       ok: true,
       packages: packages || [],
-      currency: settings.card_currency || '$',
+      currency: settings.paypal_currency || 'USD',
       merchant_bank: settings.merchant_bank_name || 'البنك التجاري المعتمد',
       merchant_holder: settings.merchant_holder_name || 'إدارة الدردشة المعتمدة',
-      merchant_card_masked: settings.merchant_card_number ? (settings.merchant_card_number.slice(0, 4) + ' •••• •••• ' + settings.merchant_card_number.slice(-4)) : '4263 •••• •••• 5678',
-      card_payment_enabled: settings.card_payment_enabled !== '0'
+      card_payment_enabled: false, // أُلغيت خاصية الدفع بالبطاقة (غير حقيقية) نهائياً
+      paypal_enabled: settings.paypal_enabled !== '0',
+      paypal_client_id: settings.paypal_client_id || '',
+      paypal_mode: settings.paypal_mode || 'live',
+      paypal_currency: settings.paypal_currency || 'USD'
     });
   } catch (e) {
     res.status(500).json({ error: 'تعذر جلب باقات الشراء' });
   }
 });
 
-app.post('/api/pay-with-card', requireUser, async (req, res) => {
+//  بوابة الدفع الفعلية عبر PayPal (Orders API v2)
+//  — خصم حقيقي وموثّق من حساب/بطاقة المشتري عبر PayPal،
+//  ويُشحن الذهب فقط بعد تأكيد إتمام الدفع من PayPal.
+// =====================================================
+function paypalApiBase(mode) {
+  return mode === 'sandbox' ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
+}
+
+// الحصول على توكن وصول OAuth2 من PayPal بصيغة Client Credentials.
+async function paypalAccessToken(clientId, secret, mode) {
+  const auth = Buffer.from(`${clientId}:${secret}`).toString('base64');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
   try {
-    const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
-    if (!me) return res.status(401).json({ error: 'المستخدم غير مسجل' });
-
-    const { package_id, card_number, card_holder, exp_month, exp_year, cvv } = req.body || {};
-    const pkgId = +package_id;
-    const pkg = await q.get(`SELECT * FROM gold_packages WHERE id=? AND active=1`, pkgId);
-    if (!pkg) return res.status(400).json({ error: 'باقة الذهب المختارة غير متوفرة أو معطلة' });
-
-    const settings = await getSettings();
-    if (settings.card_payment_enabled === '0') {
-      return res.status(400).json({ error: 'خدمة الدفع بالبطاقات البنكية متوقفة حالياً للصيانة' });
-    }
-
-    const cleanCardNum = String(card_number || '').replace(/\D/g, '');
-    if (cleanCardNum.length < 13 || cleanCardNum.length > 19) {
-      return res.status(400).json({ error: 'رقم بطاقة الصراف / الائتمان غير صحيح (يجب أن يتكون من 16 رقم)' });
-    }
-    const cleanHolder = String(card_holder || '').trim();
-    if (!cleanHolder || cleanHolder.length < 3) {
-      return res.status(400).json({ error: 'يرجى كتابة اسم صاحب البطاقة كما هو مطبوع عليها' });
-    }
-    const cleanCvv = String(cvv || '').trim();
-    if (cleanCvv.length < 3 || cleanCvv.length > 4) {
-      return res.status(400).json({ error: 'رمز الأمان (CVV) غير صالح' });
-    }
-
-    // تحديد نوع البطاقة البنكية
-    let cardBrand = 'Credit Card';
-    if (/^4/.test(cleanCardNum)) cardBrand = 'VISA';
-    else if (/^(5[1-5]|2[2-7])/.test(cleanCardNum)) cardBrand = 'Mastercard';
-    else if (/^(5888|5889|5890|9682|4847|5043|4008)/.test(cleanCardNum)) cardBrand = 'Mada مدى';
-    else if (/^(5078|3585)/.test(cleanCardNum)) cardBrand = 'Meeza ميزة';
-    else if (/^(34|37)/.test(cleanCardNum)) cardBrand = 'American Express';
-
-    const cardLast4 = cleanCardNum.slice(-4);
-    const depositCard = settings.merchant_card_number || '4263 8890 1234 5678';
-    const bonusGold = +pkg.bonus || 0;
-    const totalGold = (+pkg.gold || 0) + bonusGold;
-    const amountPaid = +pkg.price || 0;
-    const currency = pkg.currency || settings.card_currency || '$';
-
-    // شحن الذهب مباشرة في رصيد المستخدم
-    await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, totalGold, me.id);
-    const newBal = (me.balance || 0) + totalGold;
-
-    if (onlineUsers[me.id]) {
-      onlineUsers[me.id].balance = newBal;
-    }
-
-    // تسجيل العملية في جدول المعاملات
-    const tx = await q.run(`
-      INSERT INTO payment_transactions
-      (user_id, username, package_id, package_name, gold_amount, bonus_amount, total_gold, amount_paid, currency, card_last4, card_brand, card_holder, deposit_card, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')
-    `, me.id, me.username, pkg.id, pkg.name, pkg.gold, bonusGold, totalGold, amountPaid, currency, cardLast4, cardBrand, cleanHolder, depositCard);
-
-    // إشعار المستخدم بالعملية
-    const notif = await createUserNotification(
-      me.id,
-      `تم شحن ${totalGold} ذهب بنجاح عبر البطاقة (${cardBrand} •••• ${cardLast4}) بقيمة ${amountPaid} ${currency} (الرصيد: ${newBal}) 🪙`,
-      'creditcard_fill'
-    );
-    io.to('user_' + me.id).emit('notify', { ...notif, balance: newBal });
-    io.to('user_' + me.id).emit('call:gold_deducted', { balance: newBal, amount: 0, isPayment: true });
-
-    // إشعار المشرفين
-    const adminRows = await q.all(`SELECT id FROM users WHERE rank IN ('admin','superadmin','supermaster')`);
-    for (const adm of adminRows) {
-      io.to('user_' + adm.id).emit('notify', {
-        text: `عملية شراء ناجحة: ${me.username} قام بشحن ${totalGold} ذهب بمبلغ ${amountPaid} ${currency} 💳`,
-        icon: 'creditcard_fill'
-      });
-    }
-
-    res.json({
-      ok: true,
-      balance: newBal,
-      total_gold: totalGold,
-      package_name: pkg.name,
-      amount_paid: amountPaid,
-      currency,
-      card_brand: cardBrand,
-      card_last4: cardLast4,
-      transaction_id: tx.lastID
+    const res = await fetch(`${paypalApiBase(mode)}/v1/oauth2/token`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: 'grant_type=client_credentials',
+      signal: controller.signal
     });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.access_token) {
+      const msg = data.error_description || data.error || 'تعذر الاتصال بـ PayPal';
+      console.error(`[paypal] فشل جلب OAuth token (${mode}): status=${res.status} body=${JSON.stringify(data).slice(0, 400)}`);
+      const err = new Error(msg);
+      err.httpStatus = res.status;
+      err.raw = data;
+      throw err;
+    }
+    return data.access_token;
+  } catch (e) { clearTimeout(timer); console.error('[paypal] OAuth token exception:', e.message || e); throw e; }
+}
+
+// إنشاء عملية دفع PayPal (Capture intent) وإرجاع الرابط/المعرّف.
+async function paypalCreateOrder(accessToken, amount, currency, mode, userInfo) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(`${paypalApiBase(mode)}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        intent: 'CAPTURE',
+        purchase_units: [{
+          amount: { currency_code: currency, value: Number(amount).toFixed(2) },
+          description: userInfo.description || 'شحن رصيد ذهب — نجوم العرب'
+        }],
+        application_context: {
+          brand_name: userInfo.brand_name || 'نجوم العرب',
+          user_action: 'PAY_NOW',
+          shipping_preference: 'NO_SHIPPING'
+        }
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.id) {
+      const msg = (data.details && data.details[0] && data.details[0].description) || data.message || 'تعذر إنشاء طلب الدفع';
+      console.error(`[paypal] فشل إنشاء order (${mode}): status=${res.status} body=${JSON.stringify(data).slice(0, 500)}`);
+      const err = new Error(msg);
+      err.httpStatus = res.status;
+      err.raw = data;
+      throw err;
+    }
+    return data;
+  } catch (e) { clearTimeout(timer); console.error('[paypal] createOrder exception:', e.message || e); throw e; }
+}
+
+// تأكيد (Capturing) عملية دفع بعد موافقة المشتري — يتحقق PayPal فعلياً من الخصم.
+async function paypalCaptureOrder(accessToken, orderId, mode) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(`${paypalApiBase(mode)}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.status !== 'COMPLETED') {
+      const msg = (data.details && data.details[0] && data.details[0].description) ||
+        (data.name === 'ORDER_ALREADY_CAPTURED' ? 'تم تأكيد هذه العملية من قبل' : data.message) ||
+        'لم يكتمل الدفع من PayPal';
+      console.error(`[paypal] فشل capture order (${mode}): status=${res.status} body=${JSON.stringify(data).slice(0, 500)}`);
+      const err = new Error(msg);
+      err.httpStatus = res.status;
+      err.raw = data;
+      throw err;
+    }
+    return data;
+  } catch (e) { clearTimeout(timer); console.error('[paypal] captureOrder exception:', e.message || e); throw e; }
+}
+
+// هل اكتمل الدفع وأُضيف رصيد؟ نتحقق من رمز internal لإرجاع معلومات جاهزة.
+function paymentCaptureInfo(captured) {
+  const unit = captured && captured.purchase_units && captured.purchase_units[0] || {};
+  const pay = unit.payments && unit.payments.captures && unit.payments.captures[0] || {};
+  return {
+    orderId: captured.id || '',
+    captureId: pay.id || '',
+    status: captured.status || '',
+    amount: pay.amount && pay.amount.value || '0',
+    currency: pay.amount && pay.amount.currency_code || ''
+  };
+}
+
+// إرسال دفعة (Payout) من حساب التاجر إلى حساب PayPal لمستلمة الهدايا عبر
+// واجهة PayPal Payouts القياسية (POST /v1/payments/payouts).
+// ملاحظة: هذه الواجهة ترسل المال إلى «حساب PayPal» (بالبريد) بشكل فوري/آمن؛
+// الإرسال المباشر إلى بطاقة/حساب بنكي يتطلب منتج Advanced Payouts/Hyperwallet المنفصل.
+async function paypalPayout(accessToken, amount, currency, mode, receiverEmail, note) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const value = Number(amount).toFixed(2);
+    const batchId = 'gcash_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+    const res = await fetch(`${paypalApiBase(mode)}/v1/payments/payouts`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'PayPal-Request-Id': batchId
+      },
+      body: JSON.stringify({
+        sender_batch_header: {
+          sender_batch_id: batchId,
+          email_subject: 'دفعة من نجوم العرب (تسكير هدايا) 💰',
+          email_message: 'تم تحويل مبلغك من تسكير الهدايا. شكراً لتواجدك!'
+        },
+        items: [{
+          recipient_type: 'EMAIL',
+          amount: { value, currency: String(currency || 'USD').toUpperCase() },
+          receiver: String(receiverEmail || '').trim(),
+          note: String(note || 'تسكير هدايا — نجوم العرب').slice(0, 200),
+          sender_item_id: batchId
+        }]
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = (data.details && data.details[0] && data.details[0].description) || data.message || 'تعذر إرسال الدفعة عبر PayPal';
+      console.error(`[paypal] فشل payout (${mode}): status=${res.status} body=${JSON.stringify(data).slice(0, 600)}`);
+      const err = new Error(msg);
+      err.httpStatus = res.status;
+      err.raw = data;
+      throw err;
+    }
+    const header = data.batch_header || {};
+    console.log(`[paypal] payout OK (${mode}): batch=${header.payout_batch_id} status=${header.batch_status} items=${(data.items || []).length}`);
+    return {
+      batch_id: header.payout_batch_id || batchId,
+      status: header.batch_status || 'PENDING',
+      raw: data
+    };
+  } catch (e) { clearTimeout(timer); console.error('[paypal] payout exception:', e.message || e); throw e; }
+}
+
+// استعلام حالة دفعة Payouts معيّنة (GET /v1/payments/payouts/{batch_id}).
+async function paypalPayoutStatus(accessToken, batchId, mode, attempts = 12, delayMs = 1500) {
+  for (let i = 0; i < attempts; i++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await fetch(`${paypalApiBase(mode)}/v1/payments/payouts/${encodeURIComponent(batchId)}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (res.status === 404) return { status: 'PENDING', batch_id: batchId }; // غير مكتملة بعد/غير مرئية
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error(`[paypal] فشل جلب حالة payout (${mode}): status=${res.status}`);
+        return { status: 'PENDING', batch_id: batchId };
+      }
+      const header = data.batch_header || {};
+      const st = String(header.batch_status || '').toUpperCase();
+      console.log(`[paypal] حالة payout (${mode}) [${i + 1}]: ${st}`);
+      if (st === 'SUCCESS') return { status: st, batch_id: header.payout_batch_id || batchId, raw: data };
+      if (st === 'FAILED' || st === 'DENIED' || st === 'CANCELED') return { status: st || 'FAILED', batch_id: header.payout_batch_id || batchId, raw: data };
+      // PENDING أو غير ذلك: ننتظر قليلاً ثم نعيد المحاولة.
+    } catch (e) { clearTimeout(timer); console.error('[paypal] payout-status exception:', e.message || e); }
+    await new Promise(r => setTimeout(r, delayMs));
+  }
+  return { status: 'PENDING', batch_id: batchId };
+}
+
+// إرجاع الحالة العامة لتشفير/إخفاء المفتاح السري في الواجهة.
+async function paypalPublicConfig() {
+  const s = await getSettings();
+  return {
+    paypal_enabled: s.paypal_enabled !== '0',
+    paypal_client_id: s.paypal_client_id || '',
+    paypal_mode: s.paypal_mode || 'live',
+    paypal_currency: s.paypal_currency || 'USD'
+  };
+}
+
+// إعدادات PayPal للعموم (client_id العام فقط — لا يُكشف secret أبداً).
+app.get('/api/paypal/config', async (req, res) => {
+  const cfg = await paypalPublicConfig();
+  res.json({ ok: true, ...cfg });
+});
+
+// إنشاء عملية دفع PayPal (يستدعيها زر الدفع في الواجهة).
+app.post('/api/paypal/create-order', requireUser, async (req, res) => {
+  try {
+    const me = await q.get(`SELECT id, username FROM users WHERE id=?`, req.authUid);
+    if (!me) return res.status(401).json({ error: 'المستخدم غير مسجل' });
+    const s = await getSettings();
+    if (s.paypal_enabled === '0') return res.status(400).json({ error: 'خدمة الدفع عبر PayPal متوقفة حالياً' });
+    if (!s.paypal_client_id || !s.paypal_secret) return res.status(400).json({ error: 'لم يتم إعداد مفاتيح PayPal في لوحة الإدارة' });
+
+    const pkgId = +(req.body && req.body.package_id);
+    const pkg = await q.get(`SELECT * FROM gold_packages WHERE id=? AND active=1`, pkgId);
+    if (!pkg) return res.status(400).json({ error: 'باقة الذهب المختارة غير متوفرة' });
+
+    const amount = +pkg.price || 0;
+    if (amount <= 0) return res.status(400).json({ error: 'قيمة الباقة غير صالحة' });
+    // عملة مصدرة بثلاثة أحرف فقط (مثل USD)؛ وإلا نستبدلها بعملة الإعداد.
+    const rawCurrency = String(pkg.currency || '').toUpperCase();
+    const currency = /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : String(s.paypal_currency || 'USD').toUpperCase();
+
+    const token = await paypalAccessToken(s.paypal_client_id, s.paypal_secret, s.paypal_mode || 'live');
+    const order = await paypalCreateOrder(token, amount, currency, s.paypal_mode || 'live', {
+      brand_name: s.site_name || 'نجوم العرب',
+      description: `شحن ${pkg.gold} ذهب + ${pkg.bonus || 0} هدية (باقة ${pkg.name})`
+    });
+
+    res.json({ ok: true, order_id: order.id, approve_url: order.links && order.links.find(l => l.rel === 'approve') && order.links.find(l => l.rel === 'approve').href || null });
   } catch (err) {
-    res.status(500).json({ error: 'تعذر معالجة الدفع: ' + (err.message || 'خطأ في النظام') });
+    const status = err && err.httpStatus ? ` (HTTP ${err.httpStatus})` : '';
+    res.status(500).json({ error: 'تعذر إنشاء الدفع عبر PayPal: ' + (err.message || 'خطأ') + status });
   }
 });
 
-// شراء الذهب الافتراضي (دفع تجريبي قديم)
+// تأكيد الدفع بعد موافقة المشتري في PayPal ثم شحن الذهب فعلياً.
+app.post('/api/paypal/capture-order', requireUser, async (req, res) => {
+  try {
+    const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
+    if (!me) return res.status(401).json({ error: 'المستخدم غير مسجل' });
+    const s = await getSettings();
+    if (s.paypal_enabled === '0') return res.status(400).json({ error: 'خدمة الدفع عبر PayPal متوقفة حالياً' });
+    if (!s.paypal_client_id || !s.paypal_secret) return res.status(400).json({ error: 'لم يتم إعداد مفاتيح PayPal' });
+
+    const orderId = String((req.body && req.body.order_id) || '').trim();
+    if (!orderId) return res.status(400).json({ error: 'معرّف العملية مفقود' });
+    const pkgId = +(req.body && req.body.package_id);
+    const pkg = await q.get(`SELECT * FROM gold_packages WHERE id=? AND active=1`, pkgId);
+    if (!pkg) return res.status(400).json({ error: 'باقة الذهب غير متوفرة' });
+
+    // منع تكرار شحن العملية نفسها (idempotency).
+    const already = await q.get(`SELECT id FROM payment_transactions WHERE order_ref=? AND status='completed'`, orderId);
+    if (already) {
+      const bal = await q.get(`SELECT balance FROM users WHERE id=?`, me.id);
+      const nb = bal ? bal.balance : me.balance;
+      return res.json({ ok: true, balance: nb, total_gold: (+pkg.gold || 0) + (+pkg.bonus || 0), already_processed: true });
+    }
+
+    const token = await paypalAccessToken(s.paypal_client_id, s.paypal_secret, s.paypal_mode || 'live');
+    const captured = await paypalCaptureOrder(token, orderId, s.paypal_mode || 'live');
+    const cap = paymentCaptureInfo(captured);
+    const amountPaid = +pkg.price || 0;
+    const bonusGold = +pkg.bonus || 0;
+    const totalGold = (+pkg.gold || 0) + bonusGold;
+    const currency = cap.currency || (pkg.currency || s.paypal_currency || 'USD');
+
+    // التحقق من أن المبلغ المخصوم يطابق سعر الباقة (حماية من التلاعب).
+    const capturedVal = parseFloat(cap.amount);
+    const expectedVal = parseFloat(amountPaid);
+    if (Math.abs(capturedVal - expectedVal) > 0.005) {
+      await q.run(`INSERT INTO payment_transactions (user_id, username, package_id, package_name, gold_amount, bonus_amount, total_gold, amount_paid, currency, card_last4, card_brand, card_holder, deposit_card, status, order_ref)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, me.id, me.username, pkg.id, pkg.name, pkg.gold, bonusGold, totalGold, amountPaid, currency, '', 'PayPal', '', '', 'amount_mismatch', orderId).catch(() => {});
+      return res.status(400).json({ error: 'المبلغ المدفوع لا يطابق سعر الباقة' });
+    }
+
+    await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, totalGold, me.id);
+    const newBal = (me.balance || 0) + totalGold;
+    if (onlineUsers[me.id]) onlineUsers[me.id].balance = newBal;
+
+    const tx = await q.run(`INSERT INTO payment_transactions
+      (user_id, username, package_id, package_name, gold_amount, bonus_amount, total_gold, amount_paid, currency, card_last4, card_brand, card_holder, deposit_card, status, order_ref)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      me.id, me.username, pkg.id, pkg.name, pkg.gold, bonusGold, totalGold, amountPaid, currency, '', 'PayPal', '', '', 'completed', orderId);
+
+    const notif = await createUserNotification(me.id,
+      `تم شحن ${totalGold} ذهب بنجاح عبر PayPal بقيمة ${amountPaid} ${currency} (الرصيد: ${newBal}) 🪙`, 'creditcard_fill');
+    io.to('user_' + me.id).emit('notify', { ...notif, balance: newBal });
+    io.to('user_' + me.id).emit('call:gold_deducted', { balance: newBal, amount: amountPaid, isPayment: true });
+
+    const adminRows = await q.all(`SELECT id FROM users WHERE rank IN ('admin','superadmin','supermaster')`);
+    for (const adm of adminRows) {
+      io.to('user_' + adm.id).emit('notify', { text: `عملية شراء ناجحة: ${me.username} شحن ${totalGold} ذهب بمبلغ ${amountPaid} ${currency} عبر PayPal 💳`, icon: 'creditcard_fill' });
+    }
+
+    res.json({ ok: true, balance: newBal, total_gold: totalGold, package_name: pkg.name, amount_paid: amountPaid, currency, transaction_id: tx.lastID, capture_id: cap.captureId });
+  } catch (err) {
+    const status = err && err.httpStatus ? ` (HTTP ${err.httpStatus})` : '';
+    res.status(500).json({ error: 'تعذر تأكيد الدفع عبر PayPal: ' + (err.message || 'خطأ') + status });
+  }
+});
+
+// مساران قديمان تمت إزالتهما: الدفع بالبطاقة كان غير حقيقي ويُسلِّم ذهباً بلا خصم،
+// وشراء الذهب الافتراضي يُضيف رصيداً بلا دفع. كلاهما أُلغي نهائياً.
+app.post('/api/pay-with-card', requireUser, async (req, res) => {
+  return res.status(400).json({ error: 'الدفع بالبطاقة البنكية أُلغي واستُبدل ببوابة PayPal الآمنة' });
+});
 app.post('/api/buy-gold', requireUser, async (req, res) => {
-  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
-  if (!me || !me.registered) return res.status(403).json({ error: 'يتطلب عضوية مسجلة' });
-  const gold = Math.min(10000, Math.max(0, parseInt(req.body.gold) || 0));
-  if (!gold) return res.status(400).json({ error: 'كمية غير صالحة' });
-  await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, gold, me.id);
-  const notification = await createUserNotification(me.id, `تمت إضافة ${gold} ذهب افتراضي الى رصيدك`, 'creditcard_fill');
-  res.json({ ok: true, balance: me.balance + gold, notification_id: notification.id, notification_created_at: notification.created_at });
+  return res.status(400).json({ error: 'شراء الذهب الافتراضي المجاني أُلغي — استخدم PayPal للدفع الفعلي' });
 });
 
 // الشكاوى
@@ -3198,13 +3563,13 @@ app.post('/api/admin/settings', requireSuperAdmin, async (req, res) => {
   }
   if (req.body.hidden_super !== undefined && String(req.body.hidden_super) !== '1') await revealHiddenAdmins();
   if (req.body.public_message_cooldown_seconds !== undefined || req.body.msg_max !== undefined) await refreshPublicMessageRules();
-  refreshAccessGate(); // بوابة الحماية (VPN/بروكسي + قائمة المتصفحات) تُحدّث فوراً دون إعادة تشغيل.
+  // (بوابة الحماية أُلغيت — لا حظر على VPN/بروكسي/متصفحات)
   reloadBots();      // قد يكون تبديل «تفعيل الروبوت» تغيّر
 
   // هذه المفاتيح تصل فوراً لكل صفحات الدردشة المفتوحة قبل المزامنة العامة.
   const liveSettingKeys = new Set([
     'show_smiles', 'show_voice', 'show_image', 'hidden_super', 'wave_enabled',
-    'snd_join', 'snd_msg', 'snd_leave', 'show_time', 'msg_max',
+    'snd_join', 'snd_msg', 'snd_leave', 'snd_join_url', 'snd_msg_url', 'snd_leave_url', 'show_time', 'msg_max',
     'public_message_cooldown_seconds', 'public_message_spacing_px',
     'public_message_name_size_px', 'public_message_body_width',
     ...PUBLIC_MESSAGE_BADGE_SETTING_KEYS
@@ -3270,6 +3635,13 @@ app.post('/api/admin/upload/gift-audio', requireSuperAdmin, (req, res) => {
     res.json({ ok: true, path: '/uploads/gifts/' + req.file.filename });
   });
 });
+// رفع صوت إشعار (دخول/رسالة/خروج) من لوحة الإدارة
+app.post('/api/admin/upload/sound', requireSuperAdmin, (req, res) => {
+  uploadSound.single('file')(req, res, (err) => {
+    if (err || !req.file) return res.status(500).json({ error: 'تعذر رفع الصوت: ' + (err ? err.message : 'لا يوجد ملف') });
+    res.json({ ok: true, path: '/uploads/sounds/' + req.file.filename });
+  });
+});
 
 // ---- نظام تسكير الهدايا (إدارة) ----
 app.get('/api/admin/gift-cashouts', requireSuperAdmin, async (req, res) => {
@@ -3296,6 +3668,72 @@ app.post('/api/admin/gift-cashout/:id/complete', requireSuperAdmin, async (req, 
   const request = await q.get(`SELECT * FROM gift_cashouts WHERE id=? AND status='pending'`, id);
   if (!request) return res.status(404).json({ error: 'الطلب غير موجود أو تمت معالجته' });
   const admin = await q.get(`SELECT id, username FROM users WHERE id=?`, req.session.uid);
+  const settings = await getSettings();
+  const usdAmount = Math.max(0, parseFloat(request.usd_amount || request.net_usd) || 0);
+
+  // ===== الإرسال الآلي عبر PayPal (مدفوعات Payouts) =====
+  // إذا كانت طريقة الاستلام «PayPal» (بريد) فيُرسل المبلغ فعلياً من حساب التاجر
+  // إلى حساب PayPal الخاص بالمستلمة عبر واجهة Payouts. لا يُحذف شيء ولا تُعتبر
+  // العملية مكتملة إلا بعد قبول PayPal للدفعة.
+  const payoutMethod = String(request.payout_method || 'bank');
+  const paypalEmail = String(request.paypal_email || '').trim();
+  const EMAIL_RE = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+
+  let payoutBatchId = '', payoutStatus = '';
+  if (payoutMethod === 'paypal') {
+    // طريقة الاستلام عبر PayPal: لا يجوز اعتبار العملية مكتملة إلا إذا أُرسلت الدفعة فعلاً.
+    if (!EMAIL_RE.test(paypalEmail)) {
+      return res.status(400).json({ error: 'لا يوجد بريد PayPal صالح لهذا الطلب — لا يمكن الإرسال الآلي عبر PayPal. راجع الطلب أو ارفضه.' });
+    }
+    if (usdAmount <= 0) {
+      return res.status(400).json({ error: 'مبلغ التسكير غير صالح — لا يمكن إرسال دفعة بمبلغ صفر' });
+    }
+    if (settings.paypal_enabled === '0' || !settings.paypal_client_id || !settings.paypal_secret) {
+      return res.status(400).json({ error: 'لإتمام التحويل الآلي عبر PayPal يجب تفعيل بوابة الدفع وإدخال المفاتيح في لوحة الإدارة أولاً' });
+    }
+    try {
+      const token = await paypalAccessToken(settings.paypal_client_id, settings.paypal_secret, settings.paypal_mode || 'live');
+      // إن كانت هناك دفعة سابقة (رقم batch محفوظ) فلا ننشئ دفعة جديدة — نتحقق من حالتها فقط
+      // لمنع الدفع المزدوج. بخلاف ذلك ننشئ دفعة جديدة.
+      if (request.payout_batch_id) {
+        payoutBatchId = String(request.payout_batch_id);
+        payoutStatus = String(request.payout_status || 'pending');
+        const existingCheck = await paypalPayoutStatus(token, payoutBatchId, settings.paypal_mode || 'live');
+        payoutStatus = existingCheck.status;
+        if (existingCheck.status === 'FAILED' || existingCheck.status === 'DENIED') {
+          await q.run(`UPDATE gift_cashouts SET payout_status='failed', updated_at=strftime('%s','now') WHERE id=?`, id);
+          return res.status(400).json({ error: 'الدُفعة السابقة عبر PayPal فشلت (حالة: ' + existingCheck.status + ') — لم يُحذف شيء.' });
+        }
+        if (existingCheck.status !== 'SUCCESS') {
+          return res.status(202).json({ ok: true, pending: true, payout_batch_id: payoutBatchId, message: 'دفعة PayPal (رقم ' + payoutBatchId + ') ما زالت قيد المعالجة — ستُحذف الهدايا فور اكتمالها.' });
+        }
+        // SUCCESS موجودة مسبقاً: نتابع لإكمال العملية وحذف الهدايا.
+        await q.run(`UPDATE gift_cashouts SET payout_status='success', updated_at=strftime('%s','now') WHERE id=?`, id);
+      } else {
+        const payout = await paypalPayout(token, usdAmount, settings.paypal_currency || 'USD', settings.paypal_mode || 'live', paypalEmail, `تسكير هدايا ${request.gold_total || 0} ذهب`);
+        payoutBatchId = payout.batch_id;
+        payoutStatus = payout.status;
+        // سجّل فوراً أن الدفعة قُبلت (قد تكون PENDING حتى تستكمل).
+        await q.run(`UPDATE gift_cashouts SET payout_batch_id=?, payout_status=?, updated_at=strftime('%s','now') WHERE id=?`, payoutBatchId, String(payout.status || 'pending'), id);
+        // نتأكد من اكتمال الدفعة فعلياً قبل حذف الهدايا — لا حذف إلا بعد نجاح التحويل.
+        const check = await paypalPayoutStatus(token, payoutBatchId, settings.paypal_mode || 'live');
+        payoutStatus = check.status;
+        if (check.status === 'FAILED' || check.status === 'DENIED') {
+          await q.run(`UPDATE gift_cashouts SET payout_status='failed', updated_at=strftime('%s','now') WHERE id=?`, id);
+          return res.status(400).json({ error: 'فشل الإرسال الآلي عبر PayPal (حالة الدفعة: ' + check.status + ') — لم يُحذف شيء.' });
+        }
+        if (check.status !== 'SUCCESS') {
+          // ما زالت قيد المعالجة: لا نحذف الهدايا الآن حتى نتأكد من نجاحها، مع إبقاء رقم الدفعة.
+          return res.status(202).json({ ok: true, pending: true, payout_batch_id: payoutBatchId, message: 'تم إرسال الدفعة عبر PayPal وهي قيد المعالجة (رقم ' + payoutBatchId + ') — ستُحذف الهدايا فور اكتمالها.' });
+        }
+        // SUCCESS: نتابع لحذف الهدايا وإكمال العملية.
+        await q.run(`UPDATE gift_cashouts SET payout_status='success', updated_at=strftime('%s','now') WHERE id=?`, id);
+      }
+    } catch (err) {
+      const status = err && err.httpStatus ? ` (HTTP ${err.httpStatus})` : '';
+      return res.status(400).json({ error: 'تعذر الإرسال الآلي عبر PayPal: ' + ((err && err.message) || 'خطأ') + status + ' — لم يُحذف شيء. تأكد من رصيد حساب التاجر الكافي وعدم وجود قيود.' });
+    }
+  }
 
   // خصم الهدايا المحددة فقط (بالكمية) من حساب صاحبة الهدايا — بقية الهدايا المتكررة تبقى عندها
   let deleted = 0;
@@ -3327,18 +3765,22 @@ app.post('/api/admin/gift-cashout/:id/complete', requireSuperAdmin, async (req, 
       deleted = del.changes;
     }
   }
+
+  const payoutStatusLabel = payoutBatchId ? ` (رقم الدفعة: ${payoutBatchId})` : '';
   await q.run(
     `UPDATE gift_cashouts SET status='completed', admin_name=?, updated_at=strftime('%s','now') WHERE id=?`,
     (admin && admin.username) || 'الإدارة', id
   );
-  const usdAmount = request.usd_amount || request.net_usd || 0;
+  const destination = payoutMethod === 'paypal' && paypalEmail
+    ? `حسابك في PayPal (${paypalEmail})`
+    : `حسابك ${request.account_number}`;
   const notif = await createUserNotification(
     request.user_id,
-    `✅ اكتملت عملية تسكير ${deleted} من هداياك (${request.gold_total || 0} ذهب): تم تحويل $${usdAmount} إلى حسابك ${request.account_number} وحُذفت الهدايا المحددة من حسابك`,
+    `✅ اكتملت عملية تسكير ${deleted} من هداياك (${request.gold_total || 0} ذهب): تم تحويل $${usdAmount} إلى ${destination}${payoutStatusLabel} وحُذفت الهدايا المحددة من حسابك`,
     'bank_fill'
   );
   io.to('user_' + request.user_id).emit('notify', notif);
-  res.json({ ok: true, deleted, usd: usdAmount });
+  res.json({ ok: true, deleted, usd: usdAmount, payout_batch_id: payoutBatchId, via_paypal: !!payoutBatchId });
 });
 
 // رفض طلب التسكير
@@ -4066,12 +4508,9 @@ app.post('/api/admin/users/:id/mute', requireModerator, async (req, res) => {
     affectedIds = [uid];
   }
   for (const id of affectedIds) await refreshUserEverywhere(id);
-  // الكتم ينزل المذيع فوراً من أي بث قائم؛ لا يبقى إلا مستمعاً حتى فك الكتم.
-  if (muted) {
-    for (const id of affectedIds) {
-      for (const broadcastRoomId of Object.keys(roomBroadcast)) removeHostFromBroadcast(+broadcastRoomId, +id, 'muted_by_admin');
-    }
-  }
+  // الكتم يُسكّت ميكروفون المذيع مؤقتاً دون إسقاطه من البث: يبقى داخل البث
+  // (وهو صامت) حتى يُفكّ الكتم فيستأنف بثّه فوراً — بدل قطع الصوت وإعادة بنائها من الصفر.
+  // الطرف الآخر يُصمت عبر 'mute_changed' (يبطّل تدفّقه المحلي) دون إنهاء البث للجميع.
   for (const socket of socketsForModerationTarget(target)) socket.emit('mute_changed', { muted });
   const roomId = +req.body.room_id;
   if (roomId && roomUsers[roomId]) {
@@ -5437,24 +5876,77 @@ app.get('/api/admin/payment-settings', requireSuperAdmin, async (req, res) => {
   const s = await getSettings();
   res.json({
     merchant_bank_name: s.merchant_bank_name || 'البنك التجاري المعتمد',
-    merchant_card_number: s.merchant_card_number || '4263 8890 1234 5678',
     merchant_holder_name: s.merchant_holder_name || 'إدارة الدردشة المعتمدة',
     merchant_iban: s.merchant_iban || '',
-    card_payment_enabled: s.card_payment_enabled !== '0' ? 1 : 0,
-    card_currency: s.card_currency || '$'
+    paypal_enabled: s.paypal_enabled !== '0' ? 1 : 0,
+    paypal_client_id: s.paypal_client_id || '',
+    // لا نُعيد قيمة الـ secret أبداً لأسباب أمنية، لكن نُعلم الواجهة إن كان
+    // مفتاحاً محفوظاً مسبقاً كي تعرض «المفتاح محفوظ ✓» وتُبقيه عند الحفظ الفارغ.
+    paypal_has_secret: !!s.paypal_secret,
+    paypal_mode: s.paypal_mode || 'live',
+    paypal_currency: s.paypal_currency || 'USD'
   });
 });
 
 app.post('/api/admin/payment-settings', requireSuperAdmin, async (req, res) => {
-  const { merchant_bank_name, merchant_card_number, merchant_holder_name, merchant_iban, card_payment_enabled, card_currency } = req.body || {};
+  const { merchant_bank_name, merchant_holder_name, merchant_iban, paypal_client_id, paypal_secret, paypal_mode, paypal_currency, paypal_enabled } = req.body || {};
+  // لو تُرك حقل secret فارغاً نُبقي المفتاح الحالي (لا نمسحه دون قصد).
+  const cur = await getSettings();
+  const finalSecret = String(paypal_secret || '').trim() || cur.paypal_secret || '';
+  const finalClientId = String(paypal_client_id || '').trim() || cur.paypal_client_id || '';
+  // نُبقي حقول الحساب المصرفي/الآيبان (معلومات إيداع إضافية) كما هي، ثم نحفظ مفاتيح PayPal.
   await q.run(`INSERT INTO settings (key,value) VALUES ('merchant_bank_name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(merchant_bank_name || ''));
-  await q.run(`INSERT INTO settings (key,value) VALUES ('merchant_card_number',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(merchant_card_number || ''));
   await q.run(`INSERT INTO settings (key,value) VALUES ('merchant_holder_name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(merchant_holder_name || ''));
   await q.run(`INSERT INTO settings (key,value) VALUES ('merchant_iban',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(merchant_iban || ''));
-  await q.run(`INSERT INTO settings (key,value) VALUES ('card_payment_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, card_payment_enabled ? '1' : '0');
-  await q.run(`INSERT INTO settings (key,value) VALUES ('card_currency',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(card_currency || '$'));
+  await q.run(`INSERT INTO settings (key,value) VALUES ('paypal_client_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, finalClientId);
+  await q.run(`INSERT INTO settings (key,value) VALUES ('paypal_secret',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, finalSecret);
+  await q.run(`INSERT INTO settings (key,value) VALUES ('paypal_mode',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(paypal_mode || 'live') === 'sandbox' ? 'sandbox' : 'live');
+  await q.run(`INSERT INTO settings (key,value) VALUES ('paypal_currency',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(paypal_currency || 'USD').toUpperCase());
+  await q.run(`INSERT INTO settings (key,value) VALUES ('paypal_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, paypal_enabled ? '1' : '0');
+  // إزالة مفاتيح الدفع بالبطاقة غير الحقيقية نهائياً.
+  await q.run(`DELETE FROM settings WHERE key IN ('card_payment_enabled','card_currency','merchant_card_number')`);
   io.emit('sync');
   res.json({ ok: true });
+});
+
+// اختبار الاتصال بـ PayPal: يتأكد من صحة مفاتيح OAuth (Client ID + Secret) ويعيد
+// نتيجة مخصّصة للمشرف ليُدرك فوراً سبب فشل الدفع (مفاتيح خاطئة / وضع غير مطابق / صندوق تجارب).
+app.post('/api/admin/paypal/test', requireSuperAdmin, async (req, res) => {
+  const s = await getSettings();
+  if (!s.paypal_client_id || !s.paypal_secret) {
+    return res.json({ ok: false, message: 'لم تُدخل مفاتيح PayPal بعد — أدخل Client ID وSecret ثم احفظ.' });
+  }
+  const mode = s.paypal_mode === 'sandbox' ? 'sandbox' : 'live';
+  const clientId = String(s.paypal_client_id || '').trim();
+  const secret = String(s.paypal_secret || '').trim();
+  try {
+    const token = await paypalAccessToken(clientId, secret, mode);
+    // نجرّب فعلياً إنشاء طلب دفع بمبلغ رمزي (لا يُخصم أي مبلغ — إنشاء أمر فقط)
+    // حتى نكشف قيد «الحساب التجاري مقيد» (merchant account is restricted) الذي
+    // يمنع قبول الدفعات رغم صحة المفاتيح.
+    const currency = String(s.paypal_currency || 'USD').toUpperCase();
+    const testOrder = await paypalCreateOrder(token, 1.00, currency, mode, {
+      brand_name: s.site_name || 'نجوم العرب',
+      description: 'اختبار صلاحية الحساب التجاري (لا يُخصم أي مبلغ)'
+    });
+    const base = paypalApiBase(mode);
+    return res.json({
+      ok: true,
+      mode,
+      base,
+      message: `جيّد! المفاتيح صحيحة ويمكن للحساب التجاري إنشاء عمليات دفع (${mode === 'sandbox' ? 'وضع تجريبي' : 'وضع حي'}).`
+    });
+  } catch (err) {
+    const status = err && err.httpStatus ? ` (HTTP ${err.httpStatus})` : '';
+    const msg = ((err && err.message) || 'تعذر الاتصال بـ PayPal') + status;
+    const isRestricted = /merchant account is restricted|account is restricted|restricted/i.test(msg);
+    const hint = isRestricted
+      ? ' — الحساب التجاري مقيد/محدود لدى PayPal ولا يستطيع قبول الدفعات. يجب حل هذا القيد من لوحة حساب PayPal نفسه: فعّل الحساب (verify)، أكمل بيانات العمل، وتأكد أن التطبيق REST «Live» تابع لحساب تجاري موثّق. إن كنت تستخدم وضع «تجريبي»، أنشئ حساب Business مفعّل في Sandbox بدل حساب شخصي.'
+      : (/401|unauthorized|invalid client|invalid_client/i.test(msg)
+        ? ' — يرجى التحقق من صحة Client ID وSecret، وأنهما لتطبيق REST نفسه، وأن الوضع (حي/تجريبي) يطابق نوع الحساب.'
+        : (mode === 'live' ? ' — تأكد أن الحساب تجاري موثّق (Business) وأن الوضع «حي».' : ''));
+    return res.json({ ok: false, message: msg + hint });
+  }
 });
 
 app.get('/api/admin/payment-transactions', requireSuperAdmin, async (req, res) => {
@@ -5630,6 +6122,10 @@ app.get('/api/public-settings', async (req, res) => {
     snd_join: s.snd_join !== undefined ? s.snd_join : '1',
     snd_msg: s.snd_msg !== undefined ? s.snd_msg : '0',
     snd_leave: s.snd_leave !== undefined ? s.snd_leave : '1',
+    // أصوات الإشعارات المخصصة (روابط الملفات المرفوعة من لوحة الإدارة) — تُشغَّل بدل النغمة الافتراضية
+    snd_join_url: s.snd_join_url || '',
+    snd_msg_url: s.snd_msg_url || '',
+    snd_leave_url: s.snd_leave_url || '',
     // الراديو المباشر: يُدار من لوحة التحكم (اسم + رابط بث + تفعيل) ويظهر مشغله أعلى الدردشة
     radio_enabled: s.radio_enabled !== undefined ? s.radio_enabled : '0',
     radio_name: s.radio_name || '',
@@ -5849,14 +6345,12 @@ app.get('/robots.txt', async (req, res) => {
 });
 
 app.get('/', async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  // صفحات الأرشفة قابلة للفهرسة: نُحسّن الكاش ليتمكن محرك البحث من تخزين/إعادة
+  // معاينة الصفحة (بدلاً من no-store الذي يُبعد الصفحة عن التخزين وقد يسبّب
+  // «مكتشفة - غير مفهرسة»). المحتوى الديناميكي يُحمَّل عبر JS/API فلا يتأثر.
+  res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  // بوابة الحماية: منع VPN/بروكسي والمتصفحات غير المسموحة على صفحة الدردشة.
-  try {
-    const gateReasons = await accessBlockReasons(req);
-    if (gateReasons.length) return res.status(403).send(renderAccessBlockedHtml(gateReasons, req));
-  } catch (e) { }
+  // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
   try {
     const html = await renderSeoChatHtml('default', req);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -5867,16 +6361,12 @@ app.get('/', async (req, res) => {
 });
 
 app.get('/:slug', async (req, res, next) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  // صفحات الأرشفة قابلة للفهرسة: كاش قصير يساعد محركات البحث على التأكد من الصفحة.
+  res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
   const slug = String(req.params.slug || '').trim().toLowerCase();
   if (RESERVED_SLUGS.has(slug) || slug.includes('.')) return next();
-  // بوابة الحماية على مسارات الدردشة المخصصة (/chat1, /chat2 ...).
-  try {
-    const gateReasons = await accessBlockReasons(req);
-    if (gateReasons.length) return res.status(403).send(renderAccessBlockedHtml(gateReasons, req));
-  } catch (e) { }
+  // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
   try {
     const seo = await q.get(`SELECT id FROM seo_pages WHERE slug=? AND active=1`, slug);
     if (!seo) return next();
@@ -5903,6 +6393,31 @@ function cancelPendingRoomLeave(uid, roomId) {
   clearTimeout(pending);
   PENDING_ROOM_LEAVES.delete(key);
   return true;
+}
+// مهلة سماح للبث الصوتي/المرئي عند انقطاع مؤقت في WebSocket (تجميد تبويب خلفي/تقلّب الشبكة):
+// لا نُنزل المذيع من البث ولا نُغلق اتصالات WebRTC فوراً بل ننتظر لحظات؛ فإن عاد اتصاله
+// قبل انتهاء المهلة يستمر بثّه بلا انقطاع، وإلا نُنظّف بثّه كالمعتاد.
+const PENDING_BCAST_CLEANUP = new Map();
+const BCAST_DISCONNECT_GRACE_MS = 5000;
+function cancelPendingBroadcastCleanup(uid, roomId) {
+  const key = roomLeaveKey(uid, roomId);
+  const pending = PENDING_BCAST_CLEANUP.get(key);
+  if (!pending) return false;
+  clearTimeout(pending);
+  PENDING_BCAST_CLEANUP.delete(key);
+  return true;
+}
+function scheduleBroadcastCleanup(uid, roomId) {
+  const key = roomLeaveKey(uid, roomId);
+  const existing = PENDING_BCAST_CLEANUP.get(key);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    PENDING_BCAST_CLEANUP.delete(key);
+    // إن عاد المستخدم بجلسة ظاهرة قبل انتهاء المهلة يُلغى التنظيف تلقائياً؛
+    // وإلا نُزيله من البث ونخبر الأطراف المعنية.
+    if (!userStillHasVisibleSocketInRoom(uid, roomId)) cleanupBroadcastForUser(roomId, uid);
+  }, BCAST_DISCONNECT_GRACE_MS);
+  PENDING_BCAST_CLEANUP.set(key, timer);
 }
 // =====================================================
 //  البث المباشر (فيديو/صوت) داخل الغرف — إشارات WebRTC عبر Socket.IO
@@ -5976,11 +6491,11 @@ function broadcastPublicState(roomId) {
 }
 // صلاحية الصعود للبث تُدار حسب العضوية من لوحة الإدارة؛ الشخص المكتوم مستمع فقط.
 async function canStartVideoBroadcast(user) {
-  if (!user || user.muted) return false;
+  if (!user || user.muted || user.broadcast_banned) return false;
   return canUseMembershipFeature(user.id, 'broadcast_allowed_memberships');
 }
 async function canStartAudioBroadcast(user) {
-  if (!user || user.muted) return false;
+  if (!user || user.muted || user.broadcast_banned) return false;
   return canUseMembershipFeature(user.id, 'broadcast_allowed_memberships');
 }
 function endBroadcast(roomId, reason = 'ended') {
@@ -5989,6 +6504,15 @@ function endBroadcast(roomId, reason = 'ended') {
   delete roomBroadcast[roomId];
   io.to('room_' + roomId).emit('bcast:stopped', { roomId, reason });
 }
+// هل يملك مستخدمٌ ما صلاحية إشراف في الغرفة المحددة؟ (إدارة عامة أو مشرف غرفة)
+async function socketCanModerate(uidValue, roomId) {
+  const mod = await q.get(`SELECT rank FROM users WHERE id=?`, +uidValue);
+  if (!mod) return false;
+  if (['admin', 'superadmin', 'supermaster'].includes(mod.rank)) return true;
+  const ra = await q.get(`SELECT id FROM room_admins WHERE room_id=? AND user_id=?`, +roomId, +uidValue);
+  return !!ra;
+}
+
 // يزيل مذيعاً واحداً من بثٍ متعدد المذيعين؛ ينهي البث بالكامل إن كان آخر مذيع متبقٍ.
 function removeHostFromBroadcast(roomId, uid, reason = 'host_left') {
   roomId = +roomId;
@@ -6528,15 +7052,7 @@ io.on('connection', async (socket) => {
   });
 
   const isChatPage = socket.handshake.auth && socket.handshake.auth.client === 'chat';
-  // بوابة الحماية على اتصال Socket.IO مباشرة (طبقة إضافية فوق فحص صفحة HTML).
-  try {
-    const gateReasons = await accessBlockReasons(socket.request);
-    if (gateReasons.length) {
-      socket.emit('access_blocked', { reasons: gateReasons });
-      setTimeout(() => { try { socket.disconnect(true); } catch (e) { } }, 60);
-      return;
-    }
-  } catch (e) { }
+  // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
   const socketToken = isChatPage ? String(socket.handshake.auth.token || '') : '';
   const tokenAuth = isChatPage ? chatAuthByToken(socketToken) : null;
   const sess = socket.request.session;
@@ -6630,6 +7146,8 @@ io.on('connection', async (socket) => {
     }
     roomId = +roomId;
     const restoredConnection = cancelPendingRoomLeave(uid, roomId);
+    // عاد المستخدم قبل انتهاء مهلة سماح البث؟ ألغِ أي تنظيف مجدول له لكي يستمر بثّه/استماعه دون انقطاع.
+    cancelPendingBroadcastCleanup(uid, roomId);
     if (socket.data.joinedRooms.has(roomId)) {
       const lastMsgRow = await q.get(`SELECT COALESCE(MAX(id),0) lastId FROM messages WHERE room_id=?`, roomId);
       return done({ ok: true, hidden: socket.data.hiddenRooms.has(roomId), restored: restoredConnection, broadcast: broadcastPublicState(roomId), lastMsgId: +lastMsgRow.lastId || 0 });
@@ -6691,6 +7209,7 @@ io.on('connection', async (socket) => {
       if (roomUsers[roomId]) roomUsers[roomId].delete(uid);
       emitRoomSystemEvent(roomId, 'leave', `${me.username} خرج من الغرفة`);
     }
+    cancelPendingBroadcastCleanup(uid, roomId); // مغادرة صريحة: ألغِ أي مهلة سماح معلّقة ونظّف فوراً
     cleanupBroadcastForUser(roomId, uid);
     emitRoomUsers(roomId);
     emitRoomCounts();
@@ -6711,7 +7230,7 @@ io.on('connection', async (socket) => {
     const allowed = mode === 'video' ? await canStartVideoBroadcast(me) : await canStartAudioBroadcast(me);
     if (!allowed) return ack({
       ok: false,
-      text: me.muted ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع'
+      text: me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (me.muted ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع')
     });
     let b = roomBroadcast[roomId];
     if (b && b.hosts.has(uid)) return ack({ ok: false, text: 'أنت تبث بالفعل في هذه الغرفة' });
@@ -6815,6 +7334,54 @@ io.on('connection', async (socket) => {
     io.to('room_' + roomId).emit('bcast:host_left', { roomId, hostId: targetUserId, reason: 'removed_by_host' });
     io.to('user_' + targetUserId).emit('bcast:speaker_removed', { roomId });
     for (const hostId of b.hosts.keys()) io.to('user_' + hostId).emit('bcast:new_listener', { roomId, listenerId: targetUserId });
+  });
+
+  // ===== أدوات التحكم بالمذيع للمشرف =====
+  // [مشرف] سحب المايك من مذيع وإعادته مستمعاً (مع خيار منعه من الصعود إلى البث مستقبلاً).
+  socket.on('bcast:mod_pull', async (roomId, targetUserId, ban) => {
+    roomId = +roomId; targetUserId = +targetUserId;
+    if (targetUserId === uid) return;
+    if (!(await socketCanModerate(uid, roomId))) return;
+    const b = roomBroadcast[roomId];
+    if (!b || !b.hosts.has(targetUserId)) return;
+    const mode = b.mode;
+    // إن كان المسحوب هو المضيف الأساسي، نرقّي أقدم مذيع متبقٍ تلقائياً قبل إزالتنا إياه.
+    if (b.primaryHostId === targetUserId) {
+      b.primaryHostId = [...b.hosts.keys()].filter(h => h !== targetUserId)[0] || null;
+    }
+    b.hosts.delete(targetUserId);
+    if (mode === 'audio') b.viewers.add(targetUserId);
+    // إعلام الجميع أن هذا المذيع غادر البث (المذيع المرقّى سيتولى الصلاحيات عبر primary_changed).
+    io.to('room_' + roomId).emit('bcast:host_left', { roomId, hostId: targetUserId, reason: 'removed_by_moderator' });
+    if (b.primaryHostId && b.hosts.has(b.primaryHostId)) {
+      io.to('room_' + roomId).emit('bcast:primary_changed', { roomId, primaryHostId: b.primaryHostId });
+    }
+    // إن كان آخر مذيع، ننهي البث تماماً؛ وإلا نخبر المسحوب أنه أُعيد (مستمعاً في الصوت).
+    if (b.hosts.size === 0) {
+      endBroadcast(roomId, 'ended_by_moderator');
+    } else {
+      io.to('user_' + targetUserId).emit('bcast:speaker_removed', { roomId });
+      if (mode === 'audio') for (const hostId of b.hosts.keys()) io.to('user_' + hostId).emit('bcast:new_listener', { roomId, listenerId: targetUserId });
+    }
+    // منع الصعود مستقبلاً إن طُلب ذلك.
+    if (ban) {
+      await q.run(`UPDATE users SET broadcast_banned=1 WHERE id=?`, targetUserId);
+      await refreshUserEverywhere(targetUserId);
+      io.to('user_' + targetUserId).emit('broadcast_banned', { user_id: targetUserId });
+      const t = await q.get(`SELECT username FROM users WHERE id=?`, targetUserId);
+      if (t) emitRoomSystemEvent(roomId, 'broadcast_ban', `منع المشرف ${t.username} من الصعود إلى البث`);
+    }
+  });
+  // [مشرف] إلغاء منع الصعود إلى البث (فكّ المنع) لمستخدمٍ مُبعد.
+  socket.on('bcast:mod_unban', async (roomId, targetUserId) => {
+    roomId = +roomId; targetUserId = +targetUserId;
+    // المشرف العام يكفي في كل الحالات؛ مشرف الغرفة يُسمح له فقط في غرفته.
+    if (!(await socketCanModerate(uid, roomId))) return;
+    await q.run(`UPDATE users SET broadcast_banned=0 WHERE id=?`, targetUserId);
+    await refreshUserEverywhere(targetUserId);
+    const t = await q.get(`SELECT username FROM users WHERE id=?`, targetUserId);
+    if (roomId && roomBroadcast[roomId] && t) emitRoomSystemEvent(roomId, 'broadcast_unban', `سمح المشرف لـ ${t.username} بالصعود إلى البث`);
+    io.to('user_' + targetUserId).emit('broadcast_ban_cleared', { user_id: targetUserId });
   });
 
   // إنهاء البث (لأي مذيع مشارك؛ ينتهي البث بالكامل عند خروج آخر مذيع).
@@ -7025,7 +7592,7 @@ io.on('connection', async (socket) => {
     const messageUser = hiddenAdmin
       ? { ...freshPub, hidden_admin: 1 }
       : { ...freshPub, live_broadcast_host: liveBroadcastHost ? 1 : 0 };
-    const extra = JSON.stringify({ badge: effectiveBadge, gender: me.gender, rank: effectiveRank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, media: cleanMedia, live_broadcast_host: liveBroadcastHost ? 1 : 0, verified: VERIFIED_SET.has(me.username) ? 1 : 0, verified_expired: VERIFIED_SET.has(me.username) ? expiredNow(VERIFIED_EXPIRES.get(me.username)) : 0, royal_expired: ROYAL_MAP.has(me.username) ? expiredNow(ROYAL_EXPIRES.get(me.username)) : 0, hidden_admin: hiddenAdmin ? 1 : 0 });
+    const extra = JSON.stringify({ badge: effectiveBadge, gender: me.gender, rank: effectiveRank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, media: cleanMedia, live_broadcast_host: liveBroadcastHost ? 1 : 0, verified: VERIFIED_SET.has(me.username) ? 1 : 0, verified_expired: VERIFIED_SET.has(me.username) ? expiredNow(VERIFIED_EXPIRES.get(me.username)) : 0, royal_expired: ROYAL_MAP.has(me.username) ? expiredNow(ROYAL_EXPIRES.get(me.username)) : 0, hidden_admin: hiddenAdmin ? 1 : 0, broadcast_banned: me.broadcast_banned ? 1 : 0 });
     const ins = await q.run(`INSERT INTO messages (room_id,user_id,username,text,type,extra) VALUES (?,?,?,?,'msg',?)`, roomId, uid, me.username, text, extra);
     const msg = {
       id: ins.lastID, room_id: roomId, text, type: 'msg', hidden_admin: hiddenAdmin ? 1 : 0,
@@ -7272,8 +7839,9 @@ io.on('connection', async (socket) => {
     // جلسة لوحة الإدارة إطلاقاً — الجلسة تبقى حية ما دامت الصفحة لم تُحدّث،
     // والشرط الصارم «داخل الدردشة الآن» يُفحص فقط عند تحديث صفحة /admin.
     for (const roomId of joinedRooms) {
-      // انقطاع الاتصال ينهي بث هذا المستخدم فوراً إن كان مذيعاً، أو يزيله من قائمة مشاهدي/مستمعي بث الغير.
-      if (!userStillHasVisibleSocketInRoom(uid, roomId)) cleanupBroadcastForUser(roomId, uid);
+      // انقطاع مؤقت للاتصال (تجميد تبويب/تقلّب شبكة) لا يُنهي بث المستخدم فوراً — نمنحه مهلة سماح
+      // ليعود؛ فإن عاد قبل نهايتها يستمر بثّه/استماعه دون انقطاع. (المغادرة الصريحة عبر 'leave' تُنظَّف فوراً)
+      if (!userStillHasVisibleSocketInRoom(uid, roomId)) scheduleBroadcastCleanup(uid, roomId);
       // خروج الجلسة المخفية لا يظهر كرسالة نظام ولا يغيّر قائمة المتصلين.
       if (!hiddenRooms.has(+roomId) && !userStillHasVisibleSocketInRoom(uid, roomId)) {
         cancelPendingRoomLeave(uid, roomId);

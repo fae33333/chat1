@@ -38,6 +38,8 @@ db.serialize(() => {
   db.run(`ALTER TABLE users ADD COLUMN is_bot INTEGER DEFAULT 0`, () => { });
   // صلاحية فردية تمنحها الإدارة للمستخدم للصعود كمذيع.
   db.run(`ALTER TABLE users ADD COLUMN broadcast_allowed INTEGER DEFAULT 0`, () => { });
+  // منع الصعود إلى البث (يُفعّله مشرف عبر «سحب مع منع صعود») — يبقى حتى يفكّه المشرف من قائمة المستخدمين.
+  db.run(`ALTER TABLE users ADD COLUMN broadcast_banned INTEGER DEFAULT 0`, () => { });
   // استهلاك المكالمة المجانية الأولى (دقيقة واحدة تجريبية)
   db.run(`ALTER TABLE users ADD COLUMN free_call_used INTEGER DEFAULT 0`, () => { });
   // معرف جهاز دائم للحظر الإداري حتى عند تغيّر عنوان IP.
@@ -262,7 +264,11 @@ db.serialize(() => {
     admin_name TEXT DEFAULT '',
     note TEXT DEFAULT '',
     created_at INTEGER DEFAULT (strftime('%s','now')),
-    updated_at INTEGER DEFAULT 0
+    updated_at INTEGER DEFAULT 0,
+    payout_method TEXT DEFAULT 'paypal', -- طريقة الاستلام: paypal (تلقائي) | bank (يدوي)
+    paypal_email TEXT DEFAULT '',        -- بريد/حساب PayPal المستلمة إن كانت الاستلام عبر PayPal
+    payout_batch_id TEXT DEFAULT '',     -- معرّف دفعة الإرسال من PayPal عند الإرسال الفعلي
+    payout_status TEXT DEFAULT ''        -- حالة الإرسال: submitted | success | failed
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_gift_cashouts_status ON gift_cashouts (status, created_at)`);
   // ترقية للنظام الجديد (الذهب فقط): أعمدة مجموع الذهب ومبلغ التسكير بالدولار
@@ -274,6 +280,11 @@ db.serialize(() => {
   db.run(`ALTER TABLE gift_cashouts ADD COLUMN selection_json TEXT DEFAULT ''`, () => { });
   // ملء قيمة الدولار للهدايا المسجلة سابقاً من قيم الهدايا الحالية حسب الاسم
   db.run(`UPDATE gifts_log SET usd_value = (SELECT COALESCE(g.usd_value, 0) FROM gifts g WHERE g.name = gifts_log.gift_name LIMIT 1) WHERE usd_value = 0`, () => { });
+  // ترقية نظام التسكير: أعمدة طريقة الاستلام (PayPal/بنك) وتفاصيل الدفع الآلي
+  db.run(`ALTER TABLE gift_cashouts ADD COLUMN payout_method TEXT DEFAULT 'paypal'`, () => { });
+  db.run(`ALTER TABLE gift_cashouts ADD COLUMN paypal_email TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE gift_cashouts ADD COLUMN payout_batch_id TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE gift_cashouts ADD COLUMN payout_status TEXT DEFAULT ''`, () => { });
 
   // ---------- طلبات التوثيق والترقية ----------
   db.run(`CREATE TABLE IF NOT EXISTS service_requests (
@@ -565,8 +576,12 @@ db.serialize(() => {
     card_holder TEXT DEFAULT '',
     deposit_card TEXT DEFAULT '',
     status TEXT DEFAULT 'completed',
+    order_ref TEXT DEFAULT '',
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+
+  // ترحيل: إضافة عمود مرجع عملية PayPal (order_ref) لقواعد البيانات القديمة التي أُنشئت قبله.
+  db.run(`ALTER TABLE payment_transactions ADD COLUMN order_ref TEXT DEFAULT ''`, () => { });
 
   // ---------- الرمزيات والصور المصنفة ----------
   db.run(`CREATE TABLE IF NOT EXISTS avatars (
