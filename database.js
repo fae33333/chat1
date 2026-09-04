@@ -264,7 +264,11 @@ db.serialize(() => {
     admin_name TEXT DEFAULT '',
     note TEXT DEFAULT '',
     created_at INTEGER DEFAULT (strftime('%s','now')),
-    updated_at INTEGER DEFAULT 0
+    updated_at INTEGER DEFAULT 0,
+    payout_method TEXT DEFAULT 'paypal', -- طريقة الاستلام: paypal (تلقائي) | bank (يدوي)
+    paypal_email TEXT DEFAULT '',        -- بريد/حساب PayPal المستلمة إن كانت الاستلام عبر PayPal
+    payout_batch_id TEXT DEFAULT '',     -- معرّف دفعة الإرسال من PayPal عند الإرسال الفعلي
+    payout_status TEXT DEFAULT ''        -- حالة الإرسال: submitted | success | failed
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_gift_cashouts_status ON gift_cashouts (status, created_at)`);
   // ترقية للنظام الجديد (الذهب فقط): أعمدة مجموع الذهب ومبلغ التسكير بالدولار
@@ -276,6 +280,11 @@ db.serialize(() => {
   db.run(`ALTER TABLE gift_cashouts ADD COLUMN selection_json TEXT DEFAULT ''`, () => { });
   // ملء قيمة الدولار للهدايا المسجلة سابقاً من قيم الهدايا الحالية حسب الاسم
   db.run(`UPDATE gifts_log SET usd_value = (SELECT COALESCE(g.usd_value, 0) FROM gifts g WHERE g.name = gifts_log.gift_name LIMIT 1) WHERE usd_value = 0`, () => { });
+  // ترقية نظام التسكير: أعمدة طريقة الاستلام (PayPal/بنك) وتفاصيل الدفع الآلي
+  db.run(`ALTER TABLE gift_cashouts ADD COLUMN payout_method TEXT DEFAULT 'paypal'`, () => { });
+  db.run(`ALTER TABLE gift_cashouts ADD COLUMN paypal_email TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE gift_cashouts ADD COLUMN payout_batch_id TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE gift_cashouts ADD COLUMN payout_status TEXT DEFAULT ''`, () => { });
 
   // ---------- طلبات التوثيق والترقية ----------
   db.run(`CREATE TABLE IF NOT EXISTS service_requests (

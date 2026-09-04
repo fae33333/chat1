@@ -5907,6 +5907,20 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
   outline:none; direction:ltr; text-align:left;
 }
 .gc-fields input:focus { border-color:#d43d6e; box-shadow:0 0 0 3px rgba(212,61,110,.12); }
+
+/* ====== اختيار طريقة الاستلام (PayPal / بنك) الخطوة 2 ====== */
+.gc-methods { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+.gc-method {
+  display:flex; align-items:center; gap:10px; cursor:pointer;
+  border:1.5px solid #e8cfe0; border-radius:12px;
+  background:#fff; padding:11px 13px; transition:all .15s ease;
+}
+.gc-method input { display:none; }
+.gc-method i { color:#9c1e46; font-size:22px; flex:0 0 auto; }
+.gc-method span { font-size:12.5px; font-weight:800; color:#4a2b45; line-height:1.5; }
+.gc-method.sel { border-color:#d43d6e; background:linear-gradient(135deg,#fff5f8,#fff); box-shadow:0 0 0 3px rgba(212,61,110,.10); }
+.gc-ok { color:#166534; }
+.gc-err { color:#b91c1c; }
 .gc-btn {
   width:100%; border:none; cursor:pointer;
   background:linear-gradient(135deg,#9c1e46,#d43d6e);

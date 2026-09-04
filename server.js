@@ -2287,6 +2287,28 @@ async function giftCashoutTotals(userId) {
   const row = await q.get(`SELECT COUNT(*) AS cnt, COALESCE(SUM(price * qty), 0) AS gold FROM gifts_log WHERE to_id=?`, userId);
   return { count: +row.cnt || 0, gold: +row.gold || 0 };
 }
+// معدّل تحويل الذهب إلى دولار. يفضّل أن يطابق سعر الشراء في المتجر (باقات الذهب):
+// نأخذ الباقة القياسية ذات أكبر كمية ذهب لقيمة معينة ونحسب سعر الذهب الواحد.
+// إن لم توجد باقات، نقع على نموذج «cashout_usd_amount لكل cashout_gold_min» الذي تحدده الإدارة.
+async function cashoutRatePerGold(settings) {
+  settings = settings || await getSettings();
+  try {
+    const packages = await q.all(`SELECT gold, price FROM gold_packages WHERE active=1 AND gold>0 AND price>0 ORDER BY gold DESC, id ASC LIMIT 1`);
+    if (packages.length) {
+      const pkg = packages[0];
+      const rate = (+pkg.price) / (+pkg.gold);
+      if (rate > 0) return rate;
+    }
+  } catch (e) { /* لا جدول/باقات */ }
+  const goldMin = Math.max(0, parseInt(settings.cashout_gold_min) || 100);
+  const usdAmount = Math.max(0, parseFloat(settings.cashout_usd_amount) || 5);
+  return goldMin > 0 ? usdAmount / goldMin : 0;
+}
+// تحديد سعر الصرف بالدولار لمقدار ذهب معيّن (نفس سعر المتجر).
+async function cashoutUsdForGold(gold, settings) {
+  const rate = await cashoutRatePerGold(settings);
+  return Math.round((+gold || 0) * rate * 100) / 100;
+}
 async function giftCashoutInfo(me) {
   const settings = await getSettings();
   const enabled = String(settings.cashout_enabled) === '1';
@@ -2321,17 +2343,28 @@ async function giftCashoutInfo(me) {
     g.rows.push({ id: +row.id, qty: rqty });
   }
   const gift_groups = groupOrder.map(k => groups[k]);
+  // قيمة الدولار المطابقة لسعر شراء الذهب في المتجر (أو سعر الإدارة إن لم توجد باقات).
+  const ratePerGold = await cashoutRatePerGold(settings);
+  const usdForGoldMin = Math.round(goldMin * ratePerGold * 100) / 100;
+  let pendingFull = pending || null;
+  if (pending) {
+    const pp = await q.get(`SELECT account_number, account_name, payout_method, paypal_email, payout_batch_id, payout_status FROM gift_cashouts WHERE id=?`, pending.id);
+    pendingFull = { ...pending, ...(pp || {}) };
+  }
   return {
     enabled: enabled && isGirl,
     isGirl,
     gold_min: goldMin,
     usd_amount: usdAmount,
+    usd_for_gold_min: usdForGoldMin,            // قيمة دولار للحد الأدنى (بنفس سعر المتجر)
+    rate_per_gold: Math.round(ratePerGold * 10000) / 10000,
+    store_rate: true,                            // يُخبر الواجهة أن السعر يتبع سعر المتجر
     gold_total: gold,
     remaining_gold: Math.max(0, goldMin - gold),
     gifts_count: totals.count,
     gift_groups,
     has_pending: !!pending,
-    pending: pending || null,
+    pending: pendingFull || null,
     eligible: enabled && isGirl && goldMin > 0 && gold >= goldMin && !pending
   };
 }
@@ -2387,28 +2420,39 @@ app.post('/api/gift-cashout', requireUser, async (req, res) => {
     return res.status(400).json({ error: `مجموع ذهب الهدايا المحددة (${selectedGold}) أقل من المجموع المطلوب للتسكير (${info.gold_min}) — حددي كمية أكثر` });
   }
 
-  // المبلغ بالدولار يتناسب طردياً مع الذهب المحدد:
-  // usd_amount يقابل gold_min — مثال: 5$ لكل 100 ذهب → 200 ذهب = 10$
-  const usdForSelection = info.gold_min > 0
-    ? Math.round(selectedGold * info.usd_amount / info.gold_min * 100) / 100
-    : 0;
+  // المبلغ بالدولار يُحتسب بنفس سعر شراء الذهب في المتجر (باقات الذهب المفعّلة)،
+  // أو بسعر الإدارة إن لم توجد باقات (cashout_usd_amount لكل cashout_gold_min).
+  const usdForSelection = await cashoutUsdForGold(selectedGold, settings);
 
-  // التحقق من رقم الحساب المستلم (أرقام فقط، 8-19 خانة مثل أرقام الحسابات والبطاقات البنكية)
+  // طريقة الاستلام: paypal (تلقائي عبر Payouts) | bank (التحويل عبر حساب بنكي).
+  const payoutMethod = req.body.payout_method === 'bank' ? 'bank' : 'paypal';
+  const paypalEmail = String(req.body.paypal_email || '').trim().toLowerCase().slice(0, 80);
+  const EMAIL_RE = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+
   const account_number = String(req.body.account_number || '').replace(/[\s-]/g, '').slice(0, 40);
   const account_name = String(req.body.account_name || '').trim().slice(0, 60) || me.username;
-  if (!/^\d{8,19}$/.test(account_number)) {
-    return res.status(400).json({ error: 'رقم الحساب غير صحيح — يجب أن يتكون من 8 إلى 19 رقمًا (بدون أحرف)' });
+
+  if (payoutMethod === 'paypal') {
+    // الاستلام عبر PayPal: يلزم بريد PayPal صحيح (الدفع الآلي يذهب إليه).
+    if (!EMAIL_RE.test(paypalEmail)) return res.status(400).json({ error: 'أدخلي بريدك الإلكتروني المرتبط بحساب PayPal بشكل صحيح' });
+  } else {
+    // الاستلام عبر بنك: يلزم رقم حساب بنكي صحيح.
+    if (!/^\d{8,19}$/.test(account_number)) {
+      return res.status(400).json({ error: 'رقم الحساب غير صحيح — يجب أن يتكون من 8 إلى 19 رقمًا (بدون أحرف)' });
+    }
   }
 
   const ins = await q.run(
-    `INSERT INTO gift_cashouts (user_id,username,account_number,account_name,gross_usd,net_usd,gold_total,usd_amount,gifts_count,selected_gift_ids,selection_json,status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending')`,
+    `INSERT INTO gift_cashouts (user_id,username,account_number,account_name,gross_usd,net_usd,gold_total,usd_amount,gifts_count,selected_gift_ids,selection_json,status,payout_method,paypal_email)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)`,
     me.id, me.username, account_number, account_name,
-    0, usdForSelection, selectedGold, usdForSelection, selectedCount, giftIds.join(','), JSON.stringify(selection)
-  ); // 12 عمود = 11 قيمة + status ثابت
-  await createUserNotification(me.id, `تم إرسال طلب تسكير ${selectedCount} هدية (${selectedGold} ذهب ← $${usdForSelection}) وهو قيد مراجعة الإدارة ⏳`, 'bank_fill');
-  notifyAdminAccounts(`💰 طلب تسكير هدايا جديد: ${me.username} — ${selectedCount} هدية (${selectedGold} ذهب) ← $${usdForSelection}`);
-  res.json({ ok: true, id: ins.lastID, usd: usdForSelection, gold: selectedGold, count: selectedCount });
+    0, usdForSelection, selectedGold, usdForSelection, selectedCount, giftIds.join(','), JSON.stringify(selection),
+    payoutMethod, payoutMethod === 'paypal' ? paypalEmail : ''
+  );
+  const methodLabel = payoutMethod === 'paypal' ? `حساب PayPal (${paypalEmail})` : `حساب بنكي (${account_number})`;
+  await createUserNotification(me.id, `تم إرسال طلب تسكير ${selectedCount} هدية (${selectedGold} ذهب ← $${usdForSelection}) إلى ${methodLabel} وهو قيد مراجعة الإدارة ⏳`, 'bank_fill');
+  notifyAdminAccounts(`💰 طلب تسكير هدايا جديد: ${me.username} — ${selectedCount} هدية (${selectedGold} ذهب) ← $${usdForSelection} (${methodLabel})`);
+  res.json({ ok: true, id: ins.lastID, usd: usdForSelection, gold: selectedGold, count: selectedCount, payout_method: payoutMethod });
 });
 
 async function notifyAdminAccounts(text) {
@@ -3210,6 +3254,90 @@ function paymentCaptureInfo(captured) {
   };
 }
 
+// إرسال دفعة (Payout) من حساب التاجر إلى حساب PayPal لمستلمة الهدايا عبر
+// واجهة PayPal Payouts القياسية (POST /v1/payments/payouts).
+// ملاحظة: هذه الواجهة ترسل المال إلى «حساب PayPal» (بالبريد) بشكل فوري/آمن؛
+// الإرسال المباشر إلى بطاقة/حساب بنكي يتطلب منتج Advanced Payouts/Hyperwallet المنفصل.
+async function paypalPayout(accessToken, amount, currency, mode, receiverEmail, note) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const value = Number(amount).toFixed(2);
+    const batchId = 'gcash_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+    const res = await fetch(`${paypalApiBase(mode)}/v1/payments/payouts`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'PayPal-Request-Id': batchId
+      },
+      body: JSON.stringify({
+        sender_batch_header: {
+          sender_batch_id: batchId,
+          email_subject: 'دفعة من نجوم العرب (تسكير هدايا) 💰',
+          email_message: 'تم تحويل مبلغك من تسكير الهدايا. شكراً لتواجدك!'
+        },
+        items: [{
+          recipient_type: 'EMAIL',
+          amount: { value, currency: String(currency || 'USD').toUpperCase() },
+          receiver: String(receiverEmail || '').trim(),
+          note: String(note || 'تسكير هدايا — نجوم العرب').slice(0, 200),
+          sender_item_id: batchId
+        }]
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = (data.details && data.details[0] && data.details[0].description) || data.message || 'تعذر إرسال الدفعة عبر PayPal';
+      console.error(`[paypal] فشل payout (${mode}): status=${res.status} body=${JSON.stringify(data).slice(0, 600)}`);
+      const err = new Error(msg);
+      err.httpStatus = res.status;
+      err.raw = data;
+      throw err;
+    }
+    const header = data.batch_header || {};
+    console.log(`[paypal] payout OK (${mode}): batch=${header.payout_batch_id} status=${header.batch_status} items=${(data.items || []).length}`);
+    return {
+      batch_id: header.payout_batch_id || batchId,
+      status: header.batch_status || 'PENDING',
+      raw: data
+    };
+  } catch (e) { clearTimeout(timer); console.error('[paypal] payout exception:', e.message || e); throw e; }
+}
+
+// استعلام حالة دفعة Payouts معيّنة (GET /v1/payments/payouts/{batch_id}).
+async function paypalPayoutStatus(accessToken, batchId, mode, attempts = 12, delayMs = 1500) {
+  for (let i = 0; i < attempts; i++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await fetch(`${paypalApiBase(mode)}/v1/payments/payouts/${encodeURIComponent(batchId)}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (res.status === 404) return { status: 'PENDING', batch_id: batchId }; // غير مكتملة بعد/غير مرئية
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error(`[paypal] فشل جلب حالة payout (${mode}): status=${res.status}`);
+        return { status: 'PENDING', batch_id: batchId };
+      }
+      const header = data.batch_header || {};
+      const st = String(header.batch_status || '').toUpperCase();
+      console.log(`[paypal] حالة payout (${mode}) [${i + 1}]: ${st}`);
+      if (st === 'SUCCESS') return { status: st, batch_id: header.payout_batch_id || batchId, raw: data };
+      if (st === 'FAILED' || st === 'DENIED' || st === 'CANCELED') return { status: st || 'FAILED', batch_id: header.payout_batch_id || batchId, raw: data };
+      // PENDING أو غير ذلك: ننتظر قليلاً ثم نعيد المحاولة.
+    } catch (e) { clearTimeout(timer); console.error('[paypal] payout-status exception:', e.message || e); }
+    await new Promise(r => setTimeout(r, delayMs));
+  }
+  return { status: 'PENDING', batch_id: batchId };
+}
+
 // إرجاع الحالة العامة لتشفير/إخفاء المفتاح السري في الواجهة.
 async function paypalPublicConfig() {
   const s = await getSettings();
@@ -3540,6 +3668,72 @@ app.post('/api/admin/gift-cashout/:id/complete', requireSuperAdmin, async (req, 
   const request = await q.get(`SELECT * FROM gift_cashouts WHERE id=? AND status='pending'`, id);
   if (!request) return res.status(404).json({ error: 'الطلب غير موجود أو تمت معالجته' });
   const admin = await q.get(`SELECT id, username FROM users WHERE id=?`, req.session.uid);
+  const settings = await getSettings();
+  const usdAmount = Math.max(0, parseFloat(request.usd_amount || request.net_usd) || 0);
+
+  // ===== الإرسال الآلي عبر PayPal (مدفوعات Payouts) =====
+  // إذا كانت طريقة الاستلام «PayPal» (بريد) فيُرسل المبلغ فعلياً من حساب التاجر
+  // إلى حساب PayPal الخاص بالمستلمة عبر واجهة Payouts. لا يُحذف شيء ولا تُعتبر
+  // العملية مكتملة إلا بعد قبول PayPal للدفعة.
+  const payoutMethod = String(request.payout_method || 'bank');
+  const paypalEmail = String(request.paypal_email || '').trim();
+  const EMAIL_RE = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+
+  let payoutBatchId = '', payoutStatus = '';
+  if (payoutMethod === 'paypal') {
+    // طريقة الاستلام عبر PayPal: لا يجوز اعتبار العملية مكتملة إلا إذا أُرسلت الدفعة فعلاً.
+    if (!EMAIL_RE.test(paypalEmail)) {
+      return res.status(400).json({ error: 'لا يوجد بريد PayPal صالح لهذا الطلب — لا يمكن الإرسال الآلي عبر PayPal. راجع الطلب أو ارفضه.' });
+    }
+    if (usdAmount <= 0) {
+      return res.status(400).json({ error: 'مبلغ التسكير غير صالح — لا يمكن إرسال دفعة بمبلغ صفر' });
+    }
+    if (settings.paypal_enabled === '0' || !settings.paypal_client_id || !settings.paypal_secret) {
+      return res.status(400).json({ error: 'لإتمام التحويل الآلي عبر PayPal يجب تفعيل بوابة الدفع وإدخال المفاتيح في لوحة الإدارة أولاً' });
+    }
+    try {
+      const token = await paypalAccessToken(settings.paypal_client_id, settings.paypal_secret, settings.paypal_mode || 'live');
+      // إن كانت هناك دفعة سابقة (رقم batch محفوظ) فلا ننشئ دفعة جديدة — نتحقق من حالتها فقط
+      // لمنع الدفع المزدوج. بخلاف ذلك ننشئ دفعة جديدة.
+      if (request.payout_batch_id) {
+        payoutBatchId = String(request.payout_batch_id);
+        payoutStatus = String(request.payout_status || 'pending');
+        const existingCheck = await paypalPayoutStatus(token, payoutBatchId, settings.paypal_mode || 'live');
+        payoutStatus = existingCheck.status;
+        if (existingCheck.status === 'FAILED' || existingCheck.status === 'DENIED') {
+          await q.run(`UPDATE gift_cashouts SET payout_status='failed', updated_at=strftime('%s','now') WHERE id=?`, id);
+          return res.status(400).json({ error: 'الدُفعة السابقة عبر PayPal فشلت (حالة: ' + existingCheck.status + ') — لم يُحذف شيء.' });
+        }
+        if (existingCheck.status !== 'SUCCESS') {
+          return res.status(202).json({ ok: true, pending: true, payout_batch_id: payoutBatchId, message: 'دفعة PayPal (رقم ' + payoutBatchId + ') ما زالت قيد المعالجة — ستُحذف الهدايا فور اكتمالها.' });
+        }
+        // SUCCESS موجودة مسبقاً: نتابع لإكمال العملية وحذف الهدايا.
+        await q.run(`UPDATE gift_cashouts SET payout_status='success', updated_at=strftime('%s','now') WHERE id=?`, id);
+      } else {
+        const payout = await paypalPayout(token, usdAmount, settings.paypal_currency || 'USD', settings.paypal_mode || 'live', paypalEmail, `تسكير هدايا ${request.gold_total || 0} ذهب`);
+        payoutBatchId = payout.batch_id;
+        payoutStatus = payout.status;
+        // سجّل فوراً أن الدفعة قُبلت (قد تكون PENDING حتى تستكمل).
+        await q.run(`UPDATE gift_cashouts SET payout_batch_id=?, payout_status=?, updated_at=strftime('%s','now') WHERE id=?`, payoutBatchId, String(payout.status || 'pending'), id);
+        // نتأكد من اكتمال الدفعة فعلياً قبل حذف الهدايا — لا حذف إلا بعد نجاح التحويل.
+        const check = await paypalPayoutStatus(token, payoutBatchId, settings.paypal_mode || 'live');
+        payoutStatus = check.status;
+        if (check.status === 'FAILED' || check.status === 'DENIED') {
+          await q.run(`UPDATE gift_cashouts SET payout_status='failed', updated_at=strftime('%s','now') WHERE id=?`, id);
+          return res.status(400).json({ error: 'فشل الإرسال الآلي عبر PayPal (حالة الدفعة: ' + check.status + ') — لم يُحذف شيء.' });
+        }
+        if (check.status !== 'SUCCESS') {
+          // ما زالت قيد المعالجة: لا نحذف الهدايا الآن حتى نتأكد من نجاحها، مع إبقاء رقم الدفعة.
+          return res.status(202).json({ ok: true, pending: true, payout_batch_id: payoutBatchId, message: 'تم إرسال الدفعة عبر PayPal وهي قيد المعالجة (رقم ' + payoutBatchId + ') — ستُحذف الهدايا فور اكتمالها.' });
+        }
+        // SUCCESS: نتابع لحذف الهدايا وإكمال العملية.
+        await q.run(`UPDATE gift_cashouts SET payout_status='success', updated_at=strftime('%s','now') WHERE id=?`, id);
+      }
+    } catch (err) {
+      const status = err && err.httpStatus ? ` (HTTP ${err.httpStatus})` : '';
+      return res.status(400).json({ error: 'تعذر الإرسال الآلي عبر PayPal: ' + ((err && err.message) || 'خطأ') + status + ' — لم يُحذف شيء. تأكد من رصيد حساب التاجر الكافي وعدم وجود قيود.' });
+    }
+  }
 
   // خصم الهدايا المحددة فقط (بالكمية) من حساب صاحبة الهدايا — بقية الهدايا المتكررة تبقى عندها
   let deleted = 0;
@@ -3571,18 +3765,22 @@ app.post('/api/admin/gift-cashout/:id/complete', requireSuperAdmin, async (req, 
       deleted = del.changes;
     }
   }
+
+  const payoutStatusLabel = payoutBatchId ? ` (رقم الدفعة: ${payoutBatchId})` : '';
   await q.run(
     `UPDATE gift_cashouts SET status='completed', admin_name=?, updated_at=strftime('%s','now') WHERE id=?`,
     (admin && admin.username) || 'الإدارة', id
   );
-  const usdAmount = request.usd_amount || request.net_usd || 0;
+  const destination = payoutMethod === 'paypal' && paypalEmail
+    ? `حسابك في PayPal (${paypalEmail})`
+    : `حسابك ${request.account_number}`;
   const notif = await createUserNotification(
     request.user_id,
-    `✅ اكتملت عملية تسكير ${deleted} من هداياك (${request.gold_total || 0} ذهب): تم تحويل $${usdAmount} إلى حسابك ${request.account_number} وحُذفت الهدايا المحددة من حسابك`,
+    `✅ اكتملت عملية تسكير ${deleted} من هداياك (${request.gold_total || 0} ذهب): تم تحويل $${usdAmount} إلى ${destination}${payoutStatusLabel} وحُذفت الهدايا المحددة من حسابك`,
     'bank_fill'
   );
   io.to('user_' + request.user_id).emit('notify', notif);
-  res.json({ ok: true, deleted, usd: usdAmount });
+  res.json({ ok: true, deleted, usd: usdAmount, payout_batch_id: payoutBatchId, via_paypal: !!payoutBatchId });
 });
 
 // رفض طلب التسكير
