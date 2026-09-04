@@ -1669,7 +1669,6 @@ const MENU = [
     { id: 'aiSettings', icon: 'sparkles', label: 'إعدادات الذكاء الاصطناعي (AI)', superAdminOnly: true }]},
   { icon: 'desktopcomputer', color: '#38bdf8', label: 'اعدادات النظام', superAdminOnly: true, subs: [
     { id: 'system', icon: 'wrench_fill', label: 'اعدادات النظام الاساسي', superAdminOnly: true },
-    { id: 'protect', icon: 'shield_fill', label: 'الحماية والوصول (VPN/المتصفح)', superAdminOnly: true },
     { id: 'legal', icon: 'doc_text_fill', label: 'الشروط والخصوصية', superAdminOnly: true }]},
   { icon: 'person2_fill', color: '#818cf8', label: 'ادارة المستخدمين', subs: [
     { id: 'userAdd', icon: 'plus_circle_fill', label: 'اضافه مستخدم' },
@@ -3925,37 +3924,8 @@ const PAGES = {
     bind: () => { $('#saveSys').onclick = async () => { await saveSwitches(); await saveKeys(['public_msgs_link']); toast('تم حفظ اعدادات النظام'); }; }
   },
 
-  // ====== الحماية والوصول (VPN / بروكسي + قائمة المتصفحات) ======
-  protect: {
-    build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#60a5fa">shield_fill</i> الحماية والوصول (VPN / المتصفحات)</div>
-      <div class="info-box" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3;margin:10px 0 16px">
-        تحكّم من هنا في منع الاتصال عبر برامج VPN والبوروكسيات، وتحديد المتصفحات المسموح تشغيل الدردشة بها. تُطبَّق القيود فوراً على صفحة الدردشة واتصال Socket.IO دون إعادة تشغيل الخادم.
-      </div>
-      ${swRow('network_alt', '#ef4444', 'منع الاتصال عبر VPN / بروكسي', 'block_vpn_proxy')}
-      <div class="row">
-        <span class="lbl"><i class="f7-icons mi" style="color:#38bdf8">scope</i> طريقة كشف VPN / بروكسي :</span>
-        <select class="inp" data-key="vpn_proxy_check" style="max-width:320px">
-          <option value="both" ${String(SETTINGS.vpn_proxy_check || 'both') !== 'headers' && String(SETTINGS.vpn_proxy_check || 'both') !== 'api' ? 'selected' : ''}>الاثنان معاً — فحص الهيدر + فحص عنوان IP (الموصى به، يمسك VPN الحقيقية)</option>
-          <option value="api" ${String(SETTINGS.vpn_proxy_check || '') === 'api' ? 'selected' : ''}>فحص عنوان IP فقط (يُمسك VPN، يحتاج إنترنت)</option>
-          <option value="headers" ${String(SETTINGS.vpn_proxy_check || '') === 'headers' ? 'selected' : ''}>فحص الهيدر فقط (سريع لكنه لا يمسك معظم VPN)</option>
-        </select>
-      </div>
-      ${swRow('cloud_fill', '#f59e0b', 'اعتبار عناوين الاستضافة/السحابة (hosting) ضمن VPN المحظور', 'vpn_proxy_block_hosting')}
-      <div class="row">
-        <span class="lbl"><i class="f7-icons mi" style="color:#10b981">globe</i> المتصفحات المسموحة :</span>
-        <input class="inp" type="text" data-key="allowed_browsers" value="${esc(SETTINGS.allowed_browsers || '')}" placeholder="مثال: chrome,firefox,safari,edge,opera" style="max-width:340px">
-      </div>
-      <div class="info-box" style="background:#fffbeb;border-color:#fde68a;color:#92400e;margin:10px 0 16px">
-        <b>لماذا لا يُمسك VPN؟</b> برامج VPN تعمل على مستوى الشبكة ولا تُرسل أي هيدر، لذلك يجب تفعيل <b>«فحص عنوان IP»</b> إلى جانب الهيدر. يتحقق الخادم من عنوان الزائر عبر خدمة خارجية، وإذا كان من نطاق VPN/بوروكسي/استضافة يُحجب فوراً.<br><br>
-        اكتب أسماء المتصفحات المسموح مفصولة بفواصل: <b>chrome</b>، <b>firefox</b>، <b>safari</b>، <b>edge</b>، <b>opera</b>. اترك الحقل فارغاً للسماح بجميع المتصفحات، أو اكتب <b>all</b> لفتح الدردشة على الجميع.<br><br>
-        ⚠️ ملاحظة: خيار «عنوان الاستضافة» يوقف مستخدمي الخوادم/السحابية أيضاً. أطفئه إن كان يمنع عملائك.
-      </div>
-      <div class="btn-row" style="justify-content:flex-start">
-        <button class="btn btn-purple" id="saveProtect"><i class="f7-icons">square_arrow_down_fill</i> حفظ إعدادات الحماية</button>
-      </div>`,
-    bind: () => { $('#saveProtect').onclick = async () => { await saveSwitches(); toast('تم حفظ إعدادات الحماية والوصول'); }; }
-  },
+  // *** أُلغيت صفحة «الحماية والوصول (VPN / المتصفحات)» بالكامل حسب طلب المالك ***
+  // لم يعد هناك حظر على VPN/بروكسي/متصفحات، لذا لا صفحة إعدادات لهذه الخاصية.
 
   // ====== الشروط والخصوصية ======
   legal: {

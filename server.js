@@ -958,18 +958,16 @@ setTimeout(() => refreshPublicMessageRules().catch(() => { }), 1200);
 //  بوابة الحماية: منع الاتصال عبر VPN/بروكسي + قائمة المتصفحات المسموحة
 //  تُدار من لوحة التحكم الإدارية وتُطبّق على صفحة الدردشة واتصال Socket.IO.
 // =====================================================
-let ACCESS_SETTINGS = { block_vpn_proxy: '0', vpn_proxy_check: 'both', vpn_proxy_block_hosting: '1', allowed_browsers: '' };
+// *** أُلغيت خاصية «الحماية والوصول (VPN / المتصفحات)» بالكامل حسب طلب المالك ***
+// نبقيه معطّلاً دائماً: لا نحفظ مفاتيح الحماية، ولا نعيد تمكينها من الإعدادات.
+let ACCESS_SETTINGS = { block_vpn_proxy: '0', vpn_proxy_check: 'both', vpn_proxy_block_hosting: '0', allowed_browsers: '' };
 async function refreshAccessGate() {
+  // لا شَيء: خاصية حظر VPN/المتصفحات أُلغيت نهائياً، فلا نقرأ مفاتيحها من قاعدة البيانات.
+  ACCESS_SETTINGS = { block_vpn_proxy: '0', vpn_proxy_check: 'both', vpn_proxy_block_hosting: '0', allowed_browsers: '' };
+  // تنظيف لمرة واحدة: إزالة مفاتيح الحماية القديمة من قاعدة البيانات كي لا تبقى معطّلة.
   try {
-    const settings = await getSettings();
-    ACCESS_SETTINGS = {
-      block_vpn_proxy: String(settings.block_vpn_proxy === '1' ? '1' : '0'),
-      vpn_proxy_check: String(settings.vpn_proxy_check || 'both'),
-      vpn_proxy_block_hosting: String(settings.vpn_proxy_block_hosting === '1' ? '1' : '0'),
-      allowed_browsers: String(settings.allowed_browsers || ''),
-      site_name: String(settings.site_name || 'الدردشة')
-    };
-  } catch (e) { }
+    await q.run(`DELETE FROM settings WHERE key IN ('block_vpn_proxy','vpn_proxy_check','vpn_proxy_block_hosting','allowed_browsers')`);
+  } catch (e) { /* تجاهل: لا يوجد جدول/مفاتيح */ }
 }
 refreshAccessGate().catch(() => { });
 setTimeout(() => refreshAccessGate().catch(() => { }), 1500);
@@ -1207,23 +1205,12 @@ async function isVerifiedSearchCrawler(req) {
 }
 
 // قرار نهائي للوصول: يعيد قائمة أسباب المنع (ربما فارغة = مسموح).
+// *** أُلغيت خاصية «الحماية والوصول (VPN / المتصفحات)» بالكامل حسب طلب المالك ***
+// لم نعد نحظر أي اتصال — لا ممن يستخدم VPN/بوروكسي، ولا ممن يفتح من متصفح
+// غير مذكور، ولا روبوتات محركات البحث. النتيجة: نجاح طلب الفهرسة في
+// «أدوات مشرفي المواقع» وزحف محركات البحث دون 403/noindex، والسماح لكل الزوار.
 async function accessBlockReasons(req) {
-  const reasons = [];
-  // روبوت بحث موثّق → يُسمح له دائماً حتى ترى محركات البحث المسار كاملاً.
-  if (await isVerifiedSearchCrawler(req)) return reasons;
-  if (!isBrowserAllowed(requestHeader(req, 'user-agent'))) reasons.push('browser');
-  if (String(ACCESS_SETTINGS.block_vpn_proxy) === '1') {
-    const mode = String(ACCESS_SETTINGS.vpn_proxy_check || 'both').toLowerCase();
-    let vpnBlocked = false;
-    // فحص الهيدر يلتقط البوروكسيات الصريحة فقط، بينما فحص IP هو الذي يمسك VPN الحقيقية.
-    if (mode === 'headers' || mode === 'both') vpnBlocked = headerProxyIndicatesVpn(req);
-    if (!vpnBlocked && (mode === 'api' || mode === 'both')) {
-      const ip = validIp(requestIp(req));
-      vpnBlocked = await externalVpnCheck(ip);
-    }
-    if (vpnBlocked) reasons.push('vpn');
-  }
-  return reasons;
+  return []; // لا حظر إطلاقاً
 }
 
 // صفحة HTML موحدة تظهر للمحظور (مفصّلة حسب السبب).
@@ -3300,7 +3287,7 @@ app.post('/api/admin/settings', requireSuperAdmin, async (req, res) => {
   }
   if (req.body.hidden_super !== undefined && String(req.body.hidden_super) !== '1') await revealHiddenAdmins();
   if (req.body.public_message_cooldown_seconds !== undefined || req.body.msg_max !== undefined) await refreshPublicMessageRules();
-  refreshAccessGate(); // بوابة الحماية (VPN/بروكسي + قائمة المتصفحات) تُحدّث فوراً دون إعادة تشغيل.
+  // (بوابة الحماية أُلغيت — لا حظر على VPN/بروكسي/متصفحات)
   reloadBots();      // قد يكون تبديل «تفعيل الروبوت» تغيّر
 
   // هذه المفاتيح تصل فوراً لكل صفحات الدردشة المفتوحة قبل المزامنة العامة.
@@ -5965,11 +5952,7 @@ app.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  // بوابة الحماية: منع VPN/بروكسي والمتصفحات غير المسموحة على صفحة الدردشة.
-  try {
-    const gateReasons = await accessBlockReasons(req);
-    if (gateReasons.length) return res.status(403).send(renderAccessBlockedHtml(gateReasons, req));
-  } catch (e) { }
+  // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
   try {
     const html = await renderSeoChatHtml('default', req);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -5985,11 +5968,7 @@ app.get('/:slug', async (req, res, next) => {
   res.setHeader('Expires', '0');
   const slug = String(req.params.slug || '').trim().toLowerCase();
   if (RESERVED_SLUGS.has(slug) || slug.includes('.')) return next();
-  // بوابة الحماية على مسارات الدردشة المخصصة (/chat1, /chat2 ...).
-  try {
-    const gateReasons = await accessBlockReasons(req);
-    if (gateReasons.length) return res.status(403).send(renderAccessBlockedHtml(gateReasons, req));
-  } catch (e) { }
+  // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
   try {
     const seo = await q.get(`SELECT id FROM seo_pages WHERE slug=? AND active=1`, slug);
     if (!seo) return next();
@@ -6641,15 +6620,7 @@ io.on('connection', async (socket) => {
   });
 
   const isChatPage = socket.handshake.auth && socket.handshake.auth.client === 'chat';
-  // بوابة الحماية على اتصال Socket.IO مباشرة (طبقة إضافية فوق فحص صفحة HTML).
-  try {
-    const gateReasons = await accessBlockReasons(socket.request);
-    if (gateReasons.length) {
-      socket.emit('access_blocked', { reasons: gateReasons });
-      setTimeout(() => { try { socket.disconnect(true); } catch (e) { } }, 60);
-      return;
-    }
-  } catch (e) { }
+  // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
   const socketToken = isChatPage ? String(socket.handshake.auth.token || '') : '';
   const tokenAuth = isChatPage ? chatAuthByToken(socketToken) : null;
   const sess = socket.request.session;
