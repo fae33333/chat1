@@ -1770,6 +1770,27 @@ const swRow = (icon, color, label, key) => `
     <span class="lbl"><i class="f7-icons mi" style="color:${color}">${icon}</i> ${t(label)} :</span>
     <label class="switch"><input type="checkbox" data-key="${key}" ${SETTINGS[key] === '1' ? 'checked' : ''}><span class="tr"><span class="th"></span></span></label>
   </div>`;
+// صف إشعار صوتي: مفتاح تشغيل + رفع صوت مخصص + معاينة/استماع + إزالة
+const soundRow = (icon, color, label, key, hint = '') => {
+  const urlKey = key + '_url';
+  const url = SETTINGS[urlKey] || '';
+  const on = SETTINGS[key] === '1';
+  return `
+    <div class="sound-card">
+      <div class="sound-top">
+        <span class="lbl"><i class="f7-icons mi" style="color:${color}">${icon}</i> ${t(label)}</span>
+        <label class="switch"><input type="checkbox" data-key="${key}" ${on ? 'checked' : ''}><span class="tr"><span class="th"></span></span></label>
+      </div>
+      <div class="sound-controls">
+        <span class="sound-status ${url ? 'has' : ''}">${url ? '✓ صوت مخصص مرفوع' : (on ? '🔊 نغمة افتراضية' : '🔇 مكتوم (مفصول)')}</span>
+        <button type="button" class="btn btn-sm btn-green sound-up" data-urlkey="${urlKey}"><i class="f7-icons">arrow_up</i> رفع صوت</button>
+        <audio class="sound-audio" data-urlkey="${urlKey}" src="${esc(url)}" controls preload="none" ${url ? '' : 'style="display:none"'}></audio>
+        <button type="button" class="btn btn-sm btn-red sound-del" data-urlkey="${urlKey}" ${url ? '' : 'style="display:none"'}><i class="f7-icons">trash_fill</i> إزالة</button>
+        <input type="hidden" data-key="${urlKey}" value="${esc(url)}">
+      </div>
+      ${hint ? `<div class="sound-hint">${hint}</div>` : ''}
+    </div>`;
+};
 const inpRow = (icon, color, label, key, type = 'number', suffix = 'رصيد') => `
   <div class="row">
     <span class="lbl"><i class="f7-icons mi" style="color:${color}">${icon}</i> ${t(label)} :</span>
@@ -2545,13 +2566,17 @@ const PAGES = {
       ${swRow('dot_radiowaves_right', '#38bdf8', 'تفعيل الموجة المتحركة على قوالب الرسائل', 'wave_enabled')}
       ${swRow('eye_slash_fill', '#c084fc', 'دخول مخفي للإدمن والسوبر أدمن', 'hidden_super')}
       <div class="section-title" style="margin-top:24px"><i class="f7-icons mi" style="color:#60a5fa">speaker2_fill</i> الإشعارات الصوتية</div>
-      ${swRow('person_badge_plus_fill', '#60a5fa', 'صوت عند دخول المستخدم (b1)', 'snd_join')}
-      ${swRow('paperplane_fill', '#94a3b8', 'صوت عند ارسال رسالة (b4)', 'snd_msg')}
-      ${swRow('square_arrow_right_fill', '#fb923c', 'صوت عند خروج المستخدم (b5)', 'snd_leave')}
+      ${soundRow('person_badge_plus_fill', '#60a5fa', 'صوت عند دخول المستخدم (b1)', 'snd_join', 'يُشغَّل تلقائياً عند دخول أي مستخدم إلى الغرفة.')}
+      ${soundRow('paperplane_fill', '#94a3b8', 'صوت عند ارسال رسالة (b4)', 'snd_msg', 'يُشغَّل تلقائياً عند وصول رسالة جديدة في العام.')}
+      ${soundRow('square_arrow_right_fill', '#fb923c', 'صوت عند خروج المستخدم (b5)', 'snd_leave', 'يُشغَّل تلقائياً عند مغادرة أي مستخدم للغرفة.')}
+      <div class="style-hint" style="margin:6px 4px 14px">⬆️ ارفع ملفاً صوتياً لتشغيله بدل النغمة الافتراضية. الحقل يدعم MP3 / WAV / OGG / M4A / AAC / OPUS حتى 12 ميجا.</div>
       <div class="btn-row" style="justify-content:flex-start">
         <button class="btn btn-purple" id="saveGen"><i class="f7-icons">square_arrow_down_fill</i> حفظ الاعدادات</button>
       </div>`,
-    bind: () => { $('#saveGen').onclick = async () => { await saveSwitches(); toast('تم حفظ الاعدادات بنجاح'); }; }
+    bind: () => {
+      bindSoundUploads();
+      $('#saveGen').onclick = async () => { await saveSwitches(); toast('تم حفظ الاعدادات بنجاح'); };
+    }
   },
 
   // ====== صلاحيات الميزات حسب العضوية ======
@@ -5347,6 +5372,42 @@ async function saveSwitches() {
   $$('textarea[data-key]').forEach(i => { body[i.dataset.key] = i.value; SETTINGS[i.dataset.key] = i.value; });
   $$('select[data-key]').forEach(i => { body[i.dataset.key] = i.value; SETTINGS[i.dataset.key] = i.value; });
   await api('/api/admin/settings', 'POST', body);
+}
+
+// ربط أزرار رفع/إزالة أصوات الإشعارات في صفحة «ضبط الاعدادات».
+function bindSoundUploads() {
+  $$('.sound-up').forEach(btn => {
+    btn.onclick = () => {
+      const key = btn.dataset.urlkey;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'audio/*,.mp3,.wav,.ogg,.m4a,.aac,.opus,.webm';
+      input.onchange = async () => {
+        const f = input.files && input.files[0];
+        if (!f) return;
+        const fd = new FormData(); fd.append('file', f);
+        toast('جاري رفع الصوت...');
+        try {
+          const d = await api('/api/admin/upload/sound', 'POST', fd, true);
+          SETTINGS[key] = d.path;
+          const hidden = $('#content input[data-key="' + key + '"]');
+          if (hidden) hidden.value = d.path;
+          toast('تم رفع صوت الإشعار ✓');
+          loadPage(CURRENT_PAGE_ID);
+        } catch (e) { toast(e.error || 'تعذر رفع الصوت', false); }
+      };
+      input.click();
+    };
+  });
+  $$('.sound-del').forEach(btn => {
+    btn.onclick = () => {
+      const key = btn.dataset.urlkey;
+      SETTINGS[key] = '';
+      const hidden = $('#content input[data-key="' + key + '"]');
+      if (hidden) hidden.value = '';
+      loadPage(CURRENT_PAGE_ID);
+    };
+  });
 }
 
 const ADMIN_ALLOWED_PAGES = new Set(['roomAdd', 'userAdd', 'kicks', 'bans', 'broadcast', 'words', 'verified']);

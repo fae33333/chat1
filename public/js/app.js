@@ -1714,12 +1714,41 @@ function beep(freq = 660, dur = .12) {
   if (!PREFS.snd_all) return;
   try {
     AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended' && AC.resume) AC.resume();
     const o = AC.createOscillator(), g = AC.createGain();
     o.connect(g); g.connect(AC.destination);
     o.frequency.value = freq; g.gain.value = .06;
     o.start(); g.gain.exponentialRampToValueAtTime(.0001, AC.currentTime + dur);
     o.stop(AC.currentTime + dur + .02);
   } catch (e) { }
+}
+
+// النغمة الافتراضية لكل نوع إشعار (دخول/رسالة/خروج).
+function beepDefaultFor(kind) {
+  const freq = kind === 'join' ? 520 : (kind === 'msg' ? 740 : (kind === 'leave' ? 360 : 880));
+  const dur = kind === 'msg' ? .07 : .1;
+  beep(freq, dur);
+}
+
+// تشغيل صوت إشعار: يفضل الصوت المخصص المرفوع من لوحة الإدارة، وإلا النغمة الافتراضية.
+// kind = 'join' | 'msg' | 'leave'
+function playNotifSound(kind) {
+  if (!PREFS.snd_all) return;
+  const setting = 'snd_' + kind;
+  const urlKey = setting + '_url';
+  const enabled = SETTINGS[setting] === '1' || SETTINGS[setting] === undefined; // مفعّل افتراضياً إذا لم يُحدَّد
+  if (!enabled) return;
+  const url = SETTINGS[urlKey] || '';
+  if (url) {
+    try {
+      const a = new Audio(url);
+      a.volume = 0.85;
+      const p = a.play();
+      if (p && p.catch) p.catch(() => beepDefaultFor(kind));
+      return;
+    } catch (e) { /* فشل التشغيل → نغمة افتراضية */ }
+  }
+  beepDefaultFor(kind);
 }
 
 const OBFUSCATE_KEY = 'NujumSecretSyncKey2026';
@@ -2100,9 +2129,9 @@ function connectSocket() {
         if (m.type === 'msg') NEW_MSGS_BELOW++;
         updateScrollDownBtn();
       }
-      if (m.type === 'join' && PREFS.snd_join && SETTINGS.snd_join === '1') beep(520, .1);
-      else if (m.type === 'msg' && PREFS.snd_msg && SETTINGS.snd_msg === '1') beep(740, .07);
-      else if (m.type === 'leave' && PREFS.snd_leave && SETTINGS.snd_leave === '1') beep(360, .1);
+      if (m.type === 'join' && PREFS.snd_join) playNotifSound('join');
+      else if (m.type === 'msg' && PREFS.snd_msg) playNotifSound('msg');
+      else if (m.type === 'leave' && PREFS.snd_leave) playNotifSound('leave');
     }
   });
   SOCKET.on('roomUsers', ({ roomId, users, count }) => {

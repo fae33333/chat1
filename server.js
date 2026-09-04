@@ -447,6 +447,7 @@ fs.mkdirSync(path.join(__dirname, 'public/uploads/statuses'), { recursive: true 
 fs.mkdirSync(path.join(__dirname, 'public/uploads/wall'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/chat'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/calls'), { recursive: true });
+fs.mkdirSync(path.join(__dirname, 'public/uploads/sounds'), { recursive: true }); // أصوات الإشعارات (دخول/رسالة/خروج)
 // أيقونات المواقع المصغّرة (Favicon) الخاصة بمسارات الأرشفة — تُولَّد أو تُجلب تلقائياً
 fs.mkdirSync(path.join(__dirname, 'public/uploads/favicons'), { recursive: true });
 function safeUploadFilename(originalName, defaultExt = '.png') {
@@ -557,6 +558,22 @@ const uploadChatMedia = multer({
     const allowed = (CHAT_IMAGE_EXTENSIONS.has(ext) && (mime.startsWith('image/') || mime === 'application/octet-stream'))
       || (CHAT_AUDIO_EXTENSIONS.has(ext) && (mime.startsWith('audio/') || mime === 'application/octet-stream'));
     cb(allowed ? null : new Error('يمكن رفع صورة أو مقطع صوت فقط'), allowed);
+  }
+});
+// رفع أصوات الإشعارات (دخول/رسالة/خروج) من لوحة الإدارة إلى مجلد مستقل تحت uploads.
+const SOUND_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.webm']);
+const soundStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, 'public/uploads/sounds')),
+  filename: (req, file, cb) => cb(null, safeUploadFilename(file.originalname, '.mp3'))
+});
+const uploadSound = multer({
+  storage: soundStorage,
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const mime = String(file.mimetype || '');
+    const allowed = SOUND_EXTENSIONS.has(ext) && (mime.startsWith('audio/') || mime === 'application/octet-stream');
+    cb(allowed ? null : new Error('اختر ملفاً صوتياً صالحاً (MP3، WAV، OGG، M4A، AAC، OPUS)'), allowed);
   }
 });
 // رفع النبذة الصوتية للملف الشخصي (عضو مسجل فقط) — إلى مجلد مستقل تحت uploads.
@@ -3204,7 +3221,7 @@ app.post('/api/admin/settings', requireSuperAdmin, async (req, res) => {
   // هذه المفاتيح تصل فوراً لكل صفحات الدردشة المفتوحة قبل المزامنة العامة.
   const liveSettingKeys = new Set([
     'show_smiles', 'show_voice', 'show_image', 'hidden_super', 'wave_enabled',
-    'snd_join', 'snd_msg', 'snd_leave', 'show_time', 'msg_max',
+    'snd_join', 'snd_msg', 'snd_leave', 'snd_join_url', 'snd_msg_url', 'snd_leave_url', 'show_time', 'msg_max',
     'public_message_cooldown_seconds', 'public_message_spacing_px',
     'public_message_name_size_px', 'public_message_body_width',
     ...PUBLIC_MESSAGE_BADGE_SETTING_KEYS
@@ -3268,6 +3285,13 @@ app.post('/api/admin/upload/gift-audio', requireSuperAdmin, (req, res) => {
       return res.status(400).json({ error: 'اختر ملفاً صوتياً صالحاً' });
     }
     res.json({ ok: true, path: '/uploads/gifts/' + req.file.filename });
+  });
+});
+// رفع صوت إشعار (دخول/رسالة/خروج) من لوحة الإدارة
+app.post('/api/admin/upload/sound', requireSuperAdmin, (req, res) => {
+  uploadSound.single('file')(req, res, (err) => {
+    if (err || !req.file) return res.status(500).json({ error: 'تعذر رفع الصوت: ' + (err ? err.message : 'لا يوجد ملف') });
+    res.json({ ok: true, path: '/uploads/sounds/' + req.file.filename });
   });
 });
 
@@ -5630,6 +5654,10 @@ app.get('/api/public-settings', async (req, res) => {
     snd_join: s.snd_join !== undefined ? s.snd_join : '1',
     snd_msg: s.snd_msg !== undefined ? s.snd_msg : '0',
     snd_leave: s.snd_leave !== undefined ? s.snd_leave : '1',
+    // أصوات الإشعارات المخصصة (روابط الملفات المرفوعة من لوحة الإدارة) — تُشغَّل بدل النغمة الافتراضية
+    snd_join_url: s.snd_join_url || '',
+    snd_msg_url: s.snd_msg_url || '',
+    snd_leave_url: s.snd_leave_url || '',
     // الراديو المباشر: يُدار من لوحة التحكم (اسم + رابط بث + تفعيل) ويظهر مشغله أعلى الدردشة
     radio_enabled: s.radio_enabled !== undefined ? s.radio_enabled : '0',
     radio_name: s.radio_name || '',
