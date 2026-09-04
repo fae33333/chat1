@@ -5949,9 +5949,11 @@ app.get('/robots.txt', async (req, res) => {
 });
 
 app.get('/', async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  // صفحات الأرشفة قابلة للفهرسة: نُحسّن الكاش ليتمكن محرك البحث من تخزين/إعادة
+  // معاينة الصفحة (بدلاً من no-store الذي يُبعد الصفحة عن التخزين وقد يسبّب
+  // «مكتشفة - غير مفهرسة»). المحتوى الديناميكي يُحمَّل عبر JS/API فلا يتأثر.
+  res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
   // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
   try {
     const html = await renderSeoChatHtml('default', req);
@@ -5963,9 +5965,9 @@ app.get('/', async (req, res) => {
 });
 
 app.get('/:slug', async (req, res, next) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  // صفحات الأرشفة قابلة للفهرسة: كاش قصير يساعد محركات البحث على التأكد من الصفحة.
+  res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
   const slug = String(req.params.slug || '').trim().toLowerCase();
   if (RESERVED_SLUGS.has(slug) || slug.includes('.')) return next();
   // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
