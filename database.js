@@ -38,6 +38,8 @@ db.serialize(() => {
   db.run(`ALTER TABLE users ADD COLUMN is_bot INTEGER DEFAULT 0`, () => { });
   // صلاحية فردية تمنحها الإدارة للمستخدم للصعود كمذيع.
   db.run(`ALTER TABLE users ADD COLUMN broadcast_allowed INTEGER DEFAULT 0`, () => { });
+  // منع الصعود إلى البث (يُفعّله مشرف عبر «سحب مع منع صعود») — يبقى حتى يفكّه المشرف من قائمة المستخدمين.
+  db.run(`ALTER TABLE users ADD COLUMN broadcast_banned INTEGER DEFAULT 0`, () => { });
   // استهلاك المكالمة المجانية الأولى (دقيقة واحدة تجريبية)
   db.run(`ALTER TABLE users ADD COLUMN free_call_used INTEGER DEFAULT 0`, () => { });
   // معرف جهاز دائم للحظر الإداري حتى عند تغيّر عنوان IP.

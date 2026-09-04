@@ -305,7 +305,7 @@ body { background:#0e1220; display:flex; justify-content:center; }
   margin-left:-7px; box-shadow:0 0 0 1.5px #fdfdfd;
 }
 .lb-host-chip:first-child { margin-left:0; }
-.lb-host-chip.watchable { cursor:pointer; }
+.lb-host-chip.watchable, .lb-host-chip.mod { cursor:pointer; }
 .lb-host-chip img, .lb-host-chip > span { width:100%; height:100%; object-fit:cover; display:flex; align-items:center; justify-content:center; }
 .lb-host-more {
   width:24px; height:24px; border-radius:50%; flex:none; margin-left:-7px; box-shadow:0 0 0 1.5px #fdfdfd;
@@ -956,6 +956,9 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .user-action-sheet .us-opt i.ban { color: var(--main); }
 .user-action-sheet .us-opt i.profile { color: var(--main2); }
 .user-action-sheet .us-opt i.aliases { color: #7c3aed; }
+.user-action-sheet .us-opt i.pull { color: var(--main); }
+.user-action-sheet .us-opt i.pullban { color: #dc2626; }
+.user-action-sheet .us-opt i.unban { color: #16a34a; }
 .user-action-sheet .us-opt i.us-chevron {
   width:auto;
   margin-left:auto;

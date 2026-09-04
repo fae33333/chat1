@@ -2330,9 +2330,11 @@ const PAGES = {
           </div>
         </div>
 
-        <div class="btn-row" style="justify-content:flex-start;margin-top:16px">
+        <div class="btn-row" style="justify-content:flex-start;margin-top:16px;flex-wrap:wrap">
           <button class="btn btn-purple" id="savePaymentSettingsBtn"><i class="f7-icons">square_arrow_down_fill</i> حفظ إعدادات PayPal</button>
+          <button class="btn" id="testPaymentSettingsBtn" style="background:#0ea5e9;color:#fff"><i class="f7-icons">checkmark_circle_fill</i> اختبار الاتصال بالبوابة</button>
         </div>
+        <div id="payTestResult" style="margin-top:12px;padding:12px;border-radius:12px;font-size:13px;font-weight:700;display:none"></div>
       </div>
 
       <div class="section">
@@ -2394,6 +2396,45 @@ const PAGES = {
           }
         } catch (e) {
           toast((e && e.error) || 'تعذر حفظ إعدادات PayPal', false);
+        }
+      };
+
+      // اختبار الاتصال بالبوابة: يُشخّص فوراً سبب فشل الدفع (مفاتيح/وضع غير صحيح).
+      const testBtn = $('#testPaymentSettingsBtn');
+      if (testBtn) testBtn.onclick = async () => {
+        const box = $('#payTestResult');
+        if (box) { box.style.display = 'none'; }
+        try {
+          // أولاً نحفظ القيم الحالية حتى يُجرَّب الاختبار على مفاتيح مُدخلة في الحقول.
+          await api('/api/admin/payment-settings', 'POST', {
+            paypal_client_id: $('#payPaypalClientId').value.trim(),
+            paypal_secret: $('#payPaypalSecret').value.trim(),
+            paypal_mode: $('#payPaypalMode').value,
+            paypal_currency: $('#payPaypalCurrency').value,
+            paypal_enabled: $('#payPaypalEnabled').checked ? 1 : 0,
+            merchant_bank_name: $('#payBankName').value.trim(),
+            merchant_holder_name: $('#payHolderName').value.trim(),
+            merchant_iban: $('#payIban').value.trim()
+          });
+          const r = await api('/api/admin/paypal/test', 'POST');
+          if (box) {
+            box.style.display = 'block';
+            box.style.background = r.ok ? '#ecfdf5' : '#fef2f2';
+            box.style.borderColor = r.ok ? '#10b981' : '#dc2626';
+            box.style.color = r.ok ? '#065f46' : '#b91c1c';
+            box.textContent = r.ok ? `✅ ${r.message}` : `❌ ${r.message}`;
+          }
+          if (r.ok) toast('تم التحقق من مفاتيح PayPal بنجاح ✓');
+          else toast('فشل الاتصال بـ PayPal — راجع التفاصيل على الشاشة', false);
+        } catch (e) {
+          if (box) {
+            box.style.display = 'block';
+            box.style.background = '#fef2f2';
+            box.style.borderColor = '#dc2626';
+            box.style.color = '#b91c1c';
+            box.textContent = '❌ ' + ((e && e.error) || 'تعذر اختبار الاتصال بالبوابة');
+          }
+          toast('تعذر اختبار الاتصال بالبوابة', false);
         }
       };
     }

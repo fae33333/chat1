@@ -2364,6 +2364,20 @@ function connectSocket() {
       if (CURRENT_STATUS && CURRENT_STATUS.id === s.id) $('#statusViewCount').textContent = s.view_count;
     }
   });
+  // مُنع هذا المستخدم من الصعود إلى البث — إن كان يبث الآن نوقفه فوراً.
+  SOCKET.on('broadcast_banned', ({ user_id }) => {
+    if (!ME || +ME.id !== +user_id) return;
+    ME.broadcast_banned = 1;
+    if (BCAST && BCAST.isHost) { bcastResetState(); bcastRenderBar(); }
+    toast('منعت الإدارة صعودك إلى البث — أُنهي بثك الحالي', false);
+  });
+  // أُلغيت صلاحية الصعود إلى البث لمستخدمٍ ما (فكّ منع) — حدّث زر «فك من البث» إن كانت ورقته مفتوحة.
+  SOCKET.on('broadcast_ban_cleared', ({ user_id }) => {
+    if (CUR_TARGET && +CUR_TARGET.id === +user_id) { CUR_TARGET.broadcast_banned = 0; syncUserActionSheet(); }
+    const ru = ROOM_USERS.find(u => u.id === +user_id);
+    if (ru) { ru.broadcast_banned = 0; renderUsers(); }
+    if (ME && +ME.id === +user_id) toast('أُلغيت صلاحية الصعود إلى البث — يمكنك البث مجدداً', true);
+  });
   SOCKET.on('mute_changed', ({ muted }) => {
     if (!ME) return;
     ME.muted = muted ? 1 : 0;
@@ -2657,10 +2671,10 @@ function connectSocket() {
     bcastRenderBar();
     setTimeout(() => { try { bcastRenderBar(); } catch (e) {} }, 150);
   });
-  // [للمتحدث الذي أُزيل] أعادني المضيف الأساسي إلى وضع الاستماع
+  // [للمتحدث الذي أُزيل] أعادني المضيف الأساسي/المشرف إلى وضع الاستماع
   SOCKET.on('bcast:speaker_removed', ({ roomId }) => {
     if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
-    toast('أنهى المضيف الأساسي مشاركتك كمتحدث', false);
+    toast('أنهيت من البث — أُعدت إلى وضع المستمع', false);
     bcastResetState();
     const state = ROOM_BCAST[roomId];
     if (state && state.mode === 'audio') bcastViewerAutoConnectAudio(roomId, state.hosts);
@@ -2717,18 +2731,21 @@ function bcastRenderBar() {
       // بالنقر على صورته، فلا يشاهد إلا من وافق على طلبه تحديداً — ويمكنه متابعة أكثر من مذيع في نفس الوقت،
       // فكل بث وُوفق على طلبه يعمل بشكل طبيعي بجانب البثوث الأخرى.
       const pickable = !!(state && state.mode === 'video');
-      hostsBox.innerHTML = hosts.map(h => `<span class="lb-host-chip${pickable ? ' watchable' : ''}" data-hid="${h.id}" title="${esc(h.username)}">
+      const modClickable = canModerateRank(); // المشرف ينقر على المذيع لفتح أزرار السحب/المنع
+      hostsBox.innerHTML = hosts.map(h => `<span class="lb-host-chip${pickable ? ' watchable' : ''}${modClickable ? ' mod' : ''}" data-hid="${h.id}" title="${esc(h.username)}">
         <span class="lb-host-photo">${bcastAvatarChip(h.avatar)}</span><small class="lb-host-label">${esc(h.username)}</small>
       </span>`).join('');
       // إعادة تطبيق حالة «يتحدث» على الشرائح الجديدة (إعادة البناء تمسح الصفات)
       try { bcastApplySpeaking(); } catch (e) {}
-    if (pickable) hostsBox.querySelectorAll('.lb-host-chip').forEach(chip => {
+    hostsBox.querySelectorAll('.lb-host-chip').forEach(chip => {
       chip.onclick = (e) => {
         e.stopPropagation();
         const h = hosts.find(x => x.id === +chip.dataset.hid);
         if (!h) return;
         if (ME && h.id === ME.id) { if (iAmHost) openOv('bcastOv'); return; } // صورتي أنا: أعد فتح شاشة بثي
-        bcastOpenWatchConfirm(h);
+        // المشرف: ينقر على المذيع لفتح ورقة المستخدم فيها أزرار «سحب المايك / سحب مع منع صعود / فك من البث».
+        if (modClickable) return openUserSheet(+h.id);
+        if (pickable) return bcastOpenWatchConfirm(h);
       };
     });
   }
@@ -3154,6 +3171,7 @@ function bcastRenderSpeakersList() {
   const others = [...BCAST.hosts.values()].filter(h => !ME || h.id !== ME.id);
   if (!others.length) { box.hidden = true; box.innerHTML = ''; return; }
   box.hidden = false;
+  const modClickable = canModerateRank();
   box.innerHTML = `<div class="bcast-speakers-title">المتحدثون الحاليون</div>` + others.map(h => `
     <div class="bcast-speaker-row" data-uid="${h.id}">
       <span class="req-avatar">${bcastAvatarChip(h.avatar)}</span>
@@ -3162,6 +3180,11 @@ function bcastRenderSpeakersList() {
     </div>`).join('');
   box.querySelectorAll('.bcast-speaker-remove').forEach(btn => {
     btn.onclick = () => SOCKET.emit('bcast:remove_speaker', CUR_ROOM.id, +btn.dataset.uid);
+  });
+  // المشرف: النقر على صف المذيع يعرض أزرار «سحب المايك / سحب مع منع صعود / فك من البث».
+  if (modClickable) box.querySelectorAll('.bcast-speaker-row').forEach(row => {
+    row.style.cursor = 'pointer';
+    row.onclick = () => openUserSheet(+row.dataset.uid);
   });
   // إعادة تطبيق حالة «يتحدث» على الصفوف الجديدة (إعادة البناء تمسح الصفات)
   try { bcastApplySpeaking(); } catch (e) {}
@@ -3976,7 +3999,7 @@ function renderMsg(m) {
     bindChatAudioPlayer(el.querySelector('.chat-audio-player'));
     // النقر على الصورة أو على الاسم يفتح قائمة خيارات المستخدم والرد على الرسالة
     if (!hiddenAdmin) {
-      const msgUserData = { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted };
+      const msgUserData = { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted, broadcast_banned: (m.user && m.user.broadcast_banned) || (u.broadcast_banned) || 0 };
       const openSenderSheet = (e) => {
         if (e) e.stopPropagation();
         const uid = m.user_id || (m.user && m.user.id);
@@ -4645,6 +4668,9 @@ function syncUserActionSheet() {
 
   // أدوات الإشراف تظهر للسوبر/الادمن/ادمن الغرفة، ويعيد الخادم التحقق من النطاق والرتبة.
   $$('.user-action-sheet .us-moderation').forEach(b => { b.style.display = canModerateRank() ? 'flex' : 'none'; });
+  // أدوات التحكم بالمذيع (سحب المايك / سحب مع منع صعود) تظهر لمشرف على مذيعٍ يبث فعلاً الآن،
+  // و«فك من البث» تظهر لمشرف على مستخدمٍ ممنوع من الصعود.
+  syncUserBroadcastControlButtons();
   // «كشف نكات» للإدارة العامة فقط (ادمن / سوبر ادمن / سوبر ماستر) وليس لأدمن الغرفة،
   // ولا يظهر عند النقر على النفس. الخادم يعيد التحقق من الرتبة أيضاً.
   $$('.user-action-sheet .us-staff-only').forEach(b => {
@@ -4653,12 +4679,26 @@ function syncUserActionSheet() {
   });
   syncUserStatusAction();
 }
+
+// يعرض/يخفي أزرار التحكم بالمذيع في ورقة المستخدم حسب حالة البث الحية ومنع الصعود.
+function syncUserBroadcastControlButtons() {
+  if (!ME || !CUR_TARGET || CUR_TARGET.id === ME.id) return;
+  if (!canModerateRank()) return;
+  const notSelf = +CUR_TARGET.id !== +ME.id;
+  const state = CUR_ROOM ? ROOM_BCAST[CUR_ROOM.id] : null;
+  const isLiveHost = !!(state && (state.hosts || []).some(h => +h.id === +CUR_TARGET.id));
+  const isBanned = !!CUR_TARGET.broadcast_banned;
+  const p1 = $('#usBcastPull'), p2 = $('#usBcastPullBan'), ub = $('#usBcastUnban');
+  if (p1) p1.style.display = (notSelf && isLiveHost) ? 'flex' : 'none';
+  if (p2) p2.style.display = (notSelf && isLiveHost) ? 'flex' : 'none';
+  if (ub) ub.style.display = (notSelf && isBanned) ? 'flex' : 'none';
+}
 function openUserSheet(uid, msg) {
   setUsersPanel(false);
   // النقر على اسمي/صورتي يفتح «تغيير الحالة» بدل ورقة المستخدم
   if (ME && uid === ME.id) { openOv('quickOv'); return; }
   let u = ROOM_USERS.find(x => x.id === uid);
-  if (!u && msg) u = { id: uid, username: msg.username, avatar: msg.avatar || '', rank: msg.rank || 'user', membership: msg.membership || 'none', gender: msg.gender || 'secret', registered: msg.registered === undefined ? 1 : msg.registered, muted: msg.muted ? 1 : 0 };
+  if (!u && msg) u = { id: uid, username: msg.username, avatar: msg.avatar || '', rank: msg.rank || 'user', membership: msg.membership || 'none', gender: msg.gender || 'secret', registered: msg.registered === undefined ? 1 : msg.registered, muted: msg.muted ? 1 : 0, broadcast_banned: msg.broadcast_banned ? 1 : 0 };
   if (!u) return;
   CUR_TARGET = u;
   US_MSG = msg || null;
@@ -4733,6 +4773,41 @@ $('#usIgnore').onclick = async () => {
   } catch (e) { toast(e.error || 'تعذر تحديث قائمة التجاهل', false); }
   finally { button.disabled = false; }
 };
+// [مشرف] سحب المايك من مذيع (إعادته مستمعاً فقط)
+$('#usBcastPull').onclick = async () => {
+  if (!CUR_TARGET || !CUR_ROOM || !canModerateRank()) return toast('لا تملك صلاحية سحب المايك', false);
+  const target = CUR_TARGET;
+  closeOv('userSheet');
+  try {
+    SOCKET.emit('bcast:mod_pull', CUR_ROOM.id, +target.id, false);
+    toast('تم سحب المايك من ' + target.username);
+  } catch (e) { toast('تعذر سحب المايك', false); }
+};
+// [مشرف] سحب المايك مع منع الصعود إلى البث مستقبلاً
+$('#usBcastPullBan').onclick = async () => {
+  if (!CUR_TARGET || !CUR_ROOM || !canModerateRank()) return toast('لا تملك صلاحية سحب المايك مع المنع', false);
+  const target = CUR_TARGET;
+  closeOv('userSheet');
+  try {
+    SOCKET.emit('bcast:mod_pull', CUR_ROOM.id, +target.id, true);
+    target.broadcast_banned = 1;
+    toast('تم سحب المايك من ' + target.username + ' ومنع صعوده للبث');
+    renderUsers();
+  } catch (e) { toast('تعذر تنفيذ الإجراء', false); }
+};
+// [مشرف] فك منع الصعود إلى البث
+$('#usBcastUnban').onclick = async () => {
+  if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية فك المنع', false);
+  const target = CUR_TARGET;
+  closeOv('userSheet');
+  try {
+    SOCKET.emit('bcast:mod_unban', CUR_ROOM ? CUR_ROOM.id : 0, +target.id);
+    target.broadcast_banned = 0;
+    toast('سمحت لـ ' + target.username + ' بالصعود إلى البث');
+    renderUsers();
+  } catch (e) { toast('تعذر تنفيذ الإجراء', false); }
+};
+
 $('#usMute').onclick = async () => {
   if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية الكتم', false);
   const button = $('#usMute');
@@ -8192,8 +8267,10 @@ function renderPayPalButtons() {
         }
       },
       onError: (err) => {
-        toast('حدث خطأ أثناء الدفع، لم يتم الخصم ولم يُشحن أي رصيد', false);
-        if (note) { note.style.display = 'block'; note.textContent = 'لم تنجح العملية، حاول مجدداً.'; }
+        // اعرض سبباً أدق إن توفّر من الـ SDK أو من الخادم، بدل رسالة عامة فقط.
+        const detail = (err && (err.message || err.description)) || '';
+        toast(detail ? ('حدث خطأ أثناء الدفع' + (typeof detail === 'string' && detail.length ? ' — ' + detail : '')) : 'حدث خطأ أثناء الدفع، لم يتم الخصم ولم يُشحن أي رصيد', false);
+        if (note) { note.style.display = 'block'; note.textContent = 'لم تنجح العملية — ' + (detail || 'حاول مجدداً.') ; }
       },
       onCancel: () => {
         toast('ألغيت عملية الدفع — لم يُخصم أي مبلغ', false);

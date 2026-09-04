@@ -1376,6 +1376,7 @@ function pubUser(u) {
     muted: u.muted ? 1 : 0,
     color: String(u.color || ''),
     is_bot: u.is_bot ? 1 : 0,
+    broadcast_banned: u.broadcast_banned ? 1 : 0,
     verified: VERIFIED_SET.has(u.username) ? 1 : 0,
     verified_expired: VERIFIED_SET.has(u.username) ? expiredNow(VERIFIED_EXPIRES.get(u.username)) : 0,
     royal: ROYAL_MAP.has(u.username) ? 1 : 0,
@@ -5696,6 +5697,35 @@ app.post('/api/admin/payment-settings', requireSuperAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+// اختبار الاتصال بـ PayPal: يتأكد من صحة مفاتيح OAuth (Client ID + Secret) ويعيد
+// نتيجة مخصّصة للمشرف ليُدرك فوراً سبب فشل الدفع (مفاتيح خاطئة / وضع غير مطابق / صندوق تجارب).
+app.post('/api/admin/paypal/test', requireSuperAdmin, async (req, res) => {
+  const s = await getSettings();
+  if (!s.paypal_client_id || !s.paypal_secret) {
+    return res.json({ ok: false, message: 'لم تُدخل مفاتيح PayPal بعد — أدخل Client ID وSecret ثم احفظ.' });
+  }
+  const mode = s.paypal_mode === 'sandbox' ? 'sandbox' : 'live';
+  const clientId = String(s.paypal_client_id || '').trim();
+  const secret = String(s.paypal_secret || '').trim();
+  try {
+    const token = await paypalAccessToken(clientId, secret, mode);
+    // N.B.: نسجّل أن عملة الباقة قد لا يدعمها الموقع؛ نكتفي هنا بالتحقق من التوكن.
+    const base = paypalApiBase(mode);
+    return res.json({
+      ok: true,
+      mode,
+      base,
+      message: `نجح الاتصال بـ PayPal (${mode === 'sandbox' ? 'وضع تجريبي' : 'وضع حي'}). المفاتيح صحيحة، ويمكن الآن إنشاء عمليات الدفع.`
+    });
+  } catch (err) {
+    const msg = (err && err.message) || 'تعذر الاتصال بـ PayPal';
+    const hint = /401|unauthorized|invalid client|invalid_client/i.test(msg)
+      ? ' — يرجى التحقق من صحة Client ID وSecret، وأنهما لتطبيق REST نفسه، وأن الوضع (حي/تجريبي) يطابق نوع الحساب.'
+      : (mode === 'live' ? ' — تأكد أن الحساب تجاري موثّق (Business) وأن الوضع «حي».' : '');
+    return res.json({ ok: false, message: msg + hint });
+  }
+});
+
 app.get('/api/admin/payment-transactions', requireSuperAdmin, async (req, res) => {
   const rows = await q.all(`SELECT * FROM payment_transactions ORDER BY id DESC LIMIT 150`);
   res.json(rows || []);
@@ -6238,11 +6268,11 @@ function broadcastPublicState(roomId) {
 }
 // صلاحية الصعود للبث تُدار حسب العضوية من لوحة الإدارة؛ الشخص المكتوم مستمع فقط.
 async function canStartVideoBroadcast(user) {
-  if (!user || user.muted) return false;
+  if (!user || user.muted || user.broadcast_banned) return false;
   return canUseMembershipFeature(user.id, 'broadcast_allowed_memberships');
 }
 async function canStartAudioBroadcast(user) {
-  if (!user || user.muted) return false;
+  if (!user || user.muted || user.broadcast_banned) return false;
   return canUseMembershipFeature(user.id, 'broadcast_allowed_memberships');
 }
 function endBroadcast(roomId, reason = 'ended') {
@@ -6251,6 +6281,15 @@ function endBroadcast(roomId, reason = 'ended') {
   delete roomBroadcast[roomId];
   io.to('room_' + roomId).emit('bcast:stopped', { roomId, reason });
 }
+// هل يملك مستخدمٌ ما صلاحية إشراف في الغرفة المحددة؟ (إدارة عامة أو مشرف غرفة)
+async function socketCanModerate(uidValue, roomId) {
+  const mod = await q.get(`SELECT rank FROM users WHERE id=?`, +uidValue);
+  if (!mod) return false;
+  if (['admin', 'superadmin', 'supermaster'].includes(mod.rank)) return true;
+  const ra = await q.get(`SELECT id FROM room_admins WHERE room_id=? AND user_id=?`, +roomId, +uidValue);
+  return !!ra;
+}
+
 // يزيل مذيعاً واحداً من بثٍ متعدد المذيعين؛ ينهي البث بالكامل إن كان آخر مذيع متبقٍ.
 function removeHostFromBroadcast(roomId, uid, reason = 'host_left') {
   roomId = +roomId;
@@ -6968,7 +7007,7 @@ io.on('connection', async (socket) => {
     const allowed = mode === 'video' ? await canStartVideoBroadcast(me) : await canStartAudioBroadcast(me);
     if (!allowed) return ack({
       ok: false,
-      text: me.muted ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع'
+      text: me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (me.muted ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع')
     });
     let b = roomBroadcast[roomId];
     if (b && b.hosts.has(uid)) return ack({ ok: false, text: 'أنت تبث بالفعل في هذه الغرفة' });
@@ -7072,6 +7111,54 @@ io.on('connection', async (socket) => {
     io.to('room_' + roomId).emit('bcast:host_left', { roomId, hostId: targetUserId, reason: 'removed_by_host' });
     io.to('user_' + targetUserId).emit('bcast:speaker_removed', { roomId });
     for (const hostId of b.hosts.keys()) io.to('user_' + hostId).emit('bcast:new_listener', { roomId, listenerId: targetUserId });
+  });
+
+  // ===== أدوات التحكم بالمذيع للمشرف =====
+  // [مشرف] سحب المايك من مذيع وإعادته مستمعاً (مع خيار منعه من الصعود إلى البث مستقبلاً).
+  socket.on('bcast:mod_pull', async (roomId, targetUserId, ban) => {
+    roomId = +roomId; targetUserId = +targetUserId;
+    if (targetUserId === uid) return;
+    if (!(await socketCanModerate(uid, roomId))) return;
+    const b = roomBroadcast[roomId];
+    if (!b || !b.hosts.has(targetUserId)) return;
+    const mode = b.mode;
+    // إن كان المسحوب هو المضيف الأساسي، نرقّي أقدم مذيع متبقٍ تلقائياً قبل إزالتنا إياه.
+    if (b.primaryHostId === targetUserId) {
+      b.primaryHostId = [...b.hosts.keys()].filter(h => h !== targetUserId)[0] || null;
+    }
+    b.hosts.delete(targetUserId);
+    if (mode === 'audio') b.viewers.add(targetUserId);
+    // إعلام الجميع أن هذا المذيع غادر البث (المذيع المرقّى سيتولى الصلاحيات عبر primary_changed).
+    io.to('room_' + roomId).emit('bcast:host_left', { roomId, hostId: targetUserId, reason: 'removed_by_moderator' });
+    if (b.primaryHostId && b.hosts.has(b.primaryHostId)) {
+      io.to('room_' + roomId).emit('bcast:primary_changed', { roomId, primaryHostId: b.primaryHostId });
+    }
+    // إن كان آخر مذيع، ننهي البث تماماً؛ وإلا نخبر المسحوب أنه أُعيد (مستمعاً في الصوت).
+    if (b.hosts.size === 0) {
+      endBroadcast(roomId, 'ended_by_moderator');
+    } else {
+      io.to('user_' + targetUserId).emit('bcast:speaker_removed', { roomId });
+      if (mode === 'audio') for (const hostId of b.hosts.keys()) io.to('user_' + hostId).emit('bcast:new_listener', { roomId, listenerId: targetUserId });
+    }
+    // منع الصعود مستقبلاً إن طُلب ذلك.
+    if (ban) {
+      await q.run(`UPDATE users SET broadcast_banned=1 WHERE id=?`, targetUserId);
+      await refreshUserEverywhere(targetUserId);
+      io.to('user_' + targetUserId).emit('broadcast_banned', { user_id: targetUserId });
+      const t = await q.get(`SELECT username FROM users WHERE id=?`, targetUserId);
+      if (t) emitRoomSystemEvent(roomId, 'broadcast_ban', `منع المشرف ${t.username} من الصعود إلى البث`);
+    }
+  });
+  // [مشرف] إلغاء منع الصعود إلى البث (فكّ المنع) لمستخدمٍ مُبعد.
+  socket.on('bcast:mod_unban', async (roomId, targetUserId) => {
+    roomId = +roomId; targetUserId = +targetUserId;
+    // المشرف العام يكفي في كل الحالات؛ مشرف الغرفة يُسمح له فقط في غرفته.
+    if (!(await socketCanModerate(uid, roomId))) return;
+    await q.run(`UPDATE users SET broadcast_banned=0 WHERE id=?`, targetUserId);
+    await refreshUserEverywhere(targetUserId);
+    const t = await q.get(`SELECT username FROM users WHERE id=?`, targetUserId);
+    if (roomId && roomBroadcast[roomId] && t) emitRoomSystemEvent(roomId, 'broadcast_unban', `سمح المشرف لـ ${t.username} بالصعود إلى البث`);
+    io.to('user_' + targetUserId).emit('broadcast_ban_cleared', { user_id: targetUserId });
   });
 
   // إنهاء البث (لأي مذيع مشارك؛ ينتهي البث بالكامل عند خروج آخر مذيع).
@@ -7282,7 +7369,7 @@ io.on('connection', async (socket) => {
     const messageUser = hiddenAdmin
       ? { ...freshPub, hidden_admin: 1 }
       : { ...freshPub, live_broadcast_host: liveBroadcastHost ? 1 : 0 };
-    const extra = JSON.stringify({ badge: effectiveBadge, gender: me.gender, rank: effectiveRank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, media: cleanMedia, live_broadcast_host: liveBroadcastHost ? 1 : 0, verified: VERIFIED_SET.has(me.username) ? 1 : 0, verified_expired: VERIFIED_SET.has(me.username) ? expiredNow(VERIFIED_EXPIRES.get(me.username)) : 0, royal_expired: ROYAL_MAP.has(me.username) ? expiredNow(ROYAL_EXPIRES.get(me.username)) : 0, hidden_admin: hiddenAdmin ? 1 : 0 });
+    const extra = JSON.stringify({ badge: effectiveBadge, gender: me.gender, rank: effectiveRank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, media: cleanMedia, live_broadcast_host: liveBroadcastHost ? 1 : 0, verified: VERIFIED_SET.has(me.username) ? 1 : 0, verified_expired: VERIFIED_SET.has(me.username) ? expiredNow(VERIFIED_EXPIRES.get(me.username)) : 0, royal_expired: ROYAL_MAP.has(me.username) ? expiredNow(ROYAL_EXPIRES.get(me.username)) : 0, hidden_admin: hiddenAdmin ? 1 : 0, broadcast_banned: me.broadcast_banned ? 1 : 0 });
     const ins = await q.run(`INSERT INTO messages (room_id,user_id,username,text,type,extra) VALUES (?,?,?,?,'msg',?)`, roomId, uid, me.username, text, extra);
     const msg = {
       id: ins.lastID, room_id: roomId, text, type: 'msg', hidden_admin: hiddenAdmin ? 1 : 0,
