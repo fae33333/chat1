@@ -3117,10 +3117,14 @@ async function paypalAccessToken(clientId, secret, mode) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.access_token) {
       const msg = data.error_description || data.error || 'تعذر الاتصال بـ PayPal';
-      throw new Error(msg);
+      console.error(`[paypal] فشل جلب OAuth token (${mode}): status=${res.status} body=${JSON.stringify(data).slice(0, 400)}`);
+      const err = new Error(msg);
+      err.httpStatus = res.status;
+      err.raw = data;
+      throw err;
     }
     return data.access_token;
-  } catch (e) { clearTimeout(timer); throw e; }
+  } catch (e) { clearTimeout(timer); console.error('[paypal] OAuth token exception:', e.message || e); throw e; }
 }
 
 // إنشاء عملية دفع PayPal (Capture intent) وإرجاع الرابط/المعرّف.
@@ -3153,10 +3157,14 @@ async function paypalCreateOrder(accessToken, amount, currency, mode, userInfo) 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.id) {
       const msg = (data.details && data.details[0] && data.details[0].description) || data.message || 'تعذر إنشاء طلب الدفع';
-      throw new Error(msg);
+      console.error(`[paypal] فشل إنشاء order (${mode}): status=${res.status} body=${JSON.stringify(data).slice(0, 500)}`);
+      const err = new Error(msg);
+      err.httpStatus = res.status;
+      err.raw = data;
+      throw err;
     }
     return data;
-  } catch (e) { clearTimeout(timer); throw e; }
+  } catch (e) { clearTimeout(timer); console.error('[paypal] createOrder exception:', e.message || e); throw e; }
 }
 
 // تأكيد (Capturing) عملية دفع بعد موافقة المشتري — يتحقق PayPal فعلياً من الخصم.
@@ -3179,10 +3187,14 @@ async function paypalCaptureOrder(accessToken, orderId, mode) {
       const msg = (data.details && data.details[0] && data.details[0].description) ||
         (data.name === 'ORDER_ALREADY_CAPTURED' ? 'تم تأكيد هذه العملية من قبل' : data.message) ||
         'لم يكتمل الدفع من PayPal';
-      throw new Error(msg);
+      console.error(`[paypal] فشل capture order (${mode}): status=${res.status} body=${JSON.stringify(data).slice(0, 500)}`);
+      const err = new Error(msg);
+      err.httpStatus = res.status;
+      err.raw = data;
+      throw err;
     }
     return data;
-  } catch (e) { clearTimeout(timer); throw e; }
+  } catch (e) { clearTimeout(timer); console.error('[paypal] captureOrder exception:', e.message || e); throw e; }
 }
 
 // هل اكتمل الدفع وأُضيف رصيد؟ نتحقق من رمز internal لإرجاع معلومات جاهزة.
@@ -3242,7 +3254,8 @@ app.post('/api/paypal/create-order', requireUser, async (req, res) => {
 
     res.json({ ok: true, order_id: order.id, approve_url: order.links && order.links.find(l => l.rel === 'approve') && order.links.find(l => l.rel === 'approve').href || null });
   } catch (err) {
-    res.status(500).json({ error: 'تعذر إنشاء الدفع عبر PayPal: ' + (err.message || 'خطأ') });
+    const status = err && err.httpStatus ? ` (HTTP ${err.httpStatus})` : '';
+    res.status(500).json({ error: 'تعذر إنشاء الدفع عبر PayPal: ' + (err.message || 'خطأ') + status });
   }
 });
 
@@ -3307,7 +3320,8 @@ app.post('/api/paypal/capture-order', requireUser, async (req, res) => {
 
     res.json({ ok: true, balance: newBal, total_gold: totalGold, package_name: pkg.name, amount_paid: amountPaid, currency, transaction_id: tx.lastID, capture_id: cap.captureId });
   } catch (err) {
-    res.status(500).json({ error: 'تعذر تأكيد الدفع عبر PayPal: ' + (err.message || 'خطأ') });
+    const status = err && err.httpStatus ? ` (HTTP ${err.httpStatus})` : '';
+    res.status(500).json({ error: 'تعذر تأكيد الدفع عبر PayPal: ' + (err.message || 'خطأ') + status });
   }
 });
 
@@ -5718,7 +5732,8 @@ app.post('/api/admin/paypal/test', requireSuperAdmin, async (req, res) => {
       message: `نجح الاتصال بـ PayPal (${mode === 'sandbox' ? 'وضع تجريبي' : 'وضع حي'}). المفاتيح صحيحة، ويمكن الآن إنشاء عمليات الدفع.`
     });
   } catch (err) {
-    const msg = (err && err.message) || 'تعذر الاتصال بـ PayPal';
+    const status = err && err.httpStatus ? ` (HTTP ${err.httpStatus})` : '';
+    const msg = ((err && err.message) || 'تعذر الاتصال بـ PayPal') + status;
     const hint = /401|unauthorized|invalid client|invalid_client/i.test(msg)
       ? ' — يرجى التحقق من صحة Client ID وSecret، وأنهما لتطبيق REST نفسه، وأن الوضع (حي/تجريبي) يطابق نوع الحساب.'
       : (mode === 'live' ? ' — تأكد أن الحساب تجاري موثّق (Business) وأن الوضع «حي».' : '');

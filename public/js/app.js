@@ -8199,6 +8199,8 @@ function renderGoldPackages() {
 // -----------------------------------------------------------
 let PAYPAL_SDK_LOADED = false;
 let PAYPAL_BUTTONS_RENDERED = false;
+// آخر خطأ حقيقي من الخادم (إنشاء/تأكيد العملية) — يُعرض في onError بدل رسالة عامة فارغة.
+let PAYPAL_LAST_ERROR = '';
 
 // تحميل مكتبة زر PayPal (SDK) بالـ client_id والعملة من إعدادات الخادم.
 function loadPayPalSdk(cfg, cb) {
@@ -8238,7 +8240,10 @@ function renderPayPalButtons() {
           if (!order || !order.order_id) throw new Error((order && order.error) || 'تعذر إنشاء العملية');
           return order.order_id;
         } catch (e) {
-          toast((e && e.error) || 'تعذر إنشاء عملية الدفع، تحقق من إعدادات PayPal', false);
+          // احفظ السبب الحقيقي (رسالة الخادم) لعرضه في onError وفوق زر الدفع.
+          PAYPAL_LAST_ERROR = (e && (e.error || e.message)) || 'تعذر إنشاء عملية الدفع، تحقق من إعدادات PayPal';
+          toast(PAYPAL_LAST_ERROR, false);
+          if (note) { note.style.display = 'block'; note.textContent = PAYPAL_LAST_ERROR; }
           return actions && actions.reject ? actions.reject() : null;
         }
       },
@@ -8260,16 +8265,22 @@ function renderPayPalButtons() {
             PAYPAL_BUTTONS_RENDERED = false;
             const wrap2 = $('#paypal-button-container'); if (wrap2) wrap2.innerHTML = '';
           } else {
-            toast((res && res.error) || 'لم يكتمل تأكيد الدفع، لم يُشحن أي رصيد', false);
+            PAYPAL_LAST_ERROR = (res && res.error) || 'لم يكتمل تأكيد الدفع، لم يُشحن أي رصيد';
+            toast(PAYPAL_LAST_ERROR, false);
+            if (note) { note.style.display = 'block'; note.textContent = PAYPAL_LAST_ERROR; }
           }
         } catch (e) {
-          toast(e.error || 'تعذر تأكيد الدفع، يرجى إعادة المحاولة', false);
+          PAYPAL_LAST_ERROR = (e && (e.error || e.message)) || 'تعذر تأكيد الدفع، يرجى إعادة المحاولة';
+          toast(PAYPAL_LAST_ERROR, false);
+          if (note) { note.style.display = 'block'; note.textContent = PAYPAL_LAST_ERROR; }
         }
       },
       onError: (err) => {
-        // اعرض سبباً أدق إن توفّر من الـ SDK أو من الخادم، بدل رسالة عامة فقط.
-        const detail = (err && (err.message || err.description)) || '';
-        toast(detail ? ('حدث خطأ أثناء الدفع' + (typeof detail === 'string' && detail.length ? ' — ' + detail : '')) : 'حدث خطأ أثناء الدفع، لم يتم الخصم ولم يُشحن أي رصيد', false);
+        // اعرض سبباً أدق: آخر خطأ من الخادم إن وُجد، وإلا رسالة الـ SDK.
+        const sdkDetail = (err && (err.message || err.description || err.name)) || '';
+        const detail = PAYPAL_LAST_ERROR || sdkDetail;
+        PAYPAL_LAST_ERROR = '';
+        toast(detail ? ('حدث خطأ أثناء الدفع — ' + detail) : 'حدث خطأ أثناء الدفع، لم يتم الخصم ولم يُشحن أي رصيد', false);
         if (note) { note.style.display = 'block'; note.textContent = 'لم تنجح العملية — ' + (detail || 'حاول مجدداً.') ; }
       },
       onCancel: () => {
