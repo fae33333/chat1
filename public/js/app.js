@@ -1788,12 +1788,40 @@ function parseClientSettings(res) {
   await loadRooms();
 })();
 
+// متغيرات CSS الخاصة بالجلد — تُضبط ديناميكياً عند اختيار لون مخصص.
+const SKIN_VAR_KEYS = ['--main', '--main2', '--skin-primary', '--skin-secondary', '--skin-glow', '--skin-bg-light', '--skin-border', '--skin-btn'];
+// يطبّق الجلد المختار (اسم ثيم جاهز أو لون HEX) على عنصر body.
+// الثيمات الجاهزة تُحسب أيضاً ديناميكياً حتى يبقى الشكل موحّداً، وأي لون
+// من لوحة الألوان يُستخدم مباشرة كجلد كامل.
+function applySkinToBody(sel) {
+  if (!document.body) return;
+  const themes = window.SKIN_THEMES || {};
+  const skinLib = window.SkinLib;
+  // أزل أي جلد سابق (ثيمات + اللون المخصص) دون المساس بكلاسات أخرى (lang-...).
+  document.body.classList.remove('skin-custom');
+  for (const n in themes) document.body.classList.remove('skin-' + n);
+  const isCustomHex = skinLib && skinLib.isHexColor(sel);
+  const isKnownTheme = !!themes[sel];
+  if (isCustomHex) document.body.classList.add('skin-custom');
+  else document.body.classList.add('skin-' + (sel || 'default'));
+  // لو القيمة لون/ثيم معروف، نحسب المتغيرات ونطبقها مباشرة.
+  if (skinLib && skinLib.computeSkinVars && (isCustomHex || isKnownTheme)) {
+    const vars = skinLib.computeSkinVars(sel);
+    for (const k of SKIN_VAR_KEYS) document.body.style.setProperty(k, vars[k]);
+  } else {
+    for (const k of SKIN_VAR_KEYS) document.body.style.removeProperty(k);
+  }
+}
 function applySettings() {
   // تشغيل/إيقاف الموجة يُدار من لوحة الإدارة ويُطبَّق فوراً على القوالب الموجودة
   const waveOn = SETTINGS.wave_enabled !== '0';
   document.querySelectorAll('#msgArea .mwave').forEach(el => { el.style.display = waveOn ? '' : 'none'; });
   const isLtr = APP_LANG !== 'ar';
-  if (document.body) document.body.className = 'skin-' + (SETTINGS.skin || 'default') + (isLtr ? ' lang-' + APP_LANG + ' lang-ltr' : '');
+  // أيقونة زر قائمة الألوان + لون الجلد: ندعم الآن أي لون HEX أو ثيم جاهز.
+  applySkinToBody(SETTINGS.skin || 'default');
+  if (document.body && isLtr) {
+    document.body.classList.add('lang-' + APP_LANG, 'lang-ltr');
+  }
   const activeSiteName = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة';
 
   // لا نستبدل innerHTML للشعار بالكامل؛ لأن ذلك كان يحذف #siteName ثم تسبب

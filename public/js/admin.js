@@ -40,6 +40,28 @@ function toast(msg, ok = true) {
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+// معاينة حيّة للجلد المختار (ثيم جاهز أو لون مخصص) داخل لوحة الإدارة.
+function renderSkinLive(sel) {
+  const box = $('#skinLive');
+  if (!box || !window.SkinLib) return;
+  const v = window.SkinLib.computeSkinVars(sel || 'default');
+  if (!v) return;
+  box.style.background = v['--skin-bg-light'];
+  box.style.borderColor = v['--skin-border'];
+  box.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+      <span style="width:24px;height:24px;border-radius:50%;background:${v['--main']};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:900;box-shadow:0 2px 8px ${v['--skin-glow']}">ن</span>
+      <span style="font-weight:800;color:${v['--main']};font-size:14px">نجوم العرب</span>
+      <span style="font-size:10px;color:#8a90a3">الآن</span>
+    </div>
+    <div style="max-width:82%;padding:9px 12px;border-radius:4px 12px 12px 12px;background:${v['--skin-btn']};color:#fff;font-size:13px;box-shadow:0 3px 10px ${v['--skin-glow']}">هذه معاينة للون الجلد الجديد 🎨</div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+      <span style="padding:7px 14px;border-radius:10px;background:${v['--skin-btn']};color:#fff;font-size:12px;font-weight:800;box-shadow:0 2px 8px ${v['--skin-glow']}">زر أساسي</span>
+      <span style="padding:7px 14px;border-radius:10px;background:#fff;color:${v['--main']};border:1.5px solid ${v['--skin-border']};font-size:12px;font-weight:800">زر ثانوي</span>
+      <span style="font-size:11px;color:#6b7280;font-weight:800">${v['--main']}</span>
+    </div>`;
+}
+
 // =====================================================
 //  نظام اللغات والترجمة الشامل في لوحة الإدارة (Admin i18n Engine)
 // =====================================================
@@ -3098,22 +3120,65 @@ const PAGES = {
   },
 
   skin: {
-    build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#c084fc">paintbrush_fill</i> وضع الجلد</div>
-      <div class="section-title">اختر لون جلد الشات</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap" id="skins">
-        ${[['default', '#9c1f46', 'عنابي (افتراضي)'], ['blue', '#1d4ed8', 'أزرق ملكي'], ['green', '#15803d', 'أخضر زمردي'], ['purple', '#7c3aed', 'بنفسجي أنيق'], ['black', '#111827', 'أسود ليلي'], ['orange', '#ea580c', 'برتقالي جذاب'], ['pink', '#db2777', 'وردي فخم'], ['teal', '#0d9488', 'تركواز بحري']]
-          .map(([k, c, n]) => `
+    build: () => {
+      const themes = window.SKIN_THEMES || {};
+      const palette = window.SKIN_COLOR_PALETTE || [];
+      const current = SETTINGS.skin || 'default';
+      const themeSwatches = Object.keys(themes).map(k => {
+        const t = themes[k];
+        const sel = current === k;
+        return `
           <div class="skin-box" data-skin="${k}" style="cursor:pointer;text-align:center">
-            <div style="width:90px;height:90px;border-radius:16px;background:${c};border:${(SETTINGS.skin === k || (!SETTINGS.skin && k === 'default')) ? '4px solid #4f46e5' : '3px solid #e5e7eb'};box-shadow:0 6px 16px ${c}55"></div>
-            <div style="font-size:13px;font-weight:800;color:#374151;margin-top:7px">${n}</div>
-          </div>`).join('')}
-      </div>
-      <div class="btn-row" style="justify-content:flex-start;margin-top:26px">
-        <button class="btn btn-purple" id="saveSkin"><i class="f7-icons">square_arrow_down_fill</i> حفظ الجلد</button>
-      </div>`,
+            <div class="skin-swatch" data-skin="${k}" style="background:linear-gradient(135deg, ${t.primary}, ${t.secondary});border:${sel ? '4px solid #4f46e5' : '3px solid #e5e7eb'};box-shadow:${sel ? '0 6px 18px ' : '0 6px 12px '}${t.primary}66"></div>
+            <div style="font-size:12px;font-weight:800;color:#374151;margin-top:7px">${t.label}</div>
+          </div>`;
+      }).join('');
+      const colorSwatches = palette.map(c => `
+        <button class="skin-dot${current === c ? ' sel' : ''}" data-c="${c}" style="background:${c}" title="${c}"></button>`).join('');
+      return `
+        <div class="page-title"><i class="f7-icons mi" style="color:#c084fc">paintbrush_fill</i> وضع الجلد</div>
+
+        <div class="section-title">🎨 الثيمات الجميلة الجاهزة</div>
+        <div class="section">
+          <div style="display:flex;gap:14px;flex-wrap:wrap" id="skins">${themeSwatches}</div>
+        </div>
+
+        <div class="section-title">🌈 كل الألوان — اختر لون جلد الشات</div>
+        <div class="section">
+          <div class="skin-color-grid" id="skinColors">
+            <button class="skin-dot auto${current === 'default' ? ' sel' : ''}" data-c="" style="background:linear-gradient(135deg,#9c1e46,#c22e5e)" title="تلقائي (عنابي)">تلقائي</button>
+            ${colorSwatches}
+          </div>
+          <div class="skin-hint">اضغط أي نقطة لاستخدامها كلون كامل للجلد — دون الحاجة إلى ثيم جاهز.</div>
+        </div>
+
+        <div class="section-title">🖥️ معاينة حية</div>
+        <div class="section">
+          <div class="skin-live-preview" id="skinLive"></div>
+        </div>
+
+        <div class="btn-row" style="justify-content:flex-start;margin-top:26px">
+          <button class="btn btn-purple" id="saveSkin"><i class="f7-icons">square_arrow_down_fill</i> حفظ الجلد</button>
+          <button class="btn" id="resetSkin"><i class="f7-icons">arrow_clockwise</i> إعادة العنابي</button>
+        </div>`;
+    },
     bind: () => {
-      $$('.skin-box').forEach(b => b.onclick = () => { SETTINGS.skin = b.dataset.skin; loadPage('skin'); });
+      renderSkinLive(SETTINGS.skin || 'default');
+      $$('.skin-box').forEach(b => {
+        const k = b.dataset.skin;
+        b.onmouseenter = () => renderSkinLive(k);
+        b.onclick = () => { SETTINGS.skin = k; loadPage('skin'); };
+      });
+      $$('.skin-swatch').forEach(s => s.style.cursor = 'pointer');
+      $$('#skinColors .skin-dot').forEach(d => {
+        const c = d.dataset.c;
+        d.onmouseenter = () => renderSkinLive(c || 'default');
+        d.onclick = () => {
+          SETTINGS.skin = c || 'default';
+          loadPage('skin');
+        };
+      });
+      $('#resetSkin').onclick = () => { SETTINGS.skin = 'default'; loadPage('skin'); };
       $('#saveSkin').onclick = async () => { await saveKeys(['skin']); toast('تم حفظ الجلد'); };
     }
   },
