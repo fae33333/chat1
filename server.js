@@ -3565,10 +3565,12 @@ app.get('/api/admin/stats', requireSuperAdmin, async (req, res) => {
   const rooms = await q.get(`SELECT COUNT(*) c FROM rooms`);
   const msgs = await q.get(`SELECT COUNT(*) c FROM messages`);
   const bans = await q.get(`SELECT COUNT(*) c FROM bans`);
-  res.json({ users: users.c, guests: guests.c, rooms: rooms.c, messages: msgs.c, bans: bans.c, online: Object.keys(onlineUsers).length });
+  // عدّاد المتصلين لا يحتسب حسابات المالك المخفية (رتبة supermaster)
+  const onlineNow = Object.values(onlineUsers).filter(u => u && !isAlwaysHiddenRank(u.rank)).length;
+  res.json({ users: users.c, guests: guests.c, rooms: rooms.c, messages: msgs.c, bans: bans.c, online: onlineNow });
 });
 app.get('/api/admin/monitor', requireSuperAdmin, async (req, res) => {
-  const userRows = await q.all(`SELECT id,username,registered FROM users`);
+  const userRows = await q.all(`SELECT id,username,registered,rank FROM users`);
   const roomRows = await q.all(`SELECT id,name FROM rooms`);
   const usersById = new Map(userRows.map(user => [+user.id, user]));
   const roomsById = new Map(roomRows.map(room => [+room.id, room.name]));
@@ -3576,6 +3578,10 @@ app.get('/api/admin/monitor', requireSuperAdmin, async (req, res) => {
   for (const activeSocket of io.sockets.sockets.values()) {
     const uid = +activeSocket.data.userId;
     if (!uid) continue;
+    // حساب المالك (supermaster) «شبح»: لا يظهر في الرصد إطلاقاً — لا اسمه ولا
+    // غرفه ولا عدد اتصالاته، ولا يظهر أنه دخل الدردشة عند أي إداري.
+    // (هو ما زال يرى الجميع كالمعتاد؛ الإخفاء هنا على مستوى العرض الإداري فقط.)
+    if (isAlwaysHiddenRank((usersById.get(uid) || {}).rank || activeSocket.data.userRank)) continue;
     const ip = normalizeIp(activeSocket.data.clientIp || activeSocket.handshake.address || '') || 'غير معروف';
     if (!groups.has(ip)) groups.set(ip, {
       ip, online: true, connections: 0, connected_at: +activeSocket.data.connectedAt || Date.now(), users: new Map()
@@ -3904,7 +3910,7 @@ app.get('/api/admin/users/:id/aliases', requireModerator, async (req, res) => {
       if (set.has(alias.id)) rooms.push(roomNames.get(+roomId) || `غرفة #${roomId}`);
     return {
       ...alias,
-      online: !!onlineUsers[alias.id],
+      online: !!onlineUsers[alias.id] && !isAlwaysHiddenRank((onlineUsers[alias.id] || {}).rank),
       is_target: alias.id === +target.id,
       rooms
     };
