@@ -8208,7 +8208,10 @@ function loadPayPalSdk(cfg, cb) {
   if (!cfg.paypal_client_id) return false;
   const script = document.createElement('script');
   const base = cfg.paypal_mode === 'sandbox' ? 'https://www.sandbox.paypal.com/sdk/js' : 'https://www.paypal.com/sdk/js';
-  script.src = `${base}?client-id=${encodeURIComponent(cfg.paypal_client_id)}&currency=${encodeURIComponent(cfg.paypal_currency || 'USD')}&intent=capture&commit=true`;
+  // enable-funding: نُظهر خيارات الدفع كافة — بطاقات (Visa/Mastercard/Amex)، والائتمان، وPayPal.
+  // لا نضيف شرطاً على طريقة الدفع: يختار المشتري الدين بالبطاقة أو PayPal أو غيرها من خيارات الدفع.
+  const funding = encodeURIComponent('card,credit,paylater');
+  script.src = `${base}?client-id=${encodeURIComponent(cfg.paypal_client_id)}&currency=${encodeURIComponent(cfg.paypal_currency || 'USD')}&intent=capture&commit=true&enable-funding=${funding}`;
   script.async = true;
   script.onload = () => { PAYPAL_SDK_LOADED = true; PAYPAL_BUTTONS_RENDERED = false; cb && cb(); };
   script.onerror = () => { PAYPAL_SDK_LOADED = false; const n = $('#buyPaypalNote'); if (n) { n.style.display = 'block'; n.textContent = 'تعذر تحميل بوابة الدفع، حاول مجدداً لاحقاً'; } };
@@ -8227,7 +8230,10 @@ function renderPayPalButtons() {
 
   PAYPAL_BUTTONS_RENDERED = true;
   try {
+    // enableFunding: نعرض أيضاً خيار «بطاقة دين أو ائتمان» (Visa/Mastercard/Amex)
+    // وخيارات تمويل أخرى بحسب ما يسمح به PayPal. يبقى الدفع حقيقياً عبر PayPal نفسه.
     paypal.Buttons({
+      enableFunding: ['card', 'credit', 'paylater'],
       style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal', height: 44 },
       // 1) إنشاء طلب دفع عبر الخادم (الخادم يحمل الـ secret ويتحقق من الباقة).
       createOrder: async (data, actions) => {
