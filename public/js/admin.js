@@ -1893,11 +1893,19 @@ async function renderCashoutRequests() {
     const fmt = n => (Math.round((+n || 0) * 100) / 100).toFixed(2);
     host.innerHTML = list.map(r => {
       const isPending = r.status === 'pending';
-      const statusChip = isPending
-        ? '<span class="chip" style="background:#fef3c7;color:#92400e">⏳ قيد المراجعة</span>'
-        : (r.status === 'completed'
-          ? '<span class="chip" style="background:#dcfce7;color:#166534">✅ مكتمل</span>'
-          : `<span class="chip" style="background:#fee2e2;color:#991b1b">⛔ مرفوض${r.note ? ' — ' + esc(r.note) : ''}</span>`);
+      const isPaypalReq = r.payout_method === 'paypal';
+      let statusChip;
+      if (isPending && isPaypalReq) {
+        statusChip = (r.payout_status === 'failed')
+          ? '<span class="chip" style="background:#fee2e2;color:#991b1b">⛔ تعذر التحويل الآلي</span>'
+          : '<span class="chip" style="background:#e0f2fe;color:#0369a1">💸 جارٍ التحويل تلقائيًا</span>';
+      } else if (isPending) {
+        statusChip = '<span class="chip" style="background:#fef3c7;color:#92400e">⏳ قيد المراجعة</span>';
+      } else if (r.status === 'completed') {
+        statusChip = '<span class="chip" style="background:#dcfce7;color:#166534">✅ مكتمل</span>';
+      } else {
+        statusChip = `<span class="chip" style="background:#fee2e2;color:#991b1b">⛔ مرفوض${r.note ? ' — ' + esc(r.note) : ''}</span>`;
+      }
       const time = new Date((+r.created_at || 0) * 1000).toLocaleString('ar-JO');
       const ava = r.avatar && r.avatar.startsWith('/') ? `<img src="${esc(r.avatar)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover">` : '<span style="width:40px;height:40px;border-radius:50%;background:#f3c8de;display:flex;align-items:center;justify-content:center;font-size:18px">👩</span>';
       return `
@@ -1929,31 +1937,30 @@ async function renderCashoutRequests() {
           })()}
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f8f9fd;border:1px dashed #d4d9ea;border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:800;color:#4b5563">
             <i class="f7-icons" style="color:#38bdf8">${r.payout_method === 'paypal' ? 'paypal' : 'bank_fill'}</i>
-            ${r.payout_method === 'paypal'
+            ${isPaypalReq
               ? `<span>الاستلام عبر: <b style="direction:ltr;display:inline-block">${esc(r.paypal_email)}</b> — تحويل تلقائي من حساب الإدارة (PayPal Payouts)</span>`
               : `<span>الحساب: <b style="direction:ltr;display:inline-block">${esc(r.account_number)}</b> — <b>${esc(r.account_name || '-')}</b> (تحويل يدوي)</span>`}
-            ${(r.payout_status === 'submitted' || r.payout_batch_id) ? `<span style="color:#166534"><i class="f7-icons">checkmark_circle_fill</i> دفعة مرسلة ${esc(r.payout_batch_id || '')}</span>` : ''}
+            ${r.payout_batch_id ? `<span style="color:#0369a1"><i class="f7-icons">paperplane_fill</i> دفعة تلقائية ${esc(r.payout_batch_id)}</span>` : ''}
             ${r.payout_status === 'failed' ? `<span style="color:#b91c1c"><i class="f7-icons">xmark_circle_fill</i> تعذر الإرسال الآلي</span>` : ''}
           </div>
-          ${isPending ? `
+          ${isPending && isPaypalReq ? `
           <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
-            <button class="btn btn-green" data-cashout-complete="${r.id}" data-usd="${fmt(r.usd_amount || r.net_usd)}" data-acc="${esc(r.payout_method === 'paypal' ? r.paypal_email : r.account_number)}" data-count="${r.gifts_count || 0}"><i class="f7-icons">checkmark_circle_fill</i> ${r.payout_method === 'paypal' ? 'إرسال الدفعة (PayPal)' : 'اتمام التحويل'} ($${fmt(r.usd_amount || r.net_usd)})</button>
+            <span class="btn btn-green" style="opacity:.75;cursor:not-allowed"><i class="f7-icons">arrow2_circlepath</i> يتم التحويل تلقائيًا (بدون تدخل الإدارة)</span>
+          </div>` : ''}
+          ${isPending && !isPaypalReq ? `
+          <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+            <button class="btn btn-green" data-cashout-complete="${r.id}" data-usd="${fmt(r.usd_amount || r.net_usd)}" data-acc="${esc(r.account_number)}" data-count="${r.gifts_count || 0}"><i class="f7-icons">checkmark_circle_fill</i> اتمام التحويل ($${fmt(r.usd_amount || r.net_usd)})</button>
             <button class="btn btn-gray" data-cashout-reject="${r.id}"><i class="f7-icons">xmark_circle_fill</i> رفض الطلب</button>
           </div>` : ''}
         </div>`;
     }).join('');
 
     $$('#cashoutList [data-cashout-complete]').forEach(b => b.onclick = async () => {
-      const acc = b.dataset.acc || '';
-      const viaPaypal = /@/.test(acc);
-      if (!confirm(viaPaypal
-        ? `سيُرسل $${b.dataset.usd} تلقائياً من حساب PayPal للإدارة إلى ${acc} (PayPal Payouts) ثم تُحذف الهدايا المحددة فقط (${b.dataset.count || 0} هدية) من حساب المستلمة.\nمتابعة الإرسال الآلي؟`
-        : `سيتم حذف الهدايا المحددة فقط (${b.dataset.count || 0} هدية) من حساب المستلمة بعد اتمام تحويل $${b.dataset.usd} إلى ${acc}.\nهل أتممت التحويل من حساب الإدارة بالفعل؟`)) return;
+      if (!confirm(`سيتم حذف الهدايا المحددة فقط (${b.dataset.count || 0} هدية) من حساب المستلمة بعد اتمام تحويل $${b.dataset.usd} إلى ${b.dataset.acc}.\nهل أتممت التحويل من حساب الإدارة بالفعل؟`)) return;
       b.disabled = true;
       try {
         const r = await api('/api/admin/gift-cashout/' + b.dataset.cashoutComplete + '/complete', 'POST');
-        if (r.pending) toast(`تم إرسال دفعة PayPal (رقم ${r.payout_batch_id}) وهي قيد المعالجة — ستُحذف الهدايا فور اكتمالها ✓`);
-        else toast(r.via_paypal ? `تم الإرسال الآلي عبر PayPal (دفعة ${r.payout_batch_id}) وحُذف ${r.deleted} هدية ✓` : `تم اتمام التسكير — تم حذف ${r.deleted} هدية من حساب المستلمة ✓`);
+        toast(`تم اتمام التسكير — تم حذف ${r.deleted} هدية من حساب المستلمة ✓`);
         renderCashoutRequests();
       } catch (e) { toast(e.error || 'تعذر اتمام العملية', false); b.disabled = false; }
     });

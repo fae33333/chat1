@@ -7630,8 +7630,7 @@ function resetCashoutSelection() { CASHOUT_QTY = {}; CASHOUT_STEP = 1; }
 // معدل التحويل: usd_amount يقابل gold_min — المبلغ يتناسب طردياً مع الذهب المحدد (200 ذهب بمعدل 5$/100 = 10$)
 let CASHOUT_GOLD_MIN = 0, CASHOUT_USD = 0, CASHOUT_RATE_PER_GOLD = 0;
 function cashoutUsdFor(gold) {
-  // المعدّل يتبع سعر شراء الذهب في المتجر (rate_per_gold) عندما يوفّره الخادم،
-  // وإلا يقع على نسبة الإدارة (USD/GOLD_MIN).
+  // المعدّل يحدّده الإداري حرًا (مبلغ التسكير المقابل للحد الأدنى): USD/GOLD_MIN.
   if (CASHOUT_RATE_PER_GOLD > 0) return Math.round((+gold || 0) * CASHOUT_RATE_PER_GOLD * 100) / 100;
   if (!CASHOUT_GOLD_MIN || !CASHOUT_USD) return 0;
   return Math.round((gold * CASHOUT_USD / CASHOUT_GOLD_MIN) * 100) / 100;
@@ -7652,7 +7651,7 @@ async function renderGiftCashoutCard() {
   const fmt = n => (Math.round((+n || 0) * 100) / 100).toFixed(2);
   const goldTotal = +info.gold_total || 0;
   const goldMin = +info.gold_min || 0;
-  // السعر يتبع سعر شراء الذهب في المتجر (rate_per_gold)، وإلا نسبة الإدارة.
+  // معدّل الذهب يحدّده الإداري: مبلغ التسكير المقابل للحد الأدنى (USD/GOLD_MIN).
   const usd = fmt(info.usd_for_gold_min || info.usd_amount);
   CASHOUT_GOLD_MIN = goldMin;
   CASHOUT_USD = +info.usd_amount || 0;
@@ -7661,17 +7660,22 @@ async function renderGiftCashoutCard() {
 
   if (info.has_pending) {
     const p = info.pending || {};
-    const methodLabel = p.payout_method === 'paypal' ? 'حساب PayPal' : 'حساب بنكي';
-    const dest = p.payout_method === 'paypal' && p.paypal_email ? esc(p.paypal_email) : (p.account_number || '');
+    const isPaypalPending = p.payout_method === 'paypal';
+    const methodLabel = isPaypalPending ? 'حساب PayPal' : 'حساب بنكي';
+    const dest = isPaypalPending && p.paypal_email ? esc(p.paypal_email) : (p.account_number || '');
+    const headSub = (p.payout_status === 'failed')
+      ? 'تعذر التحويل الآلي'
+      : (isPaypalPending ? 'جارٍ التحويل تلقائيًا إلى حسابك 💸' : 'قيد المراجعة من الإدارة');
     let statusLine = '';
-    if (p.payout_status === 'submitted' || p.payout_batch_id) {
-      statusLine = `<div class="gc-row"><span>حالة التحويل</span><b class="gc-ok">تم إرسال الدفعة (رقم الدفعة ${esc(p.payout_batch_id || '')})</b></div>`;
+    if (p.payout_batch_id && p.payout_status !== 'failed') {
+      const stTxt = p.payout_status === 'success' ? 'تم التحويل بنجاح' : 'تم إرسال الدفعة (قد تكون قيد المعالجة)';
+      statusLine = `<div class="gc-row"><span>حالة التحويل</span><b class="gc-ok">${stTxt} (رقم الدفعة ${esc(p.payout_batch_id || '')})</b></div>`;
     } else if (p.payout_status === 'failed') {
-      statusLine = `<div class="gc-row"><span>حالة التحويل</span><b class="gc-err">تعذر الإرسال الآلي</b></div>`;
+      statusLine = `<div class="gc-row"><span>حالة التحويل</span><b class="gc-err">تعذر الإرسال الآلي — لم تُحذف هداياك</b></div>`;
     }
     host.innerHTML = `
       <div class="gc-card gc-card-pending">
-        <div class="gc-head"><span class="gc-ico"><i class="f7-icons">bank_fill</i></span><div><b>تسكير الهدايا</b><span>طلبك قيد المراجعة</span></div></div>
+        <div class="gc-head"><span class="gc-ico"><i class="f7-icons">bank_fill</i></span><div><b>تسكير الهدايا</b><span>${headSub}</span></div></div>
         <div class="gc-rows">
           <div class="gc-row"><span>هدايا محددة للتسكير</span><b>${p.gifts_count || 0}</b></div>
           <div class="gc-row"><span>ذهب الهدايا المحددة</span><b>${p.gold_total || 0} 🪙</b></div>
@@ -7679,7 +7683,9 @@ async function renderGiftCashoutCard() {
           <div class="gc-row"><span>طريقة الاستلام</span><b>${methodLabel} — ${dest || '—'}</b></div>
           ${statusLine}
         </div>
-        <div class="gc-note"><i class="f7-icons">clock_fill</i> بعد اتمام العملية: يُحوَّل المبلغ من حساب الإدارة إلى حسابك ثم تُحذف <b>الهدايا المحددة فقط</b> من حسابك (بقية هداياك تبقى).</div>
+        <div class="gc-note"><i class="f7-icons">${isPaypalPending ? 'money_dollar_circle_fill' : 'clock_fill'}</i> ${isPaypalPending
+          ? 'يُرسل المبلغ تلقائيًا من حساب الإدارة إلى حساب PayPal الخاص بك، وعند اكتماله تُحذف <b>الهدايا المحددة فقط</b> من حسابك (بقية هداياك تبقى).'
+          : 'بعد اتمام العملية من الإدارة: يُحوَّل المبلغ من حساب الإدارة إلى حسابك ثم تُحذف <b>الهدايا المحددة فقط</b> من حسابك (بقية هداياك تبقى).'}</div>
       </div>`;
     return;
   }
@@ -7691,7 +7697,7 @@ async function renderGiftCashoutCard() {
 
   host.innerHTML = `
     <div class="gc-card${eligible ? '' : ' gc-card-locked'}">
-      <div class="gc-head"><span class="gc-ico"><i class="f7-icons">bank_fill</i></span><div><b>تسكير الهدايا إلى دولارات 💵</b><span>معدل التحويل: <b>$${usd} لكل ${goldMin} ذهب</b> (نفس سعر شراء الذهب في المتجر) — المبلغ يتناسب مع الكمية التي تحددينها</span></div></div>
+      <div class="gc-head"><span class="gc-ico"><i class="f7-icons">bank_fill</i></span><div><b>تسكير الهدايا إلى دولارات 💵</b><span>معدل التحويل: <b>$${usd} لكل ${goldMin} ذهب</b> — المبلغ يتناسب طردياً مع الكمية (يحدّده الإداري)</span></div></div>
       <div class="gc-rows">
         <div class="gc-row"><span>عدد الهدايا المستلمة</span><b>${info.gifts_count}</b></div>
         <div class="gc-row"><span>مجموع ذهب هداياك</span><b>${goldTotal} 🪙</b></div>
@@ -7705,6 +7711,9 @@ async function renderGiftCashoutCard() {
 
   if (eligible) {
     CASHOUT_GROUPS = info.gift_groups || [];
+    CASHOUT_PAYPAL_ENABLED = !!info.paypal_enabled;
+    // إن كان PayPal غير مفعّل، نبدأ بحساب بنكي افتراضيًا.
+    if (!CASHOUT_PAYPAL_ENABLED) CASHOUT_METHOD = 'bank';
     if (CASHOUT_STEP === 1) renderCashoutStep1(goldMin, usd);
     else renderCashoutStep2(goldMin, usd);
   }
@@ -7789,6 +7798,7 @@ function renderCashoutStep1(goldMin, usd) {
 
 // الخطوة 2: بيانات حساب الاستلام (PayPal أو بنك) + تأكيد
 let CASHOUT_METHOD = 'paypal';
+let CASHOUT_PAYPAL_ENABLED = true;
 function renderCashoutStep2(goldMin, usd) {
   const zone = $('#gcEligibleZone');
   if (!zone) return;
@@ -7806,9 +7816,9 @@ function renderCashoutStep2(goldMin, usd) {
       <span class="chip" style="background:#fffbeb;border:1px solid #fde68a;color:#92400e">🪙 ${selectedGold} ذهب</span>
       <span class="chip" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534">💵 سيُحوَّل $${cashoutUsdFor(selectedGold).toFixed(2)}</span>
     </div>
-    <div class="gc-note" style="margin-bottom:10px"><i class="f7-icons">info_circle_fill</i> عند اتمام الإدارة للتحويل: يُخصم <b>المحدد فقط</b> (${summaryParts || '—'}) من حسابك وتبقى بقية الهدايا المتكررة كما هي.</div>
+    <div class="gc-note" style="margin-bottom:10px"><i class="f7-icons">info_circle_fill</i> ${isPaypal ? 'سيُرسل المبلغ تلقائيًا من حساب الإدارة إلى حساب الباي بال الخاص بك،' : 'عند قيام الإدارة بالتحويل،'} يُخصم <b>المحدد فقط</b> (${summaryParts || '—'}) من حسابك وتبقى بقية الهدايا المتكررة كما هي.</div>
     <div class="gc-methods">
-      <label class="gc-method${isPaypal ? ' sel' : ''}" data-method="paypal"><input type="radio" name="gcMethod" value="paypal" ${isPaypal ? 'checked' : ''}> <i class="f7-icons">paypal</i> <span>حساب باي بال (تحويل تلقائي من حساب الإدارة)</span></label>
+      <label class="gc-method${isPaypal ? ' sel' : ''}${CASHOUT_PAYPAL_ENABLED ? '' : ' disabled'}" data-method="paypal"><input type="radio" name="gcMethod" value="paypal" ${isPaypal ? 'checked' : ''} ${CASHOUT_PAYPAL_ENABLED ? '' : 'disabled'}> <i class="f7-icons">paypal</i> <span>حساب باي بال (تحويل تلقائي من حساب الإدارة)${CASHOUT_PAYPAL_ENABLED ? '' : ' — غير متاح حاليًا'}</span></label>
       <label class="gc-method${!isPaypal ? ' sel' : ''}" data-method="bank"><input type="radio" name="gcMethod" value="bank" ${!isPaypal ? 'checked' : ''}> <i class="f7-icons">bank_fill</i> <span>حساب بنكي</span></label>
     </div>
     <div class="gc-fields" id="gcFields">
