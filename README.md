@@ -20,20 +20,40 @@ npm start        # أو: node server.js
 | 💬 **الشات** | `http://localhost:3000/` |
 | 🛡️ **لوحة التحكم** | `http://localhost:3000/admin.html` |
 
-### تشغيل HTTPS على المنفذ 2083
+### تشغيل HTTPS مع شهادة aaPanel على المنفذ 2083
 
-ضع ملفي الشهادة في جذر المشروع باسم `cert.pem` و`key.pem` ثم شغّل الخادم بشكل طبيعي:
+لا تُحفظ الشهادة أو المفتاح داخل المشروع. عند استخدام aaPanel وتشغيل الخادم عبر:
 
 ```bash
-npm start
+cd /مسار/المشروع
+DOMAIN=chat-arab.me PUBLIC_BASE_URL=https://chat-arab.me npm start
 ```
 
-سيكتشفهما الخادم تلقائياً ويعمل على:
+يقرأ الخادم تلقائياً:
 
-- `https://localhost:2083/`
-- `https://localhost:2083/admin.html`
+```text
+/www/server/panel/vhost/cert/chat-arab.me/fullchain.pem
+/www/server/panel/vhost/cert/chat-arab.me/privkey.pem
+```
 
-يمكن تحديد مسارات مختلفة عبر `HTTPS_CERT` و`HTTPS_KEY`، أو تغيير المنفذ عبر `PORT`.
+ويعمل HTTPS افتراضياً على المنفذ `2083`. يمكن تغيير المنفذ عبر `PORT` أو `HTTPS_PORT`.
+
+إذا احتجت مسارات مختلفة، استخدم `HTTPS_CERT` و`HTTPS_KEY` صراحةً:
+
+```bash
+DOMAIN=chat-arab.me HTTPS_CERT=/path/fullchain.pem HTTPS_KEY=/path/privkey.pem npm start
+```
+
+> تشغيل `node server.js` من `/root` لن يعمل لأن Node سيبحث عن `/root/server.js`. يجب تنفيذ `cd` إلى مجلد المشروع أولاً، أو استخدام المسار الكامل للملف.
+### تثبيت الرابط العام للأرشفة خلف البروكسي
+
+إذا كان الخادم خلف Cloudflare أو Nginx ويظهر له `Host` داخلي، عرّف أصل الموقع العام حتى تُنشأ الروابط canonical وخريطة الموقع صحيحة أمام Google:
+
+```bash
+PUBLIC_BASE_URL=https://example.com npm start
+```
+
+يمكن أيضاً استخدام `PUBLIC_URL` أو `SITE_URL` أو `APP_URL`. إذا لم تُحدّد قيمة، يستخدم الخادم `X-Forwarded-Host` و`X-Forwarded-Proto` ثم `Host` تلقائياً.
 
 ### حماية `key` في اتصال Socket.IO
 

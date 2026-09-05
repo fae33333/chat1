@@ -42,6 +42,7 @@ const qGet = (s, p = []) => new Promise((r, j) => DB.get(s, p, (e, x) => e ? j(e
 const qRun = (s, p = []) => new Promise((r, j) => DB.run(s, p, e => e ? j(e) : r()));
 const BASE = 'http://127.0.0.1:2085';
 const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+const GOOGLE_INSPECTION_UA = 'Mozilla/5.0 (compatible; Google-InspectionTool/1.0;)';
 const CHROME_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
 const SLUG = 'zztestseo1';
 let passed = 0, failed = 0;
@@ -81,6 +82,8 @@ const ok = (n, c, x = '') => { c ? (passed++, console.log('  ✔ ' + n)) : (fail
   ok('صفحة المسار قابلة للفهرسة (index, follow)', r.body.includes('content="index, follow'), r.body.slice(0, 150));
   ok('المحتوى الفريد يُخدَم للمحرك (seo-only)', r.body.includes('seoLandingContent'));
   ok('canonical يشير للمسار الصحيح', r.body.includes('rel="canonical"') && r.body.includes('/' + SLUG));
+  r = await get('/' + SLUG, GOOGLE_INSPECTION_UA, '66.249.66.1');
+  ok('Google Inspection Tool → 200 بلا حظر', r.status === 200, 'status=' + r.status);
 
   console.log('— الروبوت المنتحل لا يُمرَّر');
   r = await get('/' + SLUG, GOOGLEBOT_UA, '1.2.3.4');

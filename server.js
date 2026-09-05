@@ -20,17 +20,52 @@ const app = express();
 const COOKIE_SECRET = process.env.COOKIE_SECRET || 'nujum-admin-device-secret-2026';
 const DEVICE_COOKIE_NAME = 'nujum_device_id';
 const DEVICE_COOKIE_MAX_AGE = 1000 * 60 * 60 * 24 * 365 * 5;
-const HTTPS_KEY_PATH = process.env.HTTPS_KEY || path.join(__dirname, 'key.pem');
-const HTTPS_CERT_PATH = process.env.HTTPS_CERT || path.join(__dirname, 'cert.pem');
+
+// شهادات aaPanel/Let's Encrypt لا تُحفظ داخل المشروع. عند تشغيل الخادم مع
+// DOMAIN=chat-arab.me نستخدم تلقائياً:
+// /www/server/panel/vhost/cert/chat-arab.me/fullchain.pem
+// /www/server/panel/vhost/cert/chat-arab.me/privkey.pem
+// ويمكن تجاوز ذلك صراحةً عبر HTTPS_CERT وHTTPS_KEY عند الحاجة.
+const PANEL_CERT_ROOT = process.env.PANEL_CERT_ROOT || '/www/server/panel/vhost/cert';
+function normalizeDomain(value) {
+  let raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  try {
+    if (/^https?:\/\//i.test(raw)) raw = new URL(raw).hostname.toLowerCase();
+  } catch (error) { return ''; }
+  // نرفض المسارات والرموز كي لا يتحول DOMAIN إلى path traversal.
+  return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(raw) ? raw : '';
+}
+function resolveTlsPaths() {
+  const explicitCert = String(process.env.HTTPS_CERT || '').trim();
+  const explicitKey = String(process.env.HTTPS_KEY || '').trim();
+  if (explicitCert || explicitKey) {
+    return { cert: explicitCert, key: explicitKey, source: 'HTTPS_CERT/HTTPS_KEY' };
+  }
+  const domain = normalizeDomain(process.env.DOMAIN || process.env.TLS_DOMAIN);
+  if (!domain) return { cert: '', key: '', source: '' };
+  const dir = path.join(PANEL_CERT_ROOT, domain);
+  return {
+    cert: path.join(dir, 'fullchain.pem'),
+    key: path.join(dir, 'privkey.pem'),
+    source: `aaPanel (${domain})`
+  };
+}
+const TLS_PATHS = resolveTlsPaths();
+const HTTPS_KEY_PATH = TLS_PATHS.key;
+const HTTPS_CERT_PATH = TLS_PATHS.cert;
 let HTTPS_ENABLED = false;
 let server;
-if (fs.existsSync(HTTPS_KEY_PATH) && fs.existsSync(HTTPS_CERT_PATH)) {
+if (HTTPS_KEY_PATH && HTTPS_CERT_PATH && fs.existsSync(HTTPS_KEY_PATH) && fs.existsSync(HTTPS_CERT_PATH)) {
   try {
     server = https.createServer({ key: fs.readFileSync(HTTPS_KEY_PATH), cert: fs.readFileSync(HTTPS_CERT_PATH) }, app);
     HTTPS_ENABLED = true;
+    console.log(`★ شهادة HTTPS: ${TLS_PATHS.source}`);
   } catch (error) {
     console.warn('⚠ تعذر قراءة شهادة HTTPS، سيتم تشغيل HTTP:', error.message);
   }
+} else if (process.env.DOMAIN || process.env.TLS_DOMAIN || process.env.HTTPS_CERT || process.env.HTTPS_KEY) {
+  console.warn(`⚠ لم يتم العثور على ملفات شهادة HTTPS. cert=${HTTPS_CERT_PATH || 'غير محدد'} key=${HTTPS_KEY_PATH || 'غير محدد'}`);
 }
 if (!server) server = http.createServer(app);
 // يفحص مفتاح key قبل إنشاء جلسة Engine.IO/Socket.IO، أي قبل قبول WebSocket.
@@ -39,7 +74,9 @@ if (!server) server = http.createServer(app);
 // (تحويل شبكة ↔ WiFi) دون فصل الاتصال؛ التبويب المعلق ينقطع من الطرف الآخر على أي حال.
 const io = new Server(server, { allowRequest: allowSocketHandshake, pingInterval: 25000, pingTimeout: 30000 });
 
-const PORT = +(process.env.PORT || (HTTPS_ENABLED ? 443 : 3000));
+// لا نستخدم 443 تلقائياً عند التشغيل كمستخدم عادي؛ 2083 هو منفذ HTTPS
+// المعلن في README، ويمكن للوكيل العكسي تمرير PORT أو HTTPS_PORT صراحةً.
+const PORT = +(process.env.PORT || (HTTPS_ENABLED ? (process.env.HTTPS_PORT || 2083) : 3000));
 const SERVER_PROTOCOL = HTTPS_ENABLED ? 'https' : 'http';
 
 // عناوين Cloudflare الرسمية الموثوقة. بإضافتها إلى trust proxy يعيد Express عنوان
@@ -421,6 +458,10 @@ app.get(['/admin', '/admin.html'], async (req, res) => {
   adminHtml = adminHtml.replace('</head>', `<script>window.ACTIVE_ADMIN_TOKEN = "${token}";</script></head>`);
   res.send(adminHtml);
 });
+
+// لا نترك نسخة HTML الثابتة /index.html تتجاوز مولّد SEO الديناميكي؛
+// إرسال هذا الرابط إلى الجذر يمنع أن يرى Google صفحة بلا عنوان أو canonical.
+app.get('/index.html', (req, res) => res.redirect(308, '/'));
 
 // ملفات الواجهة تتغير أثناء إدارة الخادم؛ منع تخزين JS/CSS القديمة يمنع تشغيل
 // نسخة app.js سابقة بعد النشر (خصوصاً خطأ applySettings القديم).
@@ -958,16 +999,44 @@ setTimeout(() => refreshPublicMessageRules().catch(() => { }), 1200);
 //  بوابة الحماية: منع الاتصال عبر VPN/بروكسي + قائمة المتصفحات المسموحة
 //  تُدار من لوحة التحكم الإدارية وتُطبّق على صفحة الدردشة واتصال Socket.IO.
 // =====================================================
-// *** أُلغيت خاصية «الحماية والوصول (VPN / المتصفحات)» بالكامل حسب طلب المالك ***
-// نبقيه معطّلاً دائماً: لا نحفظ مفاتيح الحماية، ولا نعيد تمكينها من الإعدادات.
-let ACCESS_SETTINGS = { block_vpn_proxy: '0', vpn_proxy_check: 'both', vpn_proxy_block_hosting: '0', allowed_browsers: '' };
+// بوابة الوصول اختيارية. تبقى متوقفة افتراضياً، لكن إذا فعّلها المشرف من
+// قاعدة البيانات يجب أن تُقرأ القيم فعلياً؛ حذفها عند الإقلاع كان يجعل إعدادات
+// الحماية غير متوقعة، كما كان يحجب أدوات Google عند تشغيلها في بعض البيئات.
+let ACCESS_SETTINGS = {
+  site_name: '',
+  block_vpn_proxy: '0',
+  vpn_proxy_check: 'both',
+  vpn_proxy_block_hosting: '0',
+  allowed_browsers: ''
+};
+const ACCESS_GATE_KEYS = new Set([
+  'site_name', 'block_vpn_proxy', 'vpn_proxy_check',
+  'vpn_proxy_block_hosting', 'allowed_browsers'
+]);
+
 async function refreshAccessGate() {
-  // لا شَيء: خاصية حظر VPN/المتصفحات أُلغيت نهائياً، فلا نقرأ مفاتيحها من قاعدة البيانات.
-  ACCESS_SETTINGS = { block_vpn_proxy: '0', vpn_proxy_check: 'both', vpn_proxy_block_hosting: '0', allowed_browsers: '' };
-  // تنظيف لمرة واحدة: إزالة مفاتيح الحماية القديمة من قاعدة البيانات كي لا تبقى معطّلة.
   try {
-    await q.run(`DELETE FROM settings WHERE key IN ('block_vpn_proxy','vpn_proxy_check','vpn_proxy_block_hosting','allowed_browsers')`);
-  } catch (e) { /* تجاهل: لا يوجد جدول/مفاتيح */ }
+    const settings = await getSettings();
+    const check = ['headers', 'api', 'both'].includes(String(settings.vpn_proxy_check || '').toLowerCase())
+      ? String(settings.vpn_proxy_check).toLowerCase()
+      : 'both';
+    ACCESS_SETTINGS = {
+      site_name: String(settings.site_name || ''),
+      block_vpn_proxy: String(settings.block_vpn_proxy) === '1' ? '1' : '0',
+      vpn_proxy_check: check,
+      vpn_proxy_block_hosting: String(settings.vpn_proxy_block_hosting) === '1' ? '1' : '0',
+      allowed_browsers: String(settings.allowed_browsers || '')
+    };
+  } catch (error) {
+    // فشل قراءة الإعدادات لا ينبغي أن يحجب الموقع أو يوقف الخادم.
+    ACCESS_SETTINGS = {
+      site_name: '',
+      block_vpn_proxy: '0',
+      vpn_proxy_check: 'both',
+      vpn_proxy_block_hosting: '0',
+      allowed_browsers: ''
+    };
+  }
 }
 refreshAccessGate().catch(() => { });
 setTimeout(() => refreshAccessGate().catch(() => { }), 1500);
@@ -1084,6 +1153,7 @@ async function externalVpnCheck(ip) {
 // هذه النطاقات يُعدّ موثّقاً حتى لو تعذّر فكّ rDNS لحظياً.
 const SEARCH_CRAWLER_RULES = [
   {
+    // Googlebot والزواحف التي تخدم الفهرسة المعتادة.
     ua: /googlebot|googleother|apis-google|adsbot-google|mediapartners-google|feedfetcher-google/i,
     domains: ['googlebot.com', 'google.com'],
     cidrs: [
@@ -1093,6 +1163,14 @@ const SEARCH_CRAWLER_RULES = [
       '64.233.160.0/19', '216.239.32.0/19',
       '2001:4860:4801::/48', '2001:4860:4805::/48'
     ]
+  },
+  {
+    // أداة فحص الرابط في Search Console لا تستخدم User-Agent الخاص بـ Googlebot.
+    // عدم إدراجها هنا يجعل زر «طلب الفهرسة» يُعامل كمتصفح مجهول عند تفعيل
+    // بوابة الوصول، ثم يعيد 403 فتظهر رسالة «حدث خطأ ما».
+    ua: /google-inspectiontool|google-inspection-tool/i,
+    domains: ['google.com', 'googlebot.com', 'googleusercontent.com'],
+    cidrs: []
   },
   {
     ua: /bingbot|bingpreview|msnbot|adindexer/i,
@@ -1167,7 +1245,7 @@ function crawlerIpMatchesCidr(rule, ip) {
   if (!rule || !Array.isArray(rule.cidrs) || !rule.cidrs.length) return false;
   return rule.cidrs.some(c => ipInCidr(ip, c));
 }
-const VERIFIED_CRAWLER_CACHE = new Map(); // ip -> { allowed, expires }
+const VERIFIED_CRAWLER_CACHE = new Map(); // rule + ip -> { allowed, expires }
 const CRAWLER_OK_TTL_MS = 24 * 60 * 60 * 1000; // نتيجة موجبة: يوم كامل
 const CRAWLER_FAIL_TTL_MS = 2 * 60 * 1000;     // نتيجة سالبة: دقيقتان حتى لا نثقل DNS ولا نُهدر وقت مربط الزحف
 
@@ -1178,7 +1256,10 @@ async function isVerifiedSearchCrawler(req) {
   const ip = validIp(requestIp(req));
   if (!ip || ip === 'غير معروف') return false;
   const now = Date.now();
-  const cached = VERIFIED_CRAWLER_CACHE.get(ip);
+  // لا نكتفي بالـ IP: قد يصل طلب Googlebot ثم طلب User-Agent منتحل من
+  // العنوان نفسه داخل فترة التخزين المؤقت.
+  const cacheKey = `${rule.domains.join('|')}:${ip}`;
+  const cached = VERIFIED_CRAWLER_CACHE.get(cacheKey);
   if (cached && now < cached.expires) return cached.allowed;
   let allowed = false;
   try {
@@ -1188,15 +1269,16 @@ async function isVerifiedSearchCrawler(req) {
     if (rdnsOk) {
       try {
         const addrs = await (net.isIPv6(ip) ? dns.promises.resolve6(host) : dns.promises.resolve4(host));
-        allowed = Array.isArray(addrs) && (addrs.length === 0 || addrs.includes(ip)); // تعذر التأكيد الطردي لا يلغي تطابق rDNS
-      } catch (e) { allowed = true; }
+        // يجب أن يعيد DNS الطردي العنوان نفسه؛ تطابق PTR وحده قابل للانتحال.
+        allowed = Array.isArray(addrs) && addrs.includes(ip);
+      } catch (e) { allowed = false; }
     }
   } catch (e) { allowed = false; } // فشل DNS العكسي (لا PTR للعنوان أو مشكلة DNS)
   // طبقة احتياطية: إن تعذّر فكّ rDNS يبقى الروبوت موثّقاً إذا كان عنوانه ضمن
   // نطاقات المحرك الرسمية. هذا يمنع إفشال طلب «الفهرسة» في أدوات مشرفي المواقع،
   // بينما يبقى منع VPN سليماً لأن هذه النطاقات مملوكة للمحركات فعلاً.
   if (!allowed && crawlerIpMatchesCidr(rule, ip)) allowed = true;
-  VERIFIED_CRAWLER_CACHE.set(ip, { allowed, expires: now + (allowed ? CRAWLER_OK_TTL_MS : CRAWLER_FAIL_TTL_MS) });
+  VERIFIED_CRAWLER_CACHE.set(cacheKey, { allowed, expires: now + (allowed ? CRAWLER_OK_TTL_MS : CRAWLER_FAIL_TTL_MS) });
   if (VERIFIED_CRAWLER_CACHE.size > 5000) {
     for (const [k, v] of VERIFIED_CRAWLER_CACHE) if (v.expires < now) VERIFIED_CRAWLER_CACHE.delete(k);
   }
@@ -1205,12 +1287,34 @@ async function isVerifiedSearchCrawler(req) {
 }
 
 // قرار نهائي للوصول: يعيد قائمة أسباب المنع (ربما فارغة = مسموح).
-// *** أُلغيت خاصية «الحماية والوصول (VPN / المتصفحات)» بالكامل حسب طلب المالك ***
-// لم نعد نحظر أي اتصال — لا ممن يستخدم VPN/بوروكسي، ولا ممن يفتح من متصفح
-// غير مذكور، ولا روبوتات محركات البحث. النتيجة: نجاح طلب الفهرسة في
-// «أدوات مشرفي المواقع» وزحف محركات البحث دون 403/noindex، والسماح لكل الزوار.
+// الروبوت الموثّق يُستثنى قبل فحص المتصفح/VPN، لأن Googlebot و
+// Google-InspectionTool لا يرسلان User-Agent لمتصفح عادي وقد تأتي عناوينهما
+// من شبكات مصنفة كاستضافة. أما تفعيل الحماية نفسه فيبقى اختيارياً؛ الإعدادات
+// الافتراضية تسمح للجميع.
 async function accessBlockReasons(req) {
-  return []; // لا حظر إطلاقاً
+  const browserList = String(ACCESS_SETTINGS.allowed_browsers || '')
+    .toLowerCase().split(',').map(x => x.trim()).filter(Boolean);
+  const vpnEnabled = String(ACCESS_SETTINGS.block_vpn_proxy) === '1';
+  if (!browserList.length && !vpnEnabled) return [];
+
+  if (await isVerifiedSearchCrawler(req)) return [];
+
+  const reasons = [];
+  if (browserList.length && !isBrowserAllowed(requestHeader(req, 'user-agent'))) {
+    reasons.push('browser');
+  }
+
+  if (vpnEnabled) {
+    const mode = String(ACCESS_SETTINGS.vpn_proxy_check || 'both').toLowerCase();
+    const checksHeaders = mode === 'headers' || mode === 'both';
+    const checksApi = mode === 'api' || mode === 'both';
+    const ip = validIp(requestIp(req));
+    const headerBlocked = checksHeaders && headerProxyIndicatesVpn(req);
+    const ipBlocked = checksApi && ip && await externalVpnCheck(ip);
+    if (headerBlocked || ipBlocked) reasons.push('vpn');
+  }
+
+  return [...new Set(reasons)];
 }
 
 // صفحة HTML موحدة تظهر للمحظور (مفصّلة حسب السبب).
@@ -3699,7 +3803,7 @@ app.post('/api/admin/settings', requireSuperAdmin, async (req, res) => {
   }
   if (req.body.hidden_super !== undefined && String(req.body.hidden_super) !== '1') await revealHiddenAdmins();
   if (req.body.public_message_cooldown_seconds !== undefined || req.body.msg_max !== undefined) await refreshPublicMessageRules();
-  // (بوابة الحماية أُلغيت — لا حظر على VPN/بروكسي/متصفحات)
+  if (Object.keys(req.body).some(key => ACCESS_GATE_KEYS.has(key))) await refreshAccessGate();
   reloadBots();      // قد يكون تبديل «تفعيل الروبوت» تغيّر
 
   // هذه المفاتيح تصل فوراً لكل صفحات الدردشة المفتوحة قبل المزامنة العامة.
@@ -6213,6 +6317,68 @@ const RESERVED_SLUGS = new Set([
   'admin.html', 'index.html', 'socket.io', 'favicon.ico'
 ]);
 
+// يُستخدم فقط مع الصفحة العامة ومسارات SEO. robots.txt وsitemap.xml يبقيان
+// متاحين دائماً حتى تستطيع أدوات مشرفي المواقع تشخيص الموقع وإعادة الزحف.
+function normalizePublicOrigin(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) return '';
+    // لا نسمح ببيانات دخول داخل أصل الروابط التي تظهر لمحركات البحث.
+    if (url.username || url.password) return '';
+    return url.origin;
+  } catch (error) {
+    return '';
+  }
+}
+
+function firstForwardedValue(value) {
+  return String(value || '').split(',')[0].trim();
+}
+
+function publicSiteOrigin(req) {
+  // في الإنتاج يمكن تثبيت الأصل صراحةً، وهو الحل الصحيح خلف Cloudflare/Nginx
+  // عندما يكون عنوان Host الداخلي مختلفاً عن العنوان العام.
+  for (const key of ['PUBLIC_BASE_URL', 'PUBLIC_URL', 'SITE_URL', 'APP_URL']) {
+    const configured = normalizePublicOrigin(process.env[key]);
+    if (configured) return configured;
+  }
+  const configuredDomain = normalizeDomain(process.env.DOMAIN || process.env.TLS_DOMAIN);
+  if (configuredDomain) return `https://${configuredDomain}`;
+
+  const headers = (req && req.headers) || {};
+  const host = firstForwardedValue(headers['x-forwarded-host'] || headers.host);
+  if (!host) return 'https://localhost';
+  const forwardedProto = firstForwardedValue(headers['x-forwarded-proto']);
+  const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host);
+  const protocol = forwardedProto === 'http' || forwardedProto === 'https'
+    ? forwardedProto
+    : (req && req.secure ? 'https' : (isLocalHost ? 'http' : 'https'));
+  return normalizePublicOrigin(`${protocol}://${host}`) || 'https://localhost';
+}
+
+function absolutePublicUrl(value, baseOrigin) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw, `${baseOrigin}/`);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
+  } catch (error) {
+    return '';
+  }
+}
+
+async function rejectBlockedSeoRequest(req, res) {
+  const reasons = await accessBlockReasons(req);
+  if (!reasons.length) return false;
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.status(403).type('html').send(renderAccessBlockedHtml(reasons, req));
+  return true;
+}
+
 async function renderSeoChatHtml(slug = 'default', req = null) {
   let indexHtml = fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf-8');
   let seo = null;
@@ -6221,10 +6387,8 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
     seo = await q.get(`SELECT * FROM seo_pages WHERE slug=? AND active=1`, slug);
   }
   const settings = await getSettings();
-
-  const host = (req && (req.headers['x-forwarded-host'] || req.headers.host)) || 'localhost:443';
-  const proto = (req && (req.headers['x-forwarded-proto'] || req.protocol)) || 'https';
-  const pageUrl = isCustomSlug ? `${proto}://${host}/${slug}` : `${proto}://${host}/`;
+  const baseOrigin = publicSiteOrigin(req);
+  const pageUrl = isCustomSlug ? `${baseOrigin}/${slug}` : `${baseOrigin}/`;
 
   let siteName = '';
   let title = '';
@@ -6249,7 +6413,7 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
     favicon = settings.favicon_url || generateSlugFavicon('site') || '/favicon.ico';
   }
 
-  const fullImageUrl = image.startsWith('http://') || image.startsWith('https://') ? image : `${proto}://${host}${image.startsWith('/') ? image : '/' + image}`;
+  const fullImageUrl = absolutePublicUrl(image, baseOrigin) || `${baseOrigin}/img/announcement.png`;
 
   // محتوى نصي فريد لكل مسار: عنوان H1 + فقرة تعريفية + أسئلة شائعة.
   // يُبنى من بصمة المسار إن لم تكن الإدارة قد كتبته يدوياً، فيختلف من مسار لآخر.
@@ -6340,24 +6504,28 @@ ${faqSchema}
 // يعرضان كل مسارات الأرشفة المفعّلة تلقائياً؛ أي مسار جديد يضاف للوحة التحكم
 // يظهر هنا فوراً دون أي إعداد إضافي.
 function siteBaseUrl(req) {
-  const host = String((req && (req.headers['x-forwarded-host'] || req.headers.host)) || '').trim();
-  const proto = String((req && (req.headers['x-forwarded-proto'] || req.protocol)) || 'https').split(',')[0].trim();
-  return `${proto}://${host}`;
+  return publicSiteOrigin(req);
 }
 
 app.get('/sitemap.xml', async (req, res) => {
   try {
     const rows = await q.all(`SELECT slug, updated_at, created_at FROM seo_pages WHERE active=1 ORDER BY id ASC`);
     const base = siteBaseUrl(req);
+    const xmlEsc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;'
+    }[char]));
+    const locFor = pathname => xmlEsc(new URL(pathname, `${base}/`).toString());
     const iso = ts => {
       const n = Number(ts || 0);
-      const d = n > 0 ? new Date(n * 1000) : new Date();
+      const d = Number.isFinite(n) && n > 0 ? new Date(n * 1000) : new Date();
       return d.toISOString().replace(/\.\d+Z$/, '+00:00');
     };
     const urls = [];
-    urls.push(`  <url>\n    <loc>${base}/</loc>\n    <lastmod>${iso(Math.floor(Date.now() / 1000))}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>`);
+    urls.push(`  <url>\n    <loc>${locFor('/')}</loc>\n    <lastmod>${iso(Math.floor(Date.now() / 1000))}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>`);
     for (const r of rows) {
-      urls.push(`  <url>\n    <loc>${base}/${String(r.slug)}</loc>\n    <lastmod>${iso(r.updated_at || r.created_at)}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`);
+      const slug = encodeURIComponent(String(r.slug || '').trim());
+      if (!slug) continue;
+      urls.push(`  <url>\n    <loc>${locFor('/' + slug)}</loc>\n    <lastmod>${iso(r.updated_at || r.created_at)}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`);
     }
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`;
     res.setHeader('Cache-Control', 'public, max-age=3600');
@@ -6391,25 +6559,28 @@ app.get('/', async (req, res) => {
   // صفحات الأرشفة قابلة للفهرسة: نُحسّن الكاش ليتمكن محرك البحث من تخزين/إعادة
   // معاينة الصفحة (بدلاً من no-store الذي يُبعد الصفحة عن التخزين وقد يسبّب
   // «مكتشفة - غير مفهرسة»). المحتوى الديناميكي يُحمَّل عبر JS/API فلا يتأثر.
+  if (await rejectBlockedSeoRequest(req, res)) return;
   res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
+  res.setHeader('X-Robots-Tag', 'index, follow, max-image-preview:large, max-snippet:-1');
+  res.setHeader('Vary', 'Host, X-Forwarded-Host, X-Forwarded-Proto');
   try {
     const html = await renderSeoChatHtml('default', req);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (e) {
+    console.error('[SEO] تعذر تجهيز الصفحة الرئيسية:', e.message);
     res.sendFile(path.join(__dirname, 'public/index.html'));
   }
 });
 
 app.get('/:slug', async (req, res, next) => {
-  // صفحات الأرشفة قابلة للفهرسة: كاش قصير يساعد محركات البحث على التأكد من الصفحة.
-  res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
   const slug = String(req.params.slug || '').trim().toLowerCase();
   if (RESERVED_SLUGS.has(slug) || slug.includes('.')) return next();
-  // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
+  if (await rejectBlockedSeoRequest(req, res)) return;
+  // صفحات الأرشفة قابلة للفهرسة: كاش قصير يساعد محركات البحث على التأكد من الصفحة.
+  res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+  res.setHeader('X-Robots-Tag', 'index, follow, max-image-preview:large, max-snippet:-1');
+  res.setHeader('Vary', 'Host, X-Forwarded-Host, X-Forwarded-Proto');
   try {
     const seo = await q.get(`SELECT id FROM seo_pages WHERE slug=? AND active=1`, slug);
     if (!seo) return next();
@@ -6417,6 +6588,7 @@ app.get('/:slug', async (req, res, next) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (e) {
+    console.error(`[SEO] تعذر تجهيز المسار /${slug}:`, e.message);
     next();
   }
 });

@@ -48,6 +48,6 @@ node test-audio.js   →  15 ناجح / 0 فاشل   (البث الصوتي لم
 ## التشغيل
 ```bash
 npm install
-npm start                     # HTTPS على 2083 (cert.pem/key.pem)
+DOMAIN=chat-arab.me npm start                         # HTTPS على 2083 عبر شهادة aaPanel
 PORT=3000 HTTPS_KEY=/x HTTPS_CERT=/x node server.js   # HTTP على 3000
 ```
