@@ -1821,30 +1821,345 @@ function parseClientSettings(res) {
   await loadRooms();
 })();
 
-// متغيرات CSS الخاصة بالجلد — تُضبط ديناميكياً عند اختيار لون مخصص.
-const SKIN_VAR_KEYS = ['--main', '--main2', '--skin-primary', '--skin-secondary', '--skin-glow', '--skin-bg-light', '--skin-border', '--skin-btn'];
-// يطبّق الجلد المختار (اسم ثيم جاهز أو لون HEX) على عنصر body.
-// الثيمات الجاهزة تُحسب أيضاً ديناميكياً حتى يبقى الشكل موحّداً، وأي لون
-// من لوحة الألوان يُستخدم مباشرة كجلد كامل.
-function applySkinToBody(sel) {
+// =========================================================================
+//  🎨 استوديو الثيمات والسمات المتطور (Super Theme Studio Engine)
+// =========================================================================
+let USER_THEME_PREF = localStorage.getItem('nujum_user_theme') || '';
+let USER_PATTERN_PREF = localStorage.getItem('nujum_user_pattern') || 'dots';
+let USER_MODE_PREF = localStorage.getItem('nujum_user_mode') || '';
+
+function getActiveThemeId() {
+  return USER_THEME_PREF || (SETTINGS && SETTINGS.skin) || 'default';
+}
+
+function applySkinToBody(sel, customOpts) {
   if (!document.body) return;
+  customOpts = customOpts || {};
   const themes = window.SKIN_THEMES || {};
   const skinLib = window.SkinLib;
-  // أزل أي جلد سابق (ثيمات + اللون المخصص) دون المساس بكلاسات أخرى (lang-...).
+  const activeSel = sel || getActiveThemeId();
+  
+  // إزالة الكلاسات السابقة
   document.body.classList.remove('skin-custom');
-  for (const n in themes) document.body.classList.remove('skin-' + n);
-  const isCustomHex = skinLib && skinLib.isHexColor(sel);
-  const isKnownTheme = !!themes[sel];
-  if (isCustomHex) document.body.classList.add('skin-custom');
-  else document.body.classList.add('skin-' + (sel || 'default'));
-  // لو القيمة لون/ثيم معروف، نحسب المتغيرات ونطبقها مباشرة.
-  if (skinLib && skinLib.computeSkinVars && (isCustomHex || isKnownTheme)) {
-    const vars = skinLib.computeSkinVars(sel);
-    for (const k of SKIN_VAR_KEYS) document.body.style.setProperty(k, vars[k]);
+  for (const n in themes) {
+    document.body.classList.remove('skin-' + n);
+    document.body.classList.remove('theme-' + n);
+  }
+
+  const isCustomHex = skinLib && skinLib.isHexColor(activeSel);
+
+  if (isCustomHex) {
+    document.body.classList.add('skin-custom');
+    document.body.setAttribute('data-theme', 'custom');
   } else {
-    for (const k of SKIN_VAR_KEYS) document.body.style.removeProperty(k);
+    const tname = activeSel || 'default';
+    document.body.classList.add('skin-' + tname);
+    document.body.classList.add('theme-' + tname);
+    document.body.setAttribute('data-theme', tname);
+  }
+
+  const pattern = customOpts.pattern || USER_PATTERN_PREF || (themes[activeSel] && themes[activeSel].pattern) || 'dots';
+  document.body.setAttribute('data-pattern', pattern);
+  
+  // حساب وتطبيق كافة متغيرات CSS
+  if (skinLib && skinLib.computeSkinVars) {
+    const opts = {
+      pattern: pattern,
+      mode: customOpts.mode || USER_MODE_PREF || (themes[activeSel] && themes[activeSel].mode) || ''
+    };
+    const vars = skinLib.computeSkinVars(activeSel, opts);
+    for (const [k, v] of Object.entries(vars)) {
+      document.body.style.setProperty(k, v);
+      document.documentElement.style.setProperty(k, v);
+    }
+    if (vars['--skin-mode']) {
+      document.body.setAttribute('data-mode', vars['--skin-mode']);
+    }
+  }
+
+  updateThemeStudioLiveBox();
+}
+
+function initThemeStudio() {
+  const themesList = $('#curatedThemesList');
+  const paletteGrid = $('#themeStudioColorPalette');
+  const customColorInput = $('#themeCustomColorInput');
+  const customHexInput = $('#themeCustomHexInput');
+  const btnApplyHex = $('#btnApplyHexColor');
+
+  // 1. عرض كروت الثيمات الجاهزة
+  if (themesList && window.SKIN_THEMES) {
+    const themes = window.SKIN_THEMES;
+    const active = getActiveThemeId();
+    let html = '';
+    for (const [id, t] of Object.entries(themes)) {
+      const vars = window.SkinLib ? window.SkinLib.computeSkinVars(id) : { '--skin-primary': t.primary, '--skin-secondary': t.secondary };
+      const isSel = (active === id);
+      html += `
+        <div class="theme-card ${isSel ? 'active' : ''}" data-theme-id="${id}">
+          <div class="tc-top">
+            <div class="tc-palette">
+              <span class="tc-swatch" style="background:${t.primary}"></span>
+              <span class="tc-swatch" style="background:${t.secondary || t.primary}"></span>
+              <span class="tc-swatch" style="background:${vars['--skin-accent'] || t.secondary || t.primary}"></span>
+            </div>
+            ${t.badge ? `<span class="tc-badge">${esc(t.badge)}</span>` : ''}
+          </div>
+          <div class="tc-info">
+            <b>${esc(t.label || id)}</b>
+            <p>${esc(t.desc || 'ثيم متكامل ومصمم بعناية فائقة وتأثيرات بصرية حديثة')}</p>
+          </div>
+          <div class="tc-status">
+            <span class="tc-check"><i class="f7-icons">checkmark_circle_fill</i></span>
+            <span class="tc-apply-txt">${isSel ? 'الثيم النشط' : 'تطبيق الثيم'}</span>
+          </div>
+        </div>
+      `;
+    }
+    themesList.innerHTML = html;
+
+    themesList.querySelectorAll('.theme-card').forEach(card => {
+      card.onclick = () => {
+        const tid = card.dataset.themeId;
+        selectTheme(tid);
+      };
+    });
+  }
+
+  // 2. عرض لوحة نقاط الألوان (130+ لون)
+  if (paletteGrid && window.SKIN_COLOR_PALETTE) {
+    const active = getActiveThemeId();
+    let html = '';
+    window.SKIN_COLOR_PALETTE.forEach(c => {
+      const isSel = (active.toLowerCase() === c.toLowerCase());
+      html += `<button class="skin-color-dot ${isSel ? 'active' : ''}" data-color="${c}" style="background:${c}" title="${c}"></button>`;
+    });
+    paletteGrid.innerHTML = html;
+
+    paletteGrid.querySelectorAll('.skin-color-dot').forEach(dot => {
+      dot.onclick = () => {
+        const col = dot.dataset.color;
+        selectSkinColor(col);
+      };
+    });
+  }
+
+  // 3. منتقي الألوان المخصص
+  if (customColorInput) {
+    customColorInput.oninput = (e) => {
+      const val = e.target.value;
+      if (customHexInput) customHexInput.value = val;
+      selectSkinColor(val, false);
+    };
+  }
+  if (customHexInput) {
+    customHexInput.oninput = (e) => {
+      const val = e.target.value.trim();
+      if (/^#[0-9a-f]{6}$/i.test(val)) {
+        if (customColorInput) customColorInput.value = val;
+        selectSkinColor(val, false);
+      }
+    };
+  }
+  if (btnApplyHex) {
+    btnApplyHex.onclick = () => {
+      const val = customHexInput ? customHexInput.value.trim() : '';
+      if (/^#[0-9a-f]{6}$/i.test(val)) {
+        selectSkinColor(val, true);
+      } else {
+        toast('يرجى إدخال رمز لون سداسي صحيح مثل #9c1e46', false);
+      }
+    };
+  }
+
+  // 4. التبديل بين تبويبات الاستوديو
+  $$('.theme-tab-btn').forEach(btn => {
+    btn.onclick = () => {
+      $$('.theme-tab-btn').forEach(b => b.classList.remove('active'));
+      $$('.theme-tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const tabId = btn.dataset.themeTab;
+      const targetPane = $(`#paneTheme${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`);
+      if (targetPane) targetPane.classList.add('active');
+    };
+  });
+
+  // 5. أنماط الخلفية
+  $$('.pattern-card').forEach(pcard => {
+    if (pcard.dataset.pattern === USER_PATTERN_PREF) pcard.classList.add('active');
+    pcard.onclick = () => {
+      $$('.pattern-card').forEach(c => c.classList.remove('active'));
+      pcard.classList.add('active');
+      const pat = pcard.dataset.pattern;
+      USER_PATTERN_PREF = pat;
+      localStorage.setItem('nujum_user_pattern', pat);
+      applySkinToBody(getActiveThemeId(), { pattern: pat });
+      toast('تم تغيير نمط خلفية الدردشة 🎨');
+    };
+  });
+
+  // 6. الوضع الليلي / النهاري
+  const btnDark = $('#btnToggleDarkTheme');
+  const btnLight = $('#btnToggleLightTheme');
+  if (btnDark) {
+    btnDark.onclick = () => {
+      USER_MODE_PREF = 'dark';
+      localStorage.setItem('nujum_user_mode', 'dark');
+      applySkinToBody(getActiveThemeId(), { mode: 'dark' });
+      toast('تم تفعيل الوضع الداكن 🌙');
+    };
+  }
+  if (btnLight) {
+    btnLight.onclick = () => {
+      USER_MODE_PREF = 'light';
+      localStorage.setItem('nujum_user_mode', 'light');
+      applySkinToBody(getActiveThemeId(), { mode: 'light' });
+      toast('تم تفعيل الوضع الفاتح ☀️');
+    };
+  }
+
+  // 7. أزرار التحميل والتصدير والمشاركة
+  const btnDlJson = $('#btnDownloadThemeJson');
+  const btnDlCss = $('#btnDownloadThemeCss');
+  const btnDlBundle = $('#btnDownloadAllThemesBundle');
+  const btnCopyCode = $('#btnCopyThemeCode');
+  const importDropZone = $('#themeImportDropZone');
+  const fileInput = $('#themeFileInput');
+
+  if (btnDlJson && window.SkinLib) {
+    btnDlJson.onclick = () => {
+      window.SkinLib.exportThemeJson(getActiveThemeId());
+      toast('تم تحميل ملف إعدادات الثيم (JSON) بنجاح 📥');
+    };
+  }
+  if (btnDlCss && window.SkinLib) {
+    btnDlCss.onclick = () => {
+      window.SkinLib.exportThemeCss(getActiveThemeId());
+      toast('تم تحميل ملف CSS للثيم بنجاح 📄');
+    };
+  }
+  if (btnDlBundle && window.SkinLib) {
+    btnDlBundle.onclick = () => {
+      window.SkinLib.exportAllThemesBundle();
+      toast('تم تحميل حزمة جميع الثيمات بنجاح 📦');
+    };
+  }
+  if (btnCopyCode && window.SkinLib) {
+    btnCopyCode.onclick = () => {
+      const data = window.SkinLib.getThemeData(getActiveThemeId());
+      const str = JSON.stringify(data, null, 2);
+      navigator.clipboard.writeText(str).then(() => {
+        toast('تم نسخ كود الثيم للحافظة بنجاح 📋');
+      }).catch(() => {
+        toast('تعذر النسخ التلقائي للحافظة', false);
+      });
+    };
+  }
+
+  // 8. استيراد ملف ثيم
+  if (importDropZone && fileInput) {
+    importDropZone.onclick = () => fileInput.click();
+    fileInput.onchange = (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const text = evt.target.result;
+        const res = window.SkinLib ? window.SkinLib.parseImportedTheme(text) : { ok: false, error: 'محرك الثيمات غير متاح' };
+        if (res.ok) {
+          const theme = res.theme;
+          if (theme.primaryColor) {
+            selectSkinColor(theme.primaryColor, true);
+            toast(`تم استيراد وتطبيق الثيم "${theme.name || 'مخصص'}" بنجاح! 🎉`);
+          } else if (theme.variables && theme.variables['--main']) {
+            selectSkinColor(theme.variables['--main'], true);
+            toast('تم استيراد الثيم وتطبيقه بنجاح! 🎉');
+          }
+        } else {
+          toast('خطأ في استيراد الثيم: ' + (res.error || 'الملف غير صالح'), false);
+        }
+      };
+      reader.readAsText(file);
+    };
+  }
+
+  // 9. ربط أزرار فتح الاستوديو في الواجهة
+  const openButtons = [
+    $('#btnOpenThemeStudio'),
+    $('#btnRoomsThemeStudio'),
+    $('#btnThemeQuick'),
+    $('#mnThemes'),
+    $('#btnThemeStudioSetting')
+  ];
+  openButtons.forEach(btn => {
+    if (btn) btn.onclick = () => {
+      openOv('themeStudioOv');
+      initThemeStudio();
+    };
+  });
+}
+
+function selectTheme(themeId) {
+  USER_THEME_PREF = themeId;
+  localStorage.setItem('nujum_user_theme', themeId);
+  applySkinToBody(themeId);
+  
+  // تحديث الحالة البصرية لكروت الثيمات
+  $$('#curatedThemesList .theme-card').forEach(c => {
+    const isThis = c.dataset.themeId === themeId;
+    c.classList.toggle('active', isThis);
+    const st = c.querySelector('.tc-apply-txt');
+    if (st) st.textContent = isThis ? 'الثيم النشط' : 'تطبيق الثيم';
+  });
+  $$('#themeStudioColorPalette .skin-color-dot').forEach(d => d.classList.remove('active'));
+
+  const t = (window.SKIN_THEMES && window.SKIN_THEMES[themeId]) || { label: themeId };
+  toast(`تم تفعيل ثيم "${t.label || themeId}" بنجاح! 🎨`);
+}
+
+function selectSkinColor(color, showToast) {
+  if (showToast === undefined) showToast = true;
+  USER_THEME_PREF = color;
+  localStorage.setItem('nujum_user_theme', color);
+  applySkinToBody(color);
+
+  // تحديث حالة كروت الثيمات ونقاط الألوان
+  $$('#curatedThemesList .theme-card').forEach(c => {
+    c.classList.remove('active');
+    const st = c.querySelector('.tc-apply-txt');
+    if (st) st.textContent = 'تطبيق الثيم';
+  });
+  $$('#themeStudioColorPalette .skin-color-dot').forEach(d => {
+    d.classList.toggle('active', (d.dataset.color.toLowerCase() === color.toLowerCase()));
+  });
+
+  const customColorInput = $('#themeCustomColorInput');
+  const customHexInput = $('#themeCustomHexInput');
+  if (customColorInput) customColorInput.value = color;
+  if (customHexInput) customHexInput.value = color;
+
+  if (showToast) {
+    toast(`تم تطبيق لون الجلد (${color}) بنجاح! 🎨`);
   }
 }
+
+function updateThemeStudioLiveBox() {
+  const box = $('#themeStudioLiveBox');
+  if (!box) return;
+  const active = getActiveThemeId();
+  const titleEl = $('#themePreviewTitle');
+  const badgeEl = $('#themePreviewBadge');
+  const theme = window.SKIN_THEMES && window.SKIN_THEMES[active];
+  
+  if (theme) {
+    if (titleEl) titleEl.textContent = theme.label;
+    if (badgeEl) badgeEl.textContent = theme.badge || 'ثيم جاهز';
+  } else {
+    if (titleEl) titleEl.textContent = 'جلد مخصص (' + active + ')';
+    if (badgeEl) badgeEl.textContent = 'لون حر';
+  }
+}
+
 function applySettings() {
   // تشغيل/إيقاف الموجة يُدار من لوحة الإدارة ويُطبَّق فوراً على القوالب الموجودة
   const waveOn = SETTINGS.wave_enabled !== '0';

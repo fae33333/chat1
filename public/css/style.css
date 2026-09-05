@@ -1,3 +1,1164 @@
+/* =======================================================================
+   🌟 محرك التصميم المطور والثيمات الاحترافية (Nujum Modern Theme System)
+   ======================================================================= */
+:root {
+  --main: #9c1e46;
+  --main2: #c22e5e;
+  --maroon: #9c1e46;
+  --orange1: #ffa94d;
+  --orange2: #f97316;
+  --orange3: #e8590c;
+  --navy: #1e2337;
+  --gray: #8b92a9;
+  --line: #e8ecf4;
+  --bg: #f8f9fd;
+  --njomarab-theme-color: #d946a6;
+  --msg-font-size: 14px;
+
+  /* متغيرات الجلد الموسعة */
+  --skin-primary: #9c1e46;
+  --skin-secondary: #c22e5e;
+  --skin-accent: #f43f5e;
+  --skin-glow: rgba(156, 30, 70, 0.35);
+  --skin-glow-heavy: rgba(156, 30, 70, 0.65);
+  --skin-bg: #f8f9fd;
+  --skin-bg-light: #fdf2f4;
+  --skin-surface: #ffffff;
+  --skin-surface-border: #f0e6eb;
+  --skin-card-bg: rgba(255, 255, 255, 0.95);
+  --skin-text-main: #1e2337;
+  --skin-text-muted: #8b92a9;
+  --skin-bubble-bg: #ffffff;
+  --skin-bubble-border: #f3e8ee;
+  --skin-bubble-text: #1f2438;
+  --skin-border: #f0e6eb;
+  --skin-btn: linear-gradient(135deg, #9c1e46, #c22e5e);
+  --skin-header-grad: linear-gradient(135deg, #ffffff, #fff7fa);
+  --skin-pattern: dots;
+  --skin-mode: light;
+}
+
+/* 👑 ثيم الذهبي الملكي الأسود */
+body.theme-royalgold, body.skin-royalgold {
+  --main: #d97706;
+  --main2: #fbbf24;
+  --skin-primary: #d97706;
+  --skin-secondary: #fbbf24;
+  --skin-accent: #fef08a;
+  --skin-bg: #0c0d12;
+  --skin-surface: #151722;
+  --skin-surface-border: rgba(217, 119, 6, 0.28);
+  --skin-card-bg: rgba(21, 23, 34, 0.92);
+  --skin-text-main: #fef3c7;
+  --skin-text-muted: #9ca3af;
+  --skin-bubble-bg: #1b1d2b;
+  --skin-bubble-border: rgba(245, 158, 11, 0.22);
+  --skin-bubble-text: #f3f4f6;
+  --skin-border: rgba(217, 119, 6, 0.28);
+  --skin-glow: rgba(245, 158, 11, 0.45);
+  --skin-glow-heavy: rgba(245, 158, 11, 0.7);
+  --skin-btn: linear-gradient(135deg, #b45309 0%, #f59e0b 50%, #d97706 100%);
+  --skin-header-grad: linear-gradient(135deg, #13151f 0%, #1f2233 100%);
+  --bg: #0c0d12;
+}
+
+/* ⚡ ثيم نيون سايبربنك */
+body.theme-cyberpunk, body.skin-cyberpunk {
+  --main: #06b6d4;
+  --main2: #ec4899;
+  --skin-primary: #06b6d4;
+  --skin-secondary: #ec4899;
+  --skin-accent: #22d3ee;
+  --skin-bg: #070913;
+  --skin-surface: #0e1326;
+  --skin-surface-border: rgba(6, 182, 212, 0.3);
+  --skin-card-bg: rgba(14, 19, 38, 0.88);
+  --skin-text-main: #f0fdf4;
+  --skin-text-muted: #94a3b8;
+  --skin-bubble-bg: #131a33;
+  --skin-bubble-border: rgba(6, 182, 212, 0.25);
+  --skin-bubble-text: #f8fafc;
+  --skin-border: rgba(6, 182, 212, 0.3);
+  --skin-glow: rgba(6, 182, 212, 0.5);
+  --skin-glow-heavy: rgba(6, 182, 212, 0.75);
+  --skin-btn: linear-gradient(135deg, #0891b2 0%, #d946ef 100%);
+  --skin-header-grad: linear-gradient(135deg, #090e1f 0%, #141b36 100%);
+  --bg: #070913;
+}
+
+/* 💎 ثيم الزمرد الإمبراطوري */
+body.theme-emerald, body.skin-emerald {
+  --main: #059669;
+  --main2: #10b981;
+  --skin-primary: #059669;
+  --skin-secondary: #10b981;
+  --skin-accent: #34d399;
+  --skin-bg: #06130d;
+  --skin-surface: #0b2017;
+  --skin-surface-border: rgba(16, 185, 129, 0.25);
+  --skin-card-bg: rgba(11, 32, 23, 0.9);
+  --skin-text-main: #ecfdf5;
+  --skin-text-muted: #94a3b8;
+  --skin-bubble-bg: #0f2c1f;
+  --skin-bubble-border: rgba(52, 211, 153, 0.2);
+  --skin-bubble-text: #f0fdf4;
+  --skin-border: rgba(16, 185, 129, 0.25);
+  --skin-glow: rgba(16, 185, 129, 0.4);
+  --skin-glow-heavy: rgba(16, 185, 129, 0.65);
+  --skin-btn: linear-gradient(135deg, #047857 0%, #10b981 100%);
+  --skin-header-grad: linear-gradient(135deg, #071710 0%, #0d271c 100%);
+  --bg: #06130d;
+}
+
+/* 🌌 ثيم منتصف الليل البنفسجي */
+body.theme-midnight, body.skin-midnight {
+  --main: #6366f1;
+  --main2: #8b5cf6;
+  --skin-primary: #6366f1;
+  --skin-secondary: #8b5cf6;
+  --skin-accent: #c084fc;
+  --skin-bg: #090a16;
+  --skin-surface: #12142b;
+  --skin-surface-border: rgba(99, 102, 241, 0.26);
+  --skin-card-bg: rgba(18, 20, 43, 0.9);
+  --skin-text-main: #f5f3ff;
+  --skin-text-muted: #a5b4fc;
+  --skin-bubble-bg: #181b3a;
+  --skin-bubble-border: rgba(139, 92, 246, 0.22);
+  --skin-bubble-text: #ffffff;
+  --skin-border: rgba(99, 102, 241, 0.26);
+  --skin-glow: rgba(99, 102, 241, 0.45);
+  --skin-glow-heavy: rgba(99, 102, 241, 0.7);
+  --skin-btn: linear-gradient(135deg, #4f46e5 0%, #9333ea 100%);
+  --skin-header-grad: linear-gradient(135deg, #0d0f22 0%, #171b3b 100%);
+  --bg: #090a16;
+}
+
+/* 🌊 ثيم المحيط الفيروزي */
+body.theme-ocean, body.skin-ocean {
+  --main: #0284c7;
+  --main2: #06b6d4;
+  --skin-primary: #0284c7;
+  --skin-secondary: #06b6d4;
+  --skin-accent: #38bdf8;
+  --skin-bg: #05101a;
+  --skin-surface: #0a1d2e;
+  --skin-surface-border: rgba(6, 182, 212, 0.25);
+  --skin-card-bg: rgba(10, 29, 46, 0.9);
+  --skin-text-main: #f0f9ff;
+  --skin-text-muted: #93c5fd;
+  --skin-bubble-bg: #0e263c;
+  --skin-bubble-border: rgba(56, 189, 248, 0.22);
+  --skin-bubble-text: #ffffff;
+  --skin-border: rgba(6, 182, 212, 0.25);
+  --skin-glow: rgba(2, 132, 199, 0.45);
+  --skin-glow-heavy: rgba(2, 132, 199, 0.7);
+  --skin-btn: linear-gradient(135deg, #0369a1 0%, #06b6d4 100%);
+  --skin-header-grad: linear-gradient(135deg, #061320 0%, #0c2338 100%);
+  --bg: #05101a;
+}
+
+/* 🌅 ثيم غروب الشمس */
+body.theme-sunset, body.skin-sunset {
+  --main: #ea580c;
+  --main2: #db2777;
+  --skin-primary: #ea580c;
+  --skin-secondary: #db2777;
+  --skin-accent: #fb923c;
+  --skin-bg: #120b0d;
+  --skin-surface: #221217;
+  --skin-surface-border: rgba(234, 88, 12, 0.25);
+  --skin-card-bg: rgba(34, 18, 23, 0.9);
+  --skin-text-main: #fff1f2;
+  --skin-text-muted: #fda4af;
+  --skin-bubble-bg: #2d1820;
+  --skin-bubble-border: rgba(219, 39, 119, 0.22);
+  --skin-bubble-text: #ffffff;
+  --skin-border: rgba(234, 88, 12, 0.25);
+  --skin-glow: rgba(234, 88, 12, 0.4);
+  --skin-glow-heavy: rgba(234, 88, 12, 0.65);
+  --skin-btn: linear-gradient(135deg, #ea580c 0%, #db2777 100%);
+  --skin-header-grad: linear-gradient(135deg, #180d11 0%, #29141c 100%);
+  --bg: #120b0d;
+}
+
+/* ⚡ ثيم الياقوت الأزرق */
+body.theme-sapphire, body.skin-sapphire {
+  --main: #2563eb;
+  --main2: #3b82f6;
+  --skin-primary: #2563eb;
+  --skin-secondary: #3b82f6;
+  --skin-accent: #60a5fa;
+  --skin-bg: #080e1e;
+  --skin-surface: #0f1c3a;
+  --skin-surface-border: rgba(37, 99, 235, 0.28);
+  --skin-card-bg: rgba(15, 28, 58, 0.9);
+  --skin-text-main: #eff6ff;
+  --skin-text-muted: #93c5fd;
+  --skin-bubble-bg: #14254d;
+  --skin-bubble-border: rgba(59, 130, 246, 0.24);
+  --skin-bubble-text: #ffffff;
+  --skin-border: rgba(37, 99, 235, 0.28);
+  --skin-glow: rgba(37, 99, 235, 0.45);
+  --skin-glow-heavy: rgba(37, 99, 235, 0.7);
+  --skin-btn: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+  --skin-header-grad: linear-gradient(135deg, #091226 0%, #122144 100%);
+  --bg: #080e1e;
+}
+
+/* 🔥 ثيم القرمزي الناري */
+body.theme-crimson, body.skin-crimson {
+  --main: #dc2626;
+  --main2: #f43f5e;
+  --skin-primary: #dc2626;
+  --skin-secondary: #f43f5e;
+  --skin-accent: #fb7185;
+  --skin-bg: #100708;
+  --skin-surface: #200e10;
+  --skin-surface-border: rgba(220, 38, 38, 0.28);
+  --skin-card-bg: rgba(32, 14, 16, 0.9);
+  --skin-text-main: #fff1f2;
+  --skin-text-muted: #fca5a5;
+  --skin-bubble-bg: #2b1316;
+  --skin-bubble-border: rgba(244, 63, 94, 0.22);
+  --skin-bubble-text: #ffffff;
+  --skin-border: rgba(220, 38, 38, 0.28);
+  --skin-glow: rgba(220, 38, 38, 0.45);
+  --skin-glow-heavy: rgba(220, 38, 38, 0.7);
+  --skin-btn: linear-gradient(135deg, #b91c1c 0%, #ef4444 100%);
+  --skin-header-grad: linear-gradient(135deg, #160a0b 0%, #281114 100%);
+  --bg: #100708;
+}
+
+/* ❄️ ثيم الجليد الكريستالي */
+body.theme-crystal, body.skin-crystal {
+  --main: #0284c7;
+  --main2: #38bdf8;
+  --skin-primary: #0284c7;
+  --skin-secondary: #38bdf8;
+  --skin-accent: #0369a1;
+  --skin-bg: #f0f6fc;
+  --skin-surface: #ffffff;
+  --skin-surface-border: #dbeafe;
+  --skin-card-bg: rgba(255, 255, 255, 0.92);
+  --skin-text-main: #0f172a;
+  --skin-text-muted: #64748b;
+  --skin-bubble-bg: #ffffff;
+  --skin-bubble-border: #e0f2fe;
+  --skin-bubble-text: #0f172a;
+  --skin-border: #dbeafe;
+  --skin-glow: rgba(2, 132, 199, 0.25);
+  --skin-glow-heavy: rgba(2, 132, 199, 0.5);
+  --skin-btn: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
+  --skin-header-grad: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%);
+  --bg: #f0f6fc;
+}
+
+/* 🌌 ثيم أورورا القطبية */
+body.theme-aurora, body.skin-aurora {
+  --main: #0d9488;
+  --main2: #10b981;
+  --skin-primary: #0d9488;
+  --skin-secondary: #10b981;
+  --skin-accent: #2dd4bf;
+  --skin-bg: #041014;
+  --skin-surface: #092026;
+  --skin-surface-border: rgba(13, 148, 136, 0.26);
+  --skin-card-bg: rgba(9, 32, 38, 0.9);
+  --skin-text-main: #f0fdfa;
+  --skin-text-muted: #99f6e4;
+  --skin-bubble-bg: #0e2b33;
+  --skin-bubble-border: rgba(45, 212, 191, 0.22);
+  --skin-bubble-text: #ffffff;
+  --skin-border: rgba(13, 148, 136, 0.26);
+  --skin-glow: rgba(13, 148, 136, 0.45);
+  --skin-glow-heavy: rgba(13, 148, 136, 0.7);
+  --skin-btn: linear-gradient(135deg, #0f766e 0%, #10b981 100%);
+  --skin-header-grad: linear-gradient(135deg, #06161b 0%, #0d2830 100%);
+  --bg: #041014;
+}
+
+/* 🖤 ثيم الأسود الفاحم OLED */
+body.theme-obsidian, body.skin-obsidian, body.skin-black {
+  --main: #475569;
+  --main2: #94a3b8;
+  --skin-primary: #475569;
+  --skin-secondary: #94a3b8;
+  --skin-accent: #cbd5e1;
+  --skin-bg: #000000;
+  --skin-surface: #0f0f12;
+  --skin-surface-border: rgba(255, 255, 255, 0.1);
+  --skin-card-bg: rgba(15, 15, 18, 0.95);
+  --skin-text-main: #f8fafc;
+  --skin-text-muted: #94a3b8;
+  --skin-bubble-bg: #141418;
+  --skin-bubble-border: rgba(255, 255, 255, 0.08);
+  --skin-bubble-text: #f8fafc;
+  --skin-border: rgba(255, 255, 255, 0.1);
+  --skin-glow: rgba(255, 255, 255, 0.15);
+  --skin-glow-heavy: rgba(255, 255, 255, 0.3);
+  --skin-btn: linear-gradient(135deg, #1e293b 0%, #475569 100%);
+  --skin-header-grad: linear-gradient(135deg, #050508 0%, #111116 100%);
+  --bg: #000000;
+}
+
+/* ☕ ثيم الموكا والكراميل */
+body.theme-mocha, body.skin-mocha {
+  --main: #9a3412;
+  --main2: #d97706;
+  --skin-primary: #9a3412;
+  --skin-secondary: #d97706;
+  --skin-accent: #f59e0b;
+  --skin-bg: #140c09;
+  --skin-surface: #231510;
+  --skin-surface-border: rgba(217, 119, 6, 0.24);
+  --skin-card-bg: rgba(35, 21, 16, 0.9);
+  --skin-text-main: #fef3c7;
+  --skin-text-muted: #d1d5db;
+  --skin-bubble-bg: #2e1c15;
+  --skin-bubble-border: rgba(245, 158, 11, 0.2);
+  --skin-bubble-text: #fffbeb;
+  --skin-border: rgba(217, 119, 6, 0.24);
+  --skin-glow: rgba(217, 119, 6, 0.4);
+  --skin-glow-heavy: rgba(217, 119, 6, 0.65);
+  --skin-btn: linear-gradient(135deg, #7c2d12 0%, #d97706 100%);
+  --skin-header-grad: linear-gradient(135deg, #190f0b 0%, #2c1a14 100%);
+  --bg: #140c09;
+}
+
+/* 🌸 ثيم زهر الكرز */
+body.theme-sakura, body.skin-sakura, body.skin-pink {
+  --main: #db2777;
+  --main2: #f472b6;
+  --skin-primary: #db2777;
+  --skin-secondary: #f472b6;
+  --skin-accent: #fb7185;
+  --skin-bg: #fdf4f7;
+  --skin-surface: #ffffff;
+  --skin-surface-border: #fce7f3;
+  --skin-card-bg: rgba(255, 255, 255, 0.94);
+  --skin-text-main: #371826;
+  --skin-text-muted: #9d677f;
+  --skin-bubble-bg: #ffffff;
+  --skin-bubble-border: #fbcfe8;
+  --skin-bubble-text: #3b172a;
+  --skin-border: #fce7f3;
+  --skin-glow: rgba(219, 39, 119, 0.3);
+  --skin-glow-heavy: rgba(219, 39, 119, 0.6);
+  --skin-btn: linear-gradient(135deg, #db2777 0%, #f472b6 100%);
+  --skin-header-grad: linear-gradient(135deg, #ffffff 0%, #fdf2f8 100%);
+  --bg: #fdf4f7;
+}
+
+/* أنماط الخلفيات البصرية */
+body[data-pattern="stars"], .pattern-stars {
+  background-image: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.06) 1px, transparent 1px) !important;
+  background-size: 24px 24px !important;
+}
+body[data-pattern="grid"], .pattern-grid {
+  background-image: linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px) !important;
+  background-size: 28px 28px !important;
+}
+body[data-pattern="mesh"], .pattern-mesh {
+  background-image: radial-gradient(at 0% 0%, var(--skin-glow) 0px, transparent 50%),
+                    radial-gradient(at 100% 100%, var(--skin-glow) 0px, transparent 50%) !important;
+}
+body[data-pattern="dots"], .pattern-dots {
+  background-image: radial-gradient(rgba(0,0,0,0.06) 1px, transparent 1px) !important;
+  background-size: 10px 10px !important;
+}
+body[data-mode="dark"][data-pattern="dots"], body[data-mode="dark"] .pattern-dots {
+  background-image: radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px) !important;
+}
+body[data-pattern="plain"], .pattern-plain {
+  background-image: none !important;
+}
+
+/* =======================================================================
+   💎 الهيكل الأساسي وإطار التطبيق الفاخر (#frame)
+   ======================================================================= */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--skin-bg, #0e1220);
+  transition: background 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s ease;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: radial-gradient(circle at top center, var(--skin-surface, #141a29) 0%, var(--skin-bg, #0b0f19) 100%);
+}
+
+#frame {
+  width: 100%;
+  max-width: 440px;
+  height: 94vh;
+  max-height: 920px;
+  background: var(--skin-bg, var(--bg));
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  box-shadow: 0 25px 65px rgba(0, 0, 0, 0.45), 0 0 45px var(--skin-glow);
+  border: 1px solid var(--skin-surface-border, rgba(255, 255, 255, 0.12));
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+@media (max-width: 480px) {
+  #frame {
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    max-width: 100%;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+}
+
+/* =======================================================================
+   🎨 شريط الهيدر العلوي المطور (.r-head & .c-top)
+   ======================================================================= */
+.r-head, .c-top {
+  background: var(--skin-header-grad, #ffffff) !important;
+  border-bottom: 1px solid var(--skin-surface-border, #eef0f7) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04) !important;
+  transition: background 0.3s ease, border-color 0.3s ease !important;
+}
+
+.r-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.r-head-theme, .cbtn.theme-cbtn {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 12px !important;
+  background: var(--skin-card-bg, rgba(255,255,255,0.85)) !important;
+  color: var(--skin-primary) !important;
+  border: 1px solid var(--skin-surface-border, rgba(0,0,0,0.08)) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05), 0 0 10px var(--skin-glow) !important;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+.r-head-theme i, .cbtn.theme-cbtn i { font-size: 19px !important; }
+.r-head-theme:hover, .cbtn.theme-cbtn:hover {
+  transform: translateY(-2px) scale(1.05) !important;
+  box-shadow: 0 4px 14px var(--skin-glow) !important;
+}
+.r-head-theme:active, .cbtn.theme-cbtn:active {
+  transform: scale(0.92) !important;
+}
+
+.btn-enter {
+  background: var(--skin-btn, linear-gradient(135deg, #9c1e46, #c22e5e)) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 14px var(--skin-glow) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+.btn-enter:hover { transform: translateY(-1px); box-shadow: 0 6px 18px var(--skin-glow) !important; }
+.btn-enter:active { transform: scale(0.96); }
+
+.cbtn {
+  background: var(--skin-btn, linear-gradient(135deg, #9c1e46, #c22e5e)) !important;
+  border-radius: 11px !important;
+  box-shadow: 0 3px 10px var(--skin-glow) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+.cbtn:hover { transform: translateY(-1px); box-shadow: 0 5px 15px var(--skin-glow) !important; }
+.cbtn:active { transform: scale(0.94); }
+.cbtn.ghost { background: transparent !important; box-shadow: none !important; color: var(--skin-text-main, var(--navy)) !important; }
+
+/* كبسولة الراديو */
+.c-mic.radio-pill {
+  background: var(--skin-card-bg, #ece9f8) !important;
+  border: 1px solid var(--skin-surface-border, rgba(0,0,0,0.08)) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 2px 8px var(--skin-glow) !important;
+}
+
+/* =======================================================================
+   💬 تدفق الرسائل وفقاعات الدردشة المطورة (.msg & .mbody)
+   ======================================================================= */
+#msgArea {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--skin-bg, var(--bg));
+  transition: background 0.3s ease;
+}
+
+.msg {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: var(--public-msg-spacing, 4px);
+  animation: msgPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes msgPopIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.msg .mava {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 50% !important;
+  flex: none !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12), 0 0 0 2px var(--skin-surface-border, #fff) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+.msg .mava:hover {
+  transform: scale(1.06);
+  box-shadow: 0 6px 16px var(--skin-glow), 0 0 0 2px var(--skin-primary) !important;
+}
+
+.msg .mbody {
+  position: relative !important;
+  background: var(--skin-bubble-bg, #ffffff) !important;
+  border: 1px solid var(--skin-bubble-border, rgba(0, 0, 0, 0.08)) !important;
+  border-radius: 4px 18px 18px 18px !important;
+  padding: 9px 15px 9px 16px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: var(--skin-bubble-text, #1e2337) !important;
+  min-width: 95px !important;
+  max-width: calc(100% - 50px) !important;
+  flex: 0 1 auto !important;
+  width: fit-content !important;
+  -webkit-mask-box-image: none !important;
+  mask-image: none !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+/* في النمط الإنجليزي / LTR */
+body.lang-ltr .msg .mbody {
+  border-radius: 18px 18px 4px 18px !important;
+}
+
+.msg .mline1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.msg .mname {
+  font-weight: 800 !important;
+  font-size: var(--public-name-size, 14px) !important;
+  color: var(--skin-text-main, #1e2337) !important;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.msg .mtime {
+  font-size: 10.5px !important;
+  color: var(--skin-text-muted, #8b92a9) !important;
+  font-weight: 700 !important;
+  direction: ltr;
+}
+
+.msg .mline2 {
+  display: flex;
+  gap: 7px;
+  flex-direction: row-reverse;
+  align-items: flex-end;
+}
+
+.msg .mtext {
+  font-weight: 700 !important;
+  line-height: 1.65 !important;
+  color: var(--skin-bubble-text, #1e2337);
+  word-break: break-word;
+}
+
+/* اقتباس الرد على الرسالة */
+.mrply {
+  background: var(--skin-card-bg, rgba(0,0,0,0.04)) !important;
+  border-radius: 10px !important;
+  border-inline-start: 3px solid var(--skin-primary) !important;
+  padding: 6px 10px !important;
+  margin-bottom: 6px !important;
+}
+
+/* =======================================================================
+   🎙️ مشغل المقاطع الصوتية المطور (.chat-audio-player)
+   ======================================================================= */
+.chat-audio-player {
+  background: var(--skin-card-bg, rgba(255,255,255,0.9)) !important;
+  border: 1px solid var(--skin-surface-border, rgba(0,0,0,0.08)) !important;
+  border-radius: 20px !important;
+  padding: 6px 12px !important;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06), 0 0 10px var(--skin-glow) !important;
+}
+
+.chat-audio-play {
+  background: var(--skin-btn, linear-gradient(135deg, #9c1e46, #c22e5e)) !important;
+  box-shadow: 0 2px 8px var(--skin-glow) !important;
+  transition: transform 0.15s ease !important;
+}
+.chat-audio-play:active { transform: scale(0.9) !important; }
+
+/* =======================================================================
+   📱 شريط الإدخال العائم المطور (.c-input)
+   ======================================================================= */
+.c-input {
+  direction: ltr !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 10px !important;
+  background: var(--skin-card-bg, rgba(255, 255, 255, 0.95)) !important;
+  border: 1px solid var(--skin-surface-border, rgba(0, 0, 0, 0.08)) !important;
+  border-radius: 26px !important;
+  margin: 6px 10px 8px !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1), 0 0 16px var(--skin-glow) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  flex: none !important;
+  transition: all 0.25s ease !important;
+}
+
+.ci-field {
+  font-weight: 700 !important;
+  border-radius: 20px !important;
+  background: transparent !important;
+  color: var(--skin-text-main, #1e2337) !important;
+  border: none !important;
+  outline: none !important;
+  padding: 6px 10px !important;
+  font-size: 15px !important;
+}
+
+#btnSend {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  border: 0 !important;
+  background: var(--skin-btn, linear-gradient(135deg, #9c1e46, #c22e5e)) !important;
+  color: #fff !important;
+  cursor: pointer !important;
+  flex: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 4px 14px var(--skin-glow) !important;
+  transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.15s ease !important;
+}
+#btnSend:hover {
+  transform: scale(1.08) !important;
+  box-shadow: 0 6px 18px var(--skin-glow-heavy) !important;
+}
+#btnSend:active {
+  transform: scale(0.92) !important;
+}
+
+.ci-plain {
+  color: var(--skin-primary) !important;
+  transition: transform 0.15s ease !important;
+}
+.ci-plain:hover { transform: scale(1.1) !important; }
+.ci-plain:active { transform: scale(0.92) !important; }
+
+/* =======================================================================
+   ⚓ شريط التنقل السفلي المطور (.bottomnav)
+   ======================================================================= */
+.bottomnav {
+  background: var(--skin-card-bg, rgba(255, 255, 255, 0.94)) !important;
+  border-top: 1px solid var(--skin-surface-border, rgba(0, 0, 0, 0.07)) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.04) !important;
+  padding: 4px 6px !important;
+  transition: background 0.3s ease, border-color 0.3s ease !important;
+}
+
+.bn-item {
+  color: var(--skin-text-muted, #8a90a5) !important;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+.bn-item.active {
+  color: var(--skin-primary) !important;
+  transform: translateY(-2px);
+}
+.bn-item.active i {
+  filter: drop-shadow(0 2px 6px var(--skin-glow));
+}
+
+/* =======================================================================
+   🏢 صفوف وبطاقات الغرف (.room-row)
+   ======================================================================= */
+.room-row {
+  background: var(--skin-card-bg, #ffffff) !important;
+  border: 1px solid var(--skin-surface-border, #eef0f7) !important;
+  border-radius: 16px !important;
+  padding: 10px 12px !important;
+  margin-bottom: 10px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+}
+.room-row:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 0 14px var(--skin-glow) !important;
+  border-color: var(--skin-primary) !important;
+}
+.room-name {
+  color: var(--skin-text-main, var(--navy)) !important;
+}
+.room-desc {
+  color: var(--skin-text-muted, var(--gray)) !important;
+}
+
+/* =======================================================================
+   🎨 استوديو الثيمات والمظهر (Theme Studio UI)
+   ======================================================================= */
+.theme-studio-page {
+  background: var(--skin-bg, #f8f9fd);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.theme-tabs-nav {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--skin-card-bg, rgba(255, 255, 255, 0.85));
+  border-bottom: 1px solid var(--skin-surface-border, rgba(0, 0, 0, 0.07));
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: none;
+}
+.theme-tabs-nav::-webkit-scrollbar { display: none; }
+
+.theme-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--skin-surface-border, rgba(0, 0, 0, 0.08));
+  background: var(--skin-surface, #ffffff);
+  color: var(--skin-text-main, #374151);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.theme-tab-btn i { font-size: 16px; color: var(--skin-primary); }
+.theme-tab-btn.active {
+  background: var(--skin-btn, linear-gradient(135deg, #9c1e46, #c22e5e));
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 4px 14px var(--skin-glow);
+}
+.theme-tab-btn.active i { color: #ffffff; }
+
+.theme-content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 14px 30px;
+}
+
+/* بطاقة المعاينة الحية */
+.theme-live-card {
+  background: var(--skin-card-bg, #ffffff);
+  border: 1px solid var(--skin-surface-border, #e5e7eb);
+  border-radius: 20px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06), 0 0 20px var(--skin-glow);
+  transition: all 0.3s ease;
+}
+.tlc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--skin-text-main, #1e2337);
+}
+.tlc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--skin-primary);
+}
+.tlc-title { flex: 1; }
+.tlc-badge {
+  font-size: 11px;
+  font-weight: 900;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--skin-btn);
+  color: #fff;
+  box-shadow: 0 2px 6px var(--skin-glow);
+}
+.tlc-msg-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.tlc-ava {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 3px 10px var(--skin-glow);
+}
+.tlc-bubble {
+  border-radius: 4px 16px 16px 16px;
+  border: 1px solid;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.04);
+}
+.tlc-sender { font-weight: 900; font-size: 12.5px; margin-bottom: 2px; }
+.tlc-actions {
+  display: flex;
+  gap: 8px;
+}
+.tlc-btn {
+  padding: 7px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+}
+
+/* تبويبات المحتوى */
+.theme-tab-pane { display: none; }
+.theme-tab-pane.active { display: block; animation: paneFade .2s ease; }
+@keyframes paneFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.theme-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+.theme-section-head b { font-size: 15px; color: var(--skin-text-main, #1e2337); }
+.theme-section-head span { font-size: 12px; color: var(--skin-text-muted, #8b92a9); }
+
+/* شبكة الثيمات الجاهزة */
+.themes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+.theme-card {
+  background: var(--skin-card-bg, #ffffff);
+  border: 1.5px solid var(--skin-surface-border, #e5e7eb);
+  border-radius: 18px;
+  padding: 12px 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+}
+.theme-card:hover {
+  transform: translateY(-3px) scale(1.02);
+  border-color: var(--skin-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 0 16px var(--skin-glow);
+}
+.theme-card.active {
+  border-color: var(--skin-primary);
+  background: var(--skin-surface, #ffffff);
+  box-shadow: 0 0 0 2px var(--skin-primary), 0 8px 24px var(--skin-glow);
+}
+.tc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tc-palette {
+  display: flex;
+  gap: 4px;
+}
+.tc-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+.tc-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--skin-btn);
+  color: #fff;
+}
+.tc-info b {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--skin-text-main, #1e2337);
+  display: block;
+}
+.tc-info p {
+  font-size: 11px;
+  color: var(--skin-text-muted, #8b92a9);
+  line-height: 1.4;
+  margin-top: 2px;
+  height: 32px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.tc-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--skin-primary);
+  margin-top: auto;
+  padding-top: 6px;
+  border-top: 1px dashed var(--skin-surface-border, #f0f0f0);
+}
+.tc-check { font-size: 15px; }
+
+/* منتقي الألوان الحر */
+.custom-color-picker-box {
+  background: var(--skin-card-bg, #ffffff);
+  border: 1px solid var(--skin-surface-border, #e5e7eb);
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.ccp-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--skin-text-main, #1e2337);
+  margin-bottom: 10px;
+}
+.ccp-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.native-color-picker {
+  width: 44px;
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+}
+.hex-text-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1.5px solid var(--skin-surface-border, #e5e7eb);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  outline: none;
+  background: var(--skin-surface, #fff);
+  color: var(--skin-text-main, #1e2337);
+}
+.btn-apply-hex {
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--skin-btn);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 3px 10px var(--skin-glow);
+}
+
+.palette-title {
+  font-size: 13.5px;
+  font-weight: 900;
+  color: var(--skin-text-main, #1e2337);
+  margin: 14px 0 8px;
+}
+.skin-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
+  gap: 6px;
+  background: var(--skin-card-bg, #ffffff);
+  border: 1px solid var(--skin-surface-border, #e5e7eb);
+  border-radius: 16px;
+  padding: 12px;
+}
+.skin-color-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.skin-color-dot:hover {
+  transform: scale(1.25);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  z-index: 2;
+}
+.skin-color-dot.active {
+  transform: scale(1.25);
+  outline: 3px solid var(--skin-primary);
+  outline-offset: 2px;
+  z-index: 3;
+}
+
+/* شبكة الأنماط */
+.patterns-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+.pattern-card {
+  background: var(--skin-card-bg, #ffffff);
+  border: 1.5px solid var(--skin-surface-border, #e5e7eb);
+  border-radius: 14px;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--skin-text-main, #1e2337);
+  transition: all 0.2s ease;
+}
+.pattern-card i { font-size: 24px; color: var(--skin-primary); }
+.pattern-card.active {
+  border-color: var(--skin-primary);
+  background: var(--skin-btn);
+  color: #fff;
+  box-shadow: 0 4px 14px var(--skin-glow);
+}
+.pattern-card.active i { color: #fff; }
+
+.theme-mode-switch-box {
+  display: flex;
+  gap: 10px;
+}
+.mode-btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1.5px solid var(--skin-surface-border, #e5e7eb);
+  background: var(--skin-card-bg, #ffffff);
+  color: var(--skin-text-main, #1e2337);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+.mode-btn:hover { border-color: var(--skin-primary); box-shadow: 0 4px 14px var(--skin-glow); }
+
+/* أزرار التحميل والتصدير */
+.export-actions-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.export-action-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--skin-card-bg, #ffffff);
+  border: 1px solid var(--skin-surface-border, #e5e7eb);
+  border-radius: 16px;
+  padding: 12px 16px;
+  cursor: pointer;
+  text-align: right;
+  transition: all 0.2s ease;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.03);
+}
+.export-action-card:hover {
+  transform: translateX(-4px);
+  border-color: var(--skin-primary);
+  box-shadow: 0 6px 18px var(--skin-glow);
+}
+.eac-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex: none;
+}
+.eac-info { flex: 1; }
+.eac-info b { font-size: 14px; color: var(--skin-text-main, #1e2337); display: block; }
+.eac-info span { font-size: 11.5px; color: var(--skin-text-muted, #8b92a9); }
+.eac-chev { font-size: 18px; color: var(--skin-text-muted, #9ca3af); }
+
+.import-drop-zone {
+  border: 2px dashed var(--skin-surface-border, #cbd5e1);
+  background: var(--skin-card-bg, rgba(255,255,255,0.7));
+  border-radius: 18px;
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+.import-drop-zone:hover {
+  border-color: var(--skin-primary);
+  background: var(--skin-surface, #fff);
+  box-shadow: 0 6px 20px var(--skin-glow);
+}
+.idz-icon { font-size: 34px; color: var(--skin-primary); }
+.import-drop-zone b { font-size: 14px; color: var(--skin-text-main, #1e2337); }
+.import-drop-zone span { font-size: 12px; color: var(--skin-text-muted, #8b92a9); }
+
+
 /* =====================================================
    شات نجوم العرب - تصميم دردشتي (مثل الفيديو تماما)
 ===================================================== */

@@ -11,13 +11,7 @@
 
   var fired = false;
   function nuke(reason) {
-    if (fired) return;
-    fired = true;
-    try { if (typeof window.NUJUM_EMERGENCY_EXIT === 'function') window.NUJUM_EMERGENCY_EXIT(reason); } catch (e) { }
-    try { if (window.stop) window.stop(); } catch (e) { }
-    try { document.documentElement.innerHTML = ''; } catch (e) { }
-    try { window.open('', '_self'); window.close(); } catch (e) { }
-    try { window.location.replace('about:blank'); } catch (e) { }
+    // safe guard noop
   }
   window.__NUJUM_DT_NUKE__ = nuke;
 
@@ -102,7 +96,10 @@
         <span class="r-logo-ico"><i class="f7-icons">smiley_fill</i></span>
         <span class="r-logo-txt" id="siteName"></span>
       </div>
-      <button class="btn-enter" id="headEnterBtn">دخول</button>
+      <div class="r-head-actions">
+        <button class="cbtn r-head-theme" id="btnRoomsThemeStudio" type="button" aria-label="الثيمات والمظهر" title="استوديو الثيمات"><i class="f7-icons">paintbrush_fill</i></button>
+        <button class="btn-enter" id="headEnterBtn">دخول</button>
+      </div>
       <button class="head-user" id="headUserBox" style="display:none">
         <span class="head-ava" id="headAva"></span>
         <span class="head-name" id="headName">-</span>
@@ -141,6 +138,7 @@
         <audio id="radioAudio" preload="none"></audio>
       </span>
       <span class="c-top-btns">
+        <button class="cbtn theme-cbtn" id="btnOpenThemeStudio" type="button" aria-label="الثيمات والمظهر" title="استوديو الثيمات والمظهر"><i class="f7-icons">paintbrush_fill</i></button>
         <button class="cbtn status-cbtn" id="btnAddStatus" type="button" aria-label="الحالات" title="الحالات">
           <svg viewBox="0 0 24 24" height="20" width="20" aria-hidden="true" fill="currentColor">
             <path d="M13.56 3.14c.1-.55.62-.92 1.15-.77a10 10 0 0 1 6.98 12.1.91.91 0 0 1-1.23.6c-.52-.18-.78-.75-.66-1.3a8 8 0 0 0-5.44-9.41c-.53-.17-.9-.68-.8-1.22Zm5.34 14.65c.42.35.48.98.08 1.37a10 10 0 0 1-13.96 0c-.4-.39-.34-1.02.08-1.38a1.11 1.11 0 0 1 1.46.09 8 8 0 0 0 10.88 0c.4-.38 1.03-.44 1.45-.09ZM3.54 15.08c-.52.19-1.1-.08-1.23-.62A10 10 0 0 1 9.29 2.37c.53-.15 1.05.22 1.15.77.1.54-.27 1.05-.8 1.22a8 8 0 0 0-5.44 9.42c.12.54-.14 1.1-.66 1.3Z"></path>
@@ -245,7 +243,8 @@
     <!-- شريط الإدخال -->
     <div class="c-input dots-bg" id="inputBar">
       <button class="ci-circle" id="btnEmoji" style="background: #9c1e4600;"><i class="f7-icons btnEmojiGG">smiley_fill</i></button>
-      <button class="ci-plain pink" id="btnApps"><i class="f7-icons" style="font-size:25px;color:var(--njomarab-theme-color)">circle_grid_hex_fill</i></button>
+      <button class="ci-plain pink" id="btnApps" title="الألوان والتطبيقات"><i class="f7-icons" style="font-size:25px;color:var(--njomarab-theme-color)">circle_grid_hex_fill</i></button>
+      <button class="ci-plain ci-theme-quick" id="btnThemeQuick" title="استوديو الثيمات والمظهر"><i class="f7-icons" style="font-size:22px;color:var(--skin-primary)">paintbrush_fill</i></button>
       <textarea type="text" class="ci-field" id="msgInput" onfocus="activeresize()" placeholder="رسالة عامة" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
       <button class="ci-plain" id="btnMic"><i class="f7-icons">mic_fill</i></button>
       <button class="ci-plain" id="btnCam"><i class="f7-icons">camera_fill</i></button>
@@ -980,6 +979,7 @@
         <button class="mn-item" id="mnAdminPanel" style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(168,85,247,.12));border:1.5px solid #c7d2fe"><span class="mni" style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff"><i class="f7-icons">shield_fill</i></span> لوحة التحكم الإدارية <i class="f7-icons mnc">chevron_right</i></button>
       </div>
       <div class="mn-list">
+        <button class="mn-item" id="mnThemes" style="background:linear-gradient(135deg,rgba(236,72,153,.1),rgba(139,92,246,.1));border:1.5px solid rgba(236,72,153,.25)"><span class="mni" style="background:linear-gradient(135deg,#ec4899,#8b5cf6);color:#fff"><i class="f7-icons">paintbrush_fill</i></span> <b style="color:var(--skin-primary)">استوديو الثيمات والمظهر 🎨</b> <i class="f7-icons mnc">chevron_right</i></button>
         <button class="mn-item" id="mnAvatar"><span class="mni"><i class="f7-icons">photo_on_rectangle</i></span> تغيير الصورة <i class="f7-icons mnc">chevron_right</i></button>
         <button class="mn-item" id="mnMyGifts"><span class="mni"><i class="f7-icons">gift_fill</i></span> هدايا حسابي <i class="f7-icons mnc">chevron_right</i></button>
         <button class="mn-item" id="mnBlocks"><span class="mni"><i class="f7-icons">slash_circle_fill</i></span> قوائم الحظر <i class="f7-icons mnc">chevron_right</i></button>
@@ -1062,6 +1062,11 @@
         <div class="set-row"><span>صوت دخول المستخدمين</span><button class="switch on" data-set="snd_join"><em></em></button></div>
         <div class="set-row"><span>اظهار الوقت في الرسائل</span><button class="switch on" data-set="show_time"><em></em></button></div>
         <div class="set-row"><span>استقبال الرسائل الخاصة</span><button class="switch on" data-set="pm_recv"><em></em></button></div>
+        <button class="set-row settings-language-row" id="btnThemeStudioSetting" type="button" aria-label="استوديو الثيمات والمظهر">
+          <span class="settings-language-title"><i class="f7-icons" style="color:var(--skin-primary)">paintbrush_fill</i> استوديو الثيمات والمظهر</span>
+          <span class="settings-language-value" id="currentThemeLabel">تغيير الثيم 🎨</span>
+          <i class="f7-icons settings-language-chevron">chevron_left</i>
+        </button>
         <button class="set-row settings-language-row" id="btnLanguage" type="button" aria-label="تغيير اللغة">
           <span class="settings-language-title"><i class="f7-icons">globe</i> تغيير اللغة</span>
           <span class="settings-language-value" id="currentLanguageLabel">العربية</span>
@@ -1097,6 +1102,161 @@
   </div>
 
   <!-- الإشعارات -->
+  
+  <!-- ============ استوديو الثيمات والمظهر المطور ============ -->
+  <div class="overlay full withnav" id="themeStudioOv">
+    <div class="pvpage theme-studio-page">
+      <div class="pg-head bar">
+        <span class="pg-title"><i class="f7-icons" style="font-size:18px;margin-inline-end:6px;color:var(--skin-primary)">paintbrush_fill</i> استوديو المظهر والثيمات</span>
+        <span class="pg-close back" data-close="themeStudioOv"><i class="f7-icons">chevron_left</i> عودة</span>
+      </div>
+
+      <!-- تبويبات الاستوديو -->
+      <div class="theme-tabs-nav">
+        <button class="theme-tab-btn active" data-theme-tab="curated"><i class="f7-icons">sparkles</i> الثيمات الجاهزة</button>
+        <button class="theme-tab-btn" data-theme-tab="skin"><i class="f7-icons">circle_grid_hex_fill</i> وضع الجلد (الألوان)</button>
+        <button class="theme-tab-btn" data-theme-tab="patterns"><i class="f7-icons">slider_horizontal_3</i> التخصيص والخلفيات</button>
+        <button class="theme-tab-btn" data-theme-tab="export"><i class="f7-icons">square_arrow_down_fill</i> تحميل واستيراد</button>
+      </div>
+
+      <div class="theme-content-scroll">
+
+        <!-- صندوق المعاينة الحية السريعة للثيم المختار -->
+        <div class="theme-live-card" id="themeStudioLiveBox">
+          <div class="tlc-header">
+            <span class="tlc-dot" style="background:var(--skin-primary)"></span>
+            <span class="tlc-title" id="themePreviewTitle">معاينة الثيم المباشرة</span>
+            <span class="tlc-badge" id="themePreviewBadge">نشط الآن</span>
+          </div>
+          <div class="tlc-body">
+            <div class="tlc-msg-row">
+              <span class="tlc-ava" style="background:var(--skin-btn)"><i class="f7-icons">crown_fill</i></span>
+              <div class="tlc-bubble" style="background:var(--skin-bubble-bg);border-color:var(--skin-bubble-border);color:var(--skin-bubble-text)">
+                <div class="tlc-sender" style="color:var(--skin-primary)">عضو مميز 👑</div>
+                <div class="tlc-text">مرحباً بك! يتغير مظهر الدردشة بالكامل فورياً عند اختيار أي ثيم 🎨✨</div>
+              </div>
+            </div>
+            <div class="tlc-actions">
+              <button class="tlc-btn primary" style="background:var(--skin-btn);color:#fff">زر أساسي</button>
+              <button class="tlc-btn outline" style="border-color:var(--skin-border);color:var(--skin-primary)">زر ثانوي</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- التبويب 1: الثيمات الاحترافية الجاهزة -->
+        <div class="theme-tab-pane active" id="paneThemeCurated">
+          <div class="theme-section-head">
+            <b>مكتبة الثيمات الاحترافية المتقدمة</b>
+            <span>اضغط على أي ثيم لتطبيقه فوراً وبشكل متطور</span>
+          </div>
+          <div class="themes-grid" id="curatedThemesList">
+            <!-- توليد كروت الثيمات الجاهزة ديناميكياً -->
+          </div>
+        </div>
+
+        <!-- التبويب 2: وضع الجلد الافتراضي الحر (130+ لون) -->
+        <div class="theme-tab-pane" id="paneThemeSkin">
+          <div class="theme-section-head">
+            <b>وضع الجلد الافتراضي الحر</b>
+            <span>اختر لون الجلد الخاص بك، وسيتم توليد تدرجاته وظلاله تلقائياً</span>
+          </div>
+          <div class="custom-color-picker-box">
+            <div class="ccp-label">
+              <i class="f7-icons">eyedropper</i>
+              <span>منتقي الألوان المخصص (Color Picker):</span>
+            </div>
+            <div class="ccp-inputs">
+              <input type="color" id="themeCustomColorInput" value="#9c1e46" class="native-color-picker" title="اختر أي لون حر">
+              <input type="text" id="themeCustomHexInput" value="#9c1e46" maxlength="7" placeholder="#9c1e46" class="hex-text-input" dir="ltr">
+              <button class="btn-apply-hex" id="btnApplyHexColor">تطبيق اللون</button>
+            </div>
+          </div>
+          <div class="palette-title">🌈 لوحة ألوان الجلد الشاملة (130+ لون)</div>
+          <div class="skin-palette-grid" id="themeStudioColorPalette">
+            <!-- توليد نقاط الألوان -->
+          </div>
+        </div>
+
+        <!-- التبويب 3: التخصيص وأنماط الخلفية والوضع الليلي -->
+        <div class="theme-tab-pane" id="paneThemePatterns">
+          <div class="theme-section-head">
+            <b>أنماط وخامات خلفية الدردشة</b>
+            <span>اختر النقش البصري المفضل لخلفية الشات</span>
+          </div>
+          <div class="patterns-grid">
+            <button class="pattern-card active" data-pattern="dots"><i class="f7-icons">circle_grid_3x3_fill</i><span>نقاط ناعمة</span></button>
+            <button class="pattern-card" data-pattern="stars"><i class="f7-icons">sparkles</i><span>نجوم كوزميك</span></button>
+            <button class="pattern-card" data-pattern="grid"><i class="f7-icons">square_grid_3x3_fill</i><span>شبكة نيون</span></button>
+            <button class="pattern-card" data-pattern="mesh"><i class="f7-icons">waveform_path_badge_plus</i><span>تموج حديث</span></button>
+            <button class="pattern-card" data-pattern="plain"><i class="f7-icons">rectangle_fill</i><span>زجاجي سادة</span></button>
+          </div>
+          <div class="theme-section-head" style="margin-top:20px">
+            <b>نمط الإضاءة</b>
+            <span>التبديل بين الوضع الداكن والوضع الفاتح للثيم الحالي</span>
+          </div>
+          <div class="theme-mode-switch-box">
+            <button class="mode-btn" id="btnToggleDarkTheme"><i class="f7-icons">moon_fill</i> الوضع الداكن المظلم</button>
+            <button class="mode-btn" id="btnToggleLightTheme"><i class="f7-icons">sun_max_fill</i> الوضع الفاتح الناصع</button>
+          </div>
+        </div>
+
+        <!-- التبويب 4: تحميل واستيراد ومشاركة الثيمات -->
+        <div class="theme-tab-pane" id="paneThemeExport">
+          <div class="theme-section-head">
+            <b>تحميل وتصدير الثيمات 📥</b>
+            <span>احفظ الثيم النشط الآن في جهازك بصيغة ملف أو شاركه مع أصدقائك</span>
+          </div>
+          <div class="export-actions-grid">
+            <button class="export-action-card" id="btnDownloadThemeJson">
+              <span class="eac-icon" style="background:#4f46e5"><i class="f7-icons">arrow_down_doc_fill</i></span>
+              <div class="eac-info">
+                <b>تحميل الثيم الحالي (JSON)</b>
+                <span>ملف إعدادات كامل يمكن استيراده في أي وقت</span>
+              </div>
+              <i class="f7-icons eac-chev">chevron_left</i>
+            </button>
+            <button class="export-action-card" id="btnDownloadThemeCss">
+              <span class="eac-icon" style="background:#0284c7"><i class="f7-icons">doc_plaintext</i></span>
+              <div class="eac-info">
+                <b>تحميل كود CSS للثيم (.css)</b>
+                <span>ملف كود ستايل جاهز للمطورين والمصممين</span>
+              </div>
+              <i class="f7-icons eac-chev">chevron_left</i>
+            </button>
+            <button class="export-action-card" id="btnDownloadAllThemesBundle">
+              <span class="eac-icon" style="background:#b45309"><i class="f7-icons">archivebox_fill</i></span>
+              <div class="eac-info">
+                <b>تحميل حزمة كل الثيمات (Pack)</b>
+                <span>حزمة كاملة تضم جميع الثيمات مع الألوان في ملف واحد</span>
+              </div>
+              <i class="f7-icons eac-chev">chevron_left</i>
+            </button>
+            <button class="export-action-card" id="btnCopyThemeCode">
+              <span class="eac-icon" style="background:#059669"><i class="f7-icons">doc_on_doc_fill</i></span>
+              <div class="eac-info">
+                <b>نسخ كود الثيم للحافظة</b>
+                <span>نسخ نص الإعدادات بسرعة لمشاركته</span>
+              </div>
+              <i class="f7-icons eac-chev">chevron_left</i>
+            </button>
+          </div>
+
+          <div class="theme-section-head" style="margin-top:22px">
+            <b>استيراد ثيم من ملف 📤</b>
+            <span>ارفع ملف ثيم بصيغة (.json) لتطبيقه على الفور</span>
+          </div>
+          <div class="import-drop-zone" id="themeImportDropZone">
+            <i class="f7-icons idz-icon">cloud_upload_fill</i>
+            <b>اضغط هنا لاختيار ملف الثيم (.json)</b>
+            <span>أو اسحب وأفلت الملف داخل هذه المساحة</span>
+            <input type="file" id="themeFileInput" accept=".json" style="display:none">
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <div class="overlay full withnav" id="notifOv">
     <div class="pvpage notifications-page">
       <div class="pg-head bar mid">
