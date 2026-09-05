@@ -9,8 +9,9 @@
 <link rel="stylesheet" href="/icons/framework7-icons.css?v=20260828-royalfs">
 <link rel="stylesheet" href="/css/fonts.css?v=20260828-royalfs">
 <link rel="stylesheet" href="/css/style.css?v=20260829-giftnocard">
+<link rel="stylesheet" href="/css/neo.css?v=20260905-neo">
 </head>
-<body>
+<body class="neo">
 <div id="frame">
 
   <div class="top-strip"></div>
@@ -1449,6 +1450,23 @@
    document.addEventListener("contextmenu", e => e.preventDefault());
    document.addEventListener("selectstart", e => e.preventDefault());
 
-});</script>
+});
+
+/* NOVA theme guard: keep the new layout class applied even if the app rewrites body classes. */
+(function () {
+  function ensureNeo() {
+    if (document.body && !document.body.classList.contains('neo')) document.body.classList.add('neo');
+    var f = document.getElementById('frame');
+    if (f && !f.classList.contains('neo')) f.classList.add('neo');
+  }
+  function start() {
+    ensureNeo();
+    if (document.body) {
+      new MutationObserver(function () { ensureNeo(); }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();</script>
 </body>
 </html>
