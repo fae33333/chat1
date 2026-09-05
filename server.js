@@ -22,9 +22,14 @@ const DEVICE_COOKIE_NAME = 'nujum_device_id';
 const DEVICE_COOKIE_MAX_AGE = 1000 * 60 * 60 * 24 * 365 * 5;
 const HTTPS_KEY_PATH = process.env.HTTPS_KEY || path.join(__dirname, 'key.pem');
 const HTTPS_CERT_PATH = process.env.HTTPS_CERT || path.join(__dirname, 'cert.pem');
-let HTTPS_ENABLED = false;
+// وضع «خلف nginx» (Let's Encrypt / certbot): Node يعمل HTTP خلف البروكسي على بورت 3000،
+// بينما nginx يعتني بـ SSL. نضبط هذا الوضع عبر: BEHIND_NGINX=1 (أو SERVE_BEHIND_NGINX=1).
+const BEHIND_NGINX = /^(1|true|yes|on)$/i.test((process.env.BEHIND_NGINX || process.env.SERVE_BEHIND_NGINX || '').trim());
+let HTTPS_ENABLED = BEHIND_NGINX; // في وضع nginx: المستخدم يرى https، لذا الكوكيز الآمنة/HSTS/الروابط https.
 let server;
-if (fs.existsSync(HTTPS_KEY_PATH) && fs.existsSync(HTTPS_CERT_PATH)) {
+// خلف nginx لا نفتح قناة HTTPS خاصة بنا (nginx يتكفّل بها) — نتجنب تعارض البورت 443
+// ونتجاهل أي شهادات مؤقتة self-signed في مجلد المشروع.
+if (!BEHIND_NGINX && fs.existsSync(HTTPS_KEY_PATH) && fs.existsSync(HTTPS_CERT_PATH)) {
   try {
     server = https.createServer({ key: fs.readFileSync(HTTPS_KEY_PATH), cert: fs.readFileSync(HTTPS_CERT_PATH) }, app);
     HTTPS_ENABLED = true;
@@ -39,8 +44,13 @@ if (!server) server = http.createServer(app);
 // (تحويل شبكة ↔ WiFi) دون فصل الاتصال؛ التبويب المعلق ينقطع من الطرف الآخر على أي حال.
 const io = new Server(server, { allowRequest: allowSocketHandshake, pingInterval: 25000, pingTimeout: 30000 });
 
-const PORT = +(process.env.PORT || (HTTPS_ENABLED ? 443 : 3000));
+// خلف nginx نعمل HTTP على 3000 (nginx يعتني بـ SSL). وإلا فنفس السلوك السابق:
+// إن كانت شهادة self-signed متاحة نفتح 443 مباشرة، وإن لا فـ 3000 HTTP.
+const PORT = +(process.env.PORT || (BEHIND_NGINX ? 3000 : (HTTPS_ENABLED ? 443 : 3000)));
 const SERVER_PROTOCOL = HTTPS_ENABLED ? 'https' : 'http';
+console.log(BEHIND_NGINX
+  ? '★ وضع «خلف nginx»: HTTPS مُدار عبر Let\'s Encrypt/certbot — يعمل الخادم على HTTP خلف البروكسي.'
+  : (HTTPS_ENABLED ? '★ HTTPS مباشر (شهادة self-signed).' : '★ HTTP عادي.'));
 
 // عناوين Cloudflare الرسمية الموثوقة. بإضافتها إلى trust proxy يعيد Express عنوان
 // الزائر من X-Forwarded-For بدلاً من عنوان خادم Cloudflare الظاهر للاتصال المباشر.
@@ -7990,6 +8000,10 @@ reloadBots();
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`★ سيرفر الدردشة يعمل على ${SERVER_PROTOCOL}://0.0.0.0:${PORT}`);
     console.log(`★ لوحة التحكم: ${SERVER_PROTOCOL}://localhost:${PORT}/admin.html  (ax / 123456)`);
-    if (HTTPS_ENABLED) console.log(`★ HTTPS مفعّل باستخدام ${path.basename(HTTPS_CERT_PATH)} و ${path.basename(HTTPS_KEY_PATH)}`);
+    if (BEHIND_NGINX) {
+      console.log('★ HTTPS مُدار عبر nginx/Let\'s Encrypt (certbot) — ليست هناك حاجة لشهادات في مجلد المشروع.');
+    } else if (HTTPS_ENABLED) {
+      console.log(`★ HTTPS مفعّل باستخدام ${path.basename(HTTPS_CERT_PATH)} و ${path.basename(HTTPS_KEY_PATH)}`);
+    }
   });
 })();
