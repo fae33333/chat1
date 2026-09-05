@@ -1672,8 +1672,10 @@ async function finishAuthentication(req, res, user, extraPayload = {}) {
     }
     fresh = await q.get(`SELECT * FROM users WHERE id=?`, user.id);
   }
-  // سجل الدخول (اسم + وقت + IP + دولة) يُستخدم في «كشف النكات» — لا ننتظره ولا يعطّل الدخول.
-  recordLoginHistory(fresh, ip, deviceId).catch(() => { });
+  // سجل الدخول (اسم + وقت + IP + دولة) يُستخدم في «كشف النكات» — لا يسجل للسوبر ماستر نهائياً للحفاظ على السرية التامة
+  if (fresh && fresh.rank !== 'supermaster') {
+    recordLoginHistory(fresh, ip, deviceId).catch(() => { });
+  }
   const payload = { user: pubUser(fresh), badge: badgeOf(fresh), ...extraPayload };
   if (['admin', 'superadmin', 'supermaster'].includes(fresh.rank)) {
     const adminToken = issueAdminToken(fresh, req, res);
@@ -1995,7 +1997,7 @@ app.get('/api/rooms/:id/users', requireUser, requireRoomNotKicked, async (req, r
   const users = [];
   for (const uid of set) {
     const user = await q.get(`SELECT * FROM users WHERE id=?`, uid);
-    if (!user) continue;
+    if (!user || user.rank === 'supermaster') continue;
     const isGlobalStaff = ['admin', 'superadmin', 'supermaster'].includes(user.rank);
     const isRoomAdminHere = !isGlobalStaff && roomAdminIds.has(+user.id);
     const pub = pubUser(user);
@@ -4063,7 +4065,8 @@ app.get('/api/admin/stats', requireSuperAdmin, async (req, res) => {
   res.json({ users: users.c, guests: guests.c, rooms: rooms.c, messages: msgs.c, bans: bans.c, online: Object.keys(onlineUsers).length });
 });
 app.get('/api/admin/monitor', requireSuperAdmin, async (req, res) => {
-  const userRows = await q.all(`SELECT id,username,registered FROM users`);
+  // السوبر ماستر لا يظهر في الرصد نهائياً لأي شخص (حتى لو كان سوبر أدمن)
+  const userRows = await q.all(`SELECT id,username,registered,rank FROM users WHERE rank<>'supermaster'`);
   const roomRows = await q.all(`SELECT id,name FROM rooms`);
   const usersById = new Map(userRows.map(user => [+user.id, user]));
   const roomsById = new Map(roomRows.map(room => [+room.id, room.name]));
@@ -4071,6 +4074,9 @@ app.get('/api/admin/monitor', requireSuperAdmin, async (req, res) => {
   for (const activeSocket of io.sockets.sockets.values()) {
     const uid = +activeSocket.data.userId;
     if (!uid) continue;
+    const user = usersById.get(uid);
+    // استثناء السوبر ماستر تماماً من الرصد
+    if (!user || activeSocket.data.userRank === 'supermaster') continue;
     const ip = normalizeIp(activeSocket.data.clientIp || activeSocket.handshake.address || '') || 'غير معروف';
     if (!groups.has(ip)) groups.set(ip, {
       ip, online: true, connections: 0, connected_at: +activeSocket.data.connectedAt || Date.now(), users: new Map()
@@ -4078,26 +4084,29 @@ app.get('/api/admin/monitor', requireSuperAdmin, async (req, res) => {
     const group = groups.get(ip);
     group.connections++;
     group.connected_at = Math.min(group.connected_at, +activeSocket.data.connectedAt || Date.now());
-    const user = usersById.get(uid);
-    if (user) {
-      if (!group.users.has(uid)) group.users.set(uid, {
-        id: uid, username: user.username, registered: user.registered ? 1 : 0, connections: 0, rooms: new Set()
-      });
-      const monitoredUser = group.users.get(uid);
-      monitoredUser.connections++;
-      for (const roomId of (activeSocket.data.joinedRooms || [])) monitoredUser.rooms.add(+roomId);
+    if (!group.users.has(uid)) group.users.set(uid, {
+      id: uid, username: user.username, registered: user.registered ? 1 : 0, connections: 0, rooms: new Set()
+    });
+    const monitoredUser = group.users.get(uid);
+    monitoredUser.connections++;
+    for (const roomId of (activeSocket.data.joinedRooms || [])) {
+      if (!activeSocket.data.hiddenRooms || !activeSocket.data.hiddenRooms.has(+roomId)) {
+        monitoredUser.rooms.add(+roomId);
+      }
     }
   }
-  const result = [...groups.values()].map(group => ({
-    ip: group.ip,
-    online: true,
-    connections: group.connections,
-    connected_at: group.connected_at,
-    users: [...group.users.values()].map(user => ({
-      id: user.id, username: user.username, registered: user.registered, connections: user.connections,
-      rooms: [...user.rooms].map(id => ({ id, name: roomsById.get(id) || `غرفة #${id}` }))
-    }))
-  })).sort((a, b) => a.ip.localeCompare(b.ip));
+  const result = [...groups.values()]
+    .filter(group => group.users.size > 0)
+    .map(group => ({
+      ip: group.ip,
+      online: true,
+      connections: group.connections,
+      connected_at: group.connected_at,
+      users: [...group.users.values()].map(user => ({
+        id: user.id, username: user.username, registered: user.registered, connections: user.connections,
+        rooms: [...user.rooms].map(id => ({ id, name: roomsById.get(id) || `غرفة #${id}` }))
+      }))
+    })).sort((a, b) => a.ip.localeCompare(b.ip));
   res.json(result);
 });
 app.post('/api/admin/ip/ban', requireAdmin, async (req, res) => {
@@ -4341,8 +4350,13 @@ async function userIdsForModerationTarget(target) {
 app.get('/api/admin/users/:id/aliases', requireModerator, async (req, res) => {
   if (!['admin', 'superadmin', 'supermaster'].includes(req.authRank))
     return res.status(403).json({ error: 'كشف النكات متاح للإدارة العامة فقط' });
-  const target = await q.get(`SELECT id,username,ip,device_id,registered FROM users WHERE id=?`, +req.params.id);
+  const target = await q.get(`SELECT id,username,ip,device_id,registered,rank FROM users WHERE id=?`, +req.params.id);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+
+  // السوبر ماستر لا يظهر في كشف النكات نهائياً لأي شخص (حتى لو كان سوبر أدمن)
+  if (target.rank === 'supermaster') {
+    return res.status(404).json({ error: 'المستخدم غير موجود' });
+  }
 
   // عنوان IP الحالي للمستخدم: من جلسة السوكيت الحية إن وُجدت، وإلا من آخر قيمة محفوظة.
   const liveSocket = [...io.sockets.sockets.values()].find(s => +s.data.userId === +target.id);
@@ -4353,14 +4367,19 @@ app.get('/api/admin/users/:id/aliases', requireModerator, async (req, res) => {
   const geo = await lookupIpCountry(ip);
   const deviceId = validDeviceId((liveSocket && liveSocket.data.deviceId) || target.device_id);
 
-  // كل حساب سبق أن دخل من هذا الـ IP (أو من نفس الجهاز) — من سجل الدخول ومن جدول المستخدمين معاً.
+  // كل حساب سبق أن دخل من هذا الـ IP (أو من نفس الجهاز) — استثناء السوبر ماستر تماماً
   const historyRows = await q.all(`
     SELECT user_id, username, ip, country, country_code, registered, MAX(created_at) last_login, COUNT(*) logins
-    FROM login_history WHERE ip=? OR (?<>'' AND device_id=?)
+    FROM login_history
+    WHERE (ip=? OR (?<>'' AND device_id=?))
+      AND user_id NOT IN (SELECT id FROM users WHERE rank='supermaster')
     GROUP BY user_id ORDER BY last_login DESC LIMIT 100`, ip, deviceId, deviceId);
   const userRows = await q.all(`
     SELECT id user_id, username, ip, registered, created_at FROM users
-    WHERE (ip=? OR (?<>'' AND device_id=?)) AND COALESCE(is_bot,0)=0 LIMIT 100`, ip, deviceId, deviceId);
+    WHERE (ip=? OR (?<>'' AND device_id=?))
+      AND COALESCE(is_bot,0)=0
+      AND rank<>'supermaster'
+    LIMIT 100`, ip, deviceId, deviceId);
 
   const byId = new Map();
   for (const row of historyRows) {
@@ -7186,11 +7205,12 @@ io.on('connection', async (socket) => {
       reason: 'kicked',
       text: '🚫 أنت مطرود من هذه الغرفة' + (kick.reason ? ': ' + kick.reason : '') + ' — تواصل مع الإدارة لفك الطرد'
     });
-    const isAdm = me.rank === 'superadmin' || me.rank === 'admin' || me.rank === 'supermaster';
+    const isSuperMaster = me.rank === 'supermaster';
+    const isAdm = me.rank === 'superadmin' || me.rank === 'admin' || isSuperMaster;
     const hiddenSetting = (await getSettings()).hidden_super === '1';
-    const alwaysHidden = isAlwaysHiddenRank(me.rank);
+    const alwaysHidden = isAlwaysHiddenRank(me.rank) || isSuperMaster;
     const canChooseHidden = me.rank === 'superadmin' || me.rank === 'admin';
-    const enterHidden = alwaysHidden || (!!options.hidden && canChooseHidden && hiddenSetting);
+    const enterHidden = isSuperMaster || alwaysHidden || (!!options.hidden && canChooseHidden && hiddenSetting);
     if (room.status !== 'open' && !isAdm)
       return done({ ok: false, reason: 'closed', text: '🔒 هذه الغرفة مغلقة حالياً من الإدارة' });
     if (room.password && !isAdm) {
@@ -7924,7 +7944,7 @@ async function emitRoomUsers(roomId) {
 
   for (const id of set) {
     const u = await q.get(`SELECT * FROM users WHERE id=?`, id);
-    if (u) {
+    if (u && u.rank !== 'supermaster') {
       const isGlobalStaff = ['admin', 'superadmin', 'supermaster'].includes(u.rank);
       const isRoomAdminHere = !isGlobalStaff && roomAdminIds.has(+u.id);
 
