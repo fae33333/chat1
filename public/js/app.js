@@ -2381,14 +2381,14 @@ function connectSocket() {
   SOCKET.on('mute_changed', ({ muted }) => {
     if (!ME) return;
     ME.muted = muted ? 1 : 0;
-    // الكتم لا يُنهي البث، بل يُسكّت ميكروفون المذيع مؤقتاً فقط (يظل داخل البث حتى يُفكّ الكتم فيستأنف).
+    // الكتم لا يُنهي البث، بل يُسكّت ميكروفون المذيع إجبارياً (يظل داخل البث حتى يُفكّ الكتم من المشرف فيستأنف).
     if (BCAST && BCAST.isHost && BCAST.localStream) {
       BCAST.localStream.getAudioTracks().forEach(t => { t.enabled = !muted; });
       AUDIO_BCAST_HOST_MUTED = !!muted;
       bcastUpdateHostMuteButton();
     }
     bcastRenderBar();
-    toast(muted ? 'قامت الإدارة بكتمك — تم كتم ميكروفونك' : 'قامت الإدارة بإلغاء كتمك — عاد ميكروفونك', !muted);
+    toast(muted ? 'قامت الإدارة بكتمك — تم كتم ميكروفونك إجبارياً 🚫' : 'قامت الإدارة بإلغاء كتمك — عاد ميكروفونك للعمل 🎙️', !muted);
   });
   SOCKET.on('kicked', ({ roomId, text }) => {
     if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
@@ -2791,8 +2791,16 @@ function bcastUpdateHostMuteButton() {
   if (!btn) return;
   const isAudioHost = !!(BCAST && BCAST.isHost && BCAST.mode === 'audio');
   btn.hidden = !isAudioHost;
-  btn.classList.toggle('is-muted', AUDIO_BCAST_HOST_MUTED);
-  $('#bcastHostMuteIcon').textContent = AUDIO_BCAST_HOST_MUTED ? 'mic_slash_fill' : 'mic_fill';
+  const isAdminMuted = !!(ME && ME.muted);
+  const isMuted = isAdminMuted || AUDIO_BCAST_HOST_MUTED;
+  btn.classList.toggle('is-muted', isMuted);
+  btn.classList.toggle('is-admin-muted', isAdminMuted);
+  if (isAdminMuted) {
+    btn.setAttribute('title', 'تم كتمك إجبارياً من المشرف — لا يمكنك إلغاء الكتم حتى يتم فكه من الإدارة');
+  } else {
+    btn.setAttribute('title', isMuted ? 'إلغاء كتم صوتي كمذيع' : 'كتم صوتي كمذيع');
+  }
+  $('#bcastHostMuteIcon').textContent = isMuted ? 'mic_slash_fill' : 'mic_fill';
 }
 
 // يعيد كل شيء إلى الوضع الافتراضي: إغلاق اتصالات WebRTC وإيقاف الوسائط وإخفاء الشاشة
@@ -3533,6 +3541,9 @@ $('#bcastClose').onclick = () => {
 $('#bcastEndBtn').onclick = bcastStopAsHost;
 $('#bcastHostMute').onclick = () => {
   if (!BCAST || !BCAST.isHost || BCAST.mode !== 'audio' || !BCAST.localStream) return;
+  if (ME && ME.muted) {
+    return toast('تم كتمك إجبارياً من قِبل المشرف — لا يمكنك إلغاء الكتم حتى يتم فك الكتم من الإدارة 🚫', false);
+  }
   AUDIO_BCAST_HOST_MUTED = !AUDIO_BCAST_HOST_MUTED;
   BCAST.localStream.getAudioTracks().forEach(track => { track.enabled = !AUDIO_BCAST_HOST_MUTED; });
   bcastUpdateHostMuteButton();
