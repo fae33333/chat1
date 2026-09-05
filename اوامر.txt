@@ -1,0 +1,18 @@
+apt update
+apt upgrade -y
+apt install -y nano
+apt install -y wget
+apt install -y apache2
+systemctl start apache2
+apt install npm
+npm install 
+npm install -g pm2
+
+git rm -r --cached .
+git commit -m "Remove all repository files"
+git push origin main --force
+
+
+git add -A
+git commit -m "Upload project files"
+git push -u origin main --force
