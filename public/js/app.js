@@ -1636,13 +1636,14 @@ function badgeOf(u) {
   return 'guest.png';
 }
 // الصورة الرمزية: قد تكون مسار /.. أو "emoji:🙂:#hex" أو فارغة
+// avatars زينة بصرية بجانب اسم المستخدم، لذلك alt="" (الاسم هو المحتوى النصي)
 function avatarHtml(avatar, cls = '') {
-  if (avatar && avatar.startsWith('/')) return `<img class="${cls}" src="${esc(avatar)}">`;
+  if (avatar && avatar.startsWith('/')) return `<img class="${cls}" src="${esc(avatar)}" alt="">`;
   if (avatar && avatar.startsWith('emoji:')) {
     const [, e, bg] = avatar.split(':');
     return `<span class="${cls}" style="background:${bg}">${e}</span>`;
   }
-  return `<img class="${cls}" src="/avatars/default.png">`;   // الصورة الافتراضية للجميع
+  return `<img class="${cls}" src="/avatars/default.png" alt="">`;   // الصورة الافتراضية للجميع
 }
 // يحافظ على الصفر في إعدادات الأسعار: 0 = مجاني، وليس قيمة تستبدل بالافتراضي.
 function normalizeClientNonNegativeCost(value, fallback) {
@@ -3706,8 +3707,13 @@ async function loadRooms() {
   }
   renderRooms();
 }
-function roomImgHtml(r, cls = 'room-img') {
-  if (r.image) return `<div class="${cls}"><img src="${esc(r.image)}"></div>`;
+// صورة الغرفة مع alt وأبعاد صريحة (يمنع اهتزاز التخطيط CLS ويساعد SEO/إمكانية الوصول).
+// الصورة الأولى تكون «محمّلة فوراً» لأنها عادةً عنصر LCP، والبقية lazy.
+function roomImgHtml(r, cls = 'room-img', size = 52, eager = false) {
+  if (r.image) {
+    const loading = eager ? ' fetchpriority="high"' : ' loading="lazy"';
+    return `<div class="${cls}"><img src="${esc(r.image)}" alt="${esc(r.name)}" width="${size}" height="${size}"${loading} decoding="async"></div>`;
+  }
   return `<div class="${cls}"><span>${esc(r.name)}</span></div>`;
 }
 function roomFeaturesHtml(r) {
@@ -3745,7 +3751,7 @@ function roomMiniHtml(r) {
   const isCur = CUR_ROOM && r.id === CUR_ROOM.id;
   return `
   <div class="room-mini${isCur ? ' cur' : ''}" data-id="${r.id}">
-    ${roomImgHtml(r, 'rm-img')}
+    ${roomImgHtml(r, 'rm-img', 46, false)}
     <div class="rm-info">
       <div class="rm-name">${esc(r.name)} ${r.locked ? '<i class="f7-icons" style="font-size:12px;color:#d946a6">lock_fill</i>' : ''}${r.status !== 'open' ? ' <span style="font-size:10px;color:#dc2626;font-weight:800">مغلقة 🔒</span>' : ''}</div>
       <div class="rm-desc">${esc(r.description || ('غرفة مستخدمين ' + r.owner_name))}</div>
@@ -3770,7 +3776,7 @@ function renderRooms() {
   const q1 = ($('#roomSearch').value || '').trim();
   // جميع الغرف صوتية الآن — لا يوجد تقسيم إلى أقسام.
   const list = ROOMS.filter(r => (!q1 || r.name.includes(q1)));
-  $('#roomsList').innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
+  $('#roomsList').innerHTML = list.length ? list.map((r, i) => roomRowHtml(r, i)).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
   $$('#roomsList .room-row').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
   renderRoomsPanel();
 }

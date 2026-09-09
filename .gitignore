@@ -2,6 +2,9 @@
 node_modules/
 .env
 
+# أيقونات مسارات الأرشفة المولّدة تلقائياً (تُولَّد عند التشغيل من بصمة المسار)
+public/uploads/favicons/
+
 # TLS private keys/certificates are supplied by the server (aaPanel/Let's Encrypt)
 /cert.pem
 /key.pem

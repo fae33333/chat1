@@ -2,6 +2,7 @@
 //  سيرفر شات نجوم العرب - Node.js + SQLite3 + Socket.IO
 // =====================================================
 const express = require('express');
+const compression = require('compression');
 const http = require('http');
 const https = require('https');
 const path = require('path');
@@ -200,6 +201,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// ضغط الردود (gzip/br): يقلّص حجم JS/CSS/HTML المنقول بنسبة ~70% فيُحسّن FCP/LCP
+// ويخفض «Enormous network payloads» في Lighthouse.
+app.use(compression({ level: 6 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // طبقة موحدة لحقول النص القادمة عبر API: &lt; تصبح lt; ولا تبقى بداية
@@ -434,14 +438,23 @@ app.get(['/admin', '/admin.html'], async (req, res) => {
 
 // ملفات الواجهة تتغير أثناء إدارة الخادم؛ منع تخزين JS/CSS القديمة يمنع تشغيل
 // نسخة app.js سابقة بعد النشر (خصوصاً خطأ applySettings القديم).
+// سياسات الكاش (تُحسن Lighthouse «Use efficient cache lifetimes»):
+// - الصور والخطوط والأيقونات: اسمها ثابت ومحتواها لا يتغير ⇒ كاش دائم (immutable).
+// - JS/CSS: تُحمَّل مع رابط إصدار (?v=...) يُحدَّث عند كل نشر، فيمنع كاش
+//   «أسبوع واحد» ظهور نسخة قديمة بعد النشر مع استفادة الزيارات المتكررة من الكاش.
+// - HTML: يبقى no-store دائماً (صفحات ديناميكية تتغير لحظياً).
 app.use(express.static(path.join(__dirname, 'public'), {
   index: false,
   etag: true,
   setHeaders: (res, filePath) => {
-    if (/\.(?:js|css|html)$/i.test(filePath)) {
+    if (/\.(?:html)$/i.test(filePath)) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
+    } else if (/\.(?:js|css)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+    } else if (/\.(?:woff2?|ttf|otf|eot|png|jpe?g|gif|webp|avif|svg|ico)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     }
   }
 }));
@@ -460,6 +473,66 @@ fs.mkdirSync(path.join(__dirname, 'public/uploads/calls'), { recursive: true });
 fs.mkdirSync(path.join(__dirname, 'public/uploads/sounds'), { recursive: true }); // أصوات الإشعارات (دخول/رسالة/خروج)
 // أيقونات المواقع المصغّرة (Favicon) الخاصة بمسارات الأرشفة — تُولَّد أو تُجلب تلقائياً
 fs.mkdirSync(path.join(__dirname, 'public/uploads/favicons'), { recursive: true });
+// ---------- تحسين الصور تلقائياً (اختياري عبر مكتبة sharp) ----------
+// يحوّل الصور الكبيرة (صور الغرف/الشعار) إلى WebP أصغر حتى تُحمَّل أسرع
+// ويتحسن LCP. وإن لم تتوفر المكتبة يعمل الموقع بسلامة مع الصور الأصلية.
+let sharpLib = null;
+try { sharpLib = require('sharp'); } catch (e) { sharpLib = null; }
+
+async function optimizeImageForWeb(relPath, opts = {}) {
+  const { maxWidth = 480, quality = 80, minSize = 150 * 1024 } = opts;
+  if (!sharpLib) return '';
+  const clean = String(relPath || '');
+  if (!clean.startsWith('/uploads/')) return '';
+  if (/\.(gif|svg|webp|avif)$/i.test(clean)) return '';   // GIF متحرك/SVG لا يُحوَّل
+  const abs = path.join(__dirname, 'public', clean);
+  let st;
+  try { st = fs.statSync(abs); } catch (e) { return ''; }
+  if (!st.isFile() || st.size < minSize) return '';
+  const outRel = clean.replace(/\.(png|jpe?g)$/i, '') + '.webp';
+  try {
+    await sharpLib(abs)
+      .resize({ width: maxWidth, withoutEnlargement: true })
+      .webp({ quality, effort: 4 })
+      .toFile(path.join(__dirname, 'public', outRel));
+    const outSt = fs.statSync(path.join(__dirname, 'public', outRel));
+    if (outSt.size >= st.size * 0.9) {
+      try { fs.unlinkSync(path.join(__dirname, 'public', outRel)); } catch (e) { }
+      return '';
+    }
+    return outRel;
+  } catch (e) { return ''; }
+}
+
+// تحسين لمرة واحدة (قابلة للتكرار بلا أثر) لصور الغرف والشعار الكبيرة الموجودة:
+// يُنشأ ملف WebP بجانب الأصل ويُحدَّث مسار الغرفة/الشعار إن كان أصغر.
+function migrateLargeImages() {
+  if (!sharpLib) return;
+  (async () => {
+    try {
+      const rooms = await q.all(`SELECT id, image FROM rooms`);
+      for (const r of rooms) {
+        const img = String(r.image || '');
+        if (!img.startsWith('/uploads/rooms/')) continue;
+        const opt = await optimizeImageForWeb(img, { maxWidth: 480, quality: 80 });
+        if (opt) {
+          await q.run(`UPDATE rooms SET image=? WHERE id=? AND image=?`, opt, r.id, img);
+          console.log('✔ صورة غرفة مُحسَّنة:', img, '→', opt);
+        }
+      }
+      const s = await getSettings();
+      const logo = String(s.logo_url || '');
+      if (logo.startsWith('/uploads/') && !/\.(gif|svg)$/i.test(logo)) {
+        const opt = await optimizeImageForWeb(logo, { maxWidth: 256, quality: 82, minSize: 60 * 1024 });
+        if (opt) {
+          await q.run(`INSERT INTO settings (key,value) VALUES ('logo_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, opt);
+          console.log('✔ الشعار مُحسَّن:', logo, '→', opt);
+        }
+      }
+    } catch (e) { console.warn('تحسين الصور:', e.message); }
+  })();
+}
+
 function safeUploadFilename(originalName, defaultExt = '.png') {
   const ext = path.extname(originalName || '').toLowerCase().replace(/[^a-z0-9.]/g, '');
   const cleanExt = ext && ext.length <= 6 ? ext : defaultExt;
@@ -3931,11 +4004,13 @@ app.post('/api/admin/upload/emoji', requireSuperAdmin, (req, res) => {
     res.json({ ok: true, path: '/uploads/emojis/' + req.file.filename });
   });
 });
-// صورة الغرفة
+// صورة الغرفة — تُحسَّن تلقائياً (WebP) إن كانت كبيرة فتُحمَّل أسرع (LCP)
 app.post('/api/admin/upload/room', requireAdmin, (req, res) => {
-  uploadMedia.single('file')(req, res, (err) => {
+  uploadMedia.single('file')(req, res, async (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر الرفع: ' + (err ? err.message : 'لا يوجد ملف') });
-    res.json({ ok: true, path: '/uploads/rooms/' + req.file.filename });
+    const origPath = '/uploads/rooms/' + req.file.filename;
+    const optimized = await optimizeImageForWeb(origPath, { maxWidth: 480, quality: 80 });
+    res.json({ ok: true, path: optimized || origPath, optimized: !!optimized });
   });
 });
 
@@ -5022,7 +5097,12 @@ app.post('/api/notifications/:id/read', requireUser, async (req, res) => {
 // ---- الشعار ----
 app.post('/api/admin/logo', requireSuperAdmin, upload.single('logo'), async (req, res) => {
   let url = req.body.logo_url || '';
-  if (req.file) url = '/uploads/' + req.file.filename;
+  if (req.file) {
+    url = '/uploads/' + req.file.filename;
+    // الشعار يُعرض صغيراً: نحوله إلى WebP بمقاس مناسب لتسريع التحميل
+    const optimized = await optimizeImageForWeb(url, { maxWidth: 256, quality: 82, minSize: 60 * 1024 });
+    if (optimized) url = optimized;
+  }
   await q.run(`INSERT INTO settings (key,value) VALUES ('logo_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, url);
   res.json({ ok: true, logo_url: url });
 });
@@ -5364,6 +5444,8 @@ app.post('/api/admin/seo-pages', requireSuperAdmin, async (req, res) => {
     await q.run(`INSERT INTO seo_pages (slug, title, description, keywords, logo_image, site_name, favicon, h1, intro, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,strftime('%s','now'))`,
       slug, title, description, keywords, logo_image, site_name, favicon, h1, intro, active);
   }
+  // إبلاغ Google/Bing فور تفعيل/تعديل مسار حتى يُفهرَس بأول النتائج أسرع
+  if (active) pingSearchEngines(req);
   res.json({ ok: true, favicon, h1, intro });
 });
 
@@ -5516,20 +5598,100 @@ const SEO_FAQ_POOL = [
   ['هل بياناتي الشخصية محفوظة؟', '{site} لا يطلب أي بيانات حساسة، ويمكنك استخدام الموقع كزائر، وتبقى المحادثات الخاصة محفوظة داخل حسابك فقط.']
 ];
 
-// يبني حزمة محتوى فريدة كاملة (H1 + مقدمة + FAQ) لنمط ومسار محددين
+// جُمل ختام قصيرة غنية بكلمات البحث تُضاف لنهاية الوصف الفريد
+const SEO_DESC_CLOSERS = {
+  top_rank: 'دخول مجاني الآن — بدون تسجيل أو تحميل أي تطبيق.',
+  voice: 'مايكات مفتوحة وبث مباشر عالي الجودة — جربها مجاناً الآن.',
+  dating: 'بيئة محترمة وآمنة — ابدأ محادثتك الأولى مجاناً الآن.',
+  mobile: 'افتح الرابط وابدأ الدردشة فوراً — بدون تثبيت أو تسجيل.',
+  regional: 'أهل {region} — ادخل مجاناً وشارك في المحادثة الآن.'
+};
+
+// مميزات قصيرة لكل نمط — تُعرض كقائمة في محتوى الصفحة الفريد
+const SEO_FEATURES_POOL = {
+  top_rank: [
+    'دردشة صوتية وكتابية في المكان نفسه على مدار الساعة',
+    'دخول فوري كزائر أو حساب مجاني يحفظ بياناتك',
+    'إشراف متواصل على مدار اليوم للحفاظ على الأجواء',
+    'تعارف وتواصل مباشر مع أصدقاء من كل الدول العربية',
+    'إرسال الصور والمقاطع الصوتية والرسائل الخاصة',
+    'يعمل من الجوال أو الحاسوب بنقرة واحدة'
+  ],
+  voice: [
+    'غرف صوتية مفتوحة ومايكات مباشرة بجودة عالية',
+    'مكالمات صوتية خاصة بين عضوين مع إشعار فوري',
+    'بث مباشر تفاعلي للمذيع مع من في الغرفة',
+    'نقاء صوت ونقل ثابت دون برامج خارجية',
+    'أدوات كتم وإدارة لضمان جودة البث',
+    'جرّب الغرف الصوتية كزائر قبل إنشاء حسابك'
+  ],
+  dating: [
+    'غرف عامة للتعارف وأخرى خاصة لمحادثات أهدأ',
+    'ملف شخصي يعرض العمر والدولة والاهتمامات',
+    'هدايا افتراضية للتعبير عن الإعجاب بكرامة',
+    'إشراف متواصل مع أدوات كتم وتبليغ',
+    'احترام تام للخصوصية دون طلب بيانات حساسة',
+    'تواصل مع أعضاء من مختلف الدول في غرفة واحدة'
+  ],
+  mobile: [
+    'واجهة خفيفة مصممة للجوال أولاً',
+    'يعمل على أندرويد وآيفون وكل المتصفحات',
+    'استهلاك منخفض للبيانات مع إعادة اتصال تلقائية',
+    'أزرار كبيرة وخطوط واضحة للراحة البصرية',
+    'تنقل بين الغرف بلمسة واحدة',
+    'الوضع الليلي والجلود حسب راحتك'
+  ],
+  regional: [
+    'غرفة مخصصة لأهل {region} بالتراث والأجواء المحلية',
+    'تعارف ودردشة يومية في أجواء مألوفة',
+    'دخول باسم مستعار دون أي إجراءات',
+    'إشراف محلي يحافظ على احترام الجميع',
+    'دردشة كتابية وصوتية معاً دون تنقل',
+    'حساب مجاني يحفظ اسمك من الاستخدام من غيره'
+  ]
+};
+
+// يختصر النص لطول عرض Google للوصف (~155 حرفاً) عند حد كلمة
+function trimForMeta(text, max = 155) {
+  let t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const sp = cut.lastIndexOf(' ');
+  return (sp > 80 ? cut.slice(0, sp) : cut).replace(/[\s.,،;؛]+$/, '');
+}
+
+// جملتان مختلفتان بالترتيب ثابت لكل بصمة
+function pickTwoDistinct(list, seed) {
+  if (!Array.isArray(list) || !list.length) return [];
+  const n = list.length;
+  if (n === 1) return [list[0]];
+  const sd = Number(seed) >>> 0;   // Unsigned: bit-shifts on big seeds can go negative
+  let a = sd % n, b = (sd + 1) % n;
+  while (b === a) b = (b + 1) % n;
+  return [list[a], list[b]];
+}
+
+// يبني حزمة محتوى فريدة كاملة (H1 + مقدمة + مميزات + وصف + FAQ) لنمط ومسار محددين
 function buildUniqueSeoContent(variationId, slug, siteName, baseName, region) {
   const seed = slugSeed(slug + '|' + variationId);
   const ctx = { site: siteName, base: baseName, region: region || baseName, slug };
   const h1Pool = SEO_H1_POOL[variationId] || SEO_H1_POOL.top_rank;
   const sentPool = SEO_SENTENCE_POOL[variationId] || SEO_SENTENCE_POOL.top_rank;
+  const featPool = SEO_FEATURES_POOL[variationId] || SEO_FEATURES_POOL.top_rank;
   const h1 = fillTemplate(pickBySeed(h1Pool, seed, 0), ctx);
-  const sentences = pickMany(sentPool, seed, 4).map(t => fillTemplate(t, ctx));
-  const intro = sentences.join(' ');
-  const faq = pickMany(SEO_FAQ_POOL, seed, 3).map(([q, a]) => ({
+  const introSents = pickMany(sentPool, seed, 5).map(t => fillTemplate(t, ctx));
+  const intro = introSents.join(' ');
+  // الوصف: جملتان من الجمل «المتبقية» (لا تتكرر مع المقدمة) + خاتمة بحثية
+  const rest = sentPool.filter(t => !introSents.includes(fillTemplate(t, ctx)));
+  const descSrc = rest.length >= 2 ? rest : sentPool;
+  const descSents = pickTwoDistinct(descSrc, seed >>> 2).map(t => fillTemplate(t, ctx));
+  const description = trimForMeta(descSents.join(' ') + ' ' + fillTemplate(SEO_DESC_CLOSERS[variationId] || SEO_DESC_CLOSERS.top_rank, ctx));
+  const features = pickMany(featPool, seed, 3).map(t => fillTemplate(t, ctx));
+  const faq = pickMany(SEO_FAQ_POOL, seed, 4).map(([q, a]) => ({
     q: fillTemplate(q, ctx),
     a: fillTemplate(a, ctx)
   }));
-  return { h1, intro, faq };
+  return { h1, intro, features, description, faq };
 }
 function pickVariationForSlug(slug, variations) {
   if (!Array.isArray(variations) || !variations.length) return null;
@@ -5552,8 +5714,8 @@ function generateSlugFavicon(slug) {
   const safe = String(slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'page';
   const seed = slugSeed(safe);
   const [c1, c2] = FAVICON_PALETTES[seed % FAVICON_PALETTES.length];
-  const glyph = FAVICON_GLYPHS[(seed >> 3) % FAVICON_GLYPHS.length];
-  const rot = (seed >> 5) % 360;
+  const glyph = FAVICON_GLYPHS[(seed >>> 3) % FAVICON_GLYPHS.length];
+  const rot = (seed >>> 5) % 360;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">`
     + `<defs><linearGradient id="g" gradientTransform="rotate(${rot} 0.5 0.5)">`
     + `<stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>`
@@ -5696,7 +5858,7 @@ function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName)
   let baseName = target.replace(/^(\u0634\u0627\u062a|\u062f\u0631\u062f\u0634\u0629)\s+/i, '').trim() || target;
   if (!baseName) baseName = '\u0627\u0644\u0639\u0631\u0628';
 
-  let siteName = target.startsWith('\u0634\u0627\u062a') || target.startsWith('\u062f\u0631\u062f\u0634\u0629') ? target : `\u0634\u0627\u062a ${target}`;
+  let siteName = target.startsWith('\u0634\u0627\u062a') || target.startsWith('\u062f\u0631\u062f\u0634\u0629') || target.startsWith('\u0634\u0628\u0643\u0629') ? target : `\u0634\u0627\u062a ${target}`;
 
   const regions = [
     '\u0627\u0644\u0623\u0631\u062f\u0646', '\u0627\u0644\u0627\u0631\u062f\u0646', '\u0627\u0644\u0633\u0639\u0648\u062f\u064a\u0629', '\u0645\u0635\u0631', '\u0627\u0644\u062e\u0644\u064a\u062c', '\u0627\u0644\u0643\u0648\u064a\u062a', '\u0627\u0644\u0639\u0631\u0627\u0642', '\u0627\u0644\u0645\u063a\u0631\u0628',
@@ -5767,11 +5929,14 @@ function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName)
     variations.unshift(vRegion);
   }
 
-  // نضيف لكل نمط محتوى فريداً (H1 + مقدمة + أسئلة شائعة) مشتقاً من بصمة المسار
+  // نضيف لكل نمط محتوى فريداً (H1 + مقدمة + مميزات + وصف + أسئلة شائعة)
+  // مشتقاً من بصمة المسار — فيختلف كل مسار عن غيره حتى داخل النمط الواحد
   for (const v of variations) {
     const uni = buildUniqueSeoContent(v.id, finalSlug, v.site_name, baseName, matchedRegion);
     v.h1 = uni.h1;
     v.intro = uni.intro;
+    v.features = uni.features;
+    v.description = uni.description;
     v.faq = uni.faq;
   }
 
@@ -5799,6 +5964,7 @@ function buildAutoSeoPackage(slug, siteNameHint) {
     site_name: chosen.site_name,
     h1: chosen.h1 || '',
     intro: chosen.intro || '',
+    features: chosen.features || [],
     faq: chosen.faq || [],
     variation: chosen.id || ''
   };
@@ -6246,6 +6412,100 @@ const RESERVED_SLUGS = new Set([
   'admin.html', 'index.html', 'socket.io', 'favicon.ico'
 ]);
 
+// CSS الحرج للرسم الأول — مستخرَج حرفياً من style.css (نفس الأبعاد والألوان
+// بالضبط حتى يبقى Cumulative Layout Shift = 0). يحتوي @font-face لتبدأ الخطوط
+// بالتحميل فوراً، وتخطيط شاشة الغرف كاملة (العنوان + قائمة الغرف).
+const CRITICAL_CSS = `
+@font-face{font-family:"Noto Sans Arabic";src:url("/fonts/NotoSansArabic-Regular.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Noto Sans Arabic";src:url("/fonts/NotoSansArabic-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"Noto Sans Arabic";src:url("/fonts/NotoSansArabic-SemiBold.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:"Noto Sans Arabic";src:url("/fonts/NotoSansArabic-Bold.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:"Framework7 Icons";font-style:normal;font-weight:400;font-display:swap;src:url("/icons/Framework7Icons-Regular.woff2") format("woff2"),url("/icons/Framework7Icons-Regular.woff") format("woff"),url("/icons/Framework7Icons-Regular.ttf") format("truetype")}
+*{margin:0;padding:0;box-sizing:border-box;font-family:"Noto Sans Arabic","SF Arabic","SF Pro Text",Arial,sans-serif !important;-webkit-tap-highlight-color:transparent}
+.f7-icons,.framework7-icons{font-family:"Framework7 Icons" !important}
+:root{--main:#1479f2;--main2:#3b8cff;--maroon:#9c1e46;--orange1:#ffa94d;--orange2:#f97316;--orange3:#e8590c;--navy:#2c3154;--gray:#6a7186;--line:#e5e7f0;--bg:#f7f8fc;--njomarab-theme-color:#d946a6;--msg-font-size:14px}
+html,body{height:100%}
+body{background:#0e1220;display:flex;justify-content:center}
+.dots-bg{background-size:7px 7px}
+#frame{width:100%;max-width:430px;height:100vh;height:100dvh;background:var(--bg);display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 0 60px rgba(0,0,0,.55)}
+.top-strip{display:none}
+.main-stage{display:flex;flex-direction:column;flex:1;min-height:0}
+.screen{flex:1;display:none;flex-direction:column;min-height:0;position:relative}
+.screen.active{display:flex}
+.r-head{direction:ltr;display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--line);flex:none}
+.r-logo{display:flex;align-items:center;gap:8px}
+.r-logo-ico{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:linear-gradient(150deg,var(--orange1),var(--orange2) 60%,var(--orange3));box-shadow:0 4px 10px rgba(249,115,22,.4)}
+.r-logo-ico i{color:#fff;font-size:20px}
+.r-logo-txt{font-size:19px;font-weight:900;color:var(--navy)}
+.r-logo img{height:36px;max-width:130px;object-fit:contain}
+.btn-enter{background:var(--main);color:#fff;border:0;border-radius:8px;padding:8px 22px;font-size:13.5px;font-weight:800;cursor:pointer;box-shadow:0 4px 10px rgba(20,121,242,.3)}
+.head-user{display:flex;align-items:center;gap:7px;background:none;border:0;cursor:pointer}
+.head-ava{width:30px;height:30px;border-radius:50%;overflow:hidden;background:linear-gradient(150deg,var(--orange1),var(--orange3));color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px}
+.head-ava img{width:100%;height:100%;object-fit:cover}
+.head-name{color:var(--main);font-weight:800;font-size:13px;max-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r-search{padding:6px 10px 6px;flex:none;border-bottom:1px solid #eef0f7;direction:ltr}
+.r-search textarea{border:0;outline:none;resize:none;background:#0f172a14;font-family:inherit;font-size:15px;font-weight:600;color:#374151;text-align:-webkit-match-parent;padding:8px 8px;display:block;line-height:1;direction:ltr;border-radius:41px}
+.r-list{flex:1;overflow-y:auto;padding:10px 12px 14px;background:#0f172a0a;scrollbar-width:none;scrollbar-color:#acacb5 #cdd4de}
+.room-row{direction:ltr;display:flex;align-items:center;gap:10px;background:#fff;border-radius:7px;padding:9px 10px;margin-bottom:9px;cursor:pointer;border:1px solid #eef0f7;box-shadow:0 1px 3px rgba(20,25,60,.05);transition:.15s}
+.room-row:active{transform:scale(.985)}
+.room-img{width:52px;height:52px;border-radius:10px;flex:none;color:#fff;overflow:hidden;background:linear-gradient(165deg,var(--orange1),var(--orange2) 55%,var(--orange3));display:flex;align-items:flex-end;justify-content:center;font-weight:900;font-size:11.5px;text-align:center;line-height:1.3;box-shadow:inset 0 -14px 20px rgba(150,60,0,.25)}
+.room-img img{width:100%;height:100%;object-fit:cover;display:block}
+.room-info{flex:1;min-width:0;text-align:left}
+.room-name{font-weight:900;font-size:16.5px;color:var(--navy)}
+.room-desc{font-size:12.5px;color:var(--gray);margin-top:5px;font-weight:700}
+.room-side{display:flex;flex-direction:column;align-items:center;gap:0px;flex:none}
+.room-count{display:flex;align-items:center;gap:4px;font-size:12.5px;color:var(--navy);font-weight:900;direction:ltr}
+.room-count i{font-size:15px;color:#8a90a5}
+.room-chev{color:#c3c8d8;font-size:16px}
+.room-feats{display:flex;gap:6px;color:#64748b}
+.room-feats i{font-size:14px}
+.pv-empty{text-align:center;padding:80px 20px;color:var(--navy)}
+.pv-empty i{font-size:70px;color:#33415c;display:block;margin-bottom:14px}
+.pv-empty div{font-size:14px;font-weight:800}
+.seo-only{position:absolute !important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:normal;border:0}
+`.trim();
+
+// يبدّل روابط الأوراق المنسقة: يُلحق CSS الحرج مضمّناً داخل <style> (فلا ينتظر
+// المتصفح تحميل 290KB قبل أول رسم)، ويحمّل style.css الكامل بعد أول رسم دون
+// كونه render-blocking. هذا يحلّ تدقيق «Render-blocking requests» مباشرة.
+function applyCriticalCss(html) {
+  const styleTag = `<style>${CRITICAL_CSS}</style>`;
+  let injected = false;
+  return html.replace(/<link rel="stylesheet"[^>]*>/gi, (link) => {
+    if (!/style\.css/.test(link)) return ''; // خطوط/أيقونات: محتواها مضمّن في CSS الحرج
+    if (!injected) {
+      injected = true;
+      const href = (link.match(/href="([^"]+)"/) || [])[1] || '/css/style.css';
+      return `${styleTag}\n<link rel="stylesheet" href="${href}" media="print" onload="this.media='all'">\n<noscript><link rel="stylesheet" href="${href}"></noscript>`;
+    }
+    return '';
+  });
+}
+
+// بناء صفوف الغرف على الخادم (نفس علامة HTML التي يبنيها app.js تماماً):
+// - أول رسم للصفحة يعرض الغرف فوراً دون انتظار app.js (≈600KB) ⇒ LCP أسرع بمرات.
+// - محركات البحث ترى الغرف الحقيقية مباشرة في HTML (SEO أقوى بلا الاعتماد على JS).
+// - الصورة الأولى fetchpriority="high" والبقية lazy.
+function buildSeoRoomRows(rooms, onlineCounts) {
+  if (!Array.isArray(rooms) || !rooms.length) return '';
+  return rooms.slice(0, 30).map((r, i) => {
+    const name = String(r.name || '');
+    const desc = String(r.description || '');
+    const img = String(r.image || '').trim();
+    const online = (onlineCounts && onlineCounts[r.id]) || 0;
+    const max = +r.max_users || 1000;
+    const locked = !!(r.password && String(r.password).trim().length > 0);
+    const feats = ['<i class="f7-icons" title="دردشة كتابية">bubble_left_bubble_right_fill</i>'];
+    if (String(r.type) === 'voice') feats.push('<i class="f7-icons" title="غرفة صوتية">music_mic</i>');
+    if (String(r.status) !== 'open') feats.push('<i class="f7-icons" title="الغرفة مغلقة" style="color:#dc2626">lock_circle_fill</i>');
+    if (locked) feats.push('<i class="f7-icons" title="غرفة برقم سري" style="color:#d946a6">lock_fill</i>');
+    const imgHtml = img
+      ? `<img src="${esc(img)}" alt="${esc(name)}" width="52" height="52"${i === 0 ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async">`
+      : `<span>${esc(name)}</span>`;
+    return `<div class="room-row" data-id="${+r.id}"><div class="room-img">${imgHtml}</div><div class="room-info"><div class="room-name">${esc(name)}</div><div class="room-desc">${esc(desc)}</div></div><div class="room-side"><div class="room-count"><i class="f7-icons">person_2_fill</i><b>${online}</b>/${max}</div><i class="f7-icons room-chev">chevron_right</i><div class="room-feats">${feats.join('')}</div></div></div>`;
+  }).join('');
+}
+
 async function renderSeoChatHtml(slug = 'default', req = null) {
   let indexHtml = fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf-8');
   let seo = null;
@@ -6260,6 +6520,18 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   const pageUrl = isCustomSlug ? `${proto}://${host}/${slug}` : `${proto}://${host}/`;
 
   let siteName = '';
+  if (isCustomSlug) siteName = (seo && seo.site_name) || slug;
+  else siteName = settings.site_name || 'الدردشة العربية';
+
+  // حزمة التفريد: محتوى فريد لكل مسار (H1 + مقدمة + مميزات + FAQ + وصف)
+  // مشتق من بصمة المسار نفسه، فلا يتطابق مساران (منع «التعاض/التكرار» في Google).
+  let pkg = null;
+  try {
+    // لو الاسم ASCII (المسار نفسه) نترك الاشتقاق لقاموس الكلمات فيحصل على اسم عربي مقروء
+    const hint = /[\u0600-\u06FF]/.test(siteName) ? siteName : '';
+    pkg = buildAutoSeoPackage(isCustomSlug ? slug : 'home', hint);
+  } catch (e) { }
+
   let title = '';
   let desc = '';
   let keywords = '';
@@ -6267,14 +6539,12 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   let favicon = '';
 
   if (isCustomSlug) {
-    siteName = (seo && seo.site_name) || slug;
-    title = (seo && seo.title) || `${siteName} | أفضل شات عربي كتابي وصوتي مجاني بدون تسجيل`;
-    desc = (seo && seo.description) || `انضم الآن إلى ${siteName} واستمتع بأقوى دردشة صوتية وكتابية مجانية بدون تسجيل. تعارف وتواصل فوري مع أصدقاء جدد في غرف محادثة متميزة وآمنة على مدار الساعة.`;
-    keywords = (seo && seo.keywords) || `${siteName}, شات ${siteName}, دردشة ${siteName}, شات ${slug}, دردشة صوتية, شات كتابي, تعارف مجاني, غرف دردشة, شات عربي, شات جوال`;
+    title = (seo && seo.title) || (pkg && pkg.title) || `${siteName} | أفضل شات عربي كتابي وصوتي مجاني بدون تسجيل`;
+    desc = (seo && seo.description) || (pkg && pkg.description) || `انضم الآن إلى ${siteName} واستمتع بأقوى دردشة صوتية وكتابية مجانية بدون تسجيل. تعارف وتواصل فوري مع أصدقاء جدد في غرف محادثة متميزة وآمنة على مدار الساعة.`;
+    keywords = (seo && seo.keywords) || (pkg && pkg.keywords) || `${siteName}, شات ${siteName}, دردشة ${siteName}, شات ${slug}, دردشة صوتية, شات كتابي, تعارف مجاني, غرف دردشة, شات عربي, شات جوال`;
     image = (seo && seo.logo_image) || settings.seo_image || settings.logo_url || '/img/announcement.png';
     favicon = await ensureSeoFavicon(seo, settings);
   } else {
-    siteName = settings.site_name || 'الدردشة العربية';
     title = settings.seo_title || `${siteName} | أفضل شات عربي كتابي وصوتي مجاني بدون تسجيل`;
     desc = settings.seo_description || `انضم الآن إلى ${siteName}، منصة الدردشة العربية الأولى للتواصل الصوتي والكتابي المباشر مجاناً بدون تسجيل. غرف محادثة متميزة وآمنة على مدار الساعة.`;
     keywords = settings.seo_keywords || `${siteName}, شات, دردشة صوتية, شات صوتي, دردشة كتابية, شات عربي, تعارف, غرف دردشة, شات جوال`;
@@ -6284,22 +6554,28 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
 
   const fullImageUrl = image.startsWith('http://') || image.startsWith('https://') ? image : `${proto}://${host}${image.startsWith('/') ? image : '/' + image}`;
 
-  // محتوى نصي فريد لكل مسار: عنوان H1 + فقرة تعريفية + أسئلة شائعة.
-  // يُبنى من بصمة المسار إن لم تكن الإدارة قد كتبته يدوياً، فيختلف من مسار لآخر.
   let pageH1 = (seo && String(seo.h1 || '').trim()) || '';
   let pageIntro = (seo && String(seo.intro || '').trim()) || '';
+  let pageFeatures = [];
   let pageFaq = [];
-  try {
-    const pkg = buildAutoSeoPackage(isCustomSlug ? slug : 'home', siteName);
+  if (pkg) {
     if (!pageH1) pageH1 = pkg.h1;
     if (!pageIntro) pageIntro = pkg.intro;
+    pageFeatures = Array.isArray(pkg.features) ? pkg.features : [];
     pageFaq = Array.isArray(pkg.faq) ? pkg.faq : [];
-  } catch (e) { }
+    // اسم عربي مقروء للوسوم (author/og:site_name) إن لم يكتبه المدير
+    if (isCustomSlug && (!seo || !String(seo.site_name || '').trim()) && pkg.site_name) siteName = pkg.site_name;
+  }
+
+  const featuresHtml = pageFeatures.length
+    ? `<ul>${pageFeatures.map(f => `<li>${esc(f)}</li>`).join('')}</ul>`
+    : '';
 
   const seoBody = `
 <div class="seo-only" id="seoLandingContent">
-  <h1>${esc(pageH1 || title)}</h1>
-  <p>${esc(pageIntro || desc)}</p>
+  <h1 id="seoPageH1">${esc(pageH1 || title)}</h1>
+  <p id="seoPageIntro">${esc(pageIntro || desc)}</p>
+  ${featuresHtml}
   ${pageFaq.length ? `<h2>الأسئلة الشائعة حول ${esc(siteName)}</h2>` + pageFaq.map(f => `<h3>${esc(f.q)}</h3><p>${esc(f.a)}</p>`).join('\n  ') : ''}
 </div>`;
 
@@ -6316,6 +6592,17 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
 }
 </script>` : '';
 
+  // preload لصورة LCP (أول صورة غرفة) لتبدأ التحميل فوراً مع HTML
+  let lcpImage = '';
+  let lcpPreload = '';
+  try {
+    const firstRoom = await q.get(`SELECT image FROM rooms WHERE status='open' AND image<>'' ORDER BY sort ASC, id ASC LIMIT 1`);
+    if (firstRoom && String(firstRoom.image).trim()) lcpImage = String(firstRoom.image).trim();
+  } catch (e) { }
+  if (lcpImage && !lcpImage.startsWith('http')) {
+    lcpPreload = `\n<link rel="preload" as="image" href="${esc(lcpImage)}" fetchpriority="high">`;
+  }
+
   const metaTags = `
 <title id="pageDocTitle">${esc(title)}</title>
 <link rel="canonical" href="${esc(pageUrl)}">
@@ -6326,6 +6613,7 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
 <meta name="keywords" content="${esc(keywords)}">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
 <meta name="author" content="${esc(siteName)}">
+<meta name="theme-color" content="#1479f2">
 <meta property="og:type" content="website">
 <meta property="og:url" content="${esc(pageUrl)}">
 <meta property="og:title" content="${esc(title)}">
@@ -6342,6 +6630,7 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
 {
   "@context": "https://schema.org",
   "@type": "WebApplication",
+  "@id": ${JSON.stringify(pageUrl + '#webapp')},
   "name": ${JSON.stringify(siteName)},
   "alternateName": ${JSON.stringify(title)},
   "url": ${JSON.stringify(pageUrl)},
@@ -6350,6 +6639,10 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   "operatingSystem": "All",
   "inLanguage": "ar",
   "image": ${JSON.stringify(fullImageUrl)},
+  "speakable": {
+    "@type": "SpeakableSpecification",
+    "cssSelector": ["#seoPageH1", "#seoPageIntro"]
+  },
   "offers": {
     "@type": "Offer",
     "price": "0",
@@ -6359,15 +6652,30 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
 </script>
 ${faqSchema}
 <script>window.SEO_PAGE_CONFIG = ${JSON.stringify({ slug, title, description: desc, keywords, logo_image: image, site_name: siteName, favicon, page_url: pageUrl, h1: pageH1 })};</script>
+${lcpPreload}
   `.trim();
 
   indexHtml = indexHtml.replace(/<title[\s\S]*?<\/title>/i, metaTags);
+  // CSS حرج مضمّن + تحميل بقية style.css بعد أول رسم (بدون render-blocking)
+  indexHtml = applyCriticalCss(indexHtml);
+  // ---- عرض الغرف من الخادم (SSR): LCP أسرع + محتوى حقيقي لمحركات البحث ----
+  let roomsHtml = '';
+  try {
+    const rooms = await q.all(`SELECT id, name, description, image, type, max_users, status, password FROM rooms WHERE status='open' ORDER BY sort ASC, id ASC LIMIT 30`);
+    const counts = {};
+    for (const [rid, set] of Object.entries(roomUsers)) counts[rid] = set ? set.size : 0;
+    roomsHtml = buildSeoRoomRows(rooms, counts);
+  } catch (e) { }
+  if (roomsHtml) {
+    indexHtml = indexHtml.replace('<div class="r-list" id="roomsList"></div>', `<div class="r-list" id="roomsList">${roomsHtml}</div>`);
+  }
   // المحتوى الفريد يُحقن مباشرة بعد <body> حتى تراه محركات البحث قبل أي سكربت
   if (indexHtml.indexOf('id="seoLandingContent"') === -1) {
     indexHtml = indexHtml.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs}>\n${seoBody}`);
   }
   return indexHtml;
 }
+
 
 // ---------- خريطة الموقع (sitemap.xml) وملف robots.txt ----------
 // يعرضان كل مسارات الأرشفة المفعّلة تلقائياً؛ أي مسار جديد يضاف للوحة التحكم
@@ -6378,30 +6686,111 @@ function siteBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
+// يُبلّغ محركات البحث بتغيّر خريطة الموقع (مسار أرشفة جديد/محدَّث)
+// ليُفهرَس المسار الجديد بأقرب وقت. ناري بلا انتظار (fire-and-forget)
+// فلا يبطئ طلب الإدارة أبداً.
+function pingSearchEngines(req) {
+  try {
+    const base = siteBaseUrl(req);
+    if (!base) return;
+    const sitemap = `${base}/sitemap.xml`;
+    const targets = [
+      'https://www.google.com/ping?sitemap=' + encodeURIComponent(sitemap),
+      'https://www.bing.com/ping?sitemap=' + encodeURIComponent(sitemap)
+    ];
+    for (const t of targets) {
+      (async () => {
+        try {
+          const c = new AbortController();
+          const timer = setTimeout(() => { try { c.abort(); } catch (e) { } }, 8000);
+          await fetch(t, { signal: c.signal, method: 'GET' });
+          clearTimeout(timer);
+        } catch (e) { }
+      })();
+    }
+  } catch (e) { }
+}
+
+// ---------- خرائط الموقع: فهرس + خريطة مستقلة لكل مسار + ملفات robots.txt ----------
+// البنية (نمط Sitemap Index المعتمد للمواقع متعددة المسارات):
+//   /sitemap.xml          ← فهرس: خريطة الرئيسية + خريطة كل مسار أرشفة
+//   /sitemap-home.xml     ← خريطة الصفحة الرئيسية
+//   /sitemap-<slug>.xml   ← خريطة مستقلة لكل مسار (مثال: /sitemap-chat1.xml)
+//   /robots.txt           ← قواعد الزحف + الإعلان عن كل الخرائط
+//   /<slug>/robots.txt    ← robots.txt مستقل لكل مسار (مثال: /chat1/robots.txt)
+function sitemapIso(ts) {
+  const n = Number(ts || 0);
+  const d = n > 0 ? new Date(n * 1000) : new Date();
+  return d.toISOString().replace(/\.\d+Z$/, '+00:00');
+}
+function sitemapImageTag(img, base) {
+  if (!img) return '';
+  const abs = /^https?:\/\//i.test(img) ? img : `${base}${img.startsWith('/') ? img : '/' + img}`;
+  return `\n    <image:image xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n      <image:loc>${abs}</image:loc>\n    </image:image>`;
+}
+function sitemapUrlEntry(loc, lastmod, changefreq, priority, imgTag) {
+  return `  <url>\n    <loc>${loc}</loc>\n    <lastmod>${sitemapIso(lastmod)}</lastmod>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>${imgTag}\n  </url>`;
+}
+function sitemapUrlSetXml(entries) {
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join('\n')}\n</urlset>`;
+}
+function sitemapIndexXml(entries) {
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join('\n')}\n</sitemapindex>`;
+}
+
+// الفهرس الرئيسي: يفضي إلى خريطة الرئيسية + خريطة مستقلة لكل مسار مفعّل
 app.get('/sitemap.xml', async (req, res) => {
   try {
     const rows = await q.all(`SELECT slug, updated_at, created_at FROM seo_pages WHERE active=1 ORDER BY id ASC`);
     const base = siteBaseUrl(req);
-    const iso = ts => {
-      const n = Number(ts || 0);
-      const d = n > 0 ? new Date(n * 1000) : new Date();
-      return d.toISOString().replace(/\.\d+Z$/, '+00:00');
-    };
-    const urls = [];
-    urls.push(`  <url>\n    <loc>${base}/</loc>\n    <lastmod>${iso(Math.floor(Date.now() / 1000))}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>`);
+    const entries = [`  <sitemap>\n    <loc>${base}/sitemap-home.xml</loc>\n    <lastmod>${sitemapIso(Math.floor(Date.now() / 1000))}</lastmod>\n  </sitemap>`];
     for (const r of rows) {
-      urls.push(`  <url>\n    <loc>${base}/${String(r.slug)}</loc>\n    <lastmod>${iso(r.updated_at || r.created_at)}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`);
+      entries.push(`  <sitemap>\n    <loc>${base}/sitemap-${String(r.slug)}.xml</loc>\n    <lastmod>${sitemapIso(r.updated_at || r.created_at)}</lastmod>\n  </sitemap>`);
     }
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`;
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.type('application/xml').send(xml);
+    res.type('application/xml').send(sitemapIndexXml(entries));
   } catch (e) {
     res.status(500).type('text/plain').send('sitemap error');
   }
 });
 
+// خريطة الصفحة الرئيسية
+app.get('/sitemap-home.xml', async (req, res) => {
+  try {
+    const s = await getSettings();
+    const base = siteBaseUrl(req);
+    const entry = sitemapUrlEntry(`${base}/`, Math.floor(Date.now() / 1000), 'daily', '1.0', sitemapImageTag(s.seo_image || s.logo_url, base));
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.type('application/xml').send(sitemapUrlSetXml([entry]));
+  } catch (e) {
+    res.status(500).type('text/plain').send('sitemap error');
+  }
+});
+
+// خريطة مستقلة لكل مسار أرشفة (مثال: /sitemap-chat1.xml)
+app.get('/sitemap-:slug.xml', async (req, res) => {
+  try {
+    const slug = String(req.params.slug || '').trim().toLowerCase();
+    const row = await q.get(`SELECT slug, updated_at, created_at, logo_image FROM seo_pages WHERE slug=? AND active=1`, slug);
+    if (!row) return res.status(404).type('text/plain').send('sitemap not found');
+    const s = await getSettings();
+    const base = siteBaseUrl(req);
+    const entry = sitemapUrlEntry(`${base}/${String(row.slug)}`, row.updated_at || row.created_at, 'weekly', '0.8',
+      sitemapImageTag(row.logo_image || s.seo_image || s.logo_url, base));
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.type('application/xml').send(sitemapUrlSetXml([entry]));
+  } catch (e) {
+    res.status(500).type('text/plain').send('sitemap error');
+  }
+});
+
+// robots.txt: قواعد الزحف + الإعلان عن فهرس الخرائط وخريطة كل مسار
 app.get('/robots.txt', async (req, res) => {
   const base = siteBaseUrl(req);
+  let slugs = [];
+  try { slugs = (await q.all(`SELECT slug FROM seo_pages WHERE active=1 ORDER BY id ASC`)).map(r => String(r.slug)); } catch (e) { }
+  const sitemapLines = [`Sitemap: ${base}/sitemap.xml`];
+  for (const slug of slugs) sitemapLines.push(`Sitemap: ${base}/sitemap-${slug}.xml`);
   res.setHeader('Cache-Control', 'public, max-age=86400');
   res.type('text/plain').send(
     `User-agent: *\n` +
@@ -6416,8 +6805,37 @@ app.get('/robots.txt', async (req, res) => {
     `Disallow: /*token=\n` +
     `Disallow: /*?token=\n` +
     `\n` +
-    `Sitemap: ${base}/sitemap.xml\n`
+    `# فهرس خريطة الموقع + خريطة مستقلة لكل مسار أرشفة\n` +
+    sitemapLines.join('\n') + `\n`
   );
+});
+
+// robots.txt مستقل لكل مسار أرشفة (مثال: /chat1/robots.txt)
+app.get('/:slug/robots.txt', async (req, res) => {
+  const slug = String(req.params.slug || '').trim().toLowerCase();
+  if (RESERVED_SLUGS.has(slug) || slug.includes('.')) return res.status(404).type('text/plain').send('not found');
+  try {
+    const row = await q.get(`SELECT slug FROM seo_pages WHERE slug=? AND active=1`, slug);
+    if (!row) return res.status(404).type('text/plain').send('not found');
+    const base = siteBaseUrl(req);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.type('text/plain').send(
+      `User-agent: *\n` +
+      `Allow: /\n` +
+      `\n` +
+      `# منع زحف محركات البحث إلى صفحات الإدارة والواجهات البرمجية\n` +
+      `Disallow: /admin\n` +
+      `Disallow: /admin.html\n` +
+      `Disallow: /api/\n` +
+      `Disallow: /socket.io/\n` +
+      `\n` +
+      `# خريطة هذا المسار + فهرس خريطة الموقع الرئيسية\n` +
+      `Sitemap: ${base}/sitemap-${slug}.xml\n` +
+      `Sitemap: ${base}/sitemap.xml\n`
+    );
+  } catch (e) {
+    res.status(404).type('text/plain').send('not found');
+  }
 });
 
 app.get('/', async (req, res) => {
@@ -8020,6 +8438,7 @@ async function sendBotMsg(b) {
   }
 }
 reloadBots();
+migrateLargeImages();
 
 (async () => {
   await syncRoomBots(false).catch(() => { });
