@@ -8,7 +8,7 @@
 <title></title>
 <link rel="stylesheet" href="/icons/framework7-icons.css?v=20260828-royalfs">
 <link rel="stylesheet" href="/css/fonts.css?v=20260828-royalfs">
-<link rel="stylesheet" href="/css/style.css?v=20260829-giftnocard">
+<link rel="stylesheet" href="/css/style.css?v=20260909-idlemic">
 </head>
 <body>
 <div id="frame">
@@ -95,10 +95,6 @@
       <div class="live-bar-animation" id="vfdvdvfd" aria-hidden="true">
         <img class="dotlottie-playerq" src="/img/Video_2025.gif" alt="">
       </div>
-      <button class="lb-cam lb-start-live" id="liveBarStart" type="button" title="بدء بث مباشر">
-        <img src="/img/livebutton.8f3974d2945b4285984e.png" alt="" aria-hidden="true">
-        <span id="liveBarStartLabel">بث مباشر</span>
-      </button>
       <div class="lb-hosts" id="liveBarHosts"></div>
       <span class="lb-text" id="roomNotice">لا يوجد احد في البث المباشر حي الان</span>
       <!-- مؤثر واحد للمذيع الوحيد: الصوتي له تصميم مستقل، والفيديو له تصميم مستقل. -->
@@ -183,6 +179,9 @@
       <button class="ci-plain pink" id="btnApps"><i class="f7-icons" style="font-size:25px;color:var(--njomarab-theme-color)">circle_grid_hex_fill</i></button>
       <textarea type="text" class="ci-field" id="msgInput" onfocus="activeresize()" placeholder="رسالة عامة" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
       <button class="ci-plain" id="btnMic"><i class="f7-icons">mic_fill</i></button>
+      <button class="ci-plain talk-live" id="btnTalkLive" type="button" title="تحدث — الصعود كمذيع" hidden>
+        <i class="f7-icons">dot_radiowaves_right</i><span>تحدث</span>
+      </button>
       <button class="ci-plain" id="btnCam"><i class="f7-icons">camera_fill</i></button>
       <button class="ci-circle" id="btnSend"><i class="f7-icons">arrow_up</i></button>
     </div>
@@ -1443,7 +1442,7 @@
 </div>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/skins.js?v=20260904-skins"></script>
-<script src="/js/app.js?v=20260904-skins"></script>
+<script src="/js/app.js?v=20260909-idlemic"></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
    document.addEventListener("contextmenu", e => e.preventDefault());

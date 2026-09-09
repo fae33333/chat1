@@ -2694,24 +2694,55 @@ let AUDIO_BCAST_MUTED = false;
 let AUDIO_BCAST_HOST_MUTED = false; // كتم ميكروفون المذيع محلياً دون إيقاف البث
 let SPEAK_REQUEST_PENDING = false; // هل لدي طلب تحدث معلّق بانتظار رد المضيف الأساسي (غرفة صوتية)
 
+// الغرف الصوتية (type=voice) هي الوحيدة التي تعرض شريط البث وزر «تحدث» بجانب الميكروفون.
+// أما الغرف الافتراضية (type=default) فهي «كتابية فقط»: يُخفى شريط البث (#liveBar) بالكامل
+// ولا يُعرض زر «تحدث» — الصعود كمذيع متاح في الغرف الصوتية فقط.
+function updateVoiceRoomBarUI() {
+  const voiceRoom = !!(CUR_ROOM && CUR_ROOM.type === 'voice');
+  const bar = $('#liveBar');
+  if (bar) bar.hidden = !voiceRoom;
+  const btn = $('#btnTalkLive');
+  if (!btn) return;
+  btn.hidden = !voiceRoom;
+  btn.classList.toggle('on-air', !!(voiceRoom && ROOM_BCAST[CUR_ROOM.id]));
+}
+
+// شكل «لا يوجد احد في البث المباشر حي الان» قبل صعود أي مذيع في الغرفة الصوتية:
+// دائرة حمراء عليها أيقونة ميكروفون بيضاء + النص (كما في القالب الأصلي).
+function renderIdleRoomNotice() {
+  const el = $('#roomNotice');
+  if (!el) return;
+  el.classList.add('is-idle');
+  el.innerHTML =
+    '<span style="margin:1px 3px 4px 47px">لا يوجد احد في البث المباشر حي الان</span>' +
+    '<div class="red-circle3333 skin_color"></div>' +
+    '<img class="video-icon3333" src="https://up6.cc/2025/10/176422975625851.gif" alt="ميكروفون">';
+}
+
 // يحدّث شريط البث أعلى شاشة الدردشة حسب حالة الغرفة الحالية
 function bcastRenderBar() {
-  const bar = $('#liveBar'); const startBtn = $('#liveBarStart'); const muteBtn = $('#liveBarMute');
+  const bar = $('#liveBar'); const muteBtn = $('#liveBarMute');
   const hostsBox = $('#liveBarHosts');
   const videoBroadcastFx = $('#containersacscs');
   const audioBroadcastFx = $('#containersacscs_Audio');
-  const startLabel = $('#liveBarStartLabel');
+  updateVoiceRoomBarUI();
   if (!CUR_ROOM) return;
+  // غرفة افتراضية: «كتابية فقط» — لا يُعرض شريط البث ولا أي عنصر من عناصره.
+  if (CUR_ROOM.type !== 'voice') {
+    if (bar) { bar.classList.remove('is-live'); bar.onclick = null; }
+    if (muteBtn) { muteBtn.hidden = true; muteBtn.classList.remove('is-muted'); }
+    return;
+  }
   const state = ROOM_BCAST[CUR_ROOM.id];
   // عند وجود بث، نعرض بطاقات المذيعين فقط بدلاً من الجملة الطويلة في الشريط.
   $('#roomNotice').hidden = !!state;
+  // عند وجود بث نزيل شكل «لا يوجد مذيع» (الدائرة الحمراء + الميكروفون) ونعرض نص البث العادي.
+  if (state) $('#roomNotice').classList.remove('is-idle');
   // يظهر مؤثر واحد على الطرف الآخر فقط مع مذيع واحد، ويختفي عند تعدد المذيعين.
   const singleHost = !!(state && (state.hosts || []).length === 1);
   videoBroadcastFx.hidden = !(singleHost && state.mode === 'video');
   audioBroadcastFx.hidden = !(singleHost && state.mode === 'audio');
   const iAmHost = BCAST && BCAST.isHost && BCAST.roomId === CUR_ROOM.id;
-  const isVoiceRoom = CUR_ROOM.type === 'voice';
-  const eligible = !!ME && !ME.muted && canUseMembershipFeature('broadcast_allowed_memberships');
   bar.classList.toggle('is-live', !!state);
   // نظام ظهور زر الكتم المستقل بجانب الشاشة:
   //  • المستمع: يظهر دوماً أثناء البث الصوتي (لكتم ما يسمعه)
@@ -2719,14 +2750,9 @@ function bcastRenderBar() {
   //    — وأنا وحدي على المايك لا يظهر لي (لا يوجد أحد لكتمه)
   muteBtn.hidden = !(state && state.mode === 'audio' && (!iAmHost || (state.hosts || []).length > 1));
   muteBtn.classList.toggle('is-muted', AUDIO_BCAST_MUTED);
-  // الصورة ثابتة، بينما يختلف النص أسفلها حسب نوع الغرفة.
-  const startText = isVoiceRoom ? 'بث صوتي' : 'بث مباشر';
-  startLabel.textContent = startText;
-  startBtn.title = startText;
-  startBtn.onclick = () => bcastOpenStartConfirm(isVoiceRoom ? 'audio' : 'video');
     if (hostsBox) {
       const hosts = (state && state.hosts) || [];
-      // كل المذيعين في المنطقة القابلة للتمرير الأفقي (حتى زر بدء البث) — بدون سقف
+      // كل المذيعين في المنطقة القابلة للتمرير الأفقي — بدون سقف
       // في وضع الفيديو (الغرف الافتراضية): البثوث مستقلة — أي شخص (مشاهد أو مذيع آخر) يطلب مشاهدة مذيع بعينه
       // بالنقر على صورته، فلا يشاهد إلا من وافق على طلبه تحديداً — ويمكنه متابعة أكثر من مذيع في نفس الوقت،
       // فكل بث وُوفق على طلبه يعمل بشكل طبيعي بجانب البثوث الأخرى.
@@ -2750,28 +2776,19 @@ function bcastRenderBar() {
     });
   }
   if (!state) {
-    // لا يوجد بث حالياً — أظهر زر بدء البث إن كان المستخدم مؤهلاً
-    $('#roomNotice').textContent = 'لا يوجد احد في البث المباشر حي الان';
-    startBtn.hidden = false;
+    // لا يوجد بث حالياً — الصعود كمذيع يتم الآن حصرياً من زر «تحدث» بجانب الميكروفون.
+    renderIdleRoomNotice();
     SPEAK_REQUEST_PENDING = false;
     bar.onclick = null;
     return;
   }
-  if (state.mode === 'audio') {
-    // يبقى زر البث ظاهرًا حتى بعد صعود مذيع؛ المذيع الحالي يفتحه لإظهار بطاقته العائمة.
-    startBtn.hidden = false;
-  } else {
-    // يبقى زر البث ظاهرًا أيضًا في غرف الفيديو أثناء البث.
-    startBtn.hidden = false;
-  }
-  if (iAmHost) startBtn.onclick = () => openOv('bcastOv');
   const names = (state.hosts || []).map(h => h.username);
   const extra = names.length > 1 ? ` و${names.length - 1} آخرين` : '';
   if (state.mode === 'audio') {
     $('#roomNotice').textContent = iAmHost ? 'أنت تبث صوتياً الآن في هذه الغرفة' : `${names[0]}${extra} يتحدث الآن مباشرة`;
     bar.onclick = () => { if (iAmHost) openOv('bcastOv'); };
   } else {
-    $('#roomNotice').textContent = iAmHost ? 'أنت تبث فيديو الآن — زر «بث مباشر» يعرض شاشة بثك'
+    $('#roomNotice').textContent = iAmHost ? 'أنت تبث فيديو الآن'
       : (names.length > 1 ? `${names[0]}${extra} يبثون فيديو مباشر الآن — اضغط على صورة أحدهم للمشاهدة`
         : `${names[0]} يبث فيديو مباشر الآن — اضغط على صورته للمشاهدة`);
     // طلب المشاهدة يفتح حصرياً بالنقر على صورة المذيع (.lb-host-chip داخل شريط البث) —
@@ -3675,6 +3692,18 @@ function pushNotif(icon, text, extra = {}) {
 async function loadRooms() {
   ROOMS = await api('/api/rooms');
   ROOMS.forEach(r => ROOM_COUNTS[r.id] = r.online || 0);
+  // أي تعديل للغرفة من لوحة الإدارة (نوعها، اسمها، حالتها...) ينعكس فوراً على الغرفة
+  // المفتوحة حالياً دون إعادة تحميل — فيتحدث شريط البث/زر «تحدث» حسب النوع الجديد مباشرة.
+  if (CUR_ROOM) {
+    const fresh = ROOMS.find(x => +x.id === +CUR_ROOM.id);
+    if (fresh) {
+      Object.assign(CUR_ROOM, fresh);
+      const roomNameEl = $('#chatRoomName');
+      if (roomNameEl) roomNameEl.textContent = fresh.name;
+      updateVoiceRoomBarUI();
+      try { bcastRenderBar(); } catch (e) { }
+    }
+  }
   renderRooms();
 }
 function roomImgHtml(r, cls = 'room-img') {
@@ -3682,14 +3711,14 @@ function roomImgHtml(r, cls = 'room-img') {
   return `<div class="${cls}"><span>${esc(r.name)}</span></div>`;
 }
 function roomFeaturesHtml(r) {
+  // الصوتية: أيقونة المايك. الافتراضية: بدون أيقونة إضافية (تظهر أيقونة الكتابة فقط).
   const icons = r.type === 'voice'
     ? [
         '<i class="f7-icons" title="دردشة كتابية">bubble_left_bubble_right_fill</i>',
         '<i class="f7-icons" title="غرفة صوتية">music_mic</i>'
       ]
     : [
-        '<i class="f7-icons" title="دردشة كتابية">bubble_left_bubble_right_fill</i>',
-        '<i class="f7-icons" title="فيديو">videocam_fill</i>'
+        '<i class="f7-icons" title="دردشة كتابية">bubble_left_bubble_right_fill</i>'
       ];
   if (r.status !== 'open') icons.push('<i class="f7-icons" title="الغرفة مغلقة" style="color:#dc2626">lock_circle_fill</i>');
   if (r.locked) icons.push('<i class="f7-icons" title="الغرفة برقم سري" style="color:#d946a6">lock_fill</i>');
@@ -3769,8 +3798,9 @@ function enterRoom(id, pwd, hiddenChoice) {
   // فعلياً ثم ننضم إلى الجديدة — فلا يبقى اسمك في الغرفة القديمة ولا رسائلها.
   if (CUR_ROOM && CUR_ROOM.id !== id) leaveRoom();
   CUR_ROOM = r;
+  updateVoiceRoomBarUI();
   $('#chatRoomName').textContent = r.name;
-  $('#roomNotice').textContent = 'لا يوجد احد في البث المباشر حي الان';
+  renderIdleRoomNotice();
   const currentSiteName = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة العربية';
   const bgWater = $('#chatBgWatermark .pm-water');
   if (bgWater) bgWater.textContent = currentSiteName;
@@ -9885,6 +9915,7 @@ function leaveRoom() {
   }
   CUR_ROOM = null;
   ROOM_USERS = [];
+  updateVoiceRoomBarUI();
   closeOv('usersPanel');
   setRoomsPanel(false);
   $('#roomsVeil').style.display = 'none';
@@ -10428,6 +10459,14 @@ $('#btnMic').onclick = () => {
     return toast('عضويتك غير مسموح لها بإرسال المقاطع الصوتية', false);
   CHAT_MEDIA_DESTINATION = 'public';
   startVoiceRecording();
+};
+// زر «تحدث» بجانب زر الميكروفون: في الغرفة الصوتية يصعد بي كمذيع (بث صوتي).
+// إن كنت مذيعاً بالفعل يفتح شاشة بثي العائمة، تماماً كما كان يفعل زر «بث صوتي» العلوي.
+$('#btnTalkLive').onclick = () => {
+  if (!ME) return openLogin();
+  if (!CUR_ROOM || CUR_ROOM.type !== 'voice') return;
+  if (BCAST && BCAST.isHost && BCAST.roomId === CUR_ROOM.id) return openOv('bcastOv');
+  bcastOpenStartConfirm('audio');
 };
 $('#pmMic').onclick = () => {
   if (!PM_WITH) return toast('المحادثة الخاصة غير مفتوحة', false);
