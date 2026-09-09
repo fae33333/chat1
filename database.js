@@ -101,8 +101,10 @@ db.serialize(() => {
   )`);
   // ترقية: كلمة مرور الغرفة (تُضاف للقواعد القديمة فقط)
   db.run(`ALTER TABLE rooms ADD COLUMN password TEXT DEFAULT ''`, () => { });
-  // ترقية: جميع الغرف أصبحت صوتية بشكل دائم (لا يوجد قسم «افتراضية» بعد الآن)
-  db.run(`UPDATE rooms SET type='voice' WHERE type IS NULL OR type != 'voice'`, () => { });
+  // ترقية: توحيد أنواع الغرف على القيمتين المدعومتين فقط (default | voice).
+  // ملاحظة: أُزيل الإجبار القديم الذي كان يحوّل كل الغرف إلى «صوتية» بشكل دائم،
+  // حتى يمكن إنشاء غرف افتراضية (كتابية فقط) من لوحة الإدارة والاحتفاظ بنوعها.
+  db.run(`UPDATE rooms SET type='default' WHERE type IS NULL OR (type != 'voice' AND type != 'default')`, () => { });
   // ترقية: الحساب غير المفعَّل (فُك بريدُه أو أُهمل قبل التوثيق) يبقى «محتاجاً للتفعيل»
   db.run(`ALTER TABLE users ADD COLUMN pending_activation INTEGER DEFAULT 0`, () => { });
 

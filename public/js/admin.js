@@ -3459,8 +3459,13 @@ const PAGES = {
       <div class="grid2">
         <div class="fgroup"><label><i class="f7-icons mi" style="color:#818cf8">person2_fill</i> الحد الأقصى للمستخدمين</label>
           <input class="inp" type="number" id="rMax" value="${r.max_users || 1000}"></div>
+        <div class="fgroup"><label><i class="f7-icons mi" style="color:#d946a6">dot_radiowaves_right</i> نوع الغرفة</label>
+          <select class="inp" id="rType">
+            <option value="voice" ${r.type === 'voice' ? 'selected' : ''}>🎙 صوتية — بث صوتي وزر «تحدث»</option>
+            <option value="default" ${r.type !== 'voice' ? 'selected' : ''}>💬 افتراضية — كتابية فقط</option>
+          </select></div>
       </div>
-      <div style="font-size:12.5px;color:#7b8495;font-weight:700;background:#f8f5ff;border:1px solid #e9ddff;border-radius:10px;padding:9px 13px;margin-top:10px">🎙 جميع الغرف تعمل الآن كنوع «صوتية» بشكل دائم.</div>
+      <div style="font-size:12.5px;color:#7b8495;font-weight:700;background:#f8f5ff;border:1px solid #e9ddff;border-radius:10px;padding:9px 13px;margin-top:10px">💡 الغرفة الصوتية: يظهر شريط البث وزر «تحدث» للصعود كمذيع. الغرفة الافتراضية: دردشة كتابية فقط — لا شريط بث ولا زر «تحدث».</div>
       <div class="section-title"><i class="f7-icons mi" style="color:#94a3b8">gear_alt_fill</i> إعدادات إضافية</div>
       ${roomSel('mic_fill', '#c084fc', 'تمكين الصوت', 'rSound', r.sound)}
       ${roomSel('videocam_fill', '#60a5fa', 'تمكين الفيديو', 'rVideo', r.video)}
@@ -3498,7 +3503,7 @@ const PAGES = {
         const body = {
           name: $('#rName').value.trim(), description: $('#rDesc').value,
           welcome: $('#rWelcome').value.trim(),
-          status: $('#rStatus').value, max_users: +$('#rMax').value || 1000, type: 'voice',
+          status: $('#rStatus').value, max_users: +$('#rMax').value || 1000, type: $('#rType').value === 'voice' ? 'voice' : 'default',
           sound: $('#rSound').value === '1', video: $('#rVideo').value === '1', bots: $('#rBots').value === '1',
           gifts: $('#rGifts').value === '1', games: $('#rGames').value === '1',
           password: $('#rPass').value.trim(),

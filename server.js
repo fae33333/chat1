@@ -4142,18 +4142,22 @@ app.get('/api/admin/rooms', requireAdmin, async (req, res) => {
 });
 app.post('/api/admin/rooms', requireAdmin, async (req, res) => {
   const r = req.body;
+  // نوع الغرفة: 'voice' = صوتية (بث وزر تحدث)، أي قيمة أخرى = 'default' (كتابية فقط)
+  const roomType = String(r.type || '') === 'voice' ? 'voice' : 'default';
   const isSuper = ['superadmin', 'supermaster'].includes(req.session.rank);
   if (r.id) {
     if (!isSuper) return res.status(403).json({ error: 'لا تملك صلاحية تعديل الغرف، يمكنك إضافة غرفة جديدة فقط' });
     await q.run(`UPDATE rooms SET name=?,description=?,type=?,max_users=?,status=?,sound=?,video=?,bots=?,gifts=?,games=?,locked=?,welcome=?,password=?,image=? WHERE id=?`,
-      r.name, r.description || '', 'voice', r.max_users || 1000, r.status || 'open',
+      r.name, r.description || '', roomType, r.max_users || 1000, r.status || 'open',
       r.sound ? 1 : 0, r.video ? 1 : 0, r.bots ? 1 : 0, r.gifts ? 1 : 0, r.games ? 1 : 0, r.locked ? 1 : 0, r.welcome || '',
       String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200), r.id);
+    // أصبحت الغرفة «كتابية فقط»: أنهِ أي بث قائم فوراً وأنزل كل المذيعين (يصلهم bcast:stopped).
+    if (roomType !== 'voice') endBroadcast(+r.id, 'room_became_default');
     io.emit('sync');
     return res.json({ ok: true, id: r.id });
   }
   const out = await q.run(`INSERT INTO rooms (name,description,type,max_users,status,sound,video,bots,gifts,games,locked,welcome,password,image) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    r.name, r.description || '', 'voice', r.max_users || 1000, r.status || 'open',
+    r.name, r.description || '', roomType, r.max_users || 1000, r.status || 'open',
     r.sound ? 1 : 0, r.video ? 1 : 0, r.bots ? 1 : 0, r.gifts ? 1 : 0, r.games ? 1 : 0, r.locked ? 1 : 0, r.welcome || '',
     String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200));
   io.emit('sync');
@@ -7298,6 +7302,8 @@ io.on('connection', async (socket) => {
     if (!socket.data.joinedRooms.has(roomId)) return ack({ ok: false, text: 'يجب دخول الغرفة أولاً' });
     const room = await q.get(`SELECT * FROM rooms WHERE id=?`, roomId);
     if (!room) return ack({ ok: false, text: 'الغرفة غير موجودة' });
+    // الغرف الافتراضية «كتابية فقط»: لا بث صوتي ولا فيديو فيها إطلاقاً
+    if (room.type !== 'voice') return ack({ ok: false, text: 'هذه الغرفة كتابية فقط — البث غير متاح فيها' });
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
     const mode = room.type === 'voice' ? 'audio' : 'video';
     const allowed = mode === 'video' ? await canStartVideoBroadcast(me) : await canStartAudioBroadcast(me);
