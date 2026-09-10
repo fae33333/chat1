@@ -157,9 +157,6 @@
       coins.style.display = 'none';
       dskProfile.title = 'اضغط لتسجيل الدخول';
     }
-    // أدوات هيدر الغرف تظهر للمسجلين فقط (مثل الصورة المرفقة)
-    const tools = $('#dskHeadTools');
-    if (tools) tools.classList.toggle('logged-out', !logged);
   }
   function syncRadio() {
     if (!dskRadio) return;
@@ -204,7 +201,7 @@
 
   /* ---------- أزرار الهيدر ---------- */
   function buildHeads() {
-    // هيدر الدردشة: الخاص + الحائط + الإشعارات (بديل شريط التنقل السفلي المخفي)
+    // هيدر الدردشة: الخاص + الحائط + الإشعارات (تظهر فقط داخل الغرفة — بديل شريط التنقل السفلي)
     const ctb = $('#chatScreen .c-top-btns');
     if (ctb && !$('#dskNavPrivate')) {
       const bp = el('<button class="cbtn dsk-only dsk-nav-btn" id="dskNavPrivate" type="button" title="الرسائل الخاصة"><i class="f7-icons">bubble_left_fill</i></button>');
@@ -214,31 +211,16 @@
       ctb.insertBefore(bn, first);
       ctb.insertBefore(bw, bn);
       ctb.insertBefore(bp, bw);
-      bp.onclick = () => { const b = $('.bn-item[data-nav="private"]'); if (b) b.click(); };
-      bw.onclick = () => { const b = $('.bn-item[data-nav="wall"]'); if (b) b.click(); };
-      bn.onclick = () => { const b = $('.bn-item[data-nav="notifs"]'); if (b) b.click(); };
-    }
-
-    // هيدر شاشة الغرف: أدوات للمسجلين
-    const rh = $('#roomsScreen .r-head');
-    if (rh && !$('#dskHeadTools')) {
-      const tools = el(`
-        <div class="r-head-tools dsk-only" id="dskHeadTools">
-          <button type="button" data-act="private" title="الرسائل الخاصة"><i class="f7-icons">bubble_left_fill</i></button>
-          <button type="button" data-act="notifs" title="الإشعارات"><i class="f7-icons">bell_fill</i></button>
-          <button type="button" data-act="wall" title="الحائط"><i class="f7-icons">doc_text_fill</i></button>
-          <button type="button" data-act="menu" title="القائمة"><i class="f7-icons">square_grid2x2_fill</i></button>
-        </div>`);
-      const enter = $('#headEnterBtn');
-      if (enter) rh.insertBefore(tools, enter); else rh.appendChild(tools);
-      tools.querySelectorAll('button').forEach(b => {
-        b.onclick = () => {
-          const me = g(() => ME);
-          if (!me || !me.username) { g(() => openLogin()); return; }
-          const t = $('.bn-item[data-nav="' + b.dataset.act + '"]');
-          if (t) t.click();
-        };
-      });
+      // نقرة تفتح اللوحة العائمة، ونقرة أخرى تغلقها
+      const toggleNav = (ovId) => {
+        const ov = $('#' + ovId);
+        if (ov && ov.classList.contains('open')) return g(() => closeOv(ovId));
+        const b = $('.bn-item[data-nav="' + (ovId === 'privOv' ? 'private' : ovId === 'wallOv' ? 'wall' : 'notifs') + '"]');
+        if (b) b.click();
+      };
+      bp.onclick = () => toggleNav('privOv');
+      bw.onclick = () => toggleNav('wallOv');
+      bn.onclick = () => toggleNav('notifOv');
     }
   }
 
@@ -321,9 +303,9 @@
     };
   }
 
-  /* ---------- إغلاق لوحات الخاص/الإشعارات بالنقر على الخلفية (الديسكتوب) ---------- */
+  /* ---------- إغلاق اللوحات العائمة بالنقر على الخلفية (الديسكتوب) ---------- */
   function hookFloatingPanels() {
-    ['privOv', 'notifOv'].forEach(id => {
+    ['privOv', 'notifOv', 'wallOv'].forEach(id => {
       const o = $('#' + id);
       if (o) o.addEventListener('click', (e) => { if (mq.matches && e.target === o) g(() => closeOv(id)); });
     });

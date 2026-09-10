@@ -75,14 +75,8 @@
   .r-list .room-chev { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 19px; }
   .r-list .room-feats i { font-size: 15px; }
 
-  /* أدوات الهيدر للمسجلين (الخاص/الإشعارات/الحائط/القائمة) */
+  /* أدوات الهيدر (الخاص/الحائط/الإشعارات) تظهر فقط داخل الغرفة — لا شيء يُضاف لهيدر شاشة الغرف */
   #roomsScreen .enter-drop { top: 68px; right: 20px; }
-  .r-head-tools { display: flex; align-items: center; gap: 4px; margin-inline-start: auto; }
-  .r-head-tools button {
-    width: 38px; height: 38px; border: 0; background: transparent; border-radius: 10px;
-    color: var(--main); font-size: 21px; cursor: pointer; display: flex; align-items: center; justify-content: center;
-  }
-  .r-head-tools button:hover { background: #f6f7fb; }
 
   /* ============================================================
      2) شاشة الدردشة — دردشة بعرض الشاشة + قائمة جانبية مثبتة
@@ -254,10 +248,17 @@
     box-shadow: 0 24px 70px rgba(10, 15, 40, .30);
     overflow: hidden;
   }
-  /* عنوان اللوحة مثل الصور: الاسم + الإعدادات بدون شريط «عودة» */
+  /* عنوان اللوحة مثل الصور: الاسم + الأدوات بدون شريط «عودة» */
   #privOv .pg-head.bar, #notifOv .pg-head.bar { display: none; }
   #privOv .page-heading, #notifOv .page-heading { padding: 6px 4px 10px; }
   #privOv .ph-title, #notifOv .ph-title { font-size: 17px; }
+
+  /* الحائط: نفس شكل اللوحات — العنوان يميناً والتحديث يساراً وبدون «عودة» */
+  #wallOv .wall-back { display: none; }
+  #wallOv .wall-head { height: auto; padding: 12px 14px; }
+  #wallOv .wall-head b { flex: 1; text-align: right; font-size: 17px; }
+  #wallOv .wall-refresh i { font-size: 18px; }
+  #wallOv .wall-page, #wallOv .wall-scroll { background: #fff; }
 
   /* ---- ورقة إجراءات المستخدم: قائمة منبثقة عائمة (مثل صورة القائمة) ---- */
   #userSheet { background: rgba(15, 18, 35, .28); backdrop-filter: blur(2px); }
