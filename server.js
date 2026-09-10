@@ -6711,13 +6711,13 @@ function pingSearchEngines(req) {
   } catch (e) { }
 }
 
-// ---------- خرائط الموقع: فهرس + خريطة مستقلة لكل مسار + ملفات robots.txt ----------
+// ---------- خرائط الموقع: فهرس + خريطة مستقلة داخل كل مسار + ملفات robots.txt ----------
 // البنية (نمط Sitemap Index المعتمد للمواقع متعددة المسارات):
-//   /sitemap.xml          ← فهرس: خريطة الرئيسية + خريطة كل مسار أرشفة
-//   /sitemap-home.xml     ← خريطة الصفحة الرئيسية
-//   /sitemap-<slug>.xml   ← خريطة مستقلة لكل مسار (مثال: /sitemap-chat1.xml)
-//   /robots.txt           ← قواعد الزحف + الإعلان عن كل الخرائط
-//   /<slug>/robots.txt    ← robots.txt مستقل لكل مسار (مثال: /chat1/robots.txt)
+//   /sitemap.xml                    ← فهرس: خريطة الرئيسية + خريطة كل مسار أرشفة
+//   /sitemap-home.xml               ← خريطة الصفحة الرئيسية
+//   /<slug>/sitemap-<slug>.xml      ← خريطة مستقلة داخل مسارها (مثال: /alkarak/sitemap-alkarak.xml)
+//   /robots.txt                     ← قواعد الزحف + الإعلان عن كل الخرائط
+//   /<slug>/robots.txt              ← robots.txt مستقل لكل مسار (مثال: /alkarak/robots.txt)
 function sitemapIso(ts) {
   const n = Number(ts || 0);
   const d = n > 0 ? new Date(n * 1000) : new Date();
@@ -6745,7 +6745,7 @@ app.get('/sitemap.xml', async (req, res) => {
     const base = siteBaseUrl(req);
     const entries = [`  <sitemap>\n    <loc>${base}/sitemap-home.xml</loc>\n    <lastmod>${sitemapIso(Math.floor(Date.now() / 1000))}</lastmod>\n  </sitemap>`];
     for (const r of rows) {
-      entries.push(`  <sitemap>\n    <loc>${base}/sitemap-${String(r.slug)}.xml</loc>\n    <lastmod>${sitemapIso(r.updated_at || r.created_at)}</lastmod>\n  </sitemap>`);
+      entries.push(`  <sitemap>\n    <loc>${base}/${String(r.slug)}/sitemap-${String(r.slug)}.xml</loc>\n    <lastmod>${sitemapIso(r.updated_at || r.created_at)}</lastmod>\n  </sitemap>`);
     }
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.type('application/xml').send(sitemapIndexXml(entries));
@@ -6759,7 +6759,7 @@ app.get('/sitemap-home.xml', async (req, res) => {
   try {
     const s = await getSettings();
     const base = siteBaseUrl(req);
-    const entry = sitemapUrlEntry(`${base}/`, Math.floor(Date.now() / 1000), 'daily', '1.0', sitemapImageTag(s.seo_image || s.logo_url, base));
+    const entry = sitemapUrlEntry(`${base}`, Math.floor(Date.now() / 1000), 'daily', '1.0', sitemapImageTag(s.seo_image || s.logo_url, base));
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.type('application/xml').send(sitemapUrlSetXml([entry]));
   } catch (e) {
@@ -6767,10 +6767,12 @@ app.get('/sitemap-home.xml', async (req, res) => {
   }
 });
 
-// خريطة مستقلة لكل مسار أرشفة (مثال: /sitemap-chat1.xml)
-app.get('/sitemap-:slug.xml', async (req, res) => {
+// خريطة مستقلة داخل مسارها: المسار ثم اسم الخريطة (مثال: /alkarak/sitemap-alkarak.xml)
+app.get('/:slug/sitemap-:name.xml', async (req, res) => {
   try {
     const slug = String(req.params.slug || '').trim().toLowerCase();
+    const name = String(req.params.name || '').trim().toLowerCase();
+    if (RESERVED_SLUGS.has(slug) || slug.includes('.') || name !== slug) return res.status(404).type('text/plain').send('sitemap not found');
     const row = await q.get(`SELECT slug, updated_at, created_at, logo_image FROM seo_pages WHERE slug=? AND active=1`, slug);
     if (!row) return res.status(404).type('text/plain').send('sitemap not found');
     const s = await getSettings();
@@ -6790,7 +6792,7 @@ app.get('/robots.txt', async (req, res) => {
   let slugs = [];
   try { slugs = (await q.all(`SELECT slug FROM seo_pages WHERE active=1 ORDER BY id ASC`)).map(r => String(r.slug)); } catch (e) { }
   const sitemapLines = [`Sitemap: ${base}/sitemap.xml`];
-  for (const slug of slugs) sitemapLines.push(`Sitemap: ${base}/sitemap-${slug}.xml`);
+  for (const slug of slugs) sitemapLines.push(`Sitemap: ${base}/${slug}/sitemap-${slug}.xml`);
   res.setHeader('Cache-Control', 'public, max-age=86400');
   res.type('text/plain').send(
     `User-agent: *\n` +
@@ -6830,7 +6832,7 @@ app.get('/:slug/robots.txt', async (req, res) => {
       `Disallow: /socket.io/\n` +
       `\n` +
       `# خريطة هذا المسار + فهرس خريطة الموقع الرئيسية\n` +
-      `Sitemap: ${base}/sitemap-${slug}.xml\n` +
+      `Sitemap: ${base}/${slug}/sitemap-${slug}.xml\n` +
       `Sitemap: ${base}/sitemap.xml\n`
     );
   } catch (e) {
