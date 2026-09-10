@@ -7,6 +7,8 @@
 
 /* عناصر تُبنى للديسكتوب فقط — تُخفى على الجوال، ويُعاد ضبط عرضها داخل ميديا الديسكتوب */
 .dsk-only { display: none; }
+.dsk-menu-drop, .dsk-drop-veil { display: none; }   /* تُدار داخل ميديا الديسكتوب فقط */
+
 
 @media (min-width: 1024px) {
 
@@ -85,6 +87,7 @@
   .c-back { font-size: 26px; }
   .c-room-name { font-size: 18px; font-weight: 900; color: #1f2437; }
   #btnHome, #btnRoomUsers { display: none !important; }   /* بديلها تبويبات اللوحة الجانبية */
+  #radioPill { display: none !important; }                /* الراديو عبر ويدجت القائمة الجانبية فقط */
 
   /* اللوحة الجانبية: مثبتة دائماً على اليمين */
   #usersPanel {
@@ -184,8 +187,8 @@
   .dsk-radio-vol i { font-size: 14px; opacity: .9; }
   .dsk-radio-vol input { width: 84px; accent-color: #fff; cursor: pointer; }
 
-  /* شريط الإدخال: الأيقونات يميناً والإرسال يساراً مثل الصورة */
-  .c-input { direction: rtl; padding: 10px 14px; }
+  /* شريط الإدخال: الأيقونات يساراً ثم الحقل ثم زر الإرسال يميناً (تماماً كالصورة) */
+  .c-input { direction: ltr; padding: 10px 14px; gap: 10px; }
   #btnEmoji { order: 1; }
   #btnApps { order: 2; }
   #btnMic { order: 3; }
@@ -193,6 +196,27 @@
   #btnTalkLive { order: 5; }
   #msgInput { order: 6; }
   #btnSend { order: 7; }
+  .c-input .ci-plain { width: 34px; }
+  .c-input .ci-plain i { font-size: 23px; }
+  .c-input .btnEmojiGG { font-size: 27px !important; }
+  .c-input #btnSend.ci-circle { width: 42px; height: 42px; }
+  .c-input #btnSend.ci-circle i { font-size: 21px; }
+  .c-input .ci-field {
+    border: 1.5px solid #e7e9f2;
+    background: #fff;
+    border-radius: 26px;
+    padding: 11px 18px;
+    font-size: 14px;
+    height: auto;
+  }
+  .c-input .ci-field:focus { border-color: var(--main); }
+  /* زر «تحدث»: كبسولة حمراء بارزة مثل الصورة */
+  .c-input .ci-plain.talk-live {
+    width: auto; height: auto; padding: 10px 22px; border-radius: 10px;
+    background: var(--skin-btn, var(--main));
+    box-shadow: 0 4px 12px var(--skin-glow, rgba(156, 30, 70, .35));
+  }
+  .c-input .ci-plain.talk-live span { font-size: 13.5px; }
 
   /* ============================================================
      3) النوافذ المنبثقة — مودال في منتصف الشاشة (مثل نافذة الدخول)
@@ -479,6 +503,7 @@
 
   /* ---- قائمة زر الهامبرغر (بطاقة المستخدم): قائمة رئيسية منسدلة ---- */
   .dsk-drop-veil {
+    display: block;
     position: absolute;
     left: 0; right: 0; bottom: 0;
     z-index: 14;
@@ -496,6 +521,9 @@
     flex-direction: column;
     gap: 10px;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    min-height: 0;
     transform-origin: top center;
     opacity: 0; visibility: hidden; pointer-events: none;
     transform: translateY(-12px) scale(.97);
@@ -505,7 +533,7 @@
     opacity: 1; visibility: visible; pointer-events: auto;
     transform: none;
   }
-  .dsk-menu-group { background: #fff; border: 1px solid #eceef4; border-radius: 14px; overflow: hidden; box-shadow: 0 8px 26px rgba(20, 25, 60, .10); }
+  .dsk-menu-group { flex: none; background: #fff; border: 1px solid #eceef4; border-radius: 14px; overflow: hidden; box-shadow: 0 8px 26px rgba(20, 25, 60, .10); }
   .dsk-menu-item {
     width: 100%; display: flex; align-items: center; gap: 10px;
     background: none; border: 0; border-bottom: 1px solid #f2f3f8;

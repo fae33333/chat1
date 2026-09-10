@@ -26,6 +26,9 @@
   function syncHeadH() {
     const top = $('#chatScreen .c-top');
     if (top) document.documentElement.style.setProperty('--dsk-head-h', top.offsetHeight + 'px');
+    // إعادة تموضع قائمة الهامبرغر إن كانت مفتوحة أثناء تغيير حجم النافذة
+    const drop = $('#dskMenuDrop');
+    if (drop && drop.classList.contains('open')) placeDskMenu();
   }
   window.addEventListener('resize', syncHeadH);
 
