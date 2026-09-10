@@ -443,6 +443,35 @@ app.get(['/admin', '/admin.html'], async (req, res) => {
 // - JS/CSS: تُحمَّل مع رابط إصدار (?v=...) يُحدَّث عند كل نشر، فيمنع كاش
 //   «أسبوع واحد» ظهور نسخة قديمة بعد النشر مع استفادة الزيارات المتكررة من الكاش.
 // - HTML: يبقى no-store دائماً (صفحات ديناميكية تتغير لحظياً).
+// فك تشفير حمولة الطلب وتغليف استجابة JSON — للطلبات الموثّقة فقط
+app.use((req, res, next) => {
+  try {
+    if (req.body && typeof req.body === 'object' && !Array.isArray(req.body) && !Buffer.isBuffer(req.body)
+      && req.body.v === 1 && typeof req.body.e === 'string' && req.body.e.length) {
+      const token = wireSessionToken(req);
+      const obj = token ? wireDecrypt(token, req.body.e) : null;
+      if (!obj || typeof obj !== 'object') return res.status(400).json({ error: 'تعذر قراءة الحمولة المشفرة' });
+      req.body = obj;
+    }
+    if (req.originalUrl && String(req.originalUrl).startsWith('/api/')) {
+      const token = wireSessionToken(req);
+      if (token) {
+        const origJson = res.json.bind(res);
+        res.json = (obj) => {
+          try {
+            if (obj && typeof obj === 'object' && !Buffer.isBuffer(obj) && !obj.pipe) {
+              const e = wireEncrypt(token, obj);
+              if (e) return origJson({ v: 1, e });
+            }
+          } catch (we) { }
+          return origJson(obj);
+        };
+      }
+    }
+  } catch (e) { }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public'), {
   index: false,
   etag: true,
@@ -860,6 +889,48 @@ const CHAT_TOKENS = new Map();
 // عند ظهور رمز جديد (دخول من جهاز آخر) يُلغى الرمز القديم وتُقطع جلساته.
 const USER_ACTIVE_TOKEN = new Map();
 const CHAT_TOKEN_TTL = 12 * 60 * 60 * 1000;
+// ===== تشفير نقل /api: مفتاح جلسة مشتق من رمز الصفحة (X-Chat-Token/الإدارة) =====
+// كل طلب JSON موثَّق يُرسل مغلفاً {v:1, e: base64(iv+tag+ct)} وكل استجابة JSON
+// تُغلف بنفس المفتاح — لا تُقرأ الحمولات في أدوات الشبكة ولا تُحفظ في قاعدة
+// البيانات إلا مشفّرة. (WebSocket يبقى TLS على الخادم — HTTPS إلزامي هناك.)
+const WIRE_SALT = ':njomarab-wire-v1';
+function wireKeyForToken(token) {
+  if (!token) return null;
+  try { return crypto.createHash('sha256').update(token + WIRE_SALT).digest(); } catch (e) { return null; }
+}
+function wireEncrypt(token, obj) {
+  const key = wireKeyForToken(token);
+  if (!key) return '';
+  try {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const ct = Buffer.concat([cipher.update(JSON.stringify(obj), 'utf8'), cipher.final()]);
+    return Buffer.concat([iv, cipher.getAuthTag(), ct]).toString('base64');
+  } catch (e) { return ''; }
+}
+function wireDecrypt(token, b64) {
+  const key = wireKeyForToken(token);
+  if (!key) return null;
+  try {
+    const raw = Buffer.from(String(b64), 'base64');
+    if (raw.length < 12 + 16) return null;
+    const iv = raw.subarray(0, 12), tag = raw.subarray(12, 28), ct = raw.subarray(28);
+    const dec = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    dec.setAuthTag(tag);
+    return JSON.parse(Buffer.concat([dec.update(ct), dec.final()]).toString('utf8'));
+  } catch (e) { return null; }
+}
+function wireSessionToken(req) {
+  try {
+    if (req.get('x-chat-client') === '1') {
+      const t = chatTokenFromRequest(req);
+      return chatAuthByToken(t) ? t : '';
+    }
+    const at = String(req.get('x-admin-token') || (req.query && req.query.token) || (req.session && req.session.adminToken) || '').trim();
+    return at || '';
+  } catch (e) { return ''; }
+}
+
 function issueChatToken(user, ip, deviceId = '') {
   const token = crypto.randomBytes(32).toString('hex');
   CHAT_TOKENS.set(token, {
@@ -1098,6 +1169,21 @@ async function allowSocketHandshake(req, callback) {
 }
 
 setInterval(removeExpiredSocketKeys, 10 * 60 * 1000).unref();
+
+// بيانات سيرفر TURN (جسر المكالمات عبر شبكات الجوال/NAT) — تُحفظ JSON في settings
+function parseTurnConfig(raw) {
+  let cfg = {};
+  try { cfg = JSON.parse(String(raw || '{}') || '{}'); } catch (e) { cfg = {}; }
+  const host = String(cfg.host || '').trim().replace(/\/$/, '');
+  const username = String(cfg.username || '').trim();
+  const credential = String(cfg.credential || '').trim();
+  const port = Math.min(65535, Math.max(1, parseInt(cfg.port) || 3478));
+  const enabled = !!cfg.enabled && host && username && credential;
+  if (!enabled) return { enabled: false, urls: [] };
+  const scheme = cfg.tls ? 'turns' : 'turn';
+  const urls = [`${scheme}:${host}:${port}?transport=udp`, `${scheme}:${host}:${port}?transport=tcp`];
+  return { enabled: true, urls, username, credential };
+}
 
 async function getSettings() {
   const rows = await q.all(`SELECT key,value FROM settings`);
@@ -4307,6 +4393,10 @@ app.get('/api/admin/monitor', requireSuperAdmin, async (req, res) => {
       }
     }
   }
+  // اسم الدولة لكل IP (بذاكرة مؤقتة — لا استدعاء خارجي متكرر)
+  for (const group of groups.values()) {
+    try { group.country = (await lookupIpCountry(group.ip)).country || 'غير معروف'; } catch (e) { group.country = 'غير معروف'; }
+  }
   const result = [...groups.values()]
     .filter(group => group.users.size > 0)
     .map(group => ({
@@ -4314,6 +4404,7 @@ app.get('/api/admin/monitor', requireSuperAdmin, async (req, res) => {
       online: true,
       connections: group.connections,
       connected_at: group.connected_at,
+      country: group.country || 'غير معروف',
       users: [...group.users.values()].map(user => ({
         id: user.id, username: user.username, registered: user.registered, connections: user.connections,
         rooms: [...user.rooms].map(id => ({ id, name: roomsById.get(id) || `غرفة #${id}` }))
@@ -6520,6 +6611,7 @@ app.get('/api/public-settings', async (req, res) => {
     call_cost: Math.max(1, parseInt(s.call_cost) || 2),
     video_call_cost: normalizeNonNegativeCost(s.video_call_cost, 5),
     video_call_allowed_memberships: s.video_call_allowed_memberships !== undefined ? s.video_call_allowed_memberships : 'mmez,plus,premium,vip',
+    turn_config: parseTurnConfig(s.turn_config),
     register_gold: Math.max(0, parseInt(s.register_gold) !== undefined ? +s.register_gold : 10),
     favicon_url: s.favicon_url || '',
     seo_title: s.seo_title || '',

@@ -9,16 +9,56 @@ let ROOMS_CACHE = [];
 let editingRoom = null, editingUser = null, editingWord = null, EDIT_ROOM_BOT = null;
 let MONITOR_TIMER = null;
 
+// ===== تشفير نقل /api — مفتاح جلسة مشتق من رمز الإدارة (يطابق الخادم) =====
+const WIRE_SALT = ':njomarab-wire-v1';
+let _wireKey = null, _wireKeyToken = '';
+function b64FromBytes(bytes) { let st = ''; for (let i = 0; i < bytes.length; i++) st += String.fromCharCode(bytes[i]); return btoa(st); }
+function bytesFromB64(b64) { const raw = atob(b64); const b = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) b[i] = raw.charCodeAt(i); return b; }
+async function wireKey(token) {
+  if (!token || !window.crypto || !crypto.subtle) return null;
+  if (_wireKeyToken !== token) {
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token + WIRE_SALT));
+    _wireKey = await crypto.subtle.importKey('raw', hash, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+    _wireKeyToken = token;
+  }
+  return _wireKey;
+}
+async function wireWrap(obj, token) {
+  const key = await wireKey(token);
+  if (!key) return obj;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj))));
+  const out = new Uint8Array(12 + ct.length); out.set(iv, 0); out.set(ct, 12);
+  return { v: 1, e: b64FromBytes(out) };
+}
+async function wireUnwrap(d, token) {
+  if (!d || typeof d !== 'object' || d.v !== 1 || typeof d.e !== 'string') return d;
+  const key = await wireKey(token);
+  if (!key) return d;
+  try {
+    const data = bytesFromB64(d.e);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: data.slice(0, 12) }, key, data.slice(12).buffer);
+    return JSON.parse(new TextDecoder().decode(pt));
+  } catch (e) { return d; }
+}
+
+
 // ---------- أدوات ----------
 async function api(url, method = 'GET', body, isForm = false) {
   const token = window.ACTIVE_ADMIN_TOKEN || new URLSearchParams(location.search).get('token') || '';
   const headers = {};
   if (token) headers['x-admin-token'] = token;
   const opt = { method, credentials: 'same-origin', headers };
-  if (body && !isForm) { headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  if (body && !isForm) {
+    if (token && typeof body === 'object' && !(body instanceof FormData)) {
+      try { body = await wireWrap(body, token); } catch (e) { }
+    }
+    headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body);
+  }
   if (body && isForm) opt.body = body;
   const r = await fetch(url, opt);
-  const d = await r.json().catch(() => ({}));
+  let d = await r.json().catch(() => ({}));
+  try { d = await wireUnwrap(d, token); } catch (e) { }
   if (!r.ok) {
     if (r.status === 403 && d.error && (d.error.includes('جلسة أو رابط الإدارة') || d.error.includes('منتهي الصلاحية'))) {
       toast('انتهت صلاحية جلسة الإدارة نظراً لتوليد رمز جديد في الدردشة', false);
@@ -2012,6 +2052,7 @@ function updateTeamMonitor(items) {
         <div class="monitor-badges">
           <span class="monitor-online">🟢 متصل</span>
           <span class="monitor-ip" dir="ltr">IP: ${esc(item.ip)}</span>
+          <span class="monitor-country">🌍 ${esc(item.country || 'غير معروف')}</span>
         </div>
         <div class="monitor-head-actions">
           <span class="monitor-since">منذ ${esc(since)}</span>
@@ -2701,6 +2742,22 @@ const PAGES = {
       ${membershipAccessCard('photo_fill', '#22c55e', 'إرسال الصور في العام', 'public_image_allowed_memberships', 'رفع صورة من زر الكاميرا وإرسالها داخل الغرفة العامة.')}
       ${membershipAccessCard('mic_fill', '#ec4899', 'إرسال مقطع صوتي في العام', 'voice_allowed_memberships', 'رفع ملف صوتي وإرساله داخل الغرفة العامة.')}
       ${membershipAccessCard('dot_radiowaves_right', '#ef4444', 'الصعود كمذيع في البث المباشر', 'broadcast_allowed_memberships', 'بدء بث صوتي أو فيديو والانضمام كمذيع في بث قائم.')}
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:14px 16px;margin-top:14px">
+        <div style="display:flex;align-items:center;gap:9px;font-size:14px;font-weight:900;color:#065f46">
+          <i class="f7-icons" style="color:#10b981;font-size:18px">dot_radiowaves_left_right</i> سيرفر TURN — سلاسة المكالمات عبر شبكات الجوال
+        </div>
+        <div style="font-size:12px;color:#4d7c5f;font-weight:700;margin-top:5px">أهم حل لتقطع الفيديو بين الهواتف: عبور NAT/شبكات الجوال عبر جسر TURN. املأ بيانات سيرفرك (coturn على الـ VPS) أو مزود خارجي — وتُحقن تلقائياً في كل المكالمات والبث.</div>
+        <div class="grid2" style="margin-top:10px">
+          <div class="fgroup"><label>عنوان سيرفر TURN (host):</label><input class="inp" id="turnHost" placeholder="مثال: chat-arab.me" dir="ltr"></div>
+          <div class="fgroup"><label>المنفذ (port):</label><input class="inp" id="turnPort" type="number" placeholder="3478" dir="ltr"></div>
+          <div class="fgroup"><label>اسم المستخدم (username):</label><input class="inp" id="turnUser" dir="ltr"></div>
+          <div class="fgroup"><label>كلمة المرور (credential):</label><input class="inp" id="turnPass" dir="ltr"></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:800;font-size:12.5px;color:#334155">
+          <input type="checkbox" id="turnTls" style="width:18px;height:18px;accent-color:#10b981"> استخدام turns (TLS — المنفذ 5349)
+        </label>
+        <button class="btn btn-green" id="saveTurn" style="margin-top:10px"><i class="f7-icons">square_arrow_down_fill</i> حفظ إعدادات TURN</button>
+      </div>
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:14px 16px;margin-top:14px">
         <div style="display:flex;align-items:center;gap:9px;font-size:14px;font-weight:900;color:#1e293b">
           <i class="f7-icons" style="color:#ef4444;font-size:18px">mic_fill</i> عدد المذيعين المتزامن (الميكروفونات)
@@ -2735,6 +2792,33 @@ const PAGES = {
         }
         await api('/api/admin/settings', 'POST', body);
         toast('تم حفظ صلاحيات العضويات بنجاح');
+      };
+      // حفظ إعدادات TURN (جسر المكالمات)
+      const turnCard = () => {
+        let cfg = {};
+        try { cfg = typeof SETTINGS.turn_config === 'string' ? JSON.parse(SETTINGS.turn_config || '{}') : (SETTINGS.turn_config || {}); } catch (e) { cfg = {}; }
+        $('#turnHost').value = cfg.host || '';
+        $('#turnPort').value = cfg.port || 3478;
+        $('#turnUser').value = cfg.username || '';
+        $('#turnPass').value = cfg.credential || '';
+        $('#turnTls').checked = !!cfg.tls;
+      };
+      turnCard();
+      $('#saveTurn').onclick = async () => {
+        const host = $('#turnHost').value.trim().replace(/\/$/, '');
+        const cfg = {
+          enabled: !!(host && $('#turnUser').value.trim() && $('#turnPass').value.trim()),
+          host,
+          port: Math.max(1, parseInt($('#turnPort').value) || 3478),
+          username: $('#turnUser').value.trim(),
+          credential: $('#turnPass').value.trim(),
+          tls: $('#turnTls').checked
+        };
+        try {
+          await api('/api/admin/settings', 'POST', { turn_config: JSON.stringify(cfg) });
+          SETTINGS.turn_config = JSON.stringify(cfg);
+          toast(cfg.enabled ? 'تم حفظ إعدادات TURN — ستسري على المكالمات الجديدة' : 'تم إيقاف TURN (ستعمل المكالمات بـ STUN فقط)');
+        } catch (e) { toast(e.error || 'تعذر حفظ إعدادات TURN', false); }
       };
       // حفظ فوري عند تغيير عدد المذيعين (بدون انتظار زر الحفظ) — يتأثر البث مباشرة
       const msInput2 = $('#maxLiveSpeakers');

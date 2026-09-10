@@ -9,6 +9,39 @@ let CONNECTION_INTERRUPTED = false;
 // رمز هوية خاص بهذه الصفحة فقط؛ لا يُحفظ في localStorage أو sessionStorage.
 // عند التحديث أو فتح تبويب جديد يجب إدخال الاسم من جديد.
 let CHAT_TOKEN = '';
+
+// ===== تشفير نقل /api — مفتاح جلسة مشتق من رمز الصفحة (يطابق الخادم) =====
+const WIRE_SALT = ':njomarab-wire-v1';
+let _wireKey = null, _wireKeyToken = '';
+function b64FromBytes(bytes) { let st = ''; for (let i = 0; i < bytes.length; i++) st += String.fromCharCode(bytes[i]); return btoa(st); }
+function bytesFromB64(b64) { const raw = atob(b64); const b = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) b[i] = raw.charCodeAt(i); return b; }
+async function wireKey() {
+  if (!CHAT_TOKEN || !window.crypto || !crypto.subtle) return null;
+  if (_wireKeyToken !== CHAT_TOKEN) {
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(CHAT_TOKEN + WIRE_SALT));
+    _wireKey = await crypto.subtle.importKey('raw', hash, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+    _wireKeyToken = CHAT_TOKEN;
+  }
+  return _wireKey;
+}
+async function wireWrap(obj) {
+  const key = await wireKey();
+  if (!key) return obj;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj))));
+  const out = new Uint8Array(12 + ct.length); out.set(iv, 0); out.set(ct, 12);
+  return { v: 1, e: b64FromBytes(out) };
+}
+async function wireUnwrap(d) {
+  if (!d || typeof d !== 'object' || d.v !== 1 || typeof d.e !== 'string') return d;
+  const key = await wireKey();
+  if (!key) return d;
+  try {
+    const data = bytesFromB64(d.e);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: data.slice(0, 12) }, key, data.slice(12).buffer);
+    return JSON.parse(new TextDecoder().decode(pt));
+  } catch (e) { return d; }
+}
 // علم الخروج البرمجي: إعادة تحميل تقررها المنصة نفسها (إعادة التحقق بعد فك
 // الحظر، زر «العودة لتسجيل الدخول»، خروج DevTools الطارئ) — تتجاوز نافذة
 // تأكيد المغادرة التي تظهر عند التحديث/الإغلاق.
@@ -66,14 +99,22 @@ let HIDDEN_ENTRY_PENDING = null;
 // =====================================================
 // ⚠️ مهم: STUN وحده لا يكفي لعبور NAT في كثير من الشبكات الحقيقية (خصوصاً شبكات الجوال أو NAT المتماثل).
 // بدون سيرفر TURN (relay) ستنجح مرحلة تبادل offer/answer/candidates لكن الصوت لن يصل فعلياً بين بعض المستخدمين.
-// استبدل بيانات TURN التالية ببيانات حقيقية (من خدمة مثل Twilio NTS / Xirsys / Cloudflare Calls أو سيرفر coturn خاص بك):
-const RTC_ICE_CONFIG = {
-  iceServers: [
+// TURN يُضبط من لوحة الإدارة (turn_config) ويُحقن هنا تلقائياً —
+// ضروري لعبور NAT في شبكات الجوال (أهم سبب لتقطع المكالمات).
+function rtcIceConfig() {
+  const servers = [
     { urls: 'stun:stun.l.google.com:19302' },
-    // { urls: 'turn:YOUR_TURN_HOST:3478', username: 'YOUR_TURN_USER', credential: 'YOUR_TURN_PASSWORD' },
-    // { urls: 'turns:YOUR_TURN_HOST:5349', username: 'YOUR_TURN_USER', credential: 'YOUR_TURN_PASSWORD' },
-  ]
-};
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ];
+  const turn = SETTINGS && SETTINGS.turn_config;
+  if (turn && turn.enabled && Array.isArray(turn.urls) && turn.urls.length) {
+    for (const u of turn.urls.slice(0, 4)) {
+      if (typeof u === 'string' && u) servers.push({ urls: u, username: turn.username, credential: turn.credential });
+    }
+  }
+  return { iceServers: servers };
+}
+const RTC_ICE_CONFIG = rtcIceConfig();
 let ROOM_BCAST = {};        // roomId -> {mode, hosts:[{id,username,avatar,badge},...], viewers} آخر حالة معروفة للبث بكل غرفة
 let BCAST = null;           // الحالة الحية للبث الجاري (فيديو أو صوت) في الغرفة الحالية، أو null
 let BCAST_SIGNAL_QUEUE = []; // إشارات وصلت قبل تهيئة BCAST (سباق زمني عند الدخول لغرفة فيها بث نشط) — تُطبَّق فور التهيئة
@@ -1483,12 +1524,19 @@ async function trackedFetch(url, options = {}, label) {
 async function api(url, method = 'GET', body, isForm = false) {
   const o = { method, credentials: 'same-origin', headers: { 'X-Chat-Client': '1' } };
   if (CHAT_TOKEN) o.headers['X-Chat-Token'] = CHAT_TOKEN;
-  if (body && !isForm) { o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); }
+  if (body && !isForm) {
+    // تغليف الحمولة JSON مشفرةً (AES-256-GCM بمفتاح الجلسة) قبل الإرسال
+    if (CHAT_TOKEN && typeof body === 'object' && !(body instanceof FormData)) {
+      try { body = await wireWrap(body); } catch (e) { }
+    }
+    o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body);
+  }
   if (body && isForm) o.body = body;
   showGlobalOperationLoading(operationLoadingLabel(url, method));
   try {
     const r = await fetch(url, o);
-    const d = await r.json().catch(() => ({}));
+    let d = await r.json().catch(() => ({}));
+    try { d = await wireUnwrap(d); } catch (e) { }
     if (!r.ok) {
       if (d && d.banned) showPersistentBanTemplate(d.reason || d.error);
       throw d;
@@ -3252,7 +3300,7 @@ function bcastSendSignal(remoteUserId, dir, payload) {
 function bcastNewPeerConnection(key) {
   const [dir, rawId] = String(key).split(':');
   const remoteUserId = +rawId;
-  const pc = new RTCPeerConnection(RTC_ICE_CONFIG);
+  const pc = new RTCPeerConnection(rtcIceConfig());
   pc.onicecandidate = (e) => {
     if (e.candidate) bcastSendSignal(remoteUserId, dir, { type: 'candidate', candidate: e.candidate });
   };
@@ -6302,10 +6350,10 @@ async function executePrivateCall(callType = 'audio') {
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       video: isVideo ? {
-        // جودة ثابتة 360p (640×360) للطرفين في مكالمة الفيديو الخاصة.
-        width: { ideal: 640, max: 640 },
-        height: { ideal: 360, max: 360 },
-        frameRate: { ideal: 25, max: 30 },
+        // جودة عالية (720p مثالي) — التكيف الهابط يتكفّل به مراقب الجودة
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 30, max: 30 },
         facingMode: 'user'
       } : false
     });
@@ -6375,10 +6423,10 @@ async function acceptPrivateCall() {
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       video: isVideo ? {
-        // جودة ثابتة 360p (640×360) للطرفين في مكالمة الفيديو الخاصة.
-        width: { ideal: 640, max: 640 },
-        height: { ideal: 360, max: 360 },
-        frameRate: { ideal: 25, max: 30 },
+        // جودة عالية (720p مثالي) — التكيف الهابط يتكفّل به مراقب الجودة
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 30, max: 30 },
         facingMode: 'user'
       } : false
     });
@@ -6412,7 +6460,7 @@ async function handlePrivateCallAccepted(from, type) {
 
 async function setupPrivateCallPeerConnection(isOffer) {
   if (!PM_CALL) return;
-  const pc = new RTCPeerConnection(RTC_ICE_CONFIG);
+  const pc = new RTCPeerConnection(rtcIceConfig());
   PM_CALL.pc = pc;
 
   if (PM_CALL.localStream) {
@@ -6668,37 +6716,46 @@ document.addEventListener('pointerdown', () => {
   try { bcastLevelCtx(); } catch (e) {} // استيقاظ سياق تحليل الأصوات (سياسات التشغيل التلقائي)
 }, { capture: true, passive: true });
 
-// ===== جودة الفيديو الثابتة 360p — للمكالمات الخاصة فقط =====
-// بناءً على طلب الإدارة: تُثبَّت جودة فيديو المكالمة الخاصة على 360p (640×360)
-// للطرفين بشكل ثابت، دون أي تكيف صاعد أو هابط مع حالة الشبكة.
-const VIDEO_FIXED_QUALITY = { w: 640, h: 360, fps: 25, maxBitrate: 700000, label: '360p' };
+// ===== جودة فيديو عالية وسلسة (نمط سناب شات) — للمكالمات الخاصة =====
+// التقاط حتى 720p ومعدل بت مرتفع؛ مع ضعف الشبكة يُخفَّض الدقة أولاً مع ثبات
+// الإطارات (maintain-framerate) حتى تبقى الصورة سلسة وغير متقطعة أبداً.
+const VIDEO_QUALITY = { w: 1280, h: 720, fps: 30, maxBitrate: 2500000, label: '720p' };
 let VIDEO_QA_TIMER = null;
 
-function setVideoQualityBadge() {
+function videoQualityLabel(height) {
+  if (!height) return VIDEO_QUALITY.label;
+  if (height >= 600) return '720p عالية';
+  if (height >= 360) return '540p متوسطة';
+  if (height >= 240) return '360p معيارية';
+  return 'خفيفة';
+}
+
+function setVideoQualityBadge(label) {
   const el = $('#pmVideoQuality');
   if (!el) return;
-  el.textContent = 'الجودة: 360p (ثابتة)';
+  el.textContent = 'الجودة: ' + (label || VIDEO_QUALITY.label);
+  el.title = '';
   el.style.display = '';
 }
 
-function applyFixedVideoQuality() {
+async function applyAdaptiveVideoQuality() {
   if (!PM_CALL) return;
-  // 1) تثبيت التقاط الكاميرا المحلية على 640×360 (الحد الأقصى يساوي الحد المطلوب).
+  // 1) التقاط الكاميرا بأعلى جودة معقولة (720p مثالي، بلا سقف يعوق 1080p).
   if (PM_CALL.localStream) {
     PM_CALL.localStream.getVideoTracks().forEach(track => {
       try {
         if (typeof track.applyConstraints === 'function') {
           track.applyConstraints({
-            width: { ideal: VIDEO_FIXED_QUALITY.w, max: VIDEO_FIXED_QUALITY.w },
-            height: { ideal: VIDEO_FIXED_QUALITY.h, max: VIDEO_FIXED_QUALITY.h },
-            frameRate: { ideal: VIDEO_FIXED_QUALITY.fps, max: 30 }
+            width: { ideal: VIDEO_QUALITY.w },
+            height: { ideal: VIDEO_QUALITY.h },
+            frameRate: { ideal: VIDEO_QUALITY.fps, max: 30 }
           }).catch(() => {});
         }
       } catch (e) {}
     });
   }
-  // 2) تثبيت سقف الإرسال (البت ريت) ومعدل الإطارات على قيم 360p، مع الحفاظ على
-  //    الدقة أولاً (maintain-resolution) حتى لا يُخفّض المتصفح الدقة تحت الضغط.
+  // 2) سقف بت مرتفع مع الحفاظ على framerate أولاً: تحت الضغط تُخفَّض الدقة
+  //    وتبقى الإطارات مستمرة — لا تقطيع.
   try {
     const sender = PM_CALL.pc && PM_CALL.pc.getSenders
       ? PM_CALL.pc.getSenders().find(s => s.track && s.track.kind === 'video')
@@ -6706,23 +6763,38 @@ function applyFixedVideoQuality() {
     if (sender && sender.getParameters && sender.setParameters) {
       const params = sender.getParameters();
       params.encodings = params.encodings && params.encodings.length ? params.encodings : [{}];
-      params.encodings[0].maxBitrate = VIDEO_FIXED_QUALITY.maxBitrate;
-      params.encodings[0].maxFramerate = VIDEO_FIXED_QUALITY.fps;
-      params.degradationPreference = 'maintain-resolution';
+      params.encodings[0].maxBitrate = VIDEO_QUALITY.maxBitrate;
+      params.degradationPreference = 'maintain-framerate';
       sender.setParameters(params).catch(() => {});
     }
   } catch (e) {}
-  setVideoQualityBadge();
+  // 3) البادج: الجودة الفعلية من إحصائيات WebRTC (دقة + إطارات).
+  try {
+    const pc = PM_CALL.pc;
+    if (pc && typeof pc.getStats === 'function') {
+      const stats = await pc.getStats();
+      let st = null;
+      stats.forEach(r => {
+        if (r && r.type === 'outbound-rtp' && r.kind === 'video') {
+          if (!st || (r.timestamp || 0) >= (st.timestamp || 0)) st = r;
+        }
+      });
+      const height = st ? (st.frameHeight || 0) : 0;
+      const fps = st && st.framesPerSecond ? Math.round(st.framesPerSecond) : 0;
+      setVideoQualityBadge(videoQualityLabel(height) + (fps ? ` • ${fps}fps` : ''));
+      return;
+    }
+  } catch (e) { }
+  setVideoQualityBadge(VIDEO_QUALITY.label);
 }
 
 function startVideoQualityMonitor() {
   if (!PM_CALL || PM_CALL.callType !== 'video' || !PM_CALL.pc) return;
   stopVideoQualityMonitor();
-  applyFixedVideoQuality();
-  setVideoQualityBadge();
-  // إعادة تطبيق دورية خفيفة تُبقي القيود مسلّطة على المتصفح (بعض المتصفحات قد
-  // تحاول تخفيف الجودة تلقائياً عند ازدحام الشبكة) — دون تغيير المستوى أبداً.
-  VIDEO_QA_TIMER = setInterval(applyFixedVideoQuality, 3000);
+  applyAdaptiveVideoQuality();
+  setVideoQualityBadge(VIDEO_QUALITY.label);
+  // مراقبة دورية: تُبقي القيود مسلّطة وتحدّث البادج بالجودة الفعلية.
+  VIDEO_QA_TIMER = setInterval(applyAdaptiveVideoQuality, 3000);
 }
 function stopVideoQualityMonitor() {
   if (VIDEO_QA_TIMER) { clearInterval(VIDEO_QA_TIMER); VIDEO_QA_TIMER = null; }
