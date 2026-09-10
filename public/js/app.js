@@ -8714,7 +8714,7 @@ function wallYoutubeVideoId(url) {
   const match = raw.match(/(?:youtube\.com\/embed\/|youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{6,20})/i);
   return match ? match[1] : '';
 }
-// لون خاص بكل فيديو يوتيوب: يُشتق حتمياً من معرف الفيديو نفسه —
+// لون خاص بكل وسيط: يُشتق حتمياً من معرّف/مسار الملف نفسه —
 // كل مقطع يحمل لونه الخاص في كل مرة يظهر فيها، ولا يتغير بين التحديثات.
 function wallYoutubeHue(videoId) {
   const s = String(videoId || '');
@@ -8773,17 +8773,18 @@ function wallMediaCardMarkup(post) {
       <span class="wmc-go"><i class="f7-icons">chevron_left</i></span>
     </button>`;
   }
-  const visual = `<span class="wall-media-card-placeholder"><i class="f7-icons">${media.icon}</i></span>`
-    + (media.poster ? `<img src="${esc(media.poster)}" loading="lazy" alt="${esc(media.label)}">` : '');
-  const actionIcon = 'play_fill';
-  return `<button class="wall-media-card type-${media.type}" type="button"
-    data-media-type="${media.type}" data-src="${esc(media.src)}" data-poster="${esc(media.poster)}"
-    data-original="${esc(media.original)}" data-title="${esc(media.label)}">
-    <span class="wall-media-card-visual">${visual}<span class="wall-media-card-shade"></span></span>
-    <span class="wall-media-card-badge"><i class="f7-icons">${media.icon}</i>${esc(media.label)}</span>
-    <span class="wall-media-card-play"><i class="f7-icons">${actionIcon}</i></span>
-    <span class="wall-media-card-caption"><span>${esc(media.hint)}</span><span>فتح الوسائط</span></span>
-  </button>`;
+  // الفيديو المرفوع: نفس البطاقة الفخمة، بلون مشتق من مسار الملف —
+  // بلا صورة مصغرة داخل الحائط (تخفيف الحجم)، وعند النقر يُشغَّل في
+  // المشغل الكامل (بملصقه داخل المشغل نفسه إن وُجد).
+  if (media.type === 'video') {
+    const hue = wallYoutubeHue(media.src);
+    return `<button class="chat-public-image wall-media-chip as-video" type="button" style="--h:${hue}" data-media-type="video" data-src="${esc(media.src)}" data-poster="${esc(media.poster)}" data-original="${esc(media.original)}" data-title="${esc(media.label)}">
+      <span class="wmc-ic"><i class="f7-icons">videocam_fill</i></span>
+      <span class="wmc-body"><b>مقطع فيديو</b><small>اضغط لتشغيل الفيديو في المشغل</small></span>
+      <span class="wmc-go"><i class="f7-icons">chevron_left</i></span>
+    </button>`;
+  }
+  return '';
 }
 function closeWallMediaViewer() {
   const viewer = $('#wallMediaViewer');
@@ -8962,27 +8963,19 @@ function bindWallPostCard(card, post) {
   if (!card || !post) return;
   const postId = +post.id;
   bindWallMoreComments(card);
-  const mediaCard = card.querySelector('.wall-media-card');
-  const mediaPreviewImage = mediaCard && mediaCard.querySelector('.wall-media-card-visual > img');
-  if (mediaPreviewImage) mediaPreviewImage.onerror = () => mediaPreviewImage.remove();
-  if (mediaCard) mediaCard.onclick = () => openWallMediaViewer({
-    type: mediaCard.dataset.mediaType,
-    src: mediaCard.dataset.src,
-    poster: mediaCard.dataset.poster || '',
-    original: mediaCard.dataset.original || mediaCard.dataset.src,
-    title: mediaCard.dataset.title || 'عرض الوسائط'
-  });
-  // الأزرار المدمجة (صورة/يوتيوب): نفس أسلوب الدردشة — الصورة في عارض الصور
-  // واليوتيوب في المشغل الكامل مع التشغيل التلقائي.
-  const compactMedia = card.querySelector('.chat-public-image');
+  // البطاقات المدمجة (صورة / يوتيوب / فيديو): الصورة تُفتح في عارض الصور،
+  // واليوتيوب والفيديو يُشغَّلان في المشغل الكامل مع التشغيل التلقائي.
+  const compactMedia = card.querySelector('.wall-media-chip');
   if (compactMedia) {
     compactMedia.onclick = () => {
-      if (compactMedia.dataset.mediaType === 'youtube') {
+      const type = compactMedia.dataset.mediaType;
+      if (type === 'youtube' || type === 'video') {
         openWallMediaViewer({
-          type: 'youtube',
+          type,
           src: compactMedia.dataset.src,
+          poster: compactMedia.dataset.poster || '',
           original: compactMedia.dataset.original || compactMedia.dataset.src,
-          title: compactMedia.dataset.title || 'فيديو YouTube'
+          title: compactMedia.dataset.title || 'عرض الوسائط'
         });
       } else {
         openChatImage(compactMedia.dataset.src, (post.user && post.user.username) || post.username);

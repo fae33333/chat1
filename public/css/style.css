@@ -670,6 +670,8 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .wall-media-chip .wmc-go i { font-size: 14px; color: hsl(var(--h), 92%, 80%); }
 /* الصور: درجة ثابتة أنيقة مهما كان محتوى المنشور */
 .wall-media-chip.as-image { --h: 203; }
+/* الفيديو المرفوع: درجة افتراضية احتياطية — اللون الفعلي يُضبط لكل ملف من الـ HTML */
+.wall-media-chip.as-video { --h: 288; }
 /* شارة صغيرة تؤكد مصدر اليوتيوب */
 .wall-media-chip.as-youtube .wmc-body b::after {
   content: 'YouTube';
@@ -3728,23 +3730,6 @@ body.lang-en .blocks-hint { direction:ltr; }
 .wall-post-delete { width:25px; height:25px; padding:0; border:0; border-radius:50%; background:#fff1f2; color:#dc2626; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .wall-post-delete i { font-size:14px; }
 .wall-post-text { padding:2px 11px 10px; color:#202534; direction:rtl; text-align:right; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12.5px; line-height:1.8; }
-.wall-media-card { position:relative; width:calc(100% - 16px); margin:0 8px 9px; padding:0; overflow:hidden; border:1px solid rgba(15,23,42,.1); border-radius:15px; background:#0f172a; color:#fff; cursor:pointer; display:block; text-align:initial; font-family:inherit; box-shadow:0 5px 17px rgba(15,23,42,.13); }
-.wall-media-card:active { transform:scale(.994); }
-.wall-media-card-visual { position:relative; display:block; width:100%; aspect-ratio:16/9; overflow:hidden; background:linear-gradient(145deg,#1e293b,#020617); }
-.wall-media-card-visual > img { position:relative; z-index:1; display:block; width:100%; height:100%; object-fit:cover; transition:transform .35s ease,filter .35s ease; }
-.wall-media-card:hover .wall-media-card-visual > img { transform:scale(1.025); filter:brightness(.88); }
-.wall-media-card-placeholder { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,.3); background:radial-gradient(circle at 50% 42%,#334155,#020617 70%); }
-.wall-media-card-placeholder i { font-size:70px; }
-.wall-media-card-shade { position:absolute; z-index:2; inset:0; background:linear-gradient(180deg,rgba(2,6,23,.04) 25%,rgba(2,6,23,.72) 100%); pointer-events:none; }
-.wall-media-card-play { position:absolute; z-index:3; inset:0; margin:auto; width:58px; height:58px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; background:rgba(15,23,42,.76); border:2px solid rgba(255,255,255,.9); box-shadow:0 8px 24px rgba(0,0,0,.38); backdrop-filter:blur(5px); transition:transform .2s ease,background .2s ease; }
-.wall-media-card:hover .wall-media-card-play { transform:scale(1.08); background:var(--main); }
-.wall-media-card-play i { margin-inline-start:3px; font-size:28px; }
-.wall-media-card.type-image .wall-media-card-play i { margin:0; }
-.wall-media-card-badge { position:absolute; z-index:3; top:10px; right:10px; display:flex; align-items:center; gap:5px; padding:5px 9px; border-radius:999px; color:#fff; background:rgba(15,23,42,.72); border:1px solid rgba(255,255,255,.18); backdrop-filter:blur(5px); font-size:9px; font-weight:900; }
-.wall-media-card-badge i { font-size:13px; }
-.wall-media-card.type-youtube .wall-media-card-badge { background:rgba(220,38,38,.9); }
-.wall-media-card-caption { position:absolute; z-index:3; right:12px; left:12px; bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:10px; color:#fff; font-size:10px; font-weight:850; pointer-events:none; }
-.wall-media-card-caption span:last-child { color:rgba(255,255,255,.78); font-size:8.5px; }
 
 /* عارض وسائط الحائط الكامل */
 .wall-media-viewer { position:fixed; inset:0; z-index:18500; padding:16px; display:flex; align-items:center; justify-content:center; background:rgba(2,6,23,.88); backdrop-filter:blur(9px); direction:rtl; }
