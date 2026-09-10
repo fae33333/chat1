@@ -8745,9 +8745,19 @@ function wallMediaDescriptor(post) {
 function wallMediaCardMarkup(post) {
   const media = wallMediaDescriptor(post);
   if (!media) return '';
+  // الصور: زر مدمج مثل الدردشة تماماً — لا تُحمَّل الصورة داخل الحائط (تخفيف الحجم)،
+  // وتُفتح في العارض عند النقر فقط.
+  if (media.type === 'image') {
+    return `<button class="chat-public-image" type="button" data-src="${esc(media.src)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>`;
+  }
+  // يوتيوب: زر مدمج يوضح أنه فيديو يوتيوب — بلا صورة مصغرة خارجية (توفير طلبات
+  // i.ytimg.com لكل منشور)، وعند النقر يُشغَّل داخل المشغل الكامل.
+  if (media.type === 'youtube') {
+    return `<button class="chat-public-image as-youtube" type="button" data-media-type="youtube" data-src="${esc(media.src)}" data-original="${esc(media.original)}" data-title="${esc(media.label)}"><i class="f7-icons">play_rectangle_fill</i><b>فيديو YouTube — اضغط للمشاهدة</b></button>`;
+  }
   const visual = `<span class="wall-media-card-placeholder"><i class="f7-icons">${media.icon}</i></span>`
     + (media.poster ? `<img src="${esc(media.poster)}" loading="lazy" alt="${esc(media.label)}">` : '');
-  const actionIcon = media.type === 'image' ? 'viewfinder' : 'play_fill';
+  const actionIcon = 'play_fill';
   return `<button class="wall-media-card type-${media.type}" type="button"
     data-media-type="${media.type}" data-src="${esc(media.src)}" data-poster="${esc(media.poster)}"
     data-original="${esc(media.original)}" data-title="${esc(media.label)}">
@@ -8944,6 +8954,23 @@ function bindWallPostCard(card, post) {
     original: mediaCard.dataset.original || mediaCard.dataset.src,
     title: mediaCard.dataset.title || 'عرض الوسائط'
   });
+  // الأزرار المدمجة (صورة/يوتيوب): نفس أسلوب الدردشة — الصورة في عارض الصور
+  // واليوتيوب في المشغل الكامل مع التشغيل التلقائي.
+  const compactMedia = card.querySelector('.chat-public-image');
+  if (compactMedia) {
+    compactMedia.onclick = () => {
+      if (compactMedia.dataset.mediaType === 'youtube') {
+        openWallMediaViewer({
+          type: 'youtube',
+          src: compactMedia.dataset.src,
+          original: compactMedia.dataset.original || compactMedia.dataset.src,
+          title: compactMedia.dataset.title || 'فيديو YouTube'
+        });
+      } else {
+        openChatImage(compactMedia.dataset.src, (post.user && post.user.username) || post.username);
+      }
+    };
+  }
   card.querySelector('.wall-like').onclick = async () => {
     const updated = await api(`/api/wall/${postId}/reaction`, 'POST', { reaction: '👍' });
     Object.assign(post, updated);

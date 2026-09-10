@@ -569,6 +569,9 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .chat-public-image i { font-size:25px; color:#fff; }
 .chat-public-image b { font-size:13px; font-weight:900; color:#fff; }
 .chat-public-image:active { transform:scale(.985); }
+/* زر فيديو يوتيوب المدمج (يُستخدم في الحائط) — بنفس حجم زر الصورة لكن بلون يوتيوب */
+.chat-public-image.as-youtube { background:linear-gradient(145deg,#ff3d3d,#b80000); }
+.chat-public-image.as-youtube i { color:#fff; }
 .chat-audio-player {
   direction:ltr;
   min-height:42px;
