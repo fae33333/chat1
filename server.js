@@ -200,6 +200,41 @@ app.use((req, res, next) => {
   next();
 });
 
+// =====================================================
+//  تعمية مسارات API: /api/... ← /s/<رمز مشفّر>
+// =====================================================
+const cloak = require('./lib/cloak');
+const CLOAK_KEY = process.env.API_CLOAK_KEY || crypto.createHash('sha256')
+  .update('nujum-api-cloak::' + COOKIE_SECRET).digest('hex').slice(0, 48);
+const CLOAK_PREFIX = '/s/';
+// يفك الرمز ويعيد كتابة الطلب داخلياً قبل أي مسار Express، فلا يظهر أي مسار
+// API حقيقي في الشبكة أو في سجلات البروكسي.
+app.use((req, res, next) => {
+  const url = req.url || '';
+  if (!url.startsWith(CLOAK_PREFIX)) return next();
+  const rest = url.slice(CLOAK_PREFIX.length);
+  const queryAt = rest.indexOf('?');
+  const token = queryAt === -1 ? rest : rest.slice(0, queryAt);
+  const query = queryAt === -1 ? '' : rest.slice(queryAt);
+  const target = cloak.decodeCloakedPath(CLOAK_KEY, token);
+  if (!target) return res.status(404).json({ error: 'المسار غير موجود' });
+  req.url = target + query;
+  req.originalUrl = req.url;
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+// مكتبة التعمية على الواجهة (نفس الخوارزمية بالضبط)
+app.get('/js/cloak.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(fs.readFileSync(path.join(__dirname, 'lib/cloak.js'), 'utf-8'));
+});
+// وسم يُحقن في صفحات الواجهة لتفعيل التعمية تلقائياً على fetch وXHR
+function cloakBootstrapTag() {
+  return `<script>window.__API_CLOAK__={key:"${CLOAK_KEY}",prefix:"${CLOAK_PREFIX}"};</script>`
+    + `<script src="/js/cloak.js?v=1"></script><script src="/js/cloak-client.js?v=1"></script>`;
+}
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // طبقة موحدة لحقول النص القادمة عبر API: &lt; تصبح lt; ولا تبقى بداية
@@ -428,7 +463,7 @@ app.get(['/admin', '/admin.html'], async (req, res) => {
   req.session.adminToken = token;
 
   let adminHtml = fs.readFileSync(path.join(__dirname, 'admin_views/admin.html'), 'utf-8');
-  adminHtml = adminHtml.replace('</head>', `<script>window.ACTIVE_ADMIN_TOKEN = "${token}";</script></head>`);
+  adminHtml = adminHtml.replace('</head>', `<script>window.ACTIVE_ADMIN_TOKEN = "${token}";</script>${cloakBootstrapTag()}</head>`);
   res.send(adminHtml);
 });
 
@@ -465,6 +500,9 @@ function safeUploadFilename(originalName, defaultExt = '.png') {
   const cleanExt = ext && ext.length <= 6 ? ext : defaultExt;
   return `${Date.now()}_${crypto.randomBytes(12).toString('hex')}${cleanExt}`;
 }
+
+// ضغط صور GIF/الصور الكبيرة تلقائياً بعد الرفع (الهدايا والدخول الملكي)
+const { compressUploadedImage, GIF_MAX_BYTES } = require('./lib/image-compress');
 
 function cleanNameForFilename(name) {
   return String(name || 'user').trim().replace(/[/\\?%*:|"<>]/g, '_').slice(0, 30);
@@ -507,7 +545,7 @@ const royalStorage = multer.diskStorage({
   },
   filename: (req, file, cb) => cb(null, safeUploadFilename(file.originalname, '.gif'))
 });
-const uploadRoyal = multer({ storage: royalStorage, limits: { fileSize: 20 * 1024 * 1024 } });
+const uploadRoyal = multer({ storage: royalStorage, limits: { fileSize: 30 * 1024 * 1024 } });
 
 // رفع صور الحالات في مجلد مستقل، مع رفض أي ملف غير صوري.
 const statusStorage = multer.diskStorage({
@@ -3768,7 +3806,8 @@ app.post('/api/admin/upload/gift', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'ملف الهدية يجب أن يكون صورة' });
     }
-    res.json({ ok: true, path: '/uploads/gifts/' + req.file.filename });
+    const shrink = compressUploadedImage(req.file.path);
+    res.json({ ok: true, path: '/uploads/gifts/' + req.file.filename, size: shrink.after, original_size: shrink.before, compressed: shrink.compressed });
   });
 });
 app.post('/api/admin/upload/gift-audio', requireSuperAdmin, (req, res) => {
@@ -4079,10 +4118,12 @@ app.get('/api/admin/monitor', requireSuperAdmin, async (req, res) => {
     if (!user || activeSocket.data.userRank === 'supermaster') continue;
     const ip = normalizeIp(activeSocket.data.clientIp || activeSocket.handshake.address || '') || 'غير معروف';
     if (!groups.has(ip)) groups.set(ip, {
-      ip, online: true, connections: 0, connected_at: +activeSocket.data.connectedAt || Date.now(), users: new Map()
+      ip, online: true, connections: 0, connected_at: +activeSocket.data.connectedAt || Date.now(), users: new Map(), devices: new Set()
     });
     const group = groups.get(ip);
     group.connections++;
+    const socketDeviceId = validDeviceId(activeSocket.data.deviceId);
+    if (socketDeviceId) group.devices.add(socketDeviceId);
     group.connected_at = Math.min(group.connected_at, +activeSocket.data.connectedAt || Date.now());
     if (!group.users.has(uid)) group.users.set(uid, {
       id: uid, username: user.username, registered: user.registered ? 1 : 0, connections: 0, rooms: new Set()
@@ -4095,44 +4136,118 @@ app.get('/api/admin/monitor', requireSuperAdmin, async (req, res) => {
       }
     }
   }
-  const result = [...groups.values()]
-    .filter(group => group.users.size > 0)
-    .map(group => ({
-      ip: group.ip,
-      online: true,
-      connections: group.connections,
-      connected_at: group.connected_at,
-      users: [...group.users.values()].map(user => ({
-        id: user.id, username: user.username, registered: user.registered, connections: user.connections,
-        rooms: [...user.rooms].map(id => ({ id, name: roomsById.get(id) || `غرفة #${id}` }))
-      }))
-    })).sort((a, b) => a.ip.localeCompare(b.ip));
+  const activeGroups = [...groups.values()].filter(group => group.users.size > 0);
+  // دولة كل عنوان IP (مع ذاكرة مؤقتة داخلية، ولا تفشل أبداً)
+  const geoByIp = new Map();
+  await Promise.all(activeGroups.map(async group => {
+    try { geoByIp.set(group.ip, await lookupIpCountry(group.ip)); }
+    catch (e) { geoByIp.set(group.ip, { country: 'غير معروف', code: '' }); }
+  }));
+  const result = activeGroups
+    .map(group => {
+      const geo = geoByIp.get(group.ip) || { country: 'غير معروف', code: '' };
+      return {
+        ip: group.ip,
+        online: true,
+        connections: group.connections,
+        connected_at: group.connected_at,
+        country: geo.country || 'غير معروف',
+        country_code: geo.code || '',
+        devices: group.devices.size,
+        users: [...group.users.values()].map(user => ({
+          id: user.id, username: user.username, registered: user.registered, connections: user.connections,
+          rooms: [...user.rooms].map(id => ({ id, name: roomsById.get(id) || `غرفة #${id}` }))
+        }))
+      };
+    }).sort((a, b) => a.ip.localeCompare(b.ip));
   res.json(result);
 });
 app.post('/api/admin/ip/ban', requireAdmin, async (req, res) => {
   const ip = normalizeIp(req.body.ip || '');
   if (!ip || ip === 'غير معروف') return res.status(400).json({ error: 'عنوان IP غير صالح' });
   const reason = String(req.body.reason || 'حظر من صفحة الرصد').slice(0, 150);
+
+  // كل أجهزة هذا الـ IP: من الجلسات الحيّة + من سجل الدخول + من جدول المستخدمين.
+  const deviceIds = new Set();
+  for (const activeSocket of io.sockets.sockets.values()) {
+    if (normalizeIp(activeSocket.data.clientIp) !== ip) continue;
+    const socketDeviceId = validDeviceId(activeSocket.data.deviceId);
+    if (socketDeviceId) deviceIds.add(socketDeviceId);
+  }
+  try {
+    const rows = await q.all(`SELECT DISTINCT device_id FROM login_history WHERE ip=? AND device_id<>'' LIMIT 200`, ip);
+    for (const row of rows) { const d = validDeviceId(row.device_id); if (d) deviceIds.add(d); }
+  } catch (e) { }
+  try {
+    const rows = await q.all(`SELECT DISTINCT device_id FROM users WHERE ip=? AND device_id IS NOT NULL AND device_id<>'' LIMIT 200`, ip);
+    for (const row of rows) { const d = validDeviceId(row.device_id); if (d) deviceIds.add(d); }
+  } catch (e) { }
+  const devices = [...deviceIds];
+  const primaryDevice = devices[0] || '';
+
   let ban = await q.get(`SELECT id FROM bans WHERE ip=? LIMIT 1`, ip);
   if (!ban) {
-    const out = await q.run(`INSERT INTO bans (username,ip,reason) VALUES ('حظر IP',?,?)`, ip, reason);
+    const out = await q.run(`INSERT INTO bans (username,ip,device_id,reason) VALUES ('حظر IP',?,?,?)`, ip, primaryDevice, reason);
     ban = { id: out.lastID };
+  } else {
+    await q.run(`UPDATE bans SET device_id=COALESCE(NULLIF(device_id,''),?),reason=? WHERE id=?`, primaryDevice, reason, ban.id);
   }
+  // سجل حظر مستقل لكل جهاز إضافي حتى لا يتهرّب بتغيير الشبكة أو الـ IP.
+  for (const deviceId of devices) {
+    const exists = await q.get(`SELECT id FROM bans WHERE device_id=? LIMIT 1`, deviceId);
+    if (!exists) await q.run(`INSERT INTO bans (username,ip,device_id,reason) VALUES ('حظر جهاز',?,?,?)`, ip, deviceId, reason);
+  }
+
   await q.run(`UPDATE users SET banned=1 WHERE registered=0 AND ip=?`, ip);
-  for (const [token, auth] of CHAT_TOKENS) {
-    if (normalizeIp(auth.ip) === ip) CHAT_TOKENS.delete(token);
+  for (const deviceId of devices) {
+    await q.run(`UPDATE users SET banned=1 WHERE registered=0 AND device_id=?`, deviceId);
   }
+  for (const [token, auth] of CHAT_TOKENS) {
+    const sameIp = normalizeIp(auth.ip) === ip;
+    const sameDevice = deviceIds.has(validDeviceId(auth.deviceId));
+    if (sameIp || sameDevice) CHAT_TOKENS.delete(token);
+  }
+  const affectedRoomIds = new Set();
+  const removedUserIds = new Set();
   for (const activeSocket of [...io.sockets.sockets.values()]) {
-    if (normalizeIp(activeSocket.data.clientIp) !== ip) continue;
+    const sameIp = normalizeIp(activeSocket.data.clientIp) === ip;
+    const sameDevice = deviceIds.has(validDeviceId(activeSocket.data.deviceId));
+    if (!sameIp && !sameDevice) continue;
+    if (activeSocket.data.userRank === 'supermaster') continue;
+    const activeUid = +activeSocket.data.userId;
+    if (activeUid) removedUserIds.add(activeUid);
+    const joinedRooms = [...(activeSocket.data.joinedRooms || [])].map(Number).filter(Boolean);
     activeSocket.emit('banned', {
       banned: true,
       persistent: true,
       text: 'تم حظرك بسبب سلوكك السيئ',
       reason
     });
-    activeSocket.disconnect(true);
+    for (const joinedRoomId of joinedRooms) {
+      affectedRoomIds.add(joinedRoomId);
+      try { cancelPendingRoomLeave(activeUid, joinedRoomId); } catch (e) { }
+      if (activeSocket.data.joinedRooms) activeSocket.data.joinedRooms.delete(joinedRoomId);
+      if (activeSocket.data.hiddenRooms) activeSocket.data.hiddenRooms.delete(joinedRoomId);
+      activeSocket.leave('room_' + joinedRoomId);
+    }
+    setTimeout(() => activeSocket.disconnect(true), 150);
   }
-  res.json({ ok: true, id: ban.id, ip });
+  // إخفاء المحظورين فوراً من قوائم الغرف
+  for (const roomId of Object.keys(roomUsers)) {
+    for (const uid of removedUserIds) {
+      if (roomUsers[roomId] && roomUsers[roomId].has(+uid)) {
+        roomUsers[roomId].delete(+uid);
+        try { cleanupBroadcastForUser(+roomId, +uid); } catch (e) { }
+        affectedRoomIds.add(+roomId);
+      }
+    }
+  }
+  for (const uid of removedUserIds) delete onlineUsers[uid];
+  for (const roomId of affectedRoomIds) {
+    try { await emitRoomUsers(+roomId); } catch (e) { }
+  }
+  if (affectedRoomIds.size) { try { await emitRoomCounts(); } catch (e) { } }
+  res.json({ ok: true, id: ban.id, ip, devices: devices.length, by_device: devices.length > 0 });
 });
 
 // ---- الغرف ----
@@ -4851,7 +4966,8 @@ app.post('/api/admin/upload/royal-gif', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'اختر صورة للدخول (يُفضَّل GIF متحرك)' });
     }
-    res.json({ ok: true, path: '/uploads/royal/' + req.file.filename });
+    const shrink = compressUploadedImage(req.file.path);
+    res.json({ ok: true, path: '/uploads/royal/' + req.file.filename, size: shrink.after, original_size: shrink.before, compressed: shrink.compressed });
   });
 });
 app.post('/api/admin/upload/royal-sound', requireSuperAdmin, (req, res) => {
@@ -6362,6 +6478,8 @@ ${faqSchema}
   `.trim();
 
   indexHtml = indexHtml.replace(/<title[\s\S]*?<\/title>/i, metaTags);
+  // تفعيل تعمية مسارات API قبل أي سكربت آخر في الصفحة
+  indexHtml = indexHtml.replace('</head>', cloakBootstrapTag() + '</head>');
   // المحتوى الفريد يُحقن مباشرة بعد <body> حتى تراه محركات البحث قبل أي سكربت
   if (indexHtml.indexOf('id="seoLandingContent"') === -1) {
     indexHtml = indexHtml.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs}>\n${seoBody}`);

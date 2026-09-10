@@ -1980,6 +1980,13 @@ async function renderCashoutRequests() {
   }
 }
 
+// علم الدولة من رمزها الدولي (ISO-2) — بدون أي صور خارجية.
+function countryFlagEmoji(code) {
+  const clean = String(code || '').trim().toUpperCase();
+  if (clean === 'LAN') return '🏠';
+  if (!/^[A-Z]{2}$/.test(clean)) return '🌍';
+  return String.fromCodePoint(...[...clean].map(c => 0x1f1e6 + c.charCodeAt(0) - 65));
+}
 function updateTeamMonitor(items) {
   const list = $('#teamMonitorList');
   if (!list) return;
@@ -1999,6 +2006,8 @@ function updateTeamMonitor(items) {
     }
     existing.delete(item.ip);
     const since = new Date(item.connected_at || Date.now()).toLocaleTimeString('ar', { hour: 'numeric', minute: '2-digit' });
+    const country = item.country || 'غير معروف';
+    const flag = countryFlagEmoji(item.country_code);
     const people = (item.users || []).map(user => {
       const rooms = (user.rooms || []).map(room => esc(room.name)).join('، ') || 'لم يدخل غرفة بعد';
       return `<div class="monitor-person">
@@ -2012,10 +2021,11 @@ function updateTeamMonitor(items) {
         <div class="monitor-badges">
           <span class="monitor-online">🟢 متصل</span>
           <span class="monitor-ip" dir="ltr">IP: ${esc(item.ip)}</span>
+          <span class="monitor-country" title="دولة عنوان IP">${flag} ${esc(country)}</span>
         </div>
         <div class="monitor-head-actions">
           <span class="monitor-since">منذ ${esc(since)}</span>
-          <button class="monitor-ban" type="button" data-ip="${esc(item.ip)}"><i class="f7-icons">nosign</i> حظر IP</button>
+          <button class="monitor-ban" type="button" data-ip="${esc(item.ip)}"><i class="f7-icons">nosign</i> حظر المستخدم (IP + الجهاز)</button>
         </div>
       </div>
       <div class="monitor-people">${people}</div>`;
@@ -2028,12 +2038,14 @@ function updateTeamMonitor(items) {
   });
   list.querySelectorAll('.monitor-ban').forEach(button => button.onclick = async () => {
     const ip = button.dataset.ip;
-    if (!confirm(`حظر جميع الاتصالات من عنوان IP ${ip}؟`)) return;
+    if (!confirm(`حظر نهائي لكل من يستخدم عنوان IP ${ip} وأجهزتهم؟\nسيتم حظر اتصال الإنترنت (IP) وجهاز المستخدم معاً وفصلهم فوراً.`)) return;
+    button.disabled = true;
     try {
-      await api('/api/admin/ip/ban', 'POST', { ip, reason: 'حظر من صفحة الرصد' });
-      toast('تم حظر عنوان IP وفصل اتصالاته');
+      const result = await api('/api/admin/ip/ban', 'POST', { ip, reason: 'حظر من صفحة الرصد' });
+      toast('تم حظر عنوان IP' + (result && result.devices ? ` و${result.devices} جهاز مرتبط به` : '') + ' وفصل جميع اتصالاتهم');
       await refreshTeamMonitor();
     } catch (e) { toast(e.error || 'تعذر حظر عنوان IP', false); }
+    finally { button.disabled = false; }
   });
 }
 async function refreshTeamMonitor() {

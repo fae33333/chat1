@@ -264,6 +264,7 @@ select.inp { cursor:pointer; }
 .monitor-online,.monitor-ip,.monitor-user { padding:2px 10px; border-radius:12px; font-size:12px; line-height:20px; white-space:nowrap; }
 .monitor-online { background:#28a745; color:#fff; }
 .monitor-ip { background:#eef2ff; color:#4338ca; font-weight:700; }
+.monitor-country { padding:2px 10px; border-radius:12px; font-size:12px; line-height:20px; white-space:nowrap; background:#ecfdf5; color:#047857; font-weight:800; border:1px solid #a7f3d0; }
 .monitor-since { color:#9ca3af; font-size:11px; line-height:28px; }
 .monitor-ban { min-height:28px; padding:3px 10px; border:0; border-radius:8px; background:#fee2e2; color:#dc2626; cursor:pointer; font-size:11px; font-weight:800; display:flex; align-items:center; gap:4px; }
 .monitor-ban i { font-size:14px; }
