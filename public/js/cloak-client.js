@@ -82,8 +82,9 @@
   }
 
   // ---------- XMLHttpRequest ----------
-  var originalOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function (method, url) {
+  var xhrProto = (typeof XMLHttpRequest !== 'undefined') ? XMLHttpRequest.prototype : null;
+  var originalOpen = xhrProto && xhrProto.open;
+  if (originalOpen) xhrProto.open = function (method, url) {
     var args = Array.prototype.slice.call(arguments);
     var nextUrl = cloakUrl(url);
     this.__nujumCloaked = wasCloaked(url, nextUrl);
@@ -96,9 +97,9 @@
     return uncloakText(typeof raw === 'string' ? raw : JSON.stringify(raw));
   }
 
-  var responseTextDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseText');
+  var responseTextDesc = xhrProto && Object.getOwnPropertyDescriptor(xhrProto, 'responseText');
   if (responseTextDesc && responseTextDesc.get) {
-    Object.defineProperty(XMLHttpRequest.prototype, 'responseText', {
+    Object.defineProperty(xhrProto, 'responseText', {
       configurable: true,
       enumerable: responseTextDesc.enumerable,
       get: function () {
@@ -112,9 +113,9 @@
     });
   }
 
-  var responseDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'response');
+  var responseDesc = xhrProto && Object.getOwnPropertyDescriptor(xhrProto, 'response');
   if (responseDesc && responseDesc.get) {
-    Object.defineProperty(XMLHttpRequest.prototype, 'response', {
+    Object.defineProperty(xhrProto, 'response', {
       configurable: true,
       enumerable: responseDesc.enumerable,
       get: function () {
@@ -136,8 +137,145 @@
     });
   }
 
-  if (navigator.sendBeacon) {
+  if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
     var originalBeacon = navigator.sendBeacon.bind(navigator);
     navigator.sendBeacon = function (url, data) { return originalBeacon(cloakUrl(url), data); };
   }
+
+  // =====================================================
+  //  توقيع حزم WebSocket
+  // =====================================================
+  // أي حدث صادر عن الواجهة يُلحق به ظرف توقيع {$$sk} يغطي اسم الحدث وكل
+  // وسائطه، وأي حدث وارد من غير توقيع صالح صادر عن الخادم لا يصل إلى أي
+  // مستمع في التطبيق — فلا تُقبل حزمة أُضيف إليها شيء أو لم تمر عبر الخادم.
+  var SOCKET_RESERVED = { connect: 1, connect_error: 1, disconnect: 1, disconnecting: 1, error: 1, newListener: 1, removeListener: 1 };
+  window.__SOCKET_SIGN_DROP__ = 0;
+
+  function signOutgoingArgs(ev, args) {
+    var ack = null;
+    if (args.length && typeof args[args.length - 1] === 'function') ack = args.pop();
+    args.push(window.NujumCloak.signPacketEnvelope(config.key, ev, args));
+    if (ack) args.push(ack);
+    return args;
+  }
+  // يعيد الوسائط بدون ظرف التوقيع إن كانت موقعة بصحة، و null إن لم تكن كذلك.
+  // ملاحظة: الخادم عند طلب ack يُرفق دالة الرد كآخر وسيطة — تُفصل وتُعاد إلى
+  // مكانها بعد التحقق حتى يبقى تسلسل الوسائط متطابقاً مع المعتاد.
+  function stripVerifiedIncoming(ev, rawArgs) {
+    if (!rawArgs || !rawArgs.length) return null;
+    var args = rawArgs.slice();
+    var ack = null;
+    if (args.length && typeof args[args.length - 1] === 'function') ack = args.pop();
+    var extracted = window.NujumCloak.extractPacketSignature(args);
+    if (!extracted) return null;
+    if (!window.NujumCloak.verifyPacketSignature(config.key, ev, extracted.args, extracted.signature)) return null;
+    var payload = extracted.args;
+    if (ack) payload.push(ack);
+    return payload;
+  }
+  function dropSignedWarning(ev) {
+    window.__SOCKET_SIGN_DROP__++;
+    try { console.warn('🛑 [Socket sign] حزمة واردة مرفوضة (لا توقيع صالحاً أو معدّلة):', ev); } catch (e) { }
+  }
+
+  function patchClientSocket(socket) {
+    if (!socket || socket.__nujumSignPatched) return socket;
+    try { socket.__nujumSignPatched = true; } catch (e) { return socket; }
+
+    // الصادر: توقيع كل حدث (مع الحفاظ على وسيطة ack الأخيرة في مكانها)
+    var originalEmit = socket.emit;
+    socket.emit = function (ev) {
+      var args = Array.prototype.slice.call(arguments, 1);
+      try {
+        if (typeof ev === 'string' && ev && !SOCKET_RESERVED[ev]) args = signOutgoingArgs(ev, args);
+      } catch (e) { }
+      return originalEmit.apply(this, [ev].concat(args));
+    };
+
+    // الوارد: فحص التوقيع وإزالة الظرف قبل أن يرى أي مستمع الحمولة
+    var originalOn = socket.on;
+    socket.on = function (ev, listener) {
+      if (typeof ev !== 'string' || !ev || SOCKET_RESERVED[ev] || typeof listener !== 'function')
+        return originalOn.call(this, ev, listener);
+      var wrapped = function () {
+        var raw = Array.prototype.slice.call(arguments);
+        var payload = stripVerifiedIncoming(ev, raw);
+        if (payload === null) return dropSignedWarning(ev);
+        return listener.apply(this, payload);
+      };
+      wrapped.__nujumOrig = listener;
+      return originalOn.call(this, ev, wrapped);
+    };
+    // ملاحظة: once() في مكتبة socket.io-client تستدعي on داخلياً ← تُغطى تلقائياً.
+
+    var originalOff = socket.off || socket.removeListener;
+    if (originalOff) {
+      var offWrapped = function (ev, listener) {
+        if (typeof listener === 'function') {
+          try {
+            var candidates = (this.listeners ? this.listeners(ev) : []) || [];
+            for (var i = 0; i < candidates.length; i++)
+              if (candidates[i] && candidates[i].__nujumOrig === listener) return originalOff.call(this, ev, candidates[i]);
+          } catch (e) { }
+        }
+        return originalOff.call(this, ev, listener);
+      };
+      try {
+        if (socket.off) socket.off = offWrapped;
+        if (socket.removeListener) socket.removeListener = offWrapped;
+      } catch (e) { }
+    }
+
+    ['onAny', 'prependAny'].forEach(function (method) {
+      var orig = socket[method];
+      if (typeof orig !== 'function') return;
+      socket[method] = function (listener) {
+        if (typeof listener !== 'function') return orig.call(this, listener);
+        var wrapped = function () {
+          var raw = Array.prototype.slice.call(arguments);
+          var ev = raw[0];
+          var payload = stripVerifiedIncoming(ev, raw.slice(1));
+          if (payload === null) return dropSignedWarning(ev);
+          raw.length = 1;
+          for (var i = 0; i < payload.length; i++) raw.push(payload[i]);
+          return listener.apply(this, raw);
+        };
+        wrapped.__nujumOrig = listener;
+        return orig.call(this, wrapped);
+      };
+    });
+
+    return socket;
+  }
+
+  function wrapIoFactory(factory) {
+    if (!factory || factory.__nujumSignWrapped) return factory;
+    function wrappedIo() {
+      var socket = factory.apply(this, arguments);
+      try { patchClientSocket(socket); } catch (e) { }
+      return socket;
+    }
+    try {
+      Object.keys(factory).forEach(function (k) { wrappedIo[k] = factory[k]; });
+    } catch (e) { }
+    wrappedIo.__nujumSignWrapped = true;
+    wrappedIo.wrapped = factory;
+    return wrappedIo;
+  }
+
+  // window.io يُعرَّف لاحقاً (سكربت socket.io أسفل الصفحة يصل بعد هذا الملف) —
+  // نعترض تعيينه بخاصية getter/setter حتى نغلّف المصنع قبل أن يستخدمه app.js.
+  try {
+    if (window.io) {
+      window.io = wrapIoFactory(window.io);
+    } else {
+      var capturedIo;
+      Object.defineProperty(window, 'io', {
+        configurable: true,
+        enumerable: true,
+        get: function () { return capturedIo; },
+        set: function (value) { capturedIo = wrapIoFactory(value); }
+      });
+    }
+  } catch (e) { }
 })();

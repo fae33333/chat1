@@ -245,6 +245,57 @@ function hookCloakedResponse(res) {
     return originalSend(body);
   };
 }
+
+// =====================================================
+//  توقيع حزم WebSocket (Socket Packet Signing)
+// =====================================================
+// كل حدث صادر من الخادم (إشعار، رسالة، sync...) يُلحق به ظرف توقيع مشتق من
+// مفتاح التعمية، وكل حدث وارد من أي عميل يجب أن يحمل توقيعاً صالحاً مطابقاً
+// للحمولة كاملة. النتيجة: أي حزمة أُضيف إليها شيء أو حُذف منها أو عُدِّلت أو
+// صُنعت خارج الواجهة الأصلية لا تصل إلى أي معالج — في الاتجاهين.
+const SOCKET_RESERVED_EVENTS = new Set([
+  'connect', 'connect_error', 'disconnect', 'disconnecting',
+  'error', 'newListener', 'removeListener'
+]);
+function wrapSocketEmitSigned(originalEmit, keyHex) {
+  return function (ev, ...args) {
+    try {
+      if (typeof ev === 'string' && ev && !SOCKET_RESERVED_EVENTS.has(ev)) {
+        let ack = null;
+        if (args.length && typeof args[args.length - 1] === 'function') ack = args.pop();
+        args.push(cloak.signPacketEnvelope(keyHex, ev, args));
+        if (ack) args.push(ack);
+      }
+    } catch (e) { /* فشل التوقيع = حزمة غير موقعة سيرفضها الطرف الآخر حكماً */ }
+    return originalEmit.call(this, ev, ...args);
+  };
+}
+function installSocketPacketSigning() {
+  const { Socket } = require('socket.io');
+  if (!Socket.prototype.__nujumSigned) {
+    Socket.prototype.emit = wrapSocketEmitSigned(Socket.prototype.emit, CLOAK_KEY);
+    Socket.prototype.__nujumSigned = true;
+  }
+  // io.emit و io.to(room).emit و socket.broadcast/volatile/timeout كلها تمر عبر BroadcastOperator
+  const opProto = Object.getPrototypeOf(io.to(''));
+  if (opProto && typeof opProto.emit === 'function' && !opProto.__nujumSigned) {
+    opProto.emit = wrapSocketEmitSigned(opProto.emit, CLOAK_KEY);
+    opProto.__nujumSigned = true;
+  }
+}
+installSocketPacketSigning();
+// الحدث الوارد بلا توقيع صالح يُسقط بصمت؛ التكرار يفصل الاتصال (عميل مزوَّر/معدَّل).
+function rejectUnsignedSocketPacket(socket, ev) {
+  try {
+    socket.__signViolations = (socket.__signViolations || 0) + 1;
+    const ip = normalizeIp(requestIp(socket.request)) || (socket.handshake && socket.handshake.address) || '?';
+    console.warn(`🛑 [Socket sign] حزمة واردة مرفوضة (${socket.__signViolations}) — "${ev}" من ${ip} — بلا توقيع صالح أو حمولة معدّلة`);
+    if (socket.__signViolations >= 8) {
+      console.warn(`🛑 [Socket sign] فصل اتصال ${ip} بعد تكرار حزم غير موقعة`);
+      try { socket.disconnect(true); } catch (e) { }
+    }
+  } catch (e) { }
+}
 // مكتبة التعمية على الواجهة (نفس الخوارزمية بالضبط)
 app.get('/js/cloak.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -254,7 +305,7 @@ app.get('/js/cloak.js', (req, res) => {
 // وسم يُحقن في صفحات الواجهة لتفعيل التعمية تلقائياً على fetch وXHR
 function cloakBootstrapTag() {
   return `<script>window.__API_CLOAK__={key:"${CLOAK_KEY}",prefix:"${CLOAK_PREFIX}"};</script>`
-    + `<script src="/js/cloak.js?v=2"></script><script src="/js/cloak-client.js?v=2"></script>`;
+    + `<script src="/js/cloak.js?v=3"></script><script src="/js/cloak-client.js?v=3"></script>`;
 }
 
 app.use(express.json({ limit: '10mb' }));
@@ -7259,6 +7310,29 @@ async function maybeReplyWithRoomBot(roomId, text, sender, originalText, quotedR
 }
 
 io.on('connection', async (socket) => {
+  // بوابة توقيع الحزم: كل حدث تطبيق وارد يجب أن يحمل توقيعاً صالحاً يطابق
+  // الحمولة كاملة (الاسم + كل الوسائط). حزمة بلا توقيع، أو بتوقيع لحمولة
+  // أخرى، أو أُضيف/حُذف منها شيء ← تُسقط هنا ولا تصل أي معالج أو منظّف.
+  socket.use((packet, next) => {
+    try {
+      if (!Array.isArray(packet) || packet.length === 0) return next();
+      const ev = packet[0];
+      if (typeof ev !== 'string' || SOCKET_RESERVED_EVENTS.has(ev)) return next();
+      // الأحداث التي تحمل ack يُلحق socket.io دالة الرد كآخر عنصر قبل الوسائل
+      // الوسيطة — تُفصل مؤقتاً وتُعاد إلى مكانها بعد التحقق حتى يبقى التسلسل سليماً.
+      let payloadEnd = packet.length;
+      const hasAckFn = payloadEnd > 1 && typeof packet[payloadEnd - 1] === 'function';
+      if (hasAckFn) payloadEnd -= 1;
+      const extracted = cloak.extractPacketSignature(packet.slice(1, payloadEnd));
+      if (!extracted || !cloak.verifyPacketSignature(CLOAK_KEY, ev, extracted.args, extracted.signature)) {
+        return rejectUnsignedSocketPacket(socket, ev); // لا next() — الحزمة تموت هنا
+      }
+      // إزالة ظرف التوقيع قبل المنظّف والمعالجات: الكود التطبيقي لا يراه إطلاقاً
+      if (hasAckFn) packet.splice(payloadEnd - 1, 1);
+      else packet.length = packet.length - 1;
+      return next();
+    } catch (e) { return next(); }
+  });
   // كل حدث تطبيق وارد يمر من هنا قبل مستمعه. تزال & فقط من حقول النصوص
   // الظاهرة، بينما تبقى حزم WebRTC والروابط والمسارات وبيانات البروتوكول سليمة.
   socket.use((packet, next) => {
