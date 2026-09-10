@@ -315,20 +315,77 @@
      ============================================================ */
   @keyframes dskFadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes dskPopIn {
-    from { opacity: 0; transform: translateY(26px) scale(.95); }
-    to   { opacity: 1; transform: none; }
+    0%   { opacity: 0; transform: translateY(38px) scale(.93); }
+    60%  { opacity: 1; }
+    100% { opacity: 1; transform: none; }
   }
-  .overlay.open { animation: dskFadeIn .18s ease both; }
+  .overlay.open { animation: dskFadeIn .2s ease both; }
   .overlay.open .sheet,
   .overlay.open .pvpage,
   .overlay.open .wall-page,
   .overlay.open .dialog,
   .overlay.open .status-viewer,
   .overlay.open .status-text-page {
-    animation: dskPopIn .32s cubic-bezier(.2, .85, .3, 1.12) both;
+    animation: dskPopIn .4s cubic-bezier(.22, 1.1, .35, 1.08) both;
+    will-change: transform, opacity;
   }
   /* نوافذ مكالمات/تأكيد صغيرة: ظهور أسرع */
-  .overlay.center.open .dialog { animation-duration: .24s; }
+  .overlay.center.open .dialog { animation-duration: .28s; }
+
+  /* ===== حركة عند مرور الماوس: القوالب وعناصرها تتفاعل ===== */
+  /* بطاقة القالب ترتفع قليلاً بلطف عند مرور الماوس عليها */
+  .overlay.open .sheet,
+  .overlay.open .dialog,
+  .overlay.open .pvpage,
+  .overlay.open .wall-page {
+    transition: box-shadow .25s ease;
+  }
+  .overlay.open .sheet:hover,
+  .overlay.open .dialog:hover,
+  .overlay.open .pvpage:hover,
+  .overlay.open .wall-page:hover {
+    box-shadow: 0 36px 90px rgba(10, 15, 40, .42);
+  }
+  /* عناصر القوائم داخل القوالب تنزاح بحركة ناعمة */
+  .overlay .us-opt, .overlay .mn-item, .dsk-menu-item,
+  .set-row, .room-mini, .pv-list > *, .blocks-list > * {
+    transition: transform .16s ease, background .16s ease, box-shadow .16s ease;
+  }
+  .overlay .us-opt:hover, .overlay .mn-item:hover, .dsk-menu-item:hover,
+  .set-row:hover {
+    transform: translateX(-4px);
+  }
+  .room-mini:hover { transform: translateX(-3px); }
+  /* أزرار الحوارات ترتفع عند المرور */
+  .dialog .dlg-btns button, .gs-btns button, .ava-foot button,
+  .big-btn, .us-cancel {
+    transition: transform .15s ease, filter .15s ease !important;
+  }
+  .dialog .dlg-btns button:hover, .gs-btns button:hover,
+  .ava-foot button:hover, .big-btn:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.05);
+  }
+  .dialog .dlg-btns button:active, .gs-btns button:active,
+  .ava-foot button:active, .big-btn:active {
+    transform: translateY(0) scale(.97);
+  }
+  /* بطاقات الهدايا والترقية داخل القوالب */
+  #giftOv .gs-grid > *, #upOv .up-cards > *, #myGiftsOv .my-gifts-grid > * {
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+  #giftOv .gs-grid > *:hover, #upOv .up-cards > *:hover,
+  #myGiftsOv .my-gifts-grid > *:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 26px rgba(20, 25, 60, .14);
+  }
+  /* تبويبات القوالب */
+  .seg button, .pill-tabs .pv-tab, #avaOv .seg button {
+    transition: background .15s ease, color .15s ease, transform .15s ease;
+  }
+  .seg button:hover:not(.active), .pill-tabs .pv-tab:hover:not(.active) {
+    transform: translateY(-1px);
+  }
 
   /* ============================================================
      4) القوائم المنسدلة واللوحات العائمة (كما بالصور المحدَّثة)
