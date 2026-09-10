@@ -212,6 +212,11 @@ const CLOAK_PREFIX = '/s/';
 app.use((req, res, next) => {
   const url = req.url || '';
   if (!url.startsWith(CLOAK_PREFIX)) return next();
+  res.setHeader('Cache-Control', 'no-store');
+  // تعمية القيم الداخلية: كل جسم استجابة من أي مسار /api يخرج مشفّراً بالكامل
+  // ({ok, admin_token, admin_url, بيانات المستخدم... جميعها) ولا تفكّه إلا
+  // الواجهة التي تحمل مفتاح الجلسة نفسه — شفافياً دون تعديل أي كود تطبيقي.
+  hookCloakedResponse(res);
   const rest = url.slice(CLOAK_PREFIX.length);
   const queryAt = rest.indexOf('?');
   const token = queryAt === -1 ? rest : rest.slice(0, queryAt);
@@ -220,9 +225,26 @@ app.use((req, res, next) => {
   if (!target) return res.status(404).json({ error: 'المسار غير موجود' });
   req.url = target + query;
   req.originalUrl = req.url;
-  res.setHeader('Cache-Control', 'no-store');
   next();
 });
+// يغلّف res.json/res.send بحيث يتحوّل أي جسم JSON إلى غلاف مشفّر {"_nv":"..."}.
+function hookCloakedResponse(res) {
+  if (res.__cloakHooked) return;
+  res.__cloakHooked = true;
+  const originalSend = res.send.bind(res);
+  res.json = function (obj) {
+    try {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return originalSend(cloak.cloakBodyEnvelope(CLOAK_KEY, JSON.stringify(obj), true));
+    } catch (e) {
+      try { return originalSend(JSON.stringify(obj)); } catch (e2) { return originalSend(''); }
+    }
+  };
+  res.send = function (body) {
+    if (body !== null && typeof body === 'object' && !Buffer.isBuffer(body)) return res.json(body);
+    return originalSend(body);
+  };
+}
 // مكتبة التعمية على الواجهة (نفس الخوارزمية بالضبط)
 app.get('/js/cloak.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -232,7 +254,7 @@ app.get('/js/cloak.js', (req, res) => {
 // وسم يُحقن في صفحات الواجهة لتفعيل التعمية تلقائياً على fetch وXHR
 function cloakBootstrapTag() {
   return `<script>window.__API_CLOAK__={key:"${CLOAK_KEY}",prefix:"${CLOAK_PREFIX}"};</script>`
-    + `<script src="/js/cloak.js?v=1"></script><script src="/js/cloak-client.js?v=1"></script>`;
+    + `<script src="/js/cloak.js?v=2"></script><script src="/js/cloak-client.js?v=2"></script>`;
 }
 
 app.use(express.json({ limit: '10mb' }));
@@ -463,7 +485,11 @@ app.get(['/admin', '/admin.html'], async (req, res) => {
   req.session.adminToken = token;
 
   let adminHtml = fs.readFileSync(path.join(__dirname, 'admin_views/admin.html'), 'utf-8');
-  adminHtml = adminHtml.replace('</head>', `<script>window.ACTIVE_ADMIN_TOKEN = "${token}";</script>${cloakBootstrapTag()}</head>`);
+  // الرمز يُحقن في الصفحة مشفّراً (لا يظهر adm_... في مصدر الصفحة إطلاقاً) وتُفك
+  // تعميته في المتصفح لحظة التحميل عبر مكتبة التعمية المحمّلة قبله مباشرة.
+  const cloakedToken = cloak.encodeCloakedValue(CLOAK_KEY, token);
+  adminHtml = adminHtml.replace('</head>',
+    `${cloakBootstrapTag()}<script>window.ACTIVE_ADMIN_TOKEN=(function(){try{return window.NujumCloak.decodeCloakedValue("${cloakedToken}")||"";}catch(e){return "";}})();</script></head>`);
   res.send(adminHtml);
 });
 
