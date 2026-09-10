@@ -480,19 +480,22 @@ let sharpLib = null;
 try { sharpLib = require('sharp'); } catch (e) { sharpLib = null; }
 
 async function optimizeImageForWeb(relPath, opts = {}) {
-  const { maxWidth = 480, quality = 80, minSize = 150 * 1024 } = opts;
+  const { maxWidth = 480, quality = 80, minSize = 150 * 1024, scale = 1 } = opts;
   if (!sharpLib) return '';
   const clean = String(relPath || '');
   if (!clean.startsWith('/uploads/')) return '';
-  if (/\.(gif|svg|webp|avif)$/i.test(clean)) return '';   // GIF متحرك/SVG لا يُحوَّل
+  if (/\.(gif|svg|webp|avif)$/i.test(clean)) return '';   // GIF متحرك/SVG لا يُحوَّل هنا
   const abs = path.join(__dirname, 'public', clean);
   let st;
   try { st = fs.statSync(abs); } catch (e) { return ''; }
   if (!st.isFile() || st.size < minSize) return '';
   const outRel = clean.replace(/\.(png|jpe?g)$/i, '') + '.webp';
   try {
+    // scale: نسبة الأبعاد من الأصل (0.5 = نصف الحجم) مع سقف maxWidth
+    const meta = await sharpLib(abs).metadata();
+    const width = meta.width ? Math.max(1, Math.min(Math.round(meta.width * scale), maxWidth)) : maxWidth;
     await sharpLib(abs)
-      .resize({ width: maxWidth, withoutEnlargement: true })
+      .resize({ width, withoutEnlargement: true })
       .webp({ quality, effort: 4 })
       .toFile(path.join(__dirname, 'public', outRel));
     const outSt = fs.statSync(path.join(__dirname, 'public', outRel));
@@ -504,22 +507,130 @@ async function optimizeImageForWeb(relPath, opts = {}) {
   } catch (e) { return ''; }
 }
 
+// ---------- ضغط GIF متحرك (دخول ملكي/هدايا) — JS خالص بلا مكتبات نظام ----------
+// يُصغّر أبعاد GIF إلى النصف ويعيد ترميزه، فيقل حجمه ويزداد سلاسة تشغيله في الدردشة.
+let gifUct = null, GifEncoderLib = null;
+try { gifUct = require('gifuct-js'); } catch (e) { }
+try { GifEncoderLib = require('gif-encoder-2'); } catch (e) { }
+
+// تصغير مصفوفة RGBA بطريقة ثنائية الخطوط (bilinear)
+function scaleRgba(src, sw, sh, dw, dh) {
+  const out = new Uint8Array(dw * dh * 4);
+  const xRatio = sw / dw, yRatio = sh / dh;
+  for (let y = 0; y < dh; y++) {
+    const fy = (y + 0.5) * yRatio;
+    const sy = Math.min(sh - 1, Math.floor(fy));
+    const sy2 = Math.min(sh - 1, sy + 1);
+    const ty = fy - sy;
+    for (let x = 0; x < dw; x++) {
+      const fx = (x + 0.5) * xRatio;
+      const sx = Math.min(sw - 1, Math.floor(fx));
+      const sx2 = Math.min(sw - 1, sx + 1);
+      const tx = fx - sx;
+      const i00 = (sy * sw + sx) * 4, i10 = (sy * sw + sx2) * 4, i01 = (sy2 * sw + sx) * 4, i11 = (sy2 * sw + sx2) * 4;
+      const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty;
+      const o = (y * dw + x) * 4;
+      for (let c = 0; c < 4; c++) {
+        const v = src[i00 + c] * w00 + src[i10 + c] * w10 + src[i01 + c] * w01 + src[i11 + c] * w11;
+        out[o + c] = v > 255 ? 255 : v;
+      }
+    }
+  }
+  return out;
+}
+
+// دمج إطار جزئي على اللوحة الكاملة
+function compositeFrame(canvas, fr, sw, sh) {
+  for (let y = 0; y < fr.dims.height; y++) {
+    const dy = fr.dims.top + y;
+    if (dy < 0 || dy >= sh) continue;
+    for (let x = 0; x < fr.dims.width; x++) {
+      const dx = fr.dims.left + x;
+      if (dx < 0 || dx >= sw) continue;
+      const si = (y * fr.dims.width + x) * 4;
+      if (fr.patch[si + 3] === 0) continue;
+      const di = (dy * sw + dx) * 4;
+      canvas[di] = fr.patch[si]; canvas[di + 1] = fr.patch[si + 1]; canvas[di + 2] = fr.patch[si + 2]; canvas[di + 3] = 255;
+    }
+  }
+}
+
+async function optimizeGifForWeb(relPath, opts = {}) {
+  const { scale = 0.5, minSize = 100 * 1024, maxFrames = 500 } = opts;
+  if (!gifUct || !GifEncoderLib) return '';
+  const clean = String(relPath || '');
+  if (!clean.startsWith('/uploads/') || !/\.gif$/i.test(clean)) return '';
+  if (/-lite\.gif$/i.test(path.basename(clean))) return '';    // مُضغوط مسبقاً — لا يُعاد
+  const abs = path.join(__dirname, 'public', clean);
+  let st;
+  try { st = fs.statSync(abs); } catch (e) { return ''; }
+  if (!st.isFile() || st.size < minSize) return '';
+  // إذا وُجد -lite.gif حديث (مرفوع مسبقاً مع الموقع) يُستخدم مباشرة بلا إعادة ترميز
+  const preLite = clean.replace(/\.gif$/i, '') + '-lite.gif';
+  let preSt;
+  try { preSt = fs.statSync(path.join(__dirname, 'public', preLite)); } catch (e) { }
+  if (preSt && preSt.mtimeMs >= st.mtimeMs && preSt.size < st.size * 0.95) return preLite;
+  let buf;
+  try { buf = fs.readFileSync(abs); } catch (e) { return ''; }
+  try {
+    const gif = gifUct.parseGIF(new Uint8Array(buf));
+    if (!gif.frames || !gif.frames.length) return '';
+    const sw = (gif.lsd && gif.lsd.width) || 0, sh = (gif.lsd && gif.lsd.height) || 0;
+    if (!sw || !sh || sw > 2000 || sh > 2000) return '';
+    const frames = gifUct.decompressFrames(gif, true);
+    if (!frames || !frames.length || frames.length > maxFrames) return '';
+    if (sw * sh * frames.length > 400 * 1024 * 1024) return '';
+    const dw = Math.max(2, Math.round(sw * scale)), dh = Math.max(2, Math.round(sh * scale));
+    const encoder = new GifEncoderLib(dw, dh, 'octree', true, frames.length);
+    encoder.setRepeat(0);
+    encoder.setThreshold(90);
+    encoder.setTransparent('#000000');
+    encoder.start();
+    let canvas = new Uint8Array(sw * sh * 4);
+    let saved = null;
+    for (const fr of frames) {
+      const disp = fr.disposalType || 0;
+      if (disp === 3) saved = canvas.slice();
+      compositeFrame(canvas, fr, sw, sh);
+      encoder.setDelay(Math.max(20, fr.delay || 100));
+      encoder.addFrame(scaleRgba(canvas, sw, sh, dw, dh));
+      if (disp === 2) canvas = new Uint8Array(sw * sh * 4);
+      else if (disp === 3 && saved) canvas = saved;
+    }
+    encoder.finish();
+    const out = encoder.out.getData();
+    // يُقبل الناتج فقط إن كان أصغر من الأصل (≤95%)؛ وإلا يُبقَى الأصل كما هو
+    if (!out || out.length >= buf.length * 0.95) return '';
+    const outRel = clean.replace(/\.gif$/i, '') + '-lite.gif';
+    fs.writeFileSync(path.join(__dirname, 'public', outRel), out);
+    return outRel;
+  } catch (e) { return ''; }
+}
+
+// مدخل موحد لتحسين صور لوحة الإدارة: GIF متحرك ← ضاغط GIF، وصورة ثابتة ← WebP
+async function optimizeAdminImage(relPath, opts = {}) {
+  if (/\.gif$/i.test(String(relPath || ''))) return optimizeGifForWeb(relPath, opts);
+  return optimizeImageForWeb(relPath, opts);
+}
+
 // تحسين لمرة واحدة (قابلة للتكرار بلا أثر) لصور الغرف والشعار الكبيرة الموجودة:
 // يُنشأ ملف WebP بجانب الأصل ويُحدَّث مسار الغرفة/الشعار إن كان أصغر.
 function migrateLargeImages() {
-  if (!sharpLib) return;
+  if (!sharpLib && !gifUct) return;
   (async () => {
     try {
+      // صور الغرف: تنصيف الحجم والجودة (GIF يُضغط بضاغط GIF)
       const rooms = await q.all(`SELECT id, image FROM rooms`);
       for (const r of rooms) {
         const img = String(r.image || '');
         if (!img.startsWith('/uploads/rooms/')) continue;
-        const opt = await optimizeImageForWeb(img, { maxWidth: 480, quality: 80 });
+        const opt = await optimizeAdminImage(img, { scale: 0.5, maxWidth: 480, quality: 50, minSize: 80 * 1024 });
         if (opt) {
           await q.run(`UPDATE rooms SET image=? WHERE id=? AND image=?`, opt, r.id, img);
           console.log('✔ صورة غرفة مُحسَّنة:', img, '→', opt);
         }
       }
+      // الشعار
       const s = await getSettings();
       const logo = String(s.logo_url || '');
       if (logo.startsWith('/uploads/') && !/\.(gif|svg)$/i.test(logo)) {
@@ -527,6 +638,28 @@ function migrateLargeImages() {
         if (opt) {
           await q.run(`INSERT INTO settings (key,value) VALUES ('logo_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, opt);
           console.log('✔ الشعار مُحسَّن:', logo, '→', opt);
+        }
+      }
+      // صور الهدايا (في الدردشة)
+      const gifts = await q.all(`SELECT id, img FROM gifts`);
+      for (const g of gifts) {
+        const img = String(g.img || '');
+        if (!img.startsWith('/uploads/gifts/')) continue;
+        const opt = await optimizeAdminImage(img, { scale: 0.5, maxWidth: 600, quality: 50, minSize: 50 * 1024 });
+        if (opt) {
+          await q.run(`UPDATE gifts SET img=? WHERE id=? AND img=?`, opt, g.id, img);
+          console.log('✔ صورة هدية مُحسَّنة:', img, '→', opt);
+        }
+      }
+      // صور/جيفات الدخول الملكي (المرفوعة من الإدارة فقط)
+      const royals = await q.all(`SELECT id, gif FROM royal_animals`);
+      for (const r of royals) {
+        const g = String(r.gif || '');
+        if (!g.startsWith('/uploads/royal/')) continue;
+        const opt = await optimizeAdminImage(g, { scale: 0.5, maxWidth: 800, quality: 50, minSize: 100 * 1024 });
+        if (opt) {
+          await q.run(`UPDATE royal_animals SET gif=? WHERE id=? AND gif=?`, opt, r.id, g);
+          console.log('✔ دخول ملكي مُحسَّن:', g, '→', opt);
         }
       }
     } catch (e) { console.warn('تحسين الصور:', e.message); }
@@ -3835,13 +3968,16 @@ app.post('/api/admin/gifts/:id/del', requireSuperAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 app.post('/api/admin/upload/gift', requireSuperAdmin, (req, res) => {
-  uploadMedia.single('file')(req, res, (err) => {
+  uploadMedia.single('file')(req, res, async (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر الرفع: ' + (err ? err.message : 'لا يوجد ملف') });
     if (!String(req.file.mimetype || '').startsWith('image/')) {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'ملف الهدية يجب أن يكون صورة' });
     }
-    res.json({ ok: true, path: '/uploads/gifts/' + req.file.filename });
+    const origPath = '/uploads/gifts/' + req.file.filename;
+    // تنصيف الحجم والجودة حتى تفتح الهدية بسلاسة داخل الدردشة (GIF يُضغط بضاغط GIF)
+    const optimized = await optimizeAdminImage(origPath, { scale: 0.5, maxWidth: 600, quality: 50, minSize: 50 * 1024 });
+    res.json({ ok: true, path: optimized || origPath, optimized: !!optimized });
   });
 });
 app.post('/api/admin/upload/gift-audio', requireSuperAdmin, (req, res) => {
@@ -4009,7 +4145,8 @@ app.post('/api/admin/upload/room', requireAdmin, (req, res) => {
   uploadMedia.single('file')(req, res, async (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر الرفع: ' + (err ? err.message : 'لا يوجد ملف') });
     const origPath = '/uploads/rooms/' + req.file.filename;
-    const optimized = await optimizeImageForWeb(origPath, { maxWidth: 480, quality: 80 });
+    // تنصيف الأبعاد + جودة 50: أخف وأسرع في عرض الغرف (GIF إن وُجد يُضغط بضاغط GIF)
+    const optimized = await optimizeAdminImage(origPath, { scale: 0.5, maxWidth: 480, quality: 50, minSize: 80 * 1024 });
     res.json({ ok: true, path: optimized || origPath, optimized: !!optimized });
   });
 });
@@ -4920,13 +5057,17 @@ app.get('/api/admin/royal-animals', requireAdmin, async (req, res) => {
   res.json({ ok: true, animals: ROYAL_ANIMALS_FULL });
 });
 app.post('/api/admin/upload/royal-gif', requireSuperAdmin, (req, res) => {
-  uploadRoyal.single('file')(req, res, (err) => {
+  uploadRoyal.single('file')(req, res, async (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر الرفع: ' + (err ? err.message : 'لا يوجد ملف') });
     if (!String(req.file.mimetype || '').startsWith('image/')) {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'اختر صورة للدخول (يُفضَّل GIF متحرك)' });
     }
-    res.json({ ok: true, path: '/uploads/royal/' + req.file.filename });
+    const origPath = '/uploads/royal/' + req.file.filename;
+    // GIF: يُصغَّر إلى نصف أبعاده ويعاد ترميزه (أسلس عند التشغيل في الدردشة)
+    // صورة ثابتة: تُحوَّل إلى WebP بنصف الحجم وجودة 50
+    const optimized = await optimizeAdminImage(origPath, { scale: 0.5, maxWidth: 800, quality: 50, minSize: 100 * 1024 });
+    res.json({ ok: true, path: optimized || origPath, optimized: !!optimized });
   });
 });
 app.post('/api/admin/upload/royal-sound', requireSuperAdmin, (req, res) => {
