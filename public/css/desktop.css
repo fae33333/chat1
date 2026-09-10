@@ -220,7 +220,7 @@
      شراء رصيد، الدخول الملكي، التوثيق، كشف النكات، تغيير الصورة
      ============================================================ */
   #profOv, #menuOv, #myGiftsOv, #blocksOv, #setOv, #buyOv, #royalOv,
-  #verifyOv, #verifyEmailOv, #aliasesOv, #avaOv {
+  #verifyOv, #verifyEmailOv, #aliasesOv, #avaOv, #statusOv {
     align-items: center !important;
     justify-content: center !important;
     padding: 26px;
@@ -230,7 +230,7 @@
   }
   #profOv .pvpage, #menuOv .pvpage, #myGiftsOv .pvpage, #blocksOv .pvpage,
   #setOv .pvpage, #buyOv .pvpage, #royalOv .pvpage, #verifyOv .pvpage,
-  #verifyEmailOv .pvpage, #aliasesOv .pvpage, #avaOv .pvpage {
+  #verifyEmailOv .pvpage, #aliasesOv .pvpage, #avaOv .pvpage, #statusOv .pvpage {
     width: 700px;
     max-width: 100%;
     flex: none;
@@ -256,6 +256,29 @@
     border-radius: 16px;
     overflow: hidden;
   }
+
+  /* ---------- قالب تغيير الصورة الرمزية: تنسيق محسّن ---------- */
+  /* إصلاح عام: رأس الصفحات الثابت كان بهوامش سالبة تكسر البطاقات */
+  .pvpage .pg-head.bar { margin: 0; padding: 13px 16px; border-bottom: 1px solid #e8ebf4; }
+  .pvpage .seg.mid, .seg.blue.mid { margin: 14px 16px 12px; }
+  #avaOv .pvpage { display: flex; flex-direction: column; }
+  #avaOv .pg-head.bar { flex: none; }
+  #avaOv .seg.blue.mid { flex: none; }
+  #avaOv .seg button { padding: 10px 0; font-size: 14px; }
+  #avaOv .ava-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 10px;
+    padding: 4px 16px 14px;
+    flex: 1;
+    min-height: 0;
+    scrollbar-width: thin;
+  }
+  #avaOv .ava-cell { border-radius: 13px; border-width: 3px; transition: transform .15s ease, border-color .15s ease; }
+  #avaOv .ava-cell:hover { transform: scale(1.06); }
+  #avaOv .ava-cell.sel { box-shadow: 0 4px 14px var(--skin-glow, rgba(156,30,70,.35)); }
+  #avaOv .ava-foot { margin: 0 16px; padding: 12px 0 14px; flex: none; }
+  #avaOv .btn-upload, #avaOv .btn-pick { padding: 12px; border-radius: 11px; font-size: 14px; }
+  #avaOv .btn-pick { background: var(--skin-btn, var(--main)); box-shadow: 0 4px 14px var(--skin-glow, rgba(156,30,70,.3)); }
 
   /* نافذة تسجيل الدخول */
   #loginOv .lsheet { width: 470px; padding: 22px 30px 28px; }
@@ -288,29 +311,51 @@
   #giftOv .sheet .gs-grid { max-height: 42vh; }
 
   /* ============================================================
+     3.ح) حركة ظهور ناعمة لجميع القوالب
+     ============================================================ */
+  @keyframes dskFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes dskPopIn {
+    from { opacity: 0; transform: translateY(26px) scale(.95); }
+    to   { opacity: 1; transform: none; }
+  }
+  .overlay.open { animation: dskFadeIn .18s ease both; }
+  .overlay.open .sheet,
+  .overlay.open .pvpage,
+  .overlay.open .wall-page,
+  .overlay.open .dialog,
+  .overlay.open .status-viewer,
+  .overlay.open .status-text-page {
+    animation: dskPopIn .32s cubic-bezier(.2, .85, .3, 1.12) both;
+  }
+  /* نوافذ مكالمات/تأكيد صغيرة: ظهور أسرع */
+  .overlay.center.open .dialog { animation-duration: .24s; }
+
+  /* ============================================================
      4) القوائم المنسدلة واللوحات العائمة (كما بالصور المحدَّثة)
      ============================================================ */
 
   /* رأس الصفحات الثابت position:fixed يكسر اللوحات العائمة — يصبح sticky */
   .overlay .pg-head.bar { position: sticky; width: auto; }
 
-  /* ---- لوحة المحادثات الخاصة / الإشعارات / الحائط: لوحة عائمة يمين ---- */
+  /* ---- الخاص / الإشعارات / الحائط: بطاقة مركزية مثل بقية القوالب ---- */
   /* مهم: تظهر فقط عند فتحها (.open) — لا تُعرض تلقائياً عند دخول الغرفة */
   #privOv, #notifOv, #wallOv {
-    background: rgba(15, 18, 35, .30);
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 26px;
+    box-sizing: border-box;
+    background: rgba(15, 18, 35, .35);
     backdrop-filter: blur(2px);
-    padding: 0;
   }
-  #privOv.open, #notifOv.open, #wallOv.open { display: block; }
   #privOv .pvpage, #notifOv .pvpage, #wallOv .wall-page {
-    position: absolute;
-    top: 56px;
-    right: 10px;
-    bottom: 12px;
-    width: 452px;
-    max-width: calc(100% - var(--dsk-side-w) - 20px);
+    position: static;
+    width: 700px;
+    max-width: 100%;
+    flex: none;
+    height: 100%;
+    max-height: 100%;
     margin: 0;
-    border-radius: 14px;
+    border-radius: 16px;
     border: 1px solid #e7e9f2;
     box-shadow: 0 24px 70px rgba(10, 15, 40, .30);
     overflow: hidden;
@@ -326,6 +371,7 @@
   #wallOv .wall-head b { flex: 1; text-align: right; font-size: 17px; }
   #wallOv .wall-refresh i { font-size: 18px; }
   #wallOv .wall-page, #wallOv .wall-scroll { background: #fff; }
+  #privOv .pvpage, #notifOv .pvpage { min-height: 0; }
 
   /* ---- ورقة إجراءات المستخدم: قائمة منبثقة عائمة (مثل صورة القائمة) ---- */
   #userSheet { background: rgba(15, 18, 35, .28); backdrop-filter: blur(2px); }
