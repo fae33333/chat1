@@ -78,8 +78,7 @@
 
     $('#dskProfileMenu').onclick = (e) => {
       e.stopPropagation();
-      const b = $('#bnMenu');
-      if (b) b.click();
+      toggleDskMenu();
     };
     dskProfile.onclick = (e) => {
       if (e.target.closest('#dskProfileMenu')) return;
@@ -205,15 +204,18 @@
 
   /* ---------- أزرار الهيدر ---------- */
   function buildHeads() {
-    // هيدر الدردشة: زر الخاص + الإشعارات (بديل شريط التنقل السفلي المخفي)
+    // هيدر الدردشة: الخاص + الحائط + الإشعارات (بديل شريط التنقل السفلي المخفي)
     const ctb = $('#chatScreen .c-top-btns');
     if (ctb && !$('#dskNavPrivate')) {
       const bp = el('<button class="cbtn dsk-only dsk-nav-btn" id="dskNavPrivate" type="button" title="الرسائل الخاصة"><i class="f7-icons">bubble_left_fill</i></button>');
+      const bw = el('<button class="cbtn dsk-only dsk-nav-btn" id="dskNavWall" type="button" title="الحائط"><i class="f7-icons">doc_text_fill</i></button>');
       const bn = el('<button class="cbtn dsk-only dsk-nav-btn" id="dskNavNotifs" type="button" title="الإشعارات"><i class="f7-icons">bell_fill</i></button>');
       const first = ctb.firstChild;
       ctb.insertBefore(bn, first);
-      ctb.insertBefore(bp, bn);
+      ctb.insertBefore(bw, bn);
+      ctb.insertBefore(bp, bw);
       bp.onclick = () => { const b = $('.bn-item[data-nav="private"]'); if (b) b.click(); };
+      bw.onclick = () => { const b = $('.bn-item[data-nav="wall"]'); if (b) b.click(); };
       bn.onclick = () => { const b = $('.bn-item[data-nav="notifs"]'); if (b) b.click(); };
     }
 
@@ -240,10 +242,98 @@
     }
   }
 
+  /* ---------- القائمة الرئيسية المنسدلة (زر الهامبرغر في بطاقة المستخدم) ---------- */
+  function dskMenuItem(ic, label) {
+    return el(`<button class="dsk-menu-item" type="button"><span class="dmi-ic ${ic.cls}"><i class="f7-icons">${ic.icon}</i></span><span>${label}</span><i class="f7-icons dmi-chev">chevron_left</i></button>`);
+  }
+  function buildDskMenu() {
+    if ($('#dskMenuDrop')) return;
+    const veil = el('<div class="dsk-drop-veil" id="dskMenuVeil"></div>');
+    const drop = el('<div class="dsk-menu-drop" id="dskMenuDrop"></div>');
+    const g1 = el('<div class="dsk-menu-group"></div>');
+    const g2 = el('<div class="dsk-menu-group"></div>');
+    const g3 = el('<div class="dsk-menu-group"></div>');
+    const mk = (parent, ic, label, fn) => {
+      const b = dskMenuItem(ic, label);
+      b.onclick = () => { closeDskMenu(); fn(); };
+      parent.appendChild(b);
+      return b;
+    };
+    mk(g1, { icon: 'person_crop_circle', cls: 'maroon' }, 'حسابي', () => g(() => $('#mnAccount').click()));
+    mk(g1, { icon: 'chart_bar_fill', cls: 'gold' }, 'ترقية حسابي', () => g(() => $('#mnUpgrade').click()));
+    mk(g2, { icon: 'photo_on_rectangle', cls: 'purple' }, 'تغيير الصورة', () => g(() => $('#mnAvatar').click()));
+    mk(g2, { icon: 'slash_circle_fill', cls: 'red' }, 'قوائم الحظر', () => g(() => $('#mnBlocks').click()));
+    mk(g2, { icon: 'gear_alt_fill', cls: 'blue' }, 'الاعدادات', () => g(() => $('#mnSettings').click()));
+    mk(g2, { icon: 'arrow_down_to_line', cls: 'orange' }, 'تطبيق نجوم العرب', () => window.open('https://play.google.com/store/apps/details?id=www.arabjostars.com', '_blank'));
+    mk(g3, { icon: 'gift_fill', cls: 'pink' }, 'هدايا حسابي', () => g(() => $('#mnMyGifts').click()));
+    mk(g3, { icon: 'power', cls: 'gray' }, 'تسجيل الخروج', () => g(() => $('#mnLogout').click()));
+    drop.appendChild(g1); drop.appendChild(g2); drop.appendChild(g3);
+    usersPanel.appendChild(veil);
+    usersPanel.appendChild(drop);
+    veil.onclick = closeDskMenu;
+  }
+  function placeDskMenu() {
+    const drop = $('#dskMenuDrop'), veil = $('#dskMenuVeil');
+    if (!drop || !dskProfile) return;
+    const top = dskProfile.offsetTop + dskProfile.offsetHeight + 8;
+    drop.style.top = top + 'px';
+    veil.style.top = top + 'px';
+    const radio = $('#dskRadio');
+    drop.style.bottom = (radio && !radio.hidden) ? (radio.offsetHeight + 26) + 'px' : '14px';
+  }
+  function openDskMenu() {
+    const me = g(() => ME);
+    if (!me || !me.username) { g(() => openLogin()); return; }
+    buildDskMenu();
+    placeDskMenu();
+    $('#dskMenuDrop').classList.add('open');
+    $('#dskMenuVeil').classList.add('open');
+  }
+  function closeDskMenu() {
+    const d = $('#dskMenuDrop'), v = $('#dskMenuVeil');
+    if (d) d.classList.remove('open');
+    if (v) v.classList.remove('open');
+  }
+  function toggleDskMenu() {
+    const d = $('#dskMenuDrop');
+    (d && d.classList.contains('open')) ? closeDskMenu() : openDskMenu();
+  }
+
+  /* ---------- قائمة الحالة السريعة تحت زر النقاط (⋮) على الديسكتوب ---------- */
+  function buildQuickExtras() {
+    const sheet = $('#quickOv .sheet');
+    if (!sheet || $('#dskQuickLogout')) return;
+    const b = el('<button class="us-opt st dsk-only" id="dskQuickLogout" type="button"><i class="f7-icons">power</i> الخروج <i class="f7-icons">chevron_right</i></button>');
+    b.onclick = () => { g(() => closeOv('quickOv')); g(() => $('#mnLogout').click()); };
+    sheet.appendChild(b);
+  }
+  function overrideRoomMore() {
+    const more = $('#btnRoomMore');
+    if (!more) return;
+    more.onclick = (e) => {
+      e.stopPropagation();
+      if (mq.matches) {
+        buildQuickExtras();
+        g(() => { closeRoomDrop(); openOv('quickOv'); });
+        return;
+      }
+      g(() => { $('#roomDropBg').style.display = 'block'; $('#roomDrop').classList.toggle('open'); });
+    };
+  }
+
+  /* ---------- إغلاق لوحات الخاص/الإشعارات بالنقر على الخلفية (الديسكتوب) ---------- */
+  function hookFloatingPanels() {
+    ['privOv', 'notifOv'].forEach(id => {
+      const o = $('#' + id);
+      if (o) o.addEventListener('click', (e) => { if (mq.matches && e.target === o) g(() => closeOv(id)); });
+    });
+  }
+
   /* ---------- عند التبديل بين الجوال والديسكتوب ---------- */
   function onMq() {
     if (!mq.matches && usersPanel) {
       usersPanel.classList.remove('dsk-tab-rooms', 'open');
+      closeDskMenu();
       Object.keys(tabBtns).forEach(k => tabBtns[k] && tabBtns[k].classList.remove('active'));
       if (tabBtns.users) tabBtns.users.classList.add('active');
     }
@@ -255,6 +345,8 @@
     buildHeads();
     wrapPanelFns();
     hookRenders();
+    overrideRoomMore();
+    hookFloatingPanels();
     syncHeadH();
     syncProfile();
     syncRadio();

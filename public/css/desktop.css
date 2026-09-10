@@ -227,4 +227,115 @@
   #loginOv .big-btn { width: 280px; display: block; margin: 6px auto 0; }
   #loginOv .lg-terms { text-align: center; margin-top: 18px; }
 
+  /* ============================================================
+     4) القوائم المنسدلة واللوحات العائمة (كما بالصور المحدَّثة)
+     ============================================================ */
+
+  /* رأس الصفحات الثابت position:fixed يكسر اللوحات العائمة — يصبح sticky */
+  .overlay .pg-head.bar { position: sticky; width: auto; }
+
+  /* ---- لوحة المحادثات الخاصة / الإشعارات / الحائط: لوحة عائمة يمين ---- */
+  #privOv, #notifOv, #wallOv {
+    display: block;
+    background: rgba(15, 18, 35, .30);
+    backdrop-filter: blur(2px);
+    padding: 0;
+  }
+  #privOv .pvpage, #notifOv .pvpage, #wallOv .wall-page {
+    position: absolute;
+    top: 56px;
+    right: 10px;
+    bottom: 12px;
+    width: 452px;
+    max-width: calc(100% - var(--dsk-side-w) - 20px);
+    margin: 0;
+    border-radius: 14px;
+    border: 1px solid #e7e9f2;
+    box-shadow: 0 24px 70px rgba(10, 15, 40, .30);
+    overflow: hidden;
+  }
+  /* عنوان اللوحة مثل الصور: الاسم + الإعدادات بدون شريط «عودة» */
+  #privOv .pg-head.bar, #notifOv .pg-head.bar { display: none; }
+  #privOv .page-heading, #notifOv .page-heading { padding: 6px 4px 10px; }
+  #privOv .ph-title, #notifOv .ph-title { font-size: 17px; }
+
+  /* ---- ورقة إجراءات المستخدم: قائمة منبثقة عائمة (مثل صورة القائمة) ---- */
+  #userSheet { background: rgba(15, 18, 35, .28); backdrop-filter: blur(2px); }
+  #userSheet .sheet {
+    position: absolute;
+    top: 66px;
+    right: calc(var(--dsk-side-w) + 14px);
+    left: auto;
+    width: 352px;
+    max-height: calc(100% - 90px);
+    border-radius: 16px;
+    padding: 10px;
+    box-shadow: 0 24px 70px rgba(10, 15, 40, .32);
+    animation: pop .16s;
+  }
+  #userSheet .us-cancel { border-top: 1px solid #f0f1f6; color: #dc2626; }
+
+  /* ---- قائمة الحالة السريعة: منسدلة تحت زر النقاط (تغيير الحالة) ---- */
+  #quickOv { background: rgba(15, 18, 35, .28); backdrop-filter: blur(2px); }
+  #quickOv .sheet {
+    position: absolute;
+    top: 56px;
+    right: calc(var(--dsk-side-w) + 14px);
+    left: auto;
+    width: 252px;
+    border-radius: 14px;
+    padding: 8px 10px 10px;
+    box-shadow: 0 24px 70px rgba(10, 15, 40, .32);
+    animation: pop .16s;
+  }
+  #quickOv .mn-title { text-align: right; font-size: 14px; font-weight: 900; color: var(--navy); padding: 4px 4px 8px; }
+  #quickOv .us-opt { border-radius: 10px; padding: 9px 8px; font-size: 13.5px; }
+  #quickOv .us-opt:hover { background: #f6f7fb; }
+
+  /* ---- قائمة زر الهامبرغر (بطاقة المستخدم): قائمة رئيسية منسدلة ---- */
+  .dsk-drop-veil {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    z-index: 14;
+    background: rgba(244, 245, 250, .45);
+    backdrop-filter: saturate(160%) blur(3px);
+    display: none;
+  }
+  .dsk-drop-veil.open { display: block; }
+  .dsk-menu-drop {
+    position: absolute;
+    left: 12px; right: 12px;
+    z-index: 15;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    animation: pop .16s;
+  }
+  .dsk-menu-drop.open { display: flex; }
+  .dsk-menu-group { background: #fff; border: 1px solid #eceef4; border-radius: 14px; overflow: hidden; box-shadow: 0 8px 26px rgba(20, 25, 60, .10); }
+  .dsk-menu-item {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    background: none; border: 0; border-bottom: 1px solid #f2f3f8;
+    padding: 11px 12px; font-family: inherit; font-size: 14px; font-weight: 800; color: #262a35;
+    cursor: pointer; text-align: right;
+  }
+  .dsk-menu-item:last-child { border-bottom: 0; }
+  .dsk-menu-item:hover { background: #f8f9fc; }
+  .dsk-menu-item .dmi-ic {
+    width: 32px; height: 32px; border-radius: 9px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dsk-menu-item .dmi-ic i { font-size: 17px; }
+  .dsk-menu-item .dmi-ic.maroon { background: #f7e6ec; color: var(--main); }
+  .dsk-menu-item .dmi-ic.gold { background: #fdf2d7; color: #b45309; }
+  .dsk-menu-item .dmi-ic.purple { background: #f1e8ff; color: #7c3aed; }
+  .dsk-menu-item .dmi-ic.red { background: #fee2e2; color: #dc2626; }
+  .dsk-menu-item .dmi-ic.blue { background: #dbeafe; color: #2563eb; }
+  .dsk-menu-item .dmi-ic.orange { background: #ffedd5; color: #ea580c; }
+  .dsk-menu-item .dmi-ic.pink { background: #fce7f3; color: #db2777; }
+  .dsk-menu-item .dmi-ic.gray { background: #f1f5f9; color: #64748b; }
+  .dsk-menu-item span { flex: 1; }
+  .dsk-menu-item i.dmi-chev { color: #c3c8d8; font-size: 16px; }
+
 }
