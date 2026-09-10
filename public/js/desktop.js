@@ -141,6 +141,8 @@
   }
 
   /* ---------- مزامنة بطاقة المستخدم والراديو ---------- */
+  /* ---------- مزامنة بطاقة المستخدم والراديو (بدون رمشة: لا نلمس DOM إلا عند التغير) ---------- */
+  let dskLastAva = null, dskLastName = null, dskLastBal = null, dskLastLogged = null;
   function syncProfile() {
     if (!dskProfile) return;
     const me = g(() => ME);
@@ -149,17 +151,25 @@
       coins = $('#dskProfileCoins'), bal = $('#dskProfileBal');
     if (!ava || !nameEl || !coins || !bal) return;
     if (logged) {
-      g(() => { ava.innerHTML = avatarHtml(me.avatar); });
-      nameEl.textContent = me.username;
+      if (dskLastAva !== me.avatar) {
+        const html = g(() => avatarHtml(me.avatar));
+        if (html) { ava.innerHTML = html; dskLastAva = me.avatar; }
+      }
+      if (dskLastName !== me.username) { nameEl.textContent = me.username; dskLastName = me.username; }
+      const b = (me.balance === undefined || me.balance === null) ? '0' : String(me.balance);
+      if (dskLastBal !== b) { bal.textContent = b; dskLastBal = b; }
       coins.style.display = '';
-      bal.textContent = (me.balance === undefined || me.balance === null) ? '0' : me.balance;
       dskProfile.title = 'ملفي: ' + me.username;
     } else {
-      ava.innerHTML = '<i class="f7-icons">person_fill</i>';
-      nameEl.textContent = 'تسجيل الدخول';
-      coins.style.display = 'none';
-      dskProfile.title = 'اضغط لتسجيل الدخول';
+      if (dskLastLogged !== false) {
+        ava.innerHTML = '<i class="f7-icons">person_fill</i>';
+        nameEl.textContent = 'تسجيل الدخول';
+        coins.style.display = 'none';
+        dskProfile.title = 'اضغط لتسجيل الدخول';
+        dskLastAva = null; dskLastName = null; dskLastBal = null;
+      }
     }
+    dskLastLogged = logged;
   }
   function syncRadio() {
     if (!dskRadio) return;
