@@ -569,9 +569,125 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .chat-public-image i { font-size:25px; color:#fff; }
 .chat-public-image b { font-size:13px; font-weight:900; color:#fff; }
 .chat-public-image:active { transform:scale(.985); }
-/* زر فيديو يوتيوب المدمج (يُستخدم في الحائط) — بنفس حجم زر الصورة لكن بلون يوتيوب */
-.chat-public-image.as-youtube { background:linear-gradient(145deg,#ff3d3d,#b80000); }
-.chat-public-image.as-youtube i { color:#fff; }
+/* ============================================================
+   أزرار الوسائط المدمجة في الحائط — تصميم فخم موحّد
+   بطاقة داكنة زجاجية بإطار وتوهج ملوّن، أيقونة داخل مربع متدرج،
+   عنوان + سطر توضيحي + سهم. لون البطاقة يُدار بمتغير --h:
+   • الصور: درجة ثابتة أنيقة (أزرق مخضرّ)
+   • يوتيوب: لون مميز لكل فيديو يُشتق من معرف المقطع
+   ============================================================ */
+.wall-media-chip {
+  --h: 205;
+  width: min(80%, 330px);
+  min-height: 0;
+  margin-top: 7px;
+  padding: 11px 13px;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 12px;
+  border: 1px solid hsla(var(--h), 85%, 66%, .40);
+  border-radius: 17px;
+  background:
+    linear-gradient(140deg, hsla(var(--h), 75%, 55%, .22), hsla(var(--h), 80%, 45%, .06) 42%, transparent 65%),
+    linear-gradient(180deg, #151b29, #0a0e17);
+  box-shadow:
+    0 6px 18px hsla(var(--h), 90%, 45%, .20),
+    inset 0 1px 0 hsla(0, 0%, 100%, .08);
+  position: relative;
+  overflow: hidden;
+  text-align: right;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+/* لمعة تمرّ على البطاقة عند المرور بالماوس */
+.wall-media-chip::after {
+  content: '';
+  position: absolute;
+  top: -45%;
+  bottom: -45%;
+  width: 44%;
+  right: -60%;
+  transform: rotate(16deg);
+  background: linear-gradient(90deg, transparent, hsla(var(--h), 95%, 82%, .17), transparent);
+  transition: right .55s ease;
+  pointer-events: none;
+}
+.wall-media-chip:hover::after,
+.wall-media-chip:focus-visible::after { right: 125%; }
+.wall-media-chip:hover {
+  transform: translateY(-2px);
+  border-color: hsla(var(--h), 92%, 70%, .62);
+  box-shadow:
+    0 11px 26px hsla(var(--h), 90%, 50%, .30),
+    inset 0 1px 0 hsla(0, 0%, 100%, .10);
+}
+.wall-media-chip:active { transform: scale(.98); }
+.wall-media-chip .wmc-ic {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, hsl(var(--h), 86%, 56%), hsl(calc(var(--h) + 30), 84%, 40%));
+  box-shadow:
+    0 4px 12px hsla(var(--h), 90%, 42%, .50),
+    inset 0 1px 0 hsla(0, 0%, 100%, .38);
+}
+.wall-media-chip .wmc-ic i { font-size: 22px; color: #fff; }
+.wall-media-chip .wmc-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wall-media-chip .wmc-body b {
+  font-size: 13.5px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: .2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wall-media-chip .wmc-body small {
+  font-size: 11px;
+  font-weight: 700;
+  color: hsla(var(--h), 70%, 82%, .85);
+}
+.wall-media-chip .wmc-go {
+  flex: none;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: hsla(var(--h), 85%, 60%, .15);
+  border: 1px solid hsla(var(--h), 85%, 70%, .38);
+}
+.wall-media-chip .wmc-go i { font-size: 14px; color: hsl(var(--h), 92%, 80%); }
+/* الصور: درجة ثابتة أنيقة مهما كان محتوى المنشور */
+.wall-media-chip.as-image { --h: 203; }
+/* شارة صغيرة تؤكد مصدر اليوتيوب */
+.wall-media-chip.as-youtube .wmc-body b::after {
+  content: 'YouTube';
+  display: inline-block;
+  margin-right: 7px;
+  padding: 1px 7px 2px;
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .6px;
+  color: #fff;
+  background: linear-gradient(135deg, hsl(var(--h), 85%, 52%), hsl(calc(var(--h) + 30), 85%, 40%));
+  vertical-align: 1px;
+}
+/* الجوال: العرض الكامل تقريباً ولمسة ضغط أوضح */
+@media (max-width: 480px) {
+  .wall-media-chip { width: 100%; }
+}
 .chat-audio-player {
   direction:ltr;
   min-height:42px;

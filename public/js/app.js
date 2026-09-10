@@ -8714,6 +8714,14 @@ function wallYoutubeVideoId(url) {
   const match = raw.match(/(?:youtube\.com\/embed\/|youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{6,20})/i);
   return match ? match[1] : '';
 }
+// لون خاص بكل فيديو يوتيوب: يُشتق حتمياً من معرف الفيديو نفسه —
+// كل مقطع يحمل لونه الخاص في كل مرة يظهر فيها، ولا يتغير بين التحديثات.
+function wallYoutubeHue(videoId) {
+  const s = String(videoId || '');
+  let h = 7;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 100000;
+  return h % 360;
+}
 function wallMediaDescriptor(post) {
   if (!post) return null;
   if (post.youtube_url) {
@@ -8745,15 +8753,25 @@ function wallMediaDescriptor(post) {
 function wallMediaCardMarkup(post) {
   const media = wallMediaDescriptor(post);
   if (!media) return '';
-  // الصور: زر مدمج مثل الدردشة تماماً — لا تُحمَّل الصورة داخل الحائط (تخفيف الحجم)،
-  // وتُفتح في العارض عند النقر فقط.
+  // الصور: زر مدمج أنيق — لا تُحمَّل الصورة داخل الحائط (تخفيف الحجم)،
+  // وتُفتح في عارض الصور عند النقر فقط.
   if (media.type === 'image') {
-    return `<button class="chat-public-image" type="button" data-src="${esc(media.src)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>`;
+    return `<button class="chat-public-image wall-media-chip as-image" type="button" data-src="${esc(media.src)}">
+      <span class="wmc-ic"><i class="f7-icons">photo_fill</i></span>
+      <span class="wmc-body"><b>صورة مرفقة بالمنشور</b><small>اضغط هنا لفتح الصورة بالحجم الكامل</small></span>
+      <span class="wmc-go"><i class="f7-icons">chevron_left</i></span>
+    </button>`;
   }
-  // يوتيوب: زر مدمج يوضح أنه فيديو يوتيوب — بلا صورة مصغرة خارجية (توفير طلبات
-  // i.ytimg.com لكل منشور)، وعند النقر يُشغَّل داخل المشغل الكامل.
+  // يوتيوب: زر مدمج بلون خاص بكل فيديو (يُشتق من معرف المقطع) — بلا صورة
+  // مصغرة خارجية (توفير طلبات i.ytimg.com لكل منشور)، وعند النقر يُشغَّل
+  // داخل المشغل الكامل مع التشغيل التلقائي.
   if (media.type === 'youtube') {
-    return `<button class="chat-public-image as-youtube" type="button" data-media-type="youtube" data-src="${esc(media.src)}" data-original="${esc(media.original)}" data-title="${esc(media.label)}"><i class="f7-icons">play_rectangle_fill</i><b>فيديو YouTube — اضغط للمشاهدة</b></button>`;
+    const hue = wallYoutubeHue(wallYoutubeVideoId(media.src));
+    return `<button class="chat-public-image wall-media-chip as-youtube" type="button" style="--h:${hue}" data-media-type="youtube" data-src="${esc(media.src)}" data-original="${esc(media.original)}" data-title="${esc(media.label)}">
+      <span class="wmc-ic"><i class="f7-icons">play_fill</i></span>
+      <span class="wmc-body"><b>فيديو YouTube</b><small>اضغط للمشاهدة داخل المشغل</small></span>
+      <span class="wmc-go"><i class="f7-icons">chevron_left</i></span>
+    </button>`;
   }
   const visual = `<span class="wall-media-card-placeholder"><i class="f7-icons">${media.icon}</i></span>`
     + (media.poster ? `<img src="${esc(media.poster)}" loading="lazy" alt="${esc(media.label)}">` : '');
