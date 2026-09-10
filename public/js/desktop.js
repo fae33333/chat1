@@ -262,13 +262,20 @@
     };
     mk(g1, { icon: 'person_crop_circle', cls: 'maroon' }, 'حسابي', () => g(() => $('#mnAccount').click()));
     mk(g1, { icon: 'chart_bar_fill', cls: 'gold' }, 'ترقية حسابي', () => g(() => $('#mnUpgrade').click()));
+    mk(g1, { icon: 'creditcard_fill', cls: 'green' }, 'شراء رصيد', () => g(() => $('#mnBuy').click()));
+    mk(g1, { icon: 'checkmark_seal_fill', cls: 'blue' }, 'توثيق حسابي', () => g(() => $('#mnVerify').click()));
+    mk(g1, { icon: 'crown_fill', cls: 'amber' }, 'الدخول الملكي 👑', () => g(() => $('#mnRoyal').click()));
     mk(g2, { icon: 'photo_on_rectangle', cls: 'purple' }, 'تغيير الصورة', () => g(() => $('#mnAvatar').click()));
     mk(g2, { icon: 'slash_circle_fill', cls: 'red' }, 'قوائم الحظر', () => g(() => $('#mnBlocks').click()));
     mk(g2, { icon: 'gear_alt_fill', cls: 'blue' }, 'الاعدادات', () => g(() => $('#mnSettings').click()));
     mk(g2, { icon: 'arrow_down_to_line', cls: 'orange' }, 'تطبيق نجوم العرب', () => window.open('https://play.google.com/store/apps/details?id=www.arabjostars.com', '_blank'));
     mk(g3, { icon: 'gift_fill', cls: 'pink' }, 'هدايا حسابي', () => g(() => $('#mnMyGifts').click()));
     mk(g3, { icon: 'power', cls: 'gray' }, 'تسجيل الخروج', () => g(() => $('#mnLogout').click()));
-    drop.appendChild(g1); drop.appendChild(g2); drop.appendChild(g3);
+    // مجموعة الإدارة: تظهر فقط لـ (سوبر أدمن / أدمن / سوبر ماستر) — تُدار في openDskMenu
+    const gAdm = el('<div class="dsk-menu-group" id="dskMenuAdminGroup" style="display:none"></div>');
+    const admBtn = mk(gAdm, { icon: 'shield_fill', cls: 'indigo' }, 'دخول الإدارة', () => g(() => $('#mnAdminPanel').click()));
+    admBtn.style.background = 'linear-gradient(135deg,rgba(99,102,241,.10),rgba(168,85,247,.10))';
+    drop.appendChild(g1); drop.appendChild(g2); drop.appendChild(gAdm); drop.appendChild(g3);
     usersPanel.appendChild(veil);
     usersPanel.appendChild(drop);
     veil.onclick = closeDskMenu;
@@ -287,6 +294,9 @@
     if (!me || !me.username) { g(() => openLogin()); return; }
     buildDskMenu();
     placeDskMenu();
+    // زر «دخول الإدارة» يظهر فقط لرتب: سوبر ماستر / سوبر أدمن / أدمن
+    const admGroup = $('#dskMenuAdminGroup');
+    if (admGroup) admGroup.style.display = g(() => !!(typeof isAdmRank === 'function' && isAdmRank())) ? '' : 'none';
     $('#dskMenuDrop').classList.add('open');
     $('#dskMenuVeil').classList.add('open');
   }
