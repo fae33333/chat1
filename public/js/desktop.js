@@ -83,7 +83,10 @@
     dskProfile.onclick = (e) => {
       if (e.target.closest('#dskProfileMenu')) return;
       const me = g(() => ME);
-      if (!me || !me.username) g(() => openLogin());
+      if (!me || !me.username) { g(() => openLogin()); return; }
+      // النقر على الصورة/الاسم يفتح قائمة «تغيير الحالة»
+      buildQuickExtras();
+      g(() => openOv('quickOv'));
     };
 
     // الراديو: نفس منطق كبسولة الراديو في الهيدر
@@ -311,6 +314,41 @@
     });
   }
 
+  /* ---------- ورقة المستخدم تُفتح بجانب اسم المستخدم المُنقر عليه مع سهم ---------- */
+  let dskPendingRowY = null;
+  function hookUserSheetAnchor() {
+    const ov = $('#userSheet'), list = $('#usersList');
+    if (!ov || !list || $('#dskSheetArrow')) return;
+    const arrow = el('<span class="dsk-sheet-arrow" id="dskSheetArrow"></span>');
+    ov.appendChild(arrow);
+    const sheet = $('.sheet', ov);
+    // عند فتح الورقة: إن جاء النقر من قائمة المستخدمين نُرسوها قرب الصف مع السهم، وإلا نعيد الوضع الافتراضي
+    new MutationObserver(() => {
+      if (!mq.matches) return;
+      if (!ov.classList.contains('open')) return;
+      if (dskPendingRowY != null && sheet) {
+        const rel = dskPendingRowY - ov.getBoundingClientRect().top;
+        const maxTop = window.innerHeight - sheet.offsetHeight - 14;
+        sheet.style.top = Math.max(60, Math.min(rel - sheet.offsetHeight / 2, maxTop)) + 'px';
+        arrow.style.top = rel + 'px';
+        arrow.classList.add('show');
+        dskPendingRowY = null;
+      } else if (sheet) {
+        sheet.style.top = '';
+        arrow.classList.remove('show');
+      }
+    }).observe(ov, { attributes: true, attributeFilter: ['class'] });
+    // التقاط صف المستخدم المُنقر عليه قبل فتح الورقة (مرحلة الالتقاط تعمل قبل onclick)
+    list.addEventListener('click', (e) => {
+      if (!mq.matches) return;
+      const row = e.target.closest('.users-row');
+      if (row) {
+        const r = row.getBoundingClientRect();
+        dskPendingRowY = r.top + r.height / 2;
+      }
+    }, true);
+  }
+
   /* ---------- عند التبديل بين الجوال والديسكتوب ---------- */
   function onMq() {
     if (!mq.matches && usersPanel) {
@@ -329,6 +367,7 @@
     hookRenders();
     overrideRoomMore();
     hookFloatingPanels();
+    hookUserSheetAnchor();
     syncHeadH();
     syncProfile();
     syncRadio();

@@ -201,7 +201,7 @@
   .overlay.full { align-items: stretch; padding: 34px 48px; box-sizing: border-box; }
   .overlay.full.withnav { bottom: 0; }   /* شريط التنقل السفلي مخفي على الديسكتوب */
   .sheet {
-    width: 560px; max-width: 96%;
+    width: 600px; max-width: 96%;
     border-radius: 18px;
     padding: 16px 22px 26px;
     box-shadow: 0 30px 80px rgba(10, 15, 40, .35);
@@ -229,12 +229,13 @@
   .overlay .pg-head.bar { position: sticky; width: auto; }
 
   /* ---- لوحة المحادثات الخاصة / الإشعارات / الحائط: لوحة عائمة يمين ---- */
+  /* مهم: تظهر فقط عند فتحها (.open) — لا تُعرض تلقائياً عند دخول الغرفة */
   #privOv, #notifOv, #wallOv {
-    display: block;
     background: rgba(15, 18, 35, .30);
     backdrop-filter: blur(2px);
     padding: 0;
   }
+  #privOv.open, #notifOv.open, #wallOv.open { display: block; }
   #privOv .pvpage, #notifOv .pvpage, #wallOv .wall-page {
     position: absolute;
     top: 56px;
@@ -275,6 +276,20 @@
     animation: pop .16s;
   }
   #userSheet .us-cancel { border-top: 1px solid #f0f1f6; color: #dc2626; }
+  /* سهم يشير إلى اسم المستخدم الذي نُقر عليه */
+  #userSheet .dsk-sheet-arrow {
+    position: absolute;
+    right: calc(var(--dsk-side-w) + 7px);
+    top: 40px;
+    width: 14px; height: 14px;
+    background: #fff;
+    transform: translateY(-50%) rotate(45deg);
+    border-top: 1px solid #e7e9f2;
+    border-right: 1px solid #e7e9f2;
+    display: none;
+    z-index: 1;
+  }
+  #userSheet .dsk-sheet-arrow.show { display: block; }
 
   /* ---- قائمة الحالة السريعة: منسدلة تحت زر النقاط (تغيير الحالة) ---- */
   #quickOv { background: rgba(15, 18, 35, .28); backdrop-filter: blur(2px); }
