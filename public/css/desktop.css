@@ -17,7 +17,16 @@
     --dsk-head-h: 50px;               /* ارتفاع هيدر الدردشة (يُحدَّث من JS) */
   }
   .dsk-only[hidden] { display: none !important; }
-  .dsk-nav-btn { display: flex; }
+  .dsk-nav-btn { display: flex; position: relative; }
+  /* شارة الرسائل/الإشعارات على أزرار هيدر الكمبيوتر (بديل شريط التنقل السفلي) */
+  .dsk-nav-btn .dsk-nav-badge {
+    top: -5px;
+    left: auto;
+    right: -5px;
+    z-index: 3;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .28);
+    pointer-events: none;
+  }
 
   /* ---------- الإطار العام ---------- */
   #frame { max-width: 100%; }

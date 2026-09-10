@@ -54,7 +54,7 @@ function refreshSocketHandshakeKey(socket) {
 }
 
 let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, public_message_spacing_px: 4, public_message_name_size_px: 14, public_message_body_width: 'fit', msg_badge_superadmin_size: 24, msg_badge_admin_size: 24, msg_badge_roomadmin_size: 24, msg_badge_mmez_size: 24, msg_badge_vip_size: 24, msg_badge_premium_size: 24, msg_badge_plus_size: 24, msg_badge_register_size: 24, msg_badge_guest_size: 24, msg_badge_hidden_admin_size: 28, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wave_enabled: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_call_allowed_memberships: 'mmez,plus,premium,vip', video_call_cost: 5, video_call_allowed_memberships: 'mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip' };
-let PREFS = { snd_all: 1, snd_msg: 1, snd_join: 1, snd_leave: 1, show_time: 1, pm_recv: 1 };
+let PREFS = { snd_all: 1, snd_msg: 1, snd_join: 1, snd_leave: 1, show_time: 1, pm_recv: 1, dsk_ntf: 1 };
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
 let ROOMS = [], ROOM_COUNTS = {}, CUR_ROOM = null, CUR_TAB = 'default';
@@ -214,6 +214,10 @@ const I18N_EN = {
   "دردشة": "Chat", "يتم عرض الهدايا التي يتلقاها هذا المستخدم هنا": "Gifts received by this user appear here", "أظهر المزيد": "Show more",
   "تنفيذ وحفظ": "Save changes", "البريد الالكتروني": "Email", "الدولة / بلدة": "Country / City", "النبذة": "Bio", "حفظ": "Save",
   "تلقائي": "Automatic", "قائمة التجاهل": "Ignore list", "إعدادات الإشعارات": "Notification settings",
+  "إشعارات سطح المكتب": "Desktop notifications",
+  "تم تفعيل إشعارات سطح المكتب 🔔": "Desktop notifications enabled 🔔",
+  "متصفحك لا يدعم إشعارات سطح المكتب": "Your browser does not support desktop notifications",
+  "الإشعارات محظورة — اسمح بها من إعدادات المتصفح": "Notifications are blocked — allow them from your browser settings",
   "الدفع بالبطاقة البنكية 💳": "Debit or Credit Card Payment 💳", "خصم آمن وفوري وشحن مباشر للرصيد": "Secure instant deduction and direct gold recharge",
   "حامل البطاقة": "Cardholder Name", "تاريخ الانتهاء": "Expiry Date", "رمز الأمان (CVV):": "Security code (CVV):", "تأكيد الخصم والدفع": "Confirm & Pay Now",
   "اسم صاحب البطاقة (كما هو على البطاقة):": "Cardholder Name (as printed on card):", "رقم بطاقة الصراف / الائتمان (16 رقم):": "Card Number (16 digits):",
@@ -2161,6 +2165,7 @@ function connectSocket() {
       PRIV_UNREAD++;
       updatePrivBadge();
       if (PREFS.pm_recv) beep(880, .15);
+      notifyDesktopPrivate(p); // إشعار سطح المكتب (متصفح الكمبيوتر)
     }
     if ($('#privOv').classList.contains('open')) renderPrivConvs(PRIV_TAB);
   });
@@ -2177,6 +2182,7 @@ function connectSocket() {
   SOCKET.on('notify', (n) => {
     if (ME && typeof n.balance === 'number') { ME.balance = n.balance; $('#menuBal').textContent = n.balance; }
     pushNotif(n.icon, n.text, n); toast(n.text); beep(880, .15);
+    notifyDesktopSystem(n); // إشعار سطح المكتب حين يكون التاب خلفياً
   });
   // تحديث فوري لحساب وبيانات المستخدم عند التعديل من لوحة الإدارة
   SOCKET.on('user_sync', ({ user, badge }) => {
@@ -2287,6 +2293,7 @@ function connectSocket() {
     pushNotif('announcement', a.text, a);
     openAnnouncementPopup(a);
     beep(660, .2);
+    notifyDesktopSystem({ text: a.text, icon: 'announcement' });
   });
   SOCKET.on('membership_changed', ({ plan }) => { if (ME) { ME.membership = plan; MYBADGE = badgeOf(ME); } });
   SOCKET.on('wall_changed', change => {
@@ -3660,6 +3667,8 @@ function updateNotifBadge() {
     badge.textContent = NOTIF_UNREAD > 99 ? '99+' : NOTIF_UNREAD;
     badge.style.display = 'flex';
   } else badge.style.display = 'none';
+  syncBadgeMirror('#dskNotifBadge', NOTIF_UNREAD);
+  updateUnreadTitle();
 }
 function updateStatusUnreadBadge() {
   const badge = $('#statusUnreadBadge');
@@ -3667,6 +3676,7 @@ function updateStatusUnreadBadge() {
     badge.textContent = STATUS_UNREAD > 99 ? '99+' : STATUS_UNREAD;
     badge.style.display = 'flex';
   } else badge.style.display = 'none';
+  updateUnreadTitle();
 }
 async function loadUnreadNotifCount() {
   if (!ME || !ME.registered) { NOTIF_UNREAD = 0; updateNotifBadge(); return; }
@@ -3676,6 +3686,111 @@ async function loadUnreadNotifCount() {
     updateNotifBadge();
   } catch (e) { }
 }
+async function loadUnreadPrivCount() {
+  if (!ME) return;
+  try {
+    const convs = await api('/api/private');
+    const total = (Array.isArray(convs) ? convs : []).reduce((s, c) => s + (+c.unread || 0), 0);
+    PRIV_UNREAD = total;
+    updatePrivBadge();
+  } catch (e) { }
+}
+
+// =====================================================
+//  إشعارات سطح المكتب (متصفح الكمبيوتر — Notification API)
+// =====================================================
+const PM_NTF_TITLES = { ar: 'رسالة خاصة', en: 'Private message', es: 'Mensaje privado', tr: 'Özel mesaj' };
+function desktopNotifySupported() {
+  return typeof window !== 'undefined' && typeof window.Notification === 'function';
+}
+async function requestDesktopNotifyPermission(announce = false) {
+  const N = desktopNotifySupported() ? window.Notification : null;
+  if (!N) {
+    if (announce) toast('متصفحك لا يدعم إشعارات سطح المكتب', false);
+    return 'unsupported';
+  }
+  if (PREFS.dsk_ntf === 0 && N.permission === 'default') return 'off';
+  try {
+    const p = await N.requestPermission();
+    if (p === 'granted' && announce) toast('تم تفعيل إشعارات سطح المكتب 🔔');
+    if (p === 'denied' && announce) toast('الإشعارات محظورة — اسمح بها من إعدادات المتصفح', false);
+    return p;
+  } catch (e) { return 'error'; }
+}
+// أول نقرة بعد الدخول تُستغل لطلب الإذن (يتطلب المتصفح تفاعل مستخدم)
+let DSK_NOTIFY_ASK_ARMED = false;
+function armDesktopNotifyAsk() {
+  const N = desktopNotifySupported() ? window.Notification : null;
+  if (DSK_NOTIFY_ASK_ARMED || !N) return;
+  if (N.permission !== 'default' || PREFS.dsk_ntf === 0) return;
+  DSK_NOTIFY_ASK_ARMED = true;
+  const ask = () => {
+    document.removeEventListener('click', ask, true);
+    requestDesktopNotifyPermission(true);
+  };
+  document.addEventListener('click', ask, true);
+}
+function showDesktopNotification({ title, body, icon, tag, silent, onclick } = {}) {
+  const N = desktopNotifySupported() ? window.Notification : null;
+  if (!N || !PREFS.dsk_ntf) return;
+  if (N.permission !== 'granted') return;
+  try {
+    const n = new N(String(title || 'إشعار'), {
+      body: String(body || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+      icon: icon || undefined,
+      tag: tag || undefined,
+      dir: APP_LANG === 'ar' ? 'rtl' : 'ltr',
+      lang: APP_LANG || 'ar',
+      silent: !!silent
+    });
+    n.onclick = () => {
+      try { window.focus(); } catch (e) { }
+      try { n.close(); } catch (e) { }
+      if (typeof onclick === 'function') onclick();
+    };
+    setTimeout(() => { try { n.close(); } catch (e) { } }, 8000);
+  } catch (e) { }
+}
+function pmPreviewText(text) {
+  const t = String(text || '');
+  if (t.startsWith('media::image::')) return '📷 صورة';
+  if (t.startsWith('media::audio::')) return '🎤 رسالة صوتية';
+  return t;
+}
+function pmSenderAvatarUrl(uid) {
+  try {
+    const u = (ROOM_USERS || []).find(x => +x.id === +uid);
+    if (u && u.avatar && String(u.avatar).startsWith('/')) return u.avatar;
+  } catch (e) { }
+  return '/avatars/default.png';
+}
+// إشعار سطح المكتب لرسالة خاصة وصلت والمحادثة غير مفتوحة
+function notifyDesktopPrivate(p) {
+  if (!p || !ME || +p.from_id === +ME.id) return;
+  const name = p.from_name || 'مستخدم';
+  showDesktopNotification({
+    title: `${PM_NTF_TITLES[APP_LANG] || PM_NTF_TITLES.ar} — ${name}`,
+    body: pmPreviewText(p.text) || '📩 رسالة جديدة',
+    icon: pmSenderAvatarUrl(p.from_id),
+    tag: 'pm-' + p.from_id,
+    onclick: () => {
+      try { openPrivateWith({ id: +p.from_id, username: name, registered: +p.from_registered || 0, unread: 0, avatar: pmSenderAvatarUrl(p.from_id) }); } catch (e) { }
+    }
+  });
+}
+// إشعار سطح المكتب لإشعارات النظام — فقط والصفحة بتاب خلفي (داخل الصفحة يوجد توست)
+function notifyDesktopSystem(n) {
+  if (!n || !document.hidden) return;
+  showDesktopNotification({
+    title: (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'إشعار',
+    body: n.text || 'لديك إشعار جديد',
+    tag: 'sys-ntf',
+    onclick: () => {
+      try { document.querySelector('.bn-item[data-nav="notifs"]').click(); } catch (e) { }
+    }
+  });
+}
+
 function pushNotif(icon, text, extra = {}) {
   const notification = { icon, text, at: Date.now(), ...extra };
   NOTIFS.unshift(notification);
@@ -7368,6 +7483,23 @@ function updatePrivBadge() {
   const b = $('#privBadge');
   if (PRIV_UNREAD > 0) { b.style.display = 'flex'; b.textContent = PRIV_UNREAD; }
   else b.style.display = 'none';
+  syncBadgeMirror('#dskPrivBadge', PRIV_UNREAD);
+  updateUnreadTitle();
+}
+// انعكاس الشارة على أزرار هيدر الكمبيوتر (شريط التنقل السفلي مخفي على الشاشات الكبيرة)
+function syncBadgeMirror(sel, count) {
+  const m = document.querySelector(sel);
+  if (!m) return;
+  if (count > 0) { m.style.display = 'flex'; m.textContent = count > 99 ? '99+' : count; }
+  else m.style.display = 'none';
+}
+// عدّاد غير المقروء في عنوان التبويب — يظهر حتى والصفحة بتاب خلفي
+function updateUnreadTitle() {
+  try {
+    const total = Math.max(0, +PRIV_UNREAD || 0) + Math.max(0, +NOTIF_UNREAD || 0) + Math.max(0, +STATUS_UNREAD || 0);
+    const base = String(document.title || '').replace(/^\(\d+\)\s*/, '');
+    document.title = total > 0 ? `(${total}) ${base}` : base;
+  } catch (e) { }
 }
 
 // =====================================================
@@ -8425,6 +8557,8 @@ $$('#setList .switch').forEach(sw => sw.onclick = () => {
   PREFS[k] = PREFS[k] ? 0 : 1;
   sw.classList.toggle('on', !!PREFS[k]);
   savePrefs();
+  // إشعارات سطح المكتب: طلب الإذن يتحرك بمفعّل المستخدم نفسه (متطلب المتصفحات)
+  if (k === 'dsk_ntf' && PREFS[k]) requestDesktopNotifyPermission(true);
   toast('تم حفظ الاعدادات ✓');
 });
 // إرفاق صورة (دليل) مع الشكوى
@@ -9567,6 +9701,8 @@ function onLoggedIn() {
   $('#menuBal').textContent = ME.balance;
   loadIgnoredUsers();
   loadUnreadNotifCount();
+  loadUnreadPrivCount();   // شارة الخاص تعكس فوراً غير المقروء من الخادم بعد التحديث
+  armDesktopNotifyAsk();   // طلب إذن إشعارات سطح المكتب عند أول نقرة
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو (استبدال كامل لتجنب التداخل)
   const bm = $('#bnMenu');

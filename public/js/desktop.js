@@ -220,9 +220,9 @@
     // هيدر الدردشة: الخاص + الحائط + الإشعارات (تظهر فقط داخل الغرفة — بديل شريط التنقل السفلي)
     const ctb = $('#chatScreen .c-top-btns');
     if (ctb && !$('#dskNavPrivate')) {
-      const bp = el('<button class="cbtn dsk-only dsk-nav-btn" id="dskNavPrivate" type="button" title="الرسائل الخاصة"><i class="f7-icons">bubble_left_fill</i></button>');
+      const bp = el('<button class="cbtn dsk-only dsk-nav-btn" id="dskNavPrivate" type="button" title="الرسائل الخاصة"><i class="f7-icons">bubble_left_fill</i><em class="bn-badge dsk-nav-badge" id="dskPrivBadge" style="display:none">0</em></button>');
       const bw = el('<button class="cbtn dsk-only dsk-nav-btn" id="dskNavWall" type="button" title="الحائط"><i class="f7-icons">doc_text_fill</i></button>');
-      const bn = el('<button class="cbtn dsk-only dsk-nav-btn" id="dskNavNotifs" type="button" title="الإشعارات"><i class="f7-icons">bell_fill</i></button>');
+      const bn = el('<button class="cbtn dsk-only dsk-nav-btn" id="dskNavNotifs" type="button" title="الإشعارات"><i class="f7-icons">bell_fill</i><em class="bn-badge dsk-nav-badge" id="dskNotifBadge" style="display:none">0</em></button>');
       const first = ctb.firstChild;
       ctb.insertBefore(bn, first);
       ctb.insertBefore(bw, bn);
@@ -237,6 +237,9 @@
       bp.onclick = () => toggleNav('privOv');
       bw.onclick = () => toggleNav('wallOv');
       bn.onclick = () => toggleNav('notifOv');
+      // مزامنة الشارات فوراً مع قيمها الحالية (لو وصلت رسائل قبل بناء الأزرار)
+      g(() => { if (typeof updatePrivBadge === 'function') updatePrivBadge(); });
+      g(() => { if (typeof updateNotifBadge === 'function') updateNotifBadge(); });
     }
   }
 
