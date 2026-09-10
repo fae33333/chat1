@@ -214,6 +214,49 @@
   .overlay.center .dialog { min-width: 420px; max-width: 540px; border-radius: 16px; }
   .status-viewer { max-width: 560px; margin: 0 auto; }
 
+  /* ============================================================
+     3.ك) الصفحات الكاملة: بطاقة عائمة في منتصف الشاشة (مثل نافذة الخاص)
+     الملف الشخصي، القائمة، هدايا حسابي، قائمة الحظر، الإعدادات،
+     شراء رصيد، الدخول الملكي، التوثيق، كشف النكات، تغيير الصورة
+     ============================================================ */
+  #profOv, #menuOv, #myGiftsOv, #blocksOv, #setOv, #buyOv, #royalOv,
+  #verifyOv, #verifyEmailOv, #aliasesOv, #avaOv {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 26px;
+    box-sizing: border-box;
+    background: rgba(15, 18, 35, .35);
+    backdrop-filter: blur(2px);
+  }
+  #profOv .pvpage, #menuOv .pvpage, #myGiftsOv .pvpage, #blocksOv .pvpage,
+  #setOv .pvpage, #buyOv .pvpage, #royalOv .pvpage, #verifyOv .pvpage,
+  #verifyEmailOv .pvpage, #aliasesOv .pvpage, #avaOv .pvpage {
+    width: 700px;
+    max-width: 100%;
+    flex: none;
+    max-height: 100%;
+    border-radius: 16px;
+  }
+
+  /* نافذة المحادثات الخاصة: بطاقة مركزية ضيقة بارتفاع الشاشة (مثل الصورة المرفقة) */
+  #pmOv {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 14px 20px;
+    box-sizing: border-box;
+    background: rgba(15, 18, 35, .45);
+    backdrop-filter: blur(2px);
+  }
+  #pmOv .pvpage {
+    width: 470px;
+    max-width: 100%;
+    flex: none;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
   /* نافذة تسجيل الدخول */
   #loginOv .lsheet { width: 470px; padding: 22px 30px 28px; }
   #loginOv .lsheet h3 { text-align: center; font-size: 20px; margin: 4px 0 14px; }
