@@ -222,6 +222,29 @@
   #loginOv .lg-terms { text-align: center; margin-top: 18px; }
 
   /* ============================================================
+     3.م) توسيط جميع القوالب المنبثقة في منتصف الشاشة
+     (هدايا، ترقية عضوية، تسجيل، شروط، لغة، حالات، شكاوى...)
+     ============================================================ */
+  #loginOv, #regOv, #termsOv, #privacyOv, #languageOv, #statusTypeOv,
+  #needRegOv, #giftOv, #upOv, #compOv, #resetPwOv, #statusViewersOv, #chpwOv {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  #loginOv .sheet, #regOv .sheet, #termsOv .sheet, #privacyOv .sheet,
+  #languageOv .sheet, #statusTypeOv .sheet, #needRegOv .sheet,
+  #giftOv .sheet, #upOv .sheet, #compOv .sheet, #resetPwOv .sheet,
+  #statusViewersOv .sheet, #chpwOv .sheet {
+    width: 600px;
+    max-width: 96%;
+    max-height: 88%;
+    border-radius: 18px !important;   /* إلغاء شكل الشريط السفلي (الزوايا السفلية المربعة) */
+    box-shadow: 0 30px 80px rgba(10, 15, 40, .35);
+  }
+  #giftOv .sheet .gs-grid { max-height: 42vh; }
+
+  /* ============================================================
      4) القوائم المنسدلة واللوحات العائمة (كما بالصور المحدَّثة)
      ============================================================ */
 
