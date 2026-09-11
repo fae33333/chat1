@@ -563,7 +563,7 @@ app.get(['/admin', '/admin.html'], async (req, res) => {
 // يولّد نسخاً مصغّرة من الصور المرفوعة عند الطلب ويخزّنها على القرص (كاش دائم).
 // يُستخدم لعرض الشعار وصور الغرف بحجم العرض الفعلي بدل تنزيل الصورة الأصلية كاملة
 // (يقلّل حمل الشبكة على 4G ويُحسّن LCP). عند تعذر المعالجة يُرسل الأصل كاحتياط.
-app.get(/^\/t(f?)\/(\d{1,4})x(\d{1,4})\/(.+)$/, (req, res) => {
+app.get(/^\/t(f?)\/(\d{1,4})x(\d{1,4})\/(.+)$/, async (req, res) => {
   const mode = req.params[0] === 'f' ? 'fit' : 'cover';
   const w = Math.min(1024, Math.max(8, +req.params[1]));
   const h = Math.min(1024, Math.max(8, +req.params[2]));
@@ -587,7 +587,7 @@ app.get(/^\/t(f?)\/(\d{1,4})x(\d{1,4})\/(.+)$/, (req, res) => {
     const cached = fs.existsSync(outAbs) ? fs.statSync(outAbs) : null;
     if (!cached || cached.mtimeMs < srcStat.mtimeMs) {
       fs.mkdirSync(path.dirname(outAbs), { recursive: true });
-      if (!makeThumb(absSrc, outAbs, w, h, mode)) return res.sendFile(absSrc);
+      if (!(await makeThumb(absSrc, outAbs, w, h, mode))) return res.sendFile(absSrc);
     }
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     return res.sendFile(outAbs);
@@ -4063,7 +4063,7 @@ app.post('/api/admin/upload/avatar', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'ملف الرمزية يجب أن يكون صورة' });
     }
-    fitImage(req.file.path, 512);
+    await fitImage(req.file.path, 512);
     res.json({ ok: true, path: '/uploads/avatars/' + req.file.filename });
   });
 });
@@ -4096,34 +4096,34 @@ app.post('/api/admin/avatars/:id/del', requireSuperAdmin, deleteAvatarHandler);
 app.post('/api/admin/avatars/:id/delete', requireSuperAdmin, deleteAvatarHandler);
 
 app.post('/api/admin/upload/emoji', requireSuperAdmin, (req, res) => {
-  uploadMedia.single('file')(req, res, (err) => {
+  uploadMedia.single('file')(req, res, async (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر الرفع: ' + (err ? err.message : 'لا يوجد ملف') });
     if (!String(req.file.mimetype || '').startsWith('image/')) {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'ملف الإيموجي يجب أن يكون صورة' });
     }
-    fitImage(req.file.path, 256);
+    await fitImage(req.file.path, 256);
     res.json({ ok: true, path: '/uploads/emojis/' + req.file.filename });
   });
 });
 // صورة الغرفة
 app.post('/api/admin/upload/room', requireAdmin, (req, res) => {
-  uploadMedia.single('file')(req, res, (err) => {
+  uploadMedia.single('file')(req, res, async (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر الرفع: ' + (err ? err.message : 'لا يوجد ملف') });
-    fitImage(req.file.path, 512); // صورة الغرفة تُعرض 52px — تصغير تلقائي لتقليل الحجم
+    await fitImage(req.file.path, 512); // صورة الغرفة تُعرض 52px — تصغير تلقائي لتقليل الحجم
     res.json({ ok: true, path: '/uploads/rooms/' + req.file.filename });
   });
 });
 
 // ---- رفع صورة روبوت الغرفة ----
 app.post('/api/admin/upload/bot-avatar', requireSuperAdmin, (req, res) => {
-  uploadMedia.single('file')(req, res, (err) => {
+  uploadMedia.single('file')(req, res, async (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر رفع الصورة: ' + (err ? err.message : 'لا يوجد ملف') });
     if (!String(req.file.mimetype || '').startsWith('image/')) {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'صورة الروبوت يجب أن تكون ملف صورة' });
     }
-    fitImage(req.file.path, 512);
+    await fitImage(req.file.path, 512);
     res.json({ ok: true, path: '/uploads/bots/' + req.file.filename });
   });
 });
@@ -5277,7 +5277,7 @@ app.post('/api/notifications/:id/read', requireUser, async (req, res) => {
 app.post('/api/admin/logo', requireSuperAdmin, upload.single('logo'), async (req, res) => {
   let url = req.body.logo_url || '';
   if (req.file) {
-    fitImage(req.file.path, 1024); // الشعار يُعرض بارتفاع 36px — تصغير تلقائي
+    await fitImage(req.file.path, 1024); // الشعار يُعرض بارتفاع 36px — تصغير تلقائي
     url = '/uploads/' + req.file.filename;
   }
   await q.run(`INSERT INTO settings (key,value) VALUES ('logo_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, url);
@@ -5631,13 +5631,13 @@ app.delete('/api/admin/seo-pages/:id', requireSuperAdmin, async (req, res) => {
 
 // ---- رفع صورة الشعار للأرشفة ومحركات البحث ----
 app.post('/api/admin/upload/seo-image', requireSuperAdmin, (req, res) => {
-  upload.single('file')(req, res, (err) => {
+  upload.single('file')(req, res, async (err) => {
     if (err || !req.file) return res.status(400).json({ error: 'تعذر رفع الصورة: ' + (err ? err.message : 'اختر ملف صورة') });
     if (!String(req.file.mimetype || '').startsWith('image/')) {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'يجب أن يكون الملف المرفوع صورة' });
     }
-    fitImage(req.file.path, 1200); // صورة SEO تُشارك للمعاينة — تصغير بحدٍّ كافٍ للجودة
+    await fitImage(req.file.path, 1200); // صورة SEO تُشارك للمعاينة — تصغير بحدٍّ كافٍ للجودة
     res.json({ ok: true, path: '/uploads/' + req.file.filename });
   });
 });
