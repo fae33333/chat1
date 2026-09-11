@@ -1,0 +1,15 @@
+# Local/runtime dependencies and generated files
+node_modules/
+.env
+
+# Generated image thumbnails (cache) — recreated on demand
+/public/thumbs/
+
+# Minified JS/CSS cache (serve-time) — recreated on demand
+.cache/
+
+# TLS private keys/certificates are supplied by the server (aaPanel/Let's Encrypt)
+/cert.pem
+/key.pem
+/cert.pem.bak
+/key.pem.bak
