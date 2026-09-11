@@ -180,6 +180,8 @@ const I18N_EN = {
   "التسجيل الان": "Register now", "لاحقا": "Later", "عضو مسجل": "Registered member", "زائر": "Guest", "الرد على الرسالة": "Reply to message",
   "دردشة خاصة": "Private chat", "ارسل هدية": "Send gift", "ترقية هذا المستخدم": "Upgrade this user", "تجاهل": "Ignore", "إلغاء التجاهل": "Unignore",
   "كتم المستخدم": "Mute user", "إلغاء الكتم": "Unmute", "طرد المستخدم": "Kick user", "حظر المستخدم": "Ban user", "المعلومات الشخصية": "Profile information", "إغلاق": "Close",
+  "إظهار أقل": "Show less", "التفاعلات": "Reactions", "الكل": "All", "عرض الملف الشخصي": "View profile", "جاري تحميل التفاعلات...": "Loading reactions...",
+  "تعذر تحميل التفاعلات": "Could not load reactions", "لا توجد تفاعلات على هذا المنشور بعد": "No reactions on this post yet", "عرض من تفاعلوا مع المنشور": "See who reacted to this post",
   "متجر الهدايا الافتراضية": "Virtual gift store", "فاخرة": "Luxury", "جواهر": "Jewels", "افتراضي": "Default", "هدية لـ :": "Gift to:", "اختر هدية": "Choose a gift",
   "كمية :": "Quantity:", "تحتاج لتنفق :": "You need to spend:", "جائزة هذه الهدية :": "Gift reward:", "يحصل مستلم هذه الهدية على هذا الرصيد": "The recipient receives this balance",
   "رصيدك الحالي :": "Your current balance:", "الغاء": "Cancel", "أرسل": "Send", "الترقية": "Upgrade", "قم بترقية عضوية الحساب لتبرز من بين الحشود !": "Upgrade the account to stand out from the crowd!",
@@ -516,6 +518,8 @@ const I18N_ES = {
   "التسجيل الان": "Registrarse ahora", "لاحقا": "Más tarde", "عضو مسجل": "Miembro registrado", "زائر": "Invitado", "الرد على الرسالة": "Responder",
   "دردشة خاصة": "Chat privado", "ارسل هدية": "Enviar regalo", "ترقية هذا المستخدم": "Mejorar usuario", "تجاهل": "Ignorar", "إلغاء التجاهل": "Dejar de ignorar",
   "كتم المستخدم": "Silenciar usuario", "إلغاء الكتم": "Desilenciar", "طرد المستخدم": "Expulsar usuario", "حظر المستخدم": "Bloquear usuario", "المعلومات الشخصية": "Perfil", "إغلاق": "Cerrar",
+  "إظهار أقل": "Mostrar menos", "التفاعلات": "Reacciones", "الكل": "Todos", "عرض الملف الشخصي": "Ver perfil", "جاري تحميل التفاعلات...": "Cargando reacciones...",
+  "تعذر تحميل التفاعلات": "No se pudieron cargar las reacciones", "لا توجد تفاعلات على هذا المنشور بعد": "Aún no hay reacciones en esta publicación", "عرض من تفاعلوا مع المنشور": "Ver quién reaccionó",
   "متجر الهدايا الافتراضية": "Tienda de regalos", "فاخرة": "Lujo", "جواهر": "Joyas", "افتراضي": "Predeterminado", "هدية لـ :": "Regalo para:", "اختر هدية": "Elige regalo",
   "كمية :": "Cantidad:", "تحتاج لتنفق :": "Debes gastar:", "جائزة هذه الهدية :": "Recompensa:", "يحصل مستلم هذه الهدية على هذا الرصيد": "El destinatario recibe este saldo",
   "رصيدك الحالي :": "Tu saldo actual:", "الغاء": "Cancelar", "أرسل": "Enviar", "الترقية": "Membresía", "قم بترقية عضوية الحساب لتبرز من بين الحشود !": "¡Mejora tu cuenta para destacar!",
@@ -843,6 +847,8 @@ const I18N_TR = {
   "التسجيل الان": "Hemen kaydol", "لاحقا": "Daha sonra", "عضو مسجل": "Kayıtlı üye", "زائر": "Misafir", "الرد على الرسالة": "Yanıtla",
   "دردشة خاصة": "Özel sohbet", "ارسل هدية": "Hediye gönder", "ترقية هذا المستخدم": "Kullanıcıyı yükselt", "تجاهل": "Engelle", "إلغاء التجاهل": "Engeli kaldır",
   "كتم المستخدم": "Sustur", "إلغاء الكتم": "Susturmayı kaldır", "طرد المستخدم": "Odadan at", "حظر المستخدم": "Yasakla", "المعلومات الشخصية": "Profil", "إغلاق": "Kapat",
+  "إظهار أقل": "Daha az göster", "التفاعلات": "Tepkiler", "الكل": "Tümü", "عرض الملف الشخصي": "Profili görüntüle", "جاري تحميل التفاعلات...": "Tepkiler yükleniyor...",
+  "تعذر تحميل التفاعلات": "Tepkiler yüklenemedi", "لا توجد تفاعلات على هذا المنشور بعد": "Bu gönderide henüz tepki yok", "عرض من تفاعلوا مع المنشور": "Kimlerin tepki verdiğini gör",
   "متجر الهدايا الافتراضية": "Hediye Mağazası", "فاخرة": "Lüks", "جواهر": "Mücevher", "افتراضي": "Varsayılan", "هدية لـ :": "Hediye:", "اختر هدية": "Hediye seç",
   "كمية :": "Miktar:", "تحتاج لتنفق :": "Gereken harcama:", "جائزة هذه الهدية :": "Hediye ödülü:", "يحصل مستلم هذه الهدية على هذا الرصيد": "Alıcı bu bakiyeyi kazanır",
   "رصيدك الحالي :": "Mevcut bakiyeniz:", "الغاء": "İptal", "أرسل": "Gönder", "الترقية": "Üyelik", "قم بترقية عضوية الحساب لتبرز من بين الحشود !": "Öne çıkmak için üyeliğinizi yükseltin!",
@@ -1114,7 +1120,7 @@ const I18N_TR = {
   "تعذر الوصول إلى الميكروفون، تحقق من الإذن": "Mikrofona erişilemedi, iznini kontrol et",
 };
 
-const I18N_SKIP_SELECTOR = ".mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,#announcementText,#announcementSender,.wall-post-text,.wall-post-who b,.wall-comment-bubble b,.wall-comment-bubble p,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b";
+const I18N_SKIP_SELECTOR = ".mtext,.pm-tx,.stext,.room-name,.room-desc,.uname,.mname,#statusViewerText,#statusTextInput,#siteName,#avatarViewName,#announcementText,#announcementSender,.wall-post-text,.wall-post-who b,.wall-comment-bubble b,.wall-comment-bubble p,#namePopoverName,.wall-reactor-row .wr-info b,.head-name,.us-userinfo,.vp-name,.vp-bio,.vg-from,.vg-name,.prof-name,.pm-peer,.pm-hero-name,.sv-info,.room-welcome-text,.robot-system-text,.my-gift-card h4,.my-gift-card b,.blocked-user-info b";
 
 function translateDynamicText(text, lang = APP_LANG) {
   if (!text || lang === "ar") return text;
@@ -1583,9 +1589,15 @@ function toast(msg, ok = true) {
   const duration = Math.min(6000, Math.max(2600, text.length * 45));
   t._tm = setTimeout(() => t.classList.remove('show'), duration);
 }
-function openOv(id) { $('#' + id).classList.add('open'); refreshNav(); }
+function openOv(id) {
+  // أي نافذة تُفتح تُغلق القائمة المنبثقة للاسم كي لا تبقى معلّقة فوقها.
+  if (id !== 'namePopover' && typeof closeNamePopover === 'function') closeNamePopover();
+  $('#' + id).classList.add('open');
+  refreshNav();
+}
 function closeOv(id) {
   $('#' + id).classList.remove('open');
+  if (typeof closeNamePopover === 'function') closeNamePopover();
   if (id === 'userSheet' && typeof stopUserStatusActionWatcher === 'function') stopUserStatusActionWatcher();
   // إغلاق الملف الشخصي يوقف النبذة الصوتية فوراً (ويسجّل الميكروفون إن كان يعمل)
   if (id === 'profOv') {
@@ -4173,10 +4185,13 @@ function renderMsg(m) {
     // النقر على الصورة أو على الاسم يفتح قائمة خيارات المستخدم والرد على الرسالة
     if (!hiddenAdmin) {
       const msgUserData = { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted, broadcast_banned: (m.user && m.user.broadcast_banned) || (u.broadcast_banned) || 0 };
+      // النقر على الاسم أو الصورة يفتح قائمة منبثقة ملتصقة بالاسم مع سهم يشير إليه.
       const openSenderSheet = (e) => {
         if (e) e.stopPropagation();
-        const uid = m.user_id || (m.user && m.user.id);
-        if (uid) openUserSheet(+uid, msgUserData);
+        const uid = +(m.user_id || (m.user && m.user.id) || 0);
+        if (!uid) return;
+        const anchor = (e && e.currentTarget) || el.querySelector('.mname');
+        openPublicNamePopover(anchor, uid, msgUserData);
       };
       const avaEl = el.querySelector('.mava');
       const nameEl = el.querySelector('.mname');
@@ -4865,6 +4880,33 @@ function syncUserBroadcastControlButtons() {
   if (p1) p1.style.display = (notSelf && isLiveHost) ? 'flex' : 'none';
   if (p2) p2.style.display = (notSelf && isLiveHost) ? 'flex' : 'none';
   if (ub) ub.style.display = (notSelf && isBanned) ? 'flex' : 'none';
+}
+// النقر على اسم في الدردشة العامة: قائمة منبثقة بجانب الاسم بدل الورقة السفلية.
+function openPublicNamePopover(anchor, uid, msg) {
+  setUsersPanel(false);
+  if (ME && +uid === +ME.id) { closeNamePopover(); return openOv('quickOv'); }
+  let u = ROOM_USERS.find(x => +x.id === +uid);
+  if (!u && msg) u = { id: +uid, username: msg.username, avatar: msg.avatar || '', rank: msg.rank || 'user', membership: msg.membership || 'none', gender: msg.gender || 'secret', registered: msg.registered === undefined ? 1 : msg.registered, muted: msg.muted ? 1 : 0, broadcast_banned: msg.broadcast_banned ? 1 : 0 };
+  if (!u) return;
+  const target = Object.assign({}, u, { id: +uid, msg: msg || null, hasStatus: activeStatusesForUser(uid).length > 0 });
+  CUR_TARGET = u;
+  US_MSG = msg || null;
+  openNamePopover(anchor, target, 'public');
+  // بيانات محدثة (كتم/حظر بث/حالة) تعيد بناء القائمة إن بقيت مفتوحة على نفس الاسم.
+  const stillOpen = () => NAME_POPOVER_TARGET && +NAME_POPOVER_TARGET.target.id === +uid && !$('#namePopover').hidden;
+  api('/api/user/' + uid).then(d => {
+    if (!d.user || !stillOpen()) return;
+    Object.assign(u, d.user);
+    if (CUR_TARGET && +CUR_TARGET.id === +uid) Object.assign(CUR_TARGET, d.user);
+    openNamePopover(NAME_POPOVER_TARGET.anchor, Object.assign(target, d.user, { id: +uid, msg: msg || null, hasStatus: target.hasStatus }), 'public', false);
+  }).catch(() => { });
+  api('/api/statuses').then(statuses => {
+    STATUSES = Array.isArray(statuses) ? statuses : [];
+    if (!stillOpen()) return;
+    const hasStatus = activeStatusesForUser(uid).length > 0;
+    if (hasStatus === !!NAME_POPOVER_TARGET.target.hasStatus) return;
+    openNamePopover(NAME_POPOVER_TARGET.anchor, Object.assign(NAME_POPOVER_TARGET.target, { hasStatus }), 'public', false);
+  }).catch(() => { });
 }
 function openUserSheet(uid, msg) {
   setUsersPanel(false);
@@ -8899,20 +8941,282 @@ async function loadWallPosts(showLoading = true) {
     $('#wallList').innerHTML = '<div class="wall-empty"><i class="f7-icons">exclamationmark_circle</i>تعذر تحميل الحائط</div>';
   }
 }
-function bindWallMoreComments(card) {
-  const more = card.querySelector('.wall-comments-more');
-  if (!more) return;
-  more.onclick = () => {
-    card.dataset.commentsExpanded = '1';
-    card.querySelectorAll('.wall-comment-extra').forEach(comment => { comment.hidden = false; });
-    more.remove();
+// ---- تعليقات الحائط: يظهر تعليقان في البداية، ثم 5 تعليقات مع كل ضغطة على
+// «إظهار المزيد»، وعند عرض الجميع يتحول الزر إلى «إظهار أقل». ----
+const WALL_COMMENTS_INITIAL = 2;
+const WALL_COMMENTS_STEP = 5;
+function wallCommentsShown(card) {
+  const shown = +card.dataset.commentsShown;
+  return Number.isFinite(shown) && shown > 0 ? shown : WALL_COMMENTS_INITIAL;
+}
+// يعيد ضبط ظهور التعليقات ونص زر «إظهار المزيد / إظهار أقل» حسب العدد المعروض حالياً.
+function syncWallComments(card, post) {
+  if (!card) return;
+  const total = ((post && post.comments) || []).length;
+  let shown = Math.min(Math.max(wallCommentsShown(card), WALL_COMMENTS_INITIAL), Math.max(total, WALL_COMMENTS_INITIAL));
+  card.dataset.commentsShown = shown;
+  card.querySelectorAll('.wall-comment-list .wall-comment').forEach((node, index) => {
+    node.classList.toggle('wall-comment-extra', index >= WALL_COMMENTS_INITIAL);
+    node.hidden = index >= shown;
+  });
+  let toggle = card.querySelector('.wall-comments-more');
+  if (total <= WALL_COMMENTS_INITIAL) { if (toggle) toggle.remove(); return; }
+  if (!toggle) {
+    toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'wall-comments-more';
+    const form = card.querySelector('.wall-comment-form');
+    if (form) form.before(toggle); else card.querySelector('.wall-comments').appendChild(toggle);
+  }
+  const remaining = Math.max(0, total - shown);
+  toggle.dataset.mode = remaining > 0 ? 'more' : 'less';
+  toggle.textContent = remaining > 0 ? `إظهار المزيد (${remaining})` : 'إظهار أقل';
+  bindWallMoreComments(card, post);
+}
+function bindWallMoreComments(card, post) {
+  const toggle = card.querySelector('.wall-comments-more');
+  if (!toggle) return;
+  toggle.onclick = () => {
+    const total = ((post && post.comments) || []).length;
+    card.dataset.commentsShown = toggle.dataset.mode === 'less'
+      ? WALL_COMMENTS_INITIAL
+      : Math.min(total, wallCommentsShown(card) + WALL_COMMENTS_STEP);
+    syncWallComments(card, post);
   };
 }
+function wallSummaryText(post) {
+  return `${(post && post.reaction_count) || 0} تفاعل • ${((post && post.comments) || []).length} تعليق`;
+}
+// ربط النقر على اسم/صورة صاحب التعليق بالقائمة المنبثقة.
+function bindWallCommentIdentity(node, comment) {
+  if (!node || !comment) return;
+  const commenter = comment.user || { id: comment.user_id, username: comment.username, avatar: '' };
+  const target = { id: +(commenter.id || comment.user_id || 0), username: commenter.username || comment.username, avatar: commenter.avatar || '' };
+  // النقر على التعليق كله يفتح القائمة، والسهم ينبثق دائماً من اسم صاحب التعليق.
+  const nameEl = node.querySelector('.wall-comment-bubble b') || node;
+  const open = event => { if (event && event.stopPropagation) event.stopPropagation(); openNamePopover(nameEl, target); };
+  node.onclick = open;
+  node.querySelectorAll('.wall-person').forEach(el => { el.onclick = open; });
+}
+
+// =====================================================
+//  من تفاعل مع المنشور: قائمة أصحاب الإعجابات والسمايلات
+// =====================================================
+let WALL_REACTORS = { postId: 0, list: [], counts: {}, filter: 'all' };
+async function openWallReactors(postId) {
+  if (!ME) return openLogin();
+  WALL_REACTORS = { postId: +postId, list: [], counts: {}, filter: 'all' };
+  $('#wallReactorsTabs').innerHTML = '';
+  $('#wallReactorsList').innerHTML = '<div class="wall-reactors-loading">جاري تحميل التفاعلات...</div>';
+  openOv('wallReactorsOv');
+  try {
+    const data = await api(`/api/wall/${+postId}/reactions`);
+    if (WALL_REACTORS.postId !== +postId) return;
+    WALL_REACTORS.list = (data && data.reactions) || [];
+    WALL_REACTORS.counts = (data && data.counts) || {};
+    renderWallReactors();
+  } catch (e) {
+    $('#wallReactorsList').innerHTML = '<div class="wall-reactors-empty">تعذر تحميل التفاعلات</div>';
+  }
+}
+function renderWallReactors() {
+  const order = ['👍', '❤️', '😂', '😍', '😮'];
+  const tabs = $('#wallReactorsTabs');
+  const list = $('#wallReactorsList');
+  const total = WALL_REACTORS.list.length;
+  const available = order.filter(icon => WALL_REACTORS.counts[icon]);
+  if (!available.includes(WALL_REACTORS.filter)) WALL_REACTORS.filter = 'all';
+  tabs.innerHTML = [`<button class="wall-reactors-tab${WALL_REACTORS.filter === 'all' ? ' active' : ''}" type="button" data-filter="all">الكل <b>${total}</b></button>`]
+    .concat(available.map(icon => `<button class="wall-reactors-tab${WALL_REACTORS.filter === icon ? ' active' : ''}" type="button" data-filter="${icon}">${icon} <b>${WALL_REACTORS.counts[icon]}</b></button>`)).join('');
+  tabs.querySelectorAll('.wall-reactors-tab').forEach(tab => {
+    tab.onclick = () => { WALL_REACTORS.filter = tab.dataset.filter; renderWallReactors(); };
+  });
+  const rows = WALL_REACTORS.filter === 'all' ? WALL_REACTORS.list : WALL_REACTORS.list.filter(row => row.reaction === WALL_REACTORS.filter);
+  if (!rows.length) { list.innerHTML = '<div class="wall-reactors-empty">لا توجد تفاعلات على هذا المنشور بعد</div>'; return; }
+  list.innerHTML = rows.map(row => {
+    const user = row.user || { username: row.username, avatar: '' };
+    const label = user.rank && user.rank !== 'user'
+      ? (RANK_NAMES[user.rank] || 'حساب إداري')
+      : (user.membership && user.membership !== 'none' ? (MEM_NAMES[user.membership] || user.membership) : (user.registered ? 'عضو مسجل' : 'زائر'));
+    return `<div class="wall-reactor-row" data-uid="${+(user.id || row.user_id || 0)}">
+      <span class="wr-avatar">${avatarHtml(user.avatar)}<span class="wr-emoji">${row.reaction}</span></span>
+      <span class="wr-info"><b style="color:${userColor(user)}">${esc(user.username || row.username)}</b><small>${esc(label)}</small></span>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.wall-reactor-row').forEach(row => {
+    row.onclick = () => {
+      const uid = +row.dataset.uid;
+      if (!uid) return;
+      closeOv('wallReactorsOv');
+      openProfile(uid);
+    };
+  });
+}
+
+// =====================================================
+//  قائمة منبثقة صغيرة بجانب الاسم (سهم يخرج من الاسم المنقور)
+// =====================================================
+let NAME_POPOVER_TARGET = null;
+function ensureNamePopoverVeil() {
+  let veil = $('#namePopoverVeil');
+  if (!veil) {
+    veil = document.createElement('div');
+    veil.id = 'namePopoverVeil';
+    veil.className = 'name-popover-veil';
+    veil.hidden = true;
+    // النقر خارج القائمة يغلقها، وإن كان النقر على اسم آخر تُفتح له قائمته مباشرة.
+    veil.addEventListener('click', event => {
+      veil.hidden = true;
+      const under = document.elementFromPoint(event.clientX, event.clientY);
+      const nameEl = under && under.closest('.wall-person, .mname, .mava');
+      closeNamePopover();
+      if (nameEl && typeof nameEl.onclick === 'function') nameEl.onclick({ stopPropagation() { }, currentTarget: nameEl, target: nameEl });
+    });
+    const frame = document.getElementById('frame') || document.body;
+    frame.appendChild(veil);
+  }
+  return veil;
+}
+function closeNamePopover() {
+  const pop = $('#namePopover');
+  if (pop) pop.hidden = true;
+  const veil = $('#namePopoverVeil');
+  if (veil) veil.hidden = true;
+  NAME_POPOVER_TARGET = null;
+}
+// يبني عناصر القائمة حسب السياق: الحائط قائمة مختصرة، والعام كل خيارات المستخدم.
+function namePopoverItems(target, context) {
+  const isMe = !!(ME && +target.id === +ME.id);
+  const items = [];
+  if (context === 'wall') {
+    if (!isMe) items.push({ key: 'private', icon: 'chat_bubble_fill', label: 'دردشة خاصة' });
+    items.push({ key: 'profile', icon: 'person_crop_circle_fill', label: 'عرض الملف الشخصي' });
+    return items;
+  }
+  // الدردشة العامة: نفس خيارات ورقة المستخدم القديمة.
+  if (target.hasStatus) items.push({ key: 'status', icon: 'play_fill', label: 'عرض الحالة', cls: 'ok' });
+  if (target.msg && target.msg.text !== undefined && target.msg.text !== null) items.push({ key: 'reply', icon: 'arrowshape_turn_up_left_fill', label: 'الرد على الرسالة' });
+  if (!isMe) {
+    items.push({ key: 'private', icon: 'chat_bubble_fill', label: 'دردشة خاصة' });
+    items.push({ key: 'gift', icon: 'gift_fill', label: 'ارسل هدية' });
+    items.push({ key: 'upgrade', icon: 'chart_bar_fill', label: 'ترقية هذا المستخدم' });
+    items.push({ key: 'ignore', icon: 'exclamationmark_circle_fill', label: IGNORED_USERS.has(+target.id) ? 'إلغاء التجاهل' : 'تجاهل', cls: 'warn' });
+  }
+  if (canModerateRank() && !isMe) {
+    const state = CUR_ROOM ? ROOM_BCAST[CUR_ROOM.id] : null;
+    const isLiveHost = !!(state && (state.hosts || []).some(h => +h.id === +target.id));
+    if (isLiveHost) {
+      items.push({ key: 'bcastPull', icon: 'mic_slash_fill', label: 'سحب المايك' });
+      items.push({ key: 'bcastPullBan', icon: 'mic_slash_fill', label: 'سحب مع منع صعود', cls: 'danger' });
+    }
+    if (target.broadcast_banned) items.push({ key: 'bcastUnban', icon: 'mic_fill', label: 'فك من البث', cls: 'ok' });
+    items.push({ key: 'mute', icon: target.muted ? 'mic_fill' : 'mic_slash_fill', label: target.muted ? 'إلغاء الكتم' : 'كتم المستخدم' });
+    items.push({ key: 'kick', icon: 'square_arrow_right_fill', label: 'طرد المستخدم', cls: 'warn' });
+    items.push({ key: 'ban', icon: 'nosign', label: 'حظر المستخدم', cls: 'danger' });
+  }
+  if (isAdmRank() && !isMe) items.push({ key: 'aliases', icon: 'person_2_square_stack_fill', label: 'كشف نكات' });
+  items.push({ key: 'profile', icon: 'person_crop_circle_fill', label: 'المعلومات الشخصية' });
+  return items;
+}
+// ينفّذ خيار القائمة عبر إعادة استخدام منطق ورقة المستخدم الموجود.
+function runNamePopoverAction(key, target) {
+  const finish = () => closeNamePopover();
+  if (key === 'profile') { finish(); return openProfile(+target.id); }
+  if (key === 'private') {
+    finish();
+    if (!ME) return openLogin();
+    const peer = ROOM_USERS.find(u => +u.id === +target.id) || { id: +target.id, username: target.username, avatar: target.avatar, registered: 1 };
+    return openPrivateWith(peer);
+  }
+  // بقية الخيارات تعيد استخدام أزرار ورقة المستخدم بعد ضبط الهدف.
+  finish();
+  const user = ROOM_USERS.find(u => +u.id === +target.id) || target.user || target;
+  CUR_TARGET = user;
+  US_MSG = target.msg || null;
+  const map = {
+    status: openTargetStatus,
+    reply: () => { if (US_MSG) setReply(US_MSG); },
+    gift: () => $('#usGift').onclick(),
+    upgrade: () => $('#usUpgrade').onclick(),
+    ignore: () => $('#usIgnore').onclick(),
+    mute: () => $('#usMute').onclick(),
+    kick: () => $('#usKick').onclick(),
+    ban: () => $('#usBan').onclick(),
+    aliases: () => $('#usAliases').onclick(),
+    bcastPull: () => $('#usBcastPull').onclick(),
+    bcastPullBan: () => $('#usBcastPullBan').onclick(),
+    bcastUnban: () => $('#usBcastUnban').onclick()
+  };
+  const run = map[key];
+  if (run) run();
+}
+// يفتح القائمة ملتصقة بالعنصر المنقور، والسهم يشير إليه.
+function openNamePopover(anchor, target, context = 'wall', allowToggle = true) {
+  if (!anchor || !target || !target.id) return;
+  if (!ME) return openLogin();
+  const pop = $('#namePopover');
+  if (!pop) return;
+  // النقر على اسمي يفتح قائمة حسابي السريعة كما كان سابقاً.
+  if (ME && +target.id === +ME.id && context === 'public') { closeNamePopover(); return openOv('quickOv'); }
+  const same = allowToggle && NAME_POPOVER_TARGET && NAME_POPOVER_TARGET.anchor === anchor && !pop.hidden;
+  if (same) return closeNamePopover();
+  NAME_POPOVER_TARGET = { anchor, target, context };
+  $('#namePopoverAvatar').innerHTML = avatarHtml(target.avatar);
+  $('#namePopoverName').textContent = target.username || '-';
+  $('#namePopoverName').style.color = userColor(target);
+  const memberLabel = target.rank && target.rank !== 'user'
+    ? (RANK_NAMES[target.rank] || 'حساب إداري')
+    : (target.membership && target.membership !== 'none' ? (MEM_NAMES[target.membership] || target.membership) : (target.registered === 0 ? 'زائر' : 'عضو مسجل'));
+  $('#namePopoverMem').textContent = memberLabel;
+  const items = namePopoverItems(target, context);
+  $('#namePopoverItems').innerHTML = items.map(item =>
+    `<button class="name-popover-item ${item.cls || ''}" type="button" data-key="${item.key}"><i class="f7-icons np-ic">${item.icon}</i><span>${esc(item.label)}</span><i class="f7-icons np-go">chevron_left</i></button>`
+  ).join('');
+  $('#namePopoverItems').querySelectorAll('.name-popover-item').forEach(button => {
+    button.onclick = event => { event.stopPropagation(); runNamePopoverAction(button.dataset.key, target); };
+  });
+  ensureNamePopoverVeil().hidden = false;
+  pop.hidden = false;
+  positionNamePopover(anchor, pop);
+}
+// يضع القائمة تحت الاسم (أو فوقه عند ضيق المساحة) داخل حدود الإطار، ويوجّه السهم للاسم.
+function positionNamePopover(anchor, pop) {
+  const frame = document.getElementById('frame') || document.body;
+  const frameRect = frame.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
+  const popRect = pop.getBoundingClientRect();
+  const margin = 8;
+  const gap = 9;
+  const spaceBelow = frameRect.bottom - anchorRect.bottom;
+  const below = spaceBelow >= popRect.height + gap + margin || spaceBelow >= anchorRect.top - frameRect.top;
+  pop.classList.toggle('pos-below', below);
+  pop.classList.toggle('pos-above', !below);
+  const top = below
+    ? anchorRect.bottom - frameRect.top + gap
+    : anchorRect.top - frameRect.top - popRect.height - gap;
+  const anchorCenter = anchorRect.left + anchorRect.width / 2 - frameRect.left;
+  const maxLeft = frameRect.width - popRect.width - margin;
+  const left = Math.max(margin, Math.min(anchorCenter - popRect.width / 2, Math.max(margin, maxLeft)));
+  pop.style.top = Math.max(margin, top) + 'px';
+  pop.style.left = left + 'px';
+  const arrow = $('#namePopoverArrow');
+  if (arrow) {
+    const arrowLeft = Math.max(12, Math.min(anchorCenter - left - 6, popRect.width - 24));
+    arrow.style.left = arrowLeft + 'px';
+  }
+}
+window.addEventListener('resize', closeNamePopover);
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeNamePopover(); });
+// أي تمرير للمحتوى يغلق القائمة كي لا تبقى معلّقة بعيداً عن الاسم.
+['#msgArea', '#wallScroll'].forEach(selector => {
+  const area = document.querySelector(selector);
+  if (area) area.addEventListener('scroll', () => { if (!$('#namePopover').hidden) closeNamePopover(); }, { passive: true });
+});
 function updateWallReactionDisplay(card, post) {
   const order = ['👍', '❤️', '😂', '😍', '😮'];
   card.querySelector('.wall-reaction-emojis').innerHTML = order.filter(icon => post.reactions && post.reactions[icon])
     .map(icon => `<span>${icon}<b>${post.reactions[icon]}</b></span>`).join('');
-  card.querySelector('.wall-reaction-summary > span:last-child').textContent = `${post.reaction_count || 0} تفاعل • ${(post.comments || []).length} تعليق`;
+  card.querySelector('.wall-reaction-summary > span:last-child').textContent = wallSummaryText(post);
   card.querySelector('.wall-like').classList.toggle('active', post.my_reaction === '👍');
   const react = card.querySelector('.wall-react-action');
   react.classList.toggle('active', !!post.my_reaction && post.my_reaction !== '👍');
@@ -8924,47 +9228,50 @@ function appendWallCommentWithoutMediaReset(card, post, comment) {
   post.comments.push(comment);
   const commenter = comment.user || { username: comment.username, avatar: '' };
   const node = document.createElement('div');
-  const expanded = card.dataset.commentsExpanded === '1';
-  node.className = 'wall-comment' + (post.comments.length > 2 ? ' wall-comment-extra' : '');
-  if (post.comments.length > 2 && !expanded) node.hidden = true;
-  node.innerHTML = `<span class="wall-comment-avatar">${avatarHtml(commenter.avatar)}</span><div class="wall-comment-bubble"><b>${esc(commenter.username || comment.username)}</b><p>${esc(comment.text)}</p></div>`;
+  node.className = 'wall-comment';
+  node.innerHTML = wallCommentInnerMarkup(comment, commenter);
   card.querySelector('.wall-comment-list').appendChild(node);
-  let more = card.querySelector('.wall-comments-more');
-  if (post.comments.length > 2 && !expanded) {
-    if (!more) {
-      more = document.createElement('button'); more.type = 'button'; more.className = 'wall-comments-more';
-      card.querySelector('.wall-comment-form').before(more);
-    }
-    more.textContent = `إظهار المزيد (${post.comments.length - 2})`;
-    bindWallMoreComments(card);
-  }
-  card.querySelector('.wall-reaction-summary > span:last-child').textContent = `${post.reaction_count || 0} تفاعل • ${post.comments.length} تعليق`;
+  // تعليقي الجديد يظهر مباشرة: نوسّع النافذة كي يشمل آخر تعليق.
+  card.dataset.commentsShown = Math.max(wallCommentsShown(card), post.comments.length);
+  syncWallComments(card, post);
+  bindWallCommentIdentity(node, comment);
+  card.querySelector('.wall-reaction-summary > span:last-child').textContent = wallSummaryText(post);
+}
+// اسم/صورة صاحب التعليق (مع معرّفه) كي تُفتح القائمة المنبثقة عند النقر عليه.
+function wallCommentInnerMarkup(comment, commenter) {
+  const uid = +((commenter && commenter.id) || comment.user_id || 0);
+  const name = esc((commenter && commenter.username) || comment.username || '');
+  return `<span class="wall-comment-avatar wall-person" data-uid="${uid}">${avatarHtml(commenter && commenter.avatar)}</span>
+    <div class="wall-comment-bubble"><b class="wall-person" data-uid="${uid}">${name}</b><p>${esc(comment.text)}</p></div>`;
 }
 function wallPostMarkup(post) {
   const reactionsOrder = ['👍', '❤️', '😂', '😍', '😮'];
   const user = post.user || { username: post.username, avatar: '', badge: 'register.png' };
   const reactions = reactionsOrder.filter(icon => post.reactions && post.reactions[icon])
     .map(icon => `<span>${icon}<b>${post.reactions[icon]}</b></span>`).join('');
+  const totalComments = (post.comments || []).length;
   const comments = (post.comments || []).map((comment, commentIndex) => {
     const commenter = comment.user || { username: comment.username, avatar: '' };
-    return `<div class="wall-comment${commentIndex >= 2 ? ' wall-comment-extra' : ''}" ${commentIndex >= 2 ? 'hidden' : ''}>
-      <span class="wall-comment-avatar">${avatarHtml(commenter.avatar)}</span>
-      <div class="wall-comment-bubble"><b>${esc(commenter.username || comment.username)}</b><p>${esc(comment.text)}</p></div>
+    return `<div class="wall-comment${commentIndex >= WALL_COMMENTS_INITIAL ? ' wall-comment-extra' : ''}" ${commentIndex >= WALL_COMMENTS_INITIAL ? 'hidden' : ''}>
+      ${wallCommentInnerMarkup(comment, commenter)}
     </div>`;
   }).join('');
-  const moreComments = (post.comments || []).length > 2 ? `<button class="wall-comments-more" type="button">إظهار المزيد (${(post.comments || []).length - 2})</button>` : '';
+  const moreComments = totalComments > WALL_COMMENTS_INITIAL
+    ? `<button class="wall-comments-more" type="button" data-mode="more">إظهار المزيد (${totalComments - WALL_COMMENTS_INITIAL})</button>`
+    : '';
   const wallMedia = wallMediaCardMarkup(post);
   const myReaction = post.my_reaction || '';
-  return `<article class="wall-post" data-id="${post.id}">
+  const authorId = +(user.id || post.user_id || 0);
+  return `<article class="wall-post" data-id="${post.id}" data-comments-shown="${WALL_COMMENTS_INITIAL}">
     <div class="wall-post-head">
-      <span class="wall-post-avatar">${avatarHtml(user.avatar)}</span>
-      <span class="wall-post-who"><b>${esc(user.username || post.username)}${user.verified ? ' <i class="f7-icons">checkmark_seal_fill</i>' : ''}</b><small>${esc(wallTime(post.created_at))}</small></span>
+      <span class="wall-post-avatar wall-person" data-uid="${authorId}">${avatarHtml(user.avatar)}</span>
+      <span class="wall-post-who"><b class="wall-person" data-uid="${authorId}">${esc(user.username || post.username)}${user.verified ? ' <i class="f7-icons">checkmark_seal_fill</i>' : ''}</b><small>${esc(wallTime(post.created_at))}</small></span>
       ${(user.badge && !['guest.png', 'register.png'].includes(user.badge)) ? `<img class="wall-post-badge" src="/badges/${esc(user.badge)}" alt="">` : ''}
       ${post.can_delete ? '<button class="wall-post-delete" type="button" title="حذف المنشور"><i class="f7-icons">trash_fill</i></button>' : ''}
     </div>
     ${post.text ? `<div class="wall-post-text">${esc(post.text)}</div>` : ''}
     ${wallMedia}
-    <div class="wall-reaction-summary"><span class="wall-reaction-emojis">${reactions}</span><span>${post.reaction_count || 0} تفاعل • ${(post.comments || []).length} تعليق</span></div>
+    <div class="wall-reaction-summary" role="button" tabindex="0" title="عرض من تفاعلوا مع المنشور"><span class="wall-reaction-emojis">${reactions}</span><span>${wallSummaryText(post)}</span></div>
     <div class="wall-post-actions">
       <button class="wall-action wall-like${myReaction === '👍' ? ' active' : ''}" type="button"><i class="f7-icons">hand_thumbsup_fill</i><span>إعجاب</span></button>
       <div class="wall-action wall-react-action${myReaction && myReaction !== '👍' ? ' active' : ''}" role="button" tabindex="0"><i class="f7-icons">smiley_fill</i><span>${myReaction && myReaction !== '👍' ? myReaction : 'سمايل'}</span><div class="wall-reaction-picker">${reactionsOrder.map(icon => `<span data-reaction="${icon}">${icon}</span>`).join('')}</div></div>
@@ -8980,7 +9287,22 @@ function wallPostMarkup(post) {
 function bindWallPostCard(card, post) {
   if (!card || !post) return;
   const postId = +post.id;
-  bindWallMoreComments(card);
+  syncWallComments(card, post);
+  // النقر على شريط التفاعلات يعرض من وضعوا الإعجابات والسمايلات.
+  const summary = card.querySelector('.wall-reaction-summary');
+  if (summary) {
+    summary.onclick = () => openWallReactors(postId);
+    summary.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openWallReactors(postId); } };
+  }
+  // اسم/صورة صاحب المنشور وأصحاب التعليقات: قائمة منبثقة بجانب الاسم.
+  const author = post.user || { id: post.user_id, username: post.username, avatar: '' };
+  card.querySelectorAll('.wall-post-head .wall-person').forEach(el => {
+    el.onclick = event => { event.stopPropagation(); openNamePopover(el, { id: +(author.id || post.user_id || 0), username: author.username || post.username, avatar: author.avatar || '' }); };
+  });
+  (post.comments || []).forEach((comment, index) => {
+    const node = card.querySelectorAll('.wall-comment-list .wall-comment')[index];
+    bindWallCommentIdentity(node, comment);
+  });
   // البطاقات المدمجة (صورة / يوتيوب / فيديو): الصورة تُفتح في عارض الصور،
   // واليوتيوب والفيديو يُشغَّلان في المشغل الكامل مع التشغيل التلقائي.
   const compactMedia = card.querySelector('.wall-media-chip');

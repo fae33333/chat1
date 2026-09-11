@@ -19,7 +19,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20260911-wall3">
+<link rel="stylesheet" href="/css/style.css?v=20260911-wall4">
 <link rel="stylesheet" href="/css/desktop.css?v=20260911-dsk11" media="(min-width: 1024px)">
 </head>
 <body>
@@ -1121,6 +1121,28 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     </div>
   </div>
 
+  <!-- من تفاعل مع المنشور: قائمة من وضعوا إعجاباً أو سمايل -->
+  <div class="overlay wall-reactors-overlay" id="wallReactorsOv">
+    <div class="sheet wall-reactors-sheet">
+      <div class="wall-reactors-head">
+        <b>التفاعلات</b>
+        <button type="button" data-close="wallReactorsOv" aria-label="إغلاق"><i class="f7-icons">xmark</i></button>
+      </div>
+      <div class="wall-reactors-tabs" id="wallReactorsTabs"></div>
+      <div class="wall-reactors-list" id="wallReactorsList"></div>
+    </div>
+  </div>
+
+  <!-- قائمة منبثقة بجانب الاسم (الحائط والدردشة العامة) -->
+  <div class="name-popover" id="namePopover" hidden>
+    <div class="name-popover-arrow" id="namePopoverArrow"></div>
+    <div class="name-popover-head" id="namePopoverHead">
+      <span class="name-popover-avatar" id="namePopoverAvatar"></span>
+      <span class="name-popover-who"><b id="namePopoverName">-</b><small id="namePopoverMem">عضو مسجل</small></span>
+    </div>
+    <div class="name-popover-items" id="namePopoverItems"></div>
+  </div>
+
   <!-- توثيق حسابي -->
   <div class="overlay full" id="verifyOv">
     <div class="pvpage verifypage">
@@ -1455,7 +1477,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/app.js?v=20260911-wall3" defer></script>
+<script src="/js/app.js?v=20260911-wall4" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk6" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

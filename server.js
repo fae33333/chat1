@@ -3170,6 +3170,28 @@ app.post('/api/wall/:id/comments', requireUser, async (req, res) => {
   io.emit('wall_changed', { action: 'commented', postId });
   res.json({ ok: true, comment });
 });
+// قائمة من وضعوا إعجاباً أو سمايل على المنشور (تُفتح بالنقر على شريط التفاعلات)
+app.get('/api/wall/:id/reactions', requireUser, async (req, res) => {
+  const postId = +req.params.id;
+  if (!await q.get(`SELECT id FROM wall_posts WHERE id=?`, postId)) return res.status(404).json({ error: 'المنشور غير موجود' });
+  const rows = await q.all(`
+    SELECT r.reaction AS wall_reaction, r.created_at AS reacted_at, r.user_id AS reactor_id, u.*
+    FROM wall_reactions r LEFT JOIN users u ON u.id = r.user_id
+    WHERE r.post_id=? ORDER BY r.id DESC LIMIT 300`, postId);
+  const counts = {};
+  const list = rows.map(row => {
+    counts[row.wall_reaction] = (counts[row.wall_reaction] || 0) + 1;
+    const user = row.id ? { ...pubUser(row), badge: badgeOf(row) } : null;
+    return {
+      reaction: row.wall_reaction,
+      created_at: +row.reacted_at || 0,
+      user_id: +row.reactor_id,
+      user,
+      username: user ? user.username : 'مستخدم محذوف'
+    };
+  });
+  res.json({ ok: true, total: list.length, counts, reactions: list });
+});
 app.post('/api/wall/:id/reaction', requireUser, async (req, res) => {
   const postId = +req.params.id;
   const reaction = String(req.body.reaction || '👍');

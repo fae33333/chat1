@@ -3792,6 +3792,75 @@ body.lang-en .blocks-hint { direction:ltr; }
 .wall-comment-form button i { font-size:14px; }
 body.lang-en .wall-compose-main textarea,body.lang-en .wall-post-text,body.lang-en .wall-comment-bubble,body.lang-en .wall-comment-form input { direction:ltr; text-align:left; }
 
+/* ---- شريط التفاعلات قابل للنقر لعرض من وضعوا الإعجابات ---- */
+.wall-reaction-summary { cursor:pointer; transition:background .15s; }
+.wall-reaction-summary:active { background:#f4f6fa; }
+.wall-reaction-summary .wall-reaction-count { display:flex; align-items:center; gap:4px; }
+.wall-reaction-summary .wall-reaction-count u { text-decoration:none; }
+
+/* ---- قائمة من تفاعل مع المنشور ---- */
+.wall-reactors-overlay { z-index:86; }
+.wall-reactors-sheet { padding:10px 12px 18px; max-height:76%; border-radius:20px 20px 0 0; }
+.wall-reactors-head { direction:rtl; display:flex; align-items:center; justify-content:space-between; padding:0 2px 9px; border-bottom:1px solid #edf0f4; }
+.wall-reactors-head b { color:#172033; font-size:15px; font-weight:900; }
+.wall-reactors-head button { width:30px; height:30px; padding:0; border:0; border-radius:50%; background:#f0f2f6; color:#566074; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.wall-reactors-head button i { font-size:17px; }
+.wall-reactors-tabs { direction:rtl; display:flex; align-items:center; gap:6px; overflow-x:auto; padding:9px 2px; scrollbar-width:none; }
+.wall-reactors-tabs::-webkit-scrollbar { display:none; }
+.wall-reactors-tab { flex:none; padding:5px 11px; border:1px solid #e3e8f0; border-radius:16px; background:#fff; color:#586277; cursor:pointer; display:flex; align-items:center; gap:4px; font-size:12px; font-weight:800; }
+.wall-reactors-tab.active { border-color:var(--main); background:var(--main); color:#fff; }
+.wall-reactors-list { direction:rtl; max-height:52vh; overflow-y:auto; }
+.wall-reactor-row { direction:rtl; display:flex; align-items:center; gap:9px; padding:8px 3px; border-bottom:1px solid #f1f3f6; cursor:pointer; }
+.wall-reactor-row:active { background:#f7f9fc; }
+.wall-reactor-row .wr-avatar { position:relative; width:40px; height:40px; flex:none; border-radius:50%; overflow:visible; display:flex; }
+.wall-reactor-row .wr-avatar img,.wall-reactor-row .wr-avatar > span { width:100%; height:100%; border-radius:50%; object-fit:cover; display:flex; align-items:center; justify-content:center; }
+.wall-reactor-row .wr-emoji { position:absolute; bottom:-2px; left:-3px; width:19px; height:19px; border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(20,30,55,.22); display:flex; align-items:center; justify-content:center; font-size:11px; }
+.wall-reactor-row .wr-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.wall-reactor-row .wr-info b { overflow:hidden; color:#172033; font-size:13px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+.wall-reactor-row .wr-info small { color:#8b93a5; font-size:10.5px; font-weight:700; }
+.wall-reactors-empty,.wall-reactors-loading { padding:34px 10px; color:#8a93a5; text-align:center; font-size:12px; font-weight:700; }
+
+/* ---- قائمة منبثقة صغيرة بجانب الاسم مع سهم ---- */
+.name-popover {
+  position:absolute; z-index:1000000; min-width:186px; max-width:250px;
+  border:1px solid #e3e7f0; border-radius:14px; background:#fff; direction:rtl;
+  box-shadow:0 14px 40px rgba(15,22,45,.24); animation:namePopIn .14s ease-out;
+}
+.name-popover[hidden] { display:none !important; }
+@keyframes namePopIn { from { opacity:0; transform:translateY(-5px) scale(.97); } to { opacity:1; transform:none; } }
+.name-popover-veil { position:absolute; inset:0; z-index:999999; background:transparent; }
+.name-popover-veil[hidden] { display:none !important; }
+.name-popover-arrow {
+  position:absolute; width:12px; height:12px; background:#fff;
+  border-left:1px solid #e3e7f0; border-top:1px solid #e3e7f0;
+  transform:rotate(45deg);
+}
+.name-popover.pos-below .name-popover-arrow { top:-7px; }
+.name-popover.pos-above .name-popover-arrow { bottom:-7px; transform:rotate(225deg); }
+.name-popover-head { display:flex; align-items:center; gap:8px; padding:9px 11px; border-bottom:1px solid #f0f2f6; }
+.name-popover-avatar { width:34px; height:34px; flex:none; overflow:hidden; border-radius:50%; background:#eef1f7; display:flex; align-items:center; justify-content:center; }
+.name-popover-avatar img,.name-popover-avatar > span { width:100%; height:100%; border-radius:50%; object-fit:cover; display:flex; align-items:center; justify-content:center; }
+.name-popover-who { min-width:0; display:flex; flex-direction:column; gap:1px; }
+.name-popover-who b { max-width:160px; overflow:hidden; color:#1b2233; font-size:12.5px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+.name-popover-who small { color:#8b93a5; font-size:10px; font-weight:700; }
+.name-popover-items { padding:4px 0 5px; display:flex; flex-direction:column; max-height:46vh; overflow-y:auto; }
+.name-popover-item {
+  width:100%; padding:9px 12px; border:0; background:transparent; color:#2c3450; cursor:pointer;
+  display:flex; align-items:center; gap:9px; text-align:right; font-size:12.5px; font-weight:700;
+}
+.name-popover-item:active { background:#f4f6fa; }
+.name-popover-item i.np-ic { width:20px; flex:none; color:var(--main); font-size:19px; text-align:center; }
+.name-popover-item i.np-go { margin-inline-start:auto; color:#c3c8d8; font-size:15px; }
+.name-popover-item.danger { color:#dc2626; }
+.name-popover-item.danger i.np-ic { color:#dc2626; }
+.name-popover-item.warn i.np-ic { color:#f59e0b; }
+.name-popover-item.ok i.np-ic { color:#16a34a; }
+
+/* أسماء الحائط قابلة للنقر */
+.wall-post-who b,.wall-comment-bubble b,.wall-post-avatar,.wall-comment-avatar,.wall-comment { cursor:pointer; }
+.wall-post-who b:active,.wall-comment-bubble b:active { opacity:.65; }
+.wall-comment:active .wall-comment-bubble { background:#e7ecf3; }
+
 /* ============ نافذة البث العائمة القابلة للسحب ============ */
 .bcast-overlay {
   inset:0 !important; display:none; align-items:unset !important; justify-content:unset !important;
