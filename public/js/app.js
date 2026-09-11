@@ -213,6 +213,8 @@ const I18N_EN = {
   "قسم الشكاوي": "Complaints", "إرسال الشكوى": "Send complaint", "رسالة النظام": "System message", "إعلان من الإدارة": "Admin announcement", "نظام الهدايا": "Gift system",
   "لا توجد غرف هنا": "No rooms here", "لا يوجد متصلون": "No users online", "لا توجد حالات حديثة بعد": "No recent updates", "تعذر تحميل الحالات": "Could not load statuses",
   "لا توجد رسائل من الزوار": "No messages from guests", "لا توجد محادثات مع أعضاء مسجلين": "No conversations with registered members",
+  "🛡️ الحماية مفعّلة!": "🛡️ Protection is on!",
+  "أنت الآن محمي من الرسائل غير المرغوب فيها. تم إيقاف الرسائل المزعجة من المستخدمين غير المرغوب بهم لتستمتع بتجربة أكثر راحة وهدوء داخل دردشتي.": "You are now protected from unwanted messages. Spam from unwanted users has been blocked so you can enjoy a calmer, more comfortable experience.",
   "لا يوجد رسائل خاصة بعد": "No private messages yet", "لا يوجد إشعارات بعد": "No notifications yet", "لا توجد هدايا بعد": "No gifts yet",
   "إلغاء الطرد": "Remove kick", "أنت هنا": "You are here", "بحث عن غرف": "Search rooms", "بحث عن مستخدمين": "Search users", "ابحث عن غرفك": "Search rooms",
   "رسالة عامة": "Public message", "رسالة": "Message", "اكتب حالتك...": "Write your status...", "الأسم المستعار": "Display name", "اسم المستعار": "Display name",
@@ -6038,6 +6040,54 @@ async function refreshSpamBadge(allConvs = null) {
   } catch (e) {}
 }
 
+// ===== رسوم الحالة الفارغة في «المحادثات الخاصة» =====
+// بديل متحرك عن الصور الثابتة القديمة (chat_empty.png)، مرسوم بـSVG
+// خالص فلا يحتاج مكتبة Lottie ولا ملفات إضافية.
+
+// فقاعة محادثة كبيرة تطفو برفق مع خطّي نص يتوهّجان — لتبويب الرسائل.
+function emptyArtChatHtml() {
+  return `<span class="empty-art empty-art-chat" aria-hidden="true">
+    <svg viewBox="0 0 800 800" preserveAspectRatio="xMidYMid meet">
+      <g class="ea-float">
+        <circle class="ea-blob" cx="400" cy="392" r="252"></circle>
+        <g class="ea-bubble">
+          <path class="ea-bubble-body" d="M628 340.5v75c0 37-30 67-67 67H317c-37 0-67-30-67-67v-75c0-37 30-67 67-67h244c37 0 67 30 67 67z"></path>
+          <path class="ea-bubble-tail" d="M250 413.5v91s41-22 76-22c35 0-76-69-76-69z"></path>
+        </g>
+        <rect class="ea-line ea-line1" x="303" y="349" width="287" height="29" rx="10"></rect>
+        <rect class="ea-line ea-line2" x="303" y="404" width="207" height="29" rx="10"></rect>
+      </g>
+      <g class="ea-dots">
+        <circle class="ea-dot ea-dot1" cx="352" cy="596" r="11"></circle>
+        <circle class="ea-dot ea-dot2" cx="400" cy="596" r="11"></circle>
+        <circle class="ea-dot ea-dot3" cx="448" cy="596" r="11"></circle>
+      </g>
+    </svg>
+  </span>`;
+}
+
+// درع حماية بقفل وعلامة صح تُرسم أمام العين — لتبويب «غير مرغوب فيه».
+function emptyArtShieldHtml() {
+  return `<span class="empty-art empty-art-shield" aria-hidden="true">
+    <svg viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
+      <g class="ea-float">
+        <path class="ea-lock" d="M253 328V244.9c0-25.9 21-46.9 47-46.9s46.9 21 46.9 46.9V285"></path>
+        <path class="ea-shield" d="M300 423.4c-48.2-27.6-77-65.4-77-132.8v-8.7c25-7.2 51-10.8 77-10.8s52 3.6 77 10.8v8.7c0 67.4-28.9 105.2-77 132.8z"></path>
+        <g class="ea-eye">
+          <circle class="ea-eye-halo" cx="300" cy="332.7" r="39"></circle>
+          <circle class="ea-eye-top" cx="300" cy="316.9" r="14.3"></circle>
+          <path class="ea-eye-bot" d="M332.1 347.5A38.4 38.4 0 0 1 300 363.2a38.4 38.4 0 0 1-32.1-15.7 51 51 0 0 1 64.2 0z"></path>
+        </g>
+        <path class="ea-check" d="M325 236.9l21.7 22 44.3-45"></path>
+      </g>
+      <g class="ea-rings">
+        <circle class="ea-ring ea-ring1" cx="300" cy="330" r="150"></circle>
+        <circle class="ea-ring ea-ring2" cx="300" cy="330" r="150"></circle>
+      </g>
+    </svg>
+  </span>`;
+}
+
 async function renderPrivConvs(tab = 'members') {
   PRIV_TAB = tab;
   $$('.pv-tab').forEach(t => t.classList.toggle('active', t.dataset.ptab === tab));
@@ -6069,7 +6119,16 @@ async function renderPrivConvs(tab = 'members') {
       ${c.unread ? `<em class="bn-badge pm-conv-badge" style="position:static;display:inline-flex;margin-inline-start:auto;margin-inline-end:8px">${c.unread}</em>` : ''}
       ${c.registered ? '' : '<span class="pm-guest-tag">زائر</span>'}
       <i class="f7-icons" style="color:#c3c8d8">chevron_right</i>
-    </div>`).join('') : `<div class="pv-empty"><span class="empty-img" style="display: flex;align-items: center;flex-direction: column;"><img src="/img/chat_empty.png" alt=""></span><div>${tab === 'spam' ? 'لا توجد رسائل من الزوار' : 'لا توجد محادثات مع أعضاء مسجلين'}</div></div>`;
+    </div>`).join('') : (tab === 'spam'
+      ? `<div class="pv-empty pv-empty-protect">
+           ${emptyArtShieldHtml()}
+           <div class="protect-title">🛡️ الحماية مفعّلة!</div>
+           <div class="protect-text">أنت الآن محمي من الرسائل غير المرغوب فيها. تم إيقاف الرسائل المزعجة من المستخدمين غير المرغوب بهم لتستمتع بتجربة أكثر راحة وهدوء داخل دردشتي.</div>
+         </div>`
+      : `<div class="pv-empty">
+           ${emptyArtChatHtml()}
+           <div>لا توجد محادثات مع أعضاء مسجلين</div>
+         </div>`);
 
   $$('#privList .pv-row').forEach(r => r.onclick = () => {
     const conv = convs.find(x => x.id === +r.dataset.id);

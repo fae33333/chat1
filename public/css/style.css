@@ -1641,6 +1641,96 @@ body.lang-en .toast { direction:ltr; }
 .pv-empty {padding-top:90px;}
 .pv-empty div { color:var(--navy); }
 
+/* ===== رسوم الحالة الفارغة المتحرّكة (بديل الصور الثابتة) ===== */
+.empty-art { display:block; width:210px; height:210px; margin:0 auto 18px; }
+.empty-art svg { width:100%; height:100%; display:block; overflow:visible; }
+/* طفو لطيف للمجموعة كلها */
+.empty-art .ea-float { animation:eaFloat 3.6s ease-in-out infinite; transform-origin:50% 50%; }
+@keyframes eaFloat {
+  0%,100% { transform:translateY(0); }
+  50%     { transform:translateY(-16px); }
+}
+
+/* --- فقاعة المحادثة --- */
+.empty-art-chat .ea-blob      { fill:#ecf5fc; animation:eaBlob 5s ease-in-out infinite; transform-origin:400px 392px; }
+.empty-art-chat .ea-bubble-body,
+.empty-art-chat .ea-bubble-tail { fill:#475471; }
+.empty-art-chat .ea-line      { fill:#c5def3; }
+.empty-art-chat .ea-line1     { animation:eaLine 2.4s ease-in-out infinite; }
+.empty-art-chat .ea-line2     { animation:eaLine 2.4s ease-in-out .35s infinite; }
+@keyframes eaBlob {
+  0%,100% { transform:scale(1); opacity:1; }
+  50%     { transform:scale(1.05); opacity:.85; }
+}
+@keyframes eaLine {
+  0%,100% { opacity:.55; }
+  50%     { opacity:1; }
+}
+/* نقاط «يكتب الآن» تقفز بالتتابع */
+.empty-art-chat .ea-dot  { fill:#c5def3; }
+.empty-art-chat .ea-dot1 { animation:eaDot 1.3s ease-in-out infinite; }
+.empty-art-chat .ea-dot2 { animation:eaDot 1.3s ease-in-out .18s infinite; }
+.empty-art-chat .ea-dot3 { animation:eaDot 1.3s ease-in-out .36s infinite; }
+@keyframes eaDot {
+  0%,60%,100% { transform:translateY(0); opacity:.5; }
+  30%         { transform:translateY(-13px); opacity:1; }
+}
+
+/* --- درع الحماية --- */
+.empty-art-shield .ea-lock {
+  fill:none; stroke:#acb4b9; stroke-width:18; stroke-linecap:butt;
+}
+.empty-art-shield .ea-shield   { fill:#475471; }
+.empty-art-shield .ea-eye-halo { fill:#000; opacity:.38; }
+.empty-art-shield .ea-eye-top,
+.empty-art-shield .ea-eye-bot  { fill:#fff; }
+/* العين ترمش */
+.empty-art-shield .ea-eye { animation:eaBlink 4s ease-in-out infinite; transform-origin:300px 332px; }
+@keyframes eaBlink {
+  0%,90%,100% { transform:scaleY(1); }
+  95%         { transform:scaleY(.12); }
+}
+/* علامة الصح تُرسم أمام العين */
+.empty-art-shield .ea-check {
+  fill:none; stroke:#007aff; stroke-width:18;
+  stroke-linecap:square; stroke-linejoin:miter;
+  stroke-dasharray:120; stroke-dashoffset:120;
+  animation:eaDraw 3.2s ease-in-out infinite;
+}
+@keyframes eaDraw {
+  0%      { stroke-dashoffset:120; }
+  22%,70% { stroke-dashoffset:0; }
+  92%,100%{ stroke-dashoffset:120; }
+}
+/* حلقتا حماية تتمدّدان للخارج */
+.empty-art-shield .ea-ring {
+  fill:none; stroke:#007aff; stroke-width:6; opacity:0;
+  transform-origin:300px 330px;
+}
+.empty-art-shield .ea-ring1 { animation:eaRing 3.2s ease-out infinite; }
+.empty-art-shield .ea-ring2 { animation:eaRing 3.2s ease-out 1.6s infinite; }
+@keyframes eaRing {
+  0%   { transform:scale(.62); opacity:0; }
+  25%  { opacity:.4; }
+  100% { transform:scale(1.16); opacity:0; }
+}
+
+/* نصّا بطاقة الحماية */
+.pv-empty-protect .protect-title {
+  font-size:17px; font-weight:900; color:var(--navy); margin-bottom:9px;
+}
+.pv-empty-protect .protect-text {
+  max-width:340px; margin:0 auto; font-size:13.5px; font-weight:700;
+  line-height:1.75; color:#6a7186;
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .empty-art .ea-float, .empty-art .ea-blob, .empty-art .ea-line,
+  .empty-art .ea-dot, .empty-art .ea-eye, .empty-art .ea-check,
+  .empty-art .ea-ring { animation:none; }
+  .empty-art-shield .ea-check { stroke-dashoffset:0; }
+}
+
 /* ============ صفحة الملف الشخصي (تحرير) ============ */
 .pf-card { background:#fff; margin:0 12px; border-radius:14px; padding:10px 14px 14px; border:1px solid var(--skin-border, #e5e7f0); box-shadow:0 2px 10px rgba(0,0,0,0.03); }
 .pf-row { padding:9px 0 4px; }
