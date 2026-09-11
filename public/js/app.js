@@ -1681,6 +1681,13 @@ function avatarHtml(avatar, cls = '') {
   }
   return `<img class="${cls}" src="/avatars/default.png" alt="">`;   // الصورة الافتراضية للجميع
 }
+// صورتي داخل شريط الإدخال (تظهر على الكمبيوتر فقط عبر CSS).
+// تُستدعى عند الدخول وعند تحديث الملف الشخصي وعند الخروج.
+function syncInputBarAvatar() {
+  const el = $('#ciAva');
+  if (!el) return;
+  el.innerHTML = ME ? avatarHtml(ME.avatar) : '';
+}
 // يحافظ على الصفر في إعدادات الأسعار: 0 = مجاني، وليس قيمة تستبدل بالافتراضي.
 function normalizeClientNonNegativeCost(value, fallback) {
   const raw = String(value ?? '').trim();
@@ -2301,6 +2308,7 @@ function connectSocket() {
     // تحديث الصورة في الهيدر والقائمة
     const headAva = $('#headAva');
     if (headAva) headAva.innerHTML = avatarHtml(ME.avatar);
+    syncInputBarAvatar();
     const menuAva = $('#menuAva');
     if (menuAva) menuAva.innerHTML = avatarHtml(ME.avatar) + `<span class="dot ${statusDot(ME.status)}"></span>`;
 
@@ -8425,6 +8433,7 @@ async function logoutWithoutReload() {
   $('#headEnterBtn').style.display = '';
   $('#headUserBox').style.display = 'none';
   $('#headAva').innerHTML = '';
+  syncInputBarAvatar();
   $('#headName').textContent = '';
   $('#msgArea').innerHTML = '';
   $('#usersList').innerHTML = '';
@@ -10241,6 +10250,7 @@ function onLoggedIn() {
   $('#headEnterBtn').style.display = 'none';
   $('#headUserBox').style.display = 'flex';
   $('#headAva').innerHTML = avatarHtml(ME.avatar);
+  syncInputBarAvatar();
   $('#headName').textContent = ME.username;
   $('#menuBal').textContent = ME.balance;
   loadIgnoredUsers();

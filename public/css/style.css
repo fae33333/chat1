@@ -788,6 +788,9 @@ body { background:#0e1220; display:flex; justify-content:center; }
     overflow: hidden;
     resize: none;
 }
+/* صورتي وكسر السطر داخل شريط الإدخال: عناصر خاصة بالكمبيوتر فقط،
+   مخفية تماماً على الهاتف كي يبقى الشريط كما هو. */
+.ci-break, .ci-ava { display:none; }
 .ci-circle {width: 27px;height: 27px;border-radius:50%;border:0;background:var(--main);color:#fff;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center;margin: 5px;}
 .ci-circle i {font-size: 20px;}
 .ci-plain { border:0; background:transparent; color:var(--main); font-size:21px; cursor:pointer; width:30px; flex:none; }
