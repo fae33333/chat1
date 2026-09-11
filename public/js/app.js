@@ -4625,9 +4625,11 @@ function buildGiftBoxScene(details, opts) {
       <div class="giftbox-body"><div class="giftbox-ribbon-v"></div></div>
       <div class="giftbox-gift">${giftMediaHtml}</div>
     </div>`;
-  // مفرقعات ملونة تنبثق من موقع الصندوق لحظة انفتاحه
+  // مفرقعات ملونة تنبثق من موقع الصندوق لحظة انفتاحه.
+  // opts.noConfetti = إلغاؤها تماماً (الهدية العادية صارت تستعمل مفرقعات
+  // من صورة الهدية نفسها بدل القصاصات الملونة).
   const confettiBox = scene.querySelector('.giftbox-confetti');
-  const pieces = fast ? 20 : 42;          // النسخة المخفَّفة: نصف المفرقعات
+  const pieces = (opts && opts.noConfetti) ? 0 : (fast ? 20 : 42);
   const burstAt = fast ? 0.62 : 1.05;     // تتزامن مع انفتاح الغطاء الأسرع
   for (let c = 0; c < pieces; c++) {
     const piece = document.createElement('i');
@@ -4721,24 +4723,51 @@ function buildGiftFireworks(layer, delayOffset = 0, colorSet = GIFT_CONFETTI_COL
     layer.appendChild(firework);
   });
 }
+// ===== مفرقعات من صورة الهدية نفسها =====
+// عند خروج الهدية من الصندوق تنفجر منها 100 نسخة صغيرة من الهدية ذاتها
+// تتطاير في كل الاتجاهات ثم تتلاشى. تحلّ محل القصاصات الملوّنة القديمة.
+function buildGiftMiniBurst(details, opts) {
+  const o = opts || {};
+  const count = o.count || 100;
+  // 1.0s = اللحظة التي تتجاوز فيها الهدية حافة الصندوق في النسخة السريعة
+  const startAt = (o.startAt != null) ? o.startAt : 1.0;
+  const wrap = document.createElement('div');
+  wrap.className = 'gift-mini-burst';
+  const vis = details.img || details.emoji || '🎁';
+  const isImg = String(vis).startsWith('/');
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('span');
+    piece.className = 'gmb-piece';
+    // توزيع شعاعي منتظم مع عشوائية بسيطة كي لا تبدو مصفوفة
+    const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+    const dist = 70 + Math.random() * 230;
+    piece.style.setProperty('--tx', (Math.cos(ang) * dist).toFixed(1) + 'px');
+    piece.style.setProperty('--ty', (Math.sin(ang) * dist - 40).toFixed(1) + 'px');
+    piece.style.setProperty('--rot', Math.round(Math.random() * 720 - 360) + 'deg');
+    piece.style.setProperty('--sc', (0.5 + Math.random() * 0.6).toFixed(2));
+    piece.style.setProperty('--delay', (startAt + Math.random() * 0.18).toFixed(2) + 's');
+    piece.style.setProperty('--dur', (0.75 + Math.random() * 0.5).toFixed(2) + 's');
+    piece.innerHTML = isImg ? `<img src="${esc(vis)}" alt="" aria-hidden="true">` : `<b>${esc(vis)}</b>`;
+    wrap.appendChild(piece);
+  }
+  return wrap;
+}
 function triggerGiftCelebration(gift) {
   const details = gift || {};
   const layer = $('#giftCelebrationLayer');
   if (!layer) return;
   clearTimeout(GIFT_EFFECT_TIMER);
   layer.innerHTML = '';
-  const colors = GIFT_CONFETTI_COLORS;
 
-  // ===== مشهد صندوق الهدايا (نسخة مخفَّفة): الصندوق يهتز مرة ← الغطاء ينفتح ←
-  // الهدية تنبثق مع مفرقعات أقل. نفس الفكرة لكن أسرع وأنظف، والمشهد الملكي
-  // يبقى بكامل زخرفته كما هو. =====
-  const fast = { fast: true };
+  // ===== مشهد الهدية العادية =====
+  // 1) يظهر الصندوق ويهتز.  2) ينفتح غطاؤه وتخرج الهدية.
+  // 3) لحظة خروجها تنفجر منها 100 نسخة صغيرة من الهدية نفسها.
+  // أُلغيت المؤثرات القديمة (القصاصات الملوّنة، المدفعان الجانبيان،
+  // الألعاب النارية بالخلفية) — المشهد الملكي ما زال يستعملها كما هي.
+  const fast = { fast: true, noConfetti: true };
   layer.appendChild(buildGiftBoxScene(details, fast));
-  // مفرقعات جانبية من الجهتين (يمين ويسار)
-  layer.appendChild(buildGiftSideCannons(0, fast));
-
-  // 4 انفجارات متقاربة بدل 10 ممتدة — تنتهي مع اختفاء المشهد
-  buildGiftFireworks(layer, 0, colors, fast);
+  // 100 مفرقعة من صورة الهدية ذاتها، تنطلق مع انبثاقها من الصندوق
+  layer.appendChild(buildGiftMiniBurst(details, { count: 100, startAt: 1.0 }));
 
   // بدون قالب الأسماء: الهدية العادية تعرض الصندوق + المفرقعات فقط (لا تظهر بطاقة اسم الهدية/المرسل/المستقبل)
 
