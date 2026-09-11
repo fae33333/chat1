@@ -1559,6 +1559,7 @@ function pubUser(u) {
     registered: u.registered ? 1 : 0,
     free_call_used: u.free_call_used ? 1 : 0,
     avatar: String(u.avatar || ''),
+    avatar_frame: String(u.avatar_frame || ''),
     status: String(u.status || 'متصل'),
     bio: String(u.bio || ''),
     bio_audio: String(u.bio_audio || ''),
@@ -2881,6 +2882,22 @@ app.post('/api/avatar', requireUser, (req, res) => {
       res.json({ ok: true, avatar });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
+});
+
+// الإطلالة: إطار مزخرف حول الصورة الشخصية. القيمة معرّف من قائمة ثابتة
+// على الخادم (لا يقبل قيماً حرة) أو '' لإزالتها.
+const AVATAR_FRAMES = ['gold', 'neon', 'fire', 'ice', 'royal', 'hearts', 'leaf', 'rainbow'];
+app.get('/api/avatar-frames', requireUser, (req, res) => {
+  res.json(AVATAR_FRAMES);
+});
+app.post('/api/avatar-frame', requireUser, async (req, res) => {
+  try {
+    const frame = String((req.body && req.body.frame) || '').trim();
+    if (frame && !AVATAR_FRAMES.includes(frame)) return res.status(400).json({ error: 'إطلالة غير معروفة' });
+    await q.run(`UPDATE users SET avatar_frame=? WHERE id=?`, frame, req.authUid);
+    await refreshUserEverywhere(req.authUid);
+    res.json({ ok: true, frame });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // =====================================================

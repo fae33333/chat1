@@ -19,8 +19,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20260912-blast1">
-<link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk17" media="(min-width: 1024px)">
+<link rel="stylesheet" href="/css/style.css?v=20260912-ava18">
+<link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk18" media="(min-width: 1024px)">
 </head>
 <body>
 <div id="frame">
@@ -994,10 +994,37 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <button class="ava-tab" data-acat="custom">مرفوعاتي</button>
       </div>
       <div class="ava-grid" id="avaGrid"></div>
+      <!-- لوحة الاختيار: معاينة الصورة على اليسار وزر الرفع على اليمين -->
+      <div class="ava-pick-panel">
+        <div class="ava-preview-wrap">
+          <span class="ava-preview" id="avaPreview"></span>
+          <button class="ava-frame-btn" id="avaFrameBtn" type="button">أضف إطلالة</button>
+        </div>
+        <div class="ava-pick-side">
+          <div class="ava-pick-title">اختر صورة</div>
+          <div class="ava-pick-actions">
+            <span class="ava-pick-or">او</span>
+            <button class="btn-upload" id="avaUploadBtn">رفع صورة</button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="avaFile" accept="image/*" style="display:none">
       <div class="ava-foot">
-        <button class="btn-upload" id="avaUploadBtn"><i class="f7-icons">square_arrow_up_fill</i> رفع صورة</button>
-        <input type="file" id="avaFile" accept="image/*" style="display:none">
-        <button class="btn-pick" id="avaSave">اختيار هذه الصورة</button>
+        <button class="btn-cancel" id="avaCancel" data-close="avaOv" type="button">الغاء</button>
+        <button class="btn-pick" id="avaSave">حفظ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- الإطلالات: إطار مزخرف حول الصورة الشخصية -->
+  <div class="overlay" id="avaFrameOv">
+    <div class="sheet">
+      <div class="sh-handle"></div>
+      <h3>أضف إطلالة</h3>
+      <div class="frame-grid" id="frameGrid"></div>
+      <div class="ava-foot">
+        <button class="btn-cancel" data-close="avaFrameOv" type="button">الغاء</button>
+        <button class="btn-pick" id="frameSave">حفظ</button>
       </div>
     </div>
   </div>
@@ -1485,7 +1512,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/app.js?v=20260912-blast1" defer></script>
+<script src="/js/app.js?v=20260912-ava18" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

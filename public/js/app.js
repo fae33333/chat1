@@ -111,7 +111,7 @@ let PM_WITH = null, PRIV_UNREAD = 0, PRIV_TAB = 'members';
 let PM_CALL = null; // حالة المكالمة الصوتية الخاصة الجارية
 let NOTIFS = [], CURRENT_NOTIFICATIONS = [], CURRENT_ANNOUNCEMENT = null;
 let READ_NOTIFS = new Set(), NOTIF_UNREAD = 0, STATUS_UNREAD = 0;
-let SEL_AVATAR = null, AVA_CAT = 'def';
+let SEL_AVATAR = null, AVA_CAT = 'def', SEL_FRAME = '';
 let STATUSES = [], STATUS_GROUP = [], STATUS_INDEX = 0, CURRENT_STATUS = null;
 // أصحاب الحالات النشطة: Map(user_id -> expires_at) لرسم الدائرة حول الصورة في
 // قائمة المستخدمين والعام والخاص. تُحدَّث فور نشر/حذف أي حالة، وتُنظَّف ذاتياً
@@ -1674,21 +1674,37 @@ function badgeOf(u) {
   if (u.registered) return 'register.png';
   return 'guest.png';
 }
-// الصورة الرمزية: قد تكون مسار /.. أو "emoji:🙂:#hex" أو فارغة
-function avatarHtml(avatar, cls = '') {
-  if (avatar && avatar.startsWith('/')) return `<img class="${cls}" src="${esc(avatar)}" alt="">`;
-  if (avatar && avatar.startsWith('emoji:')) {
+// الصورة الرمزية: قد تكون مسار /.. أو "emoji:🙂:#hex" أو فارغة.
+// المعامل الثالث frame = معرّف الإطلالة، فتُغلَّف الصورة بإطار مزخرف.
+function avatarHtml(avatar, cls = '', frame = '') {
+  let inner;
+  if (avatar && avatar.startsWith('/')) inner = `<img class="${cls}" src="${esc(avatar)}" alt="">`;
+  else if (avatar && avatar.startsWith('emoji:')) {
     const [, e, bg] = avatar.split(':');
-    return `<span class="${cls}" style="background:${bg}">${e}</span>`;
-  }
-  return `<img class="${cls}" src="/avatars/default.png" alt="">`;   // الصورة الافتراضية للجميع
+    inner = `<span class="${cls}" style="background:${bg}">${e}</span>`;
+  } else inner = `<img class="${cls}" src="/avatars/default.png" alt="">`;   // الافتراضية للجميع
+  return frame ? wrapAvatarFrame(inner, frame) : inner;
 }
+// قائمة الإطلالات المتاحة (مطابقة لقائمة الخادم في AVATAR_FRAMES)
+const AVATAR_FRAMES = ['gold', 'neon', 'fire', 'ice', 'royal', 'hearts', 'leaf', 'rainbow'];
+const AVATAR_FRAME_NAMES = {
+  gold: 'ذهبية', neon: 'نيون', fire: 'لهب', ice: 'جليد',
+  royal: 'ملكية', hearts: 'قلوب', leaf: 'أوراق', rainbow: 'قوس قزح'
+};
+// يغلّف الصورة بإطار الإطلالة. القيم غير المعروفة تُتجاهل بأمان.
+function wrapAvatarFrame(innerHtml, frame) {
+  const f = String(frame || '');
+  if (!f || !AVATAR_FRAMES.includes(f)) return innerHtml;
+  return `<span class="ava-framed af-${f}">${innerHtml}</span>`;
+}
+// إطلالة مستخدم من كائنه (يقبل أي شكل من كائنات المستخدم في التطبيق)
+function frameOf(u) { return (u && u.avatar_frame) || ''; }
 // صورتي داخل شريط الإدخال (تظهر على الكمبيوتر فقط عبر CSS).
 // تُستدعى عند الدخول وعند تحديث الملف الشخصي وعند الخروج.
 function syncInputBarAvatar() {
   const el = $('#ciAva');
   if (!el) return;
-  el.innerHTML = ME ? avatarHtml(ME.avatar) : '';
+  el.innerHTML = ME ? avatarHtml(ME.avatar, '', frameOf(ME)) : '';
 }
 // يحافظ على الصفر في إعدادات الأسعار: 0 = مجاني، وليس قيمة تستبدل بالافتراضي.
 function normalizeClientNonNegativeCost(value, fallback) {
@@ -1698,8 +1714,9 @@ function normalizeClientNonNegativeCost(value, fallback) {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
 }
 // إطار البث يظهر فقط عندما يؤكد الخادم أن صاحب الرسالة كان مذيعاً لحظة إرسالها.
-function liveAvatarHtml(avatar, isLive) {
-  if (!isLive) return avatarHtml(avatar);
+// إطار البث له الأولوية على الإطلالة كي لا يجتمع إطاران حول صورة واحدة.
+function liveAvatarHtml(avatar, isLive, frame = '') {
+  if (!isLive) return avatarHtml(avatar, '', frame);
   return `<span class="live-avatar-frame" aria-label="مذيع مباشر">
     <span class="live-avatar-photo">${avatarHtml(avatar)}</span>
     <img class="live-avatar-frame-image" src="/img/live-avatar.png" alt="">
@@ -2309,10 +2326,10 @@ function connectSocket() {
 
     // تحديث الصورة في الهيدر والقائمة
     const headAva = $('#headAva');
-    if (headAva) headAva.innerHTML = avatarHtml(ME.avatar);
+    if (headAva) headAva.innerHTML = avatarHtml(ME.avatar, '', frameOf(ME));
     syncInputBarAvatar();
     const menuAva = $('#menuAva');
-    if (menuAva) menuAva.innerHTML = avatarHtml(ME.avatar) + `<span class="dot ${statusDot(ME.status)}"></span>`;
+    if (menuAva) menuAva.innerHTML = avatarHtml(ME.avatar, '', frameOf(ME)) + `<span class="dot ${statusDot(ME.status)}"></span>`;
 
     // إشعار المستخدم فوراً بالتعديل
     if (oldBalance !== +ME.balance) {
@@ -4262,7 +4279,7 @@ function renderMsg(m) {
     // معرّف المرسل على القالب: يتيح تحديث دائرة الحالة لاحقاً بلا إعادة رسم الرسالة.
     if (senderId) el.dataset.uid = senderId;
     el.innerHTML = `
-      <div class="mava${isLiveBroadcaster ? ' live-broadcaster-avatar' : ''}${statusRingClass(senderId)}">${liveAvatarHtml(u.avatar, isLiveBroadcaster)}</div>
+      <div class="mava${isLiveBroadcaster ? ' live-broadcaster-avatar' : ''}${statusRingClass(senderId)}">${liveAvatarHtml(u.avatar, isLiveBroadcaster, frameOf(u))}</div>
       <div class="mbody">
         ${(waveKind && SETTINGS.wave_enabled !== '0') ? `<span class="mwave mwave-${waveKind}" aria-hidden="true"></span>` : ''}
         ${rp ? `
@@ -4952,7 +4969,7 @@ function renderUsers() {
     return `
     <div class="users-row${u.muted ? ' muted-user' : ''}${ignored ? ' ignored-user' : ''}" data-id="${u.id}">
       <img class="ubadge" src="/badges/${badgeOf(u)}" alt="">
-      <div class="uava${isLiveBroadcaster ? ' live-broadcaster-avatar' : ''}${statusRingClass(u.id)}">${liveAvatarHtml(u.avatar, isLiveBroadcaster)}<span class="dot ${statusDot(u.status)}"></span></div>
+      <div class="uava${isLiveBroadcaster ? ' live-broadcaster-avatar' : ''}${statusRingClass(u.id)}">${liveAvatarHtml(u.avatar, isLiveBroadcaster, frameOf(u))}<span class="dot ${statusDot(u.status)}"></span></div>
       <div class="uname" style="color:${userColor(u)};font-weight:${userWeight(u)}">${esc(u.username)}${u.verified ? ' <i class="f7-icons vcheck">checkmark_seal_fill</i>' : ''}${u.royal ? ' <i class="f7-icons rcrown">crown_fill</i>' : ''}${expireNoteHtml(u)}${ignored ? `<span class="ignored-user-tag">${APP_LANG === 'en' ? '(Ignored)' : '(متجاهل)'}</span>` : ''}</div>
       ${u.muted ? '<i class="f7-icons muted-user-mark">mic_slash_fill</i>' : ''}
       <img class="ugender" src="/badges/${GENDER_IMG[u.gender] || 'secret.png'}" alt="">
@@ -5488,7 +5505,7 @@ async function openProfile(uid) {
     const isMe = ME && uid === ME.id;
     $('#profTitleTab').textContent = isMe ? (APP_LANG === 'es' ? 'Mi cuenta' : (APP_LANG === 'tr' ? 'Hesabım' : (APP_LANG === 'en' ? 'My account' : 'حسابي'))) : u.username;
     $('#profName').textContent = u.username;
-    $('#profAva').innerHTML = avatarHtml(u.avatar) + `<span class="dot ${statusDot(u.status)}"></span>`;
+    $('#profAva').innerHTML = avatarHtml(u.avatar, '', frameOf(u)) + `<span class="dot ${statusDot(u.status)}"></span>`;
     let memText;
     if (u.rank !== 'user') memText = RANK_NAMES[u.rank];
     else if (u.membership !== 'none') memText = MEM_NAMES[u.membership];
@@ -5555,7 +5572,7 @@ function renderVisitorProfile(u, d) {
             <div class="profile-cover-shade"></div>
             <div class="profile-cover-main">
               <div class="profile-cover-hero">
-                <div class="profile-main-avatar vp-ava">${avatarHtml(u.avatar)}<span class="vs-dot big" style="background:${stColor[u.status] || '#20d33a'}"></span></div>
+                <div class="profile-main-avatar vp-ava">${avatarHtml(u.avatar, '', frameOf(u))}<span class="vs-dot big" style="background:${stColor[u.status] || '#20d33a'}"></span></div>
                 <div class="profile-hero-info">
                   <div class="profile-main-name">${esc(u.username)}${u.verified ? '<i class="f7-icons vp-vrf">checkmark_seal_fill</i>' : ''}${u.royal ? ' <i class="f7-icons vp-vrf rcrown">crown_fill</i>' : ''}${expireNoteHtml(u)}</div>
                   <div class="profile-main-status">${stMap[u.status] || 'متصل'} <span class="vs-dot" style="background:${stColor[u.status] || '#20d33a'}"></span></div>
@@ -6115,7 +6132,7 @@ async function renderPrivConvs(tab = 'members') {
   const convs = allConvs.filter(c => tab === 'spam' ? !c.registered : !!c.registered);
   $('#privList').innerHTML = convs.length ? convs.map(c => `
     <div class="pv-row ${c.registered ? '' : 'guest-pm'}" data-id="${c.id}">
-      <div class="uava">${avatarHtml(c.avatar)}</div>
+      <div class="uava">${avatarHtml(c.avatar, '', frameOf(c))}</div>
       <div class="ptxt">
         <div class="pname">${esc(c.username)} ${c.verified ? '<i class="f7-icons" style="font-size:13px;color:#1685f5">checkmark_seal_fill</i>' : ''}<img src="/badges/${GENDER_IMG[c.gender] || 'secret.png'}" alt=""></div>
         <div class="plast">${esc(c.last)}</div>
@@ -6171,11 +6188,11 @@ async function openPrivateWith(u) {
 
   try { const d = await api('/api/user/' + u.id); if (d && d.user) u = d.user; } catch (e) { }  // أحدث صورة وبيانات الطرف الآخر
   PM_WITH = u;
-  $('#pmPeer').innerHTML = `<span class="pm-peer-ava">${avatarHtml(u.avatar)}</span><b>${esc(u.username)}</b>${u.verified ? '<i class="f7-icons pm-vrf">checkmark_seal_fill</i>' : ''}`;
+  $('#pmPeer').innerHTML = `<span class="pm-peer-ava">${avatarHtml(u.avatar, '', frameOf(u))}</span><b>${esc(u.username)}</b>${u.verified ? '<i class="f7-icons pm-vrf">checkmark_seal_fill</i>' : ''}`;
   $('#pmPeer').onclick = () => { if (PM_WITH) openProfile(PM_WITH.id); };
   $('#pmBody').innerHTML = `
     <div class="pm-hero">
-      <span class="pm-hero-ava">${avatarHtml(u.avatar)}</span>
+      <span class="pm-hero-ava">${avatarHtml(u.avatar, '', frameOf(u))}</span>
       <div class="pm-hero-name">${esc(u.username)}</div>
       <div class="pm-water">${esc((window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة')}</div>
     </div>`;
@@ -6241,7 +6258,7 @@ function renderPm(p) {
   if (callInfo) {
     el.className = 'pm-row ' + (mine ? 'me' : 'them') + ' is-call-event';
     el.innerHTML = `
-      <span class="pm-ava${ring}">${avatarHtml(who.avatar)}</span>
+      <span class="pm-ava${ring}">${avatarHtml(who.avatar, '', frameOf(who))}</span>
       <div class="pm-bub pm-call-bubble ${callInfo.cls}">
         <div class="pm-bh"><span>${timeHm(p.created_at)}</span><b>${esc(who.username)}</b></div>
         <div class="pm-tx pm-call-msg">
@@ -6264,7 +6281,7 @@ function renderPm(p) {
       contentHtml = messageTextWithCustomEmojis(p.text);
     }
     el.innerHTML = `
-      <span class="pm-ava${ring}">${avatarHtml(who.avatar)}</span>
+      <span class="pm-ava${ring}">${avatarHtml(who.avatar, '', frameOf(who))}</span>
       <div class="pm-bub">
         <div class="pm-bh"><span>${timeHm(p.created_at)}</span><b>${esc(who.username)}</b></div>
         <div class="pm-tx">${contentHtml}</div>
@@ -8461,7 +8478,7 @@ function openMenu() {
   $('#menuName').textContent = ME.username;
   $('#menuStatus').textContent = statusName(ME.status);
   $('#menuBal').textContent = ME.balance;
-  $('#menuAva').innerHTML = avatarHtml(ME.avatar) + `<span class="dot ${statusDot(ME.status)}"></span>`;
+  $('#menuAva').innerHTML = avatarHtml(ME.avatar, '', frameOf(ME)) + `<span class="dot ${statusDot(ME.status)}"></span>`;
   const isAdm = isAdmRank();
   const adminSec = $('#menuAdminSection');
   if (adminSec) adminSec.style.display = isAdm ? 'block' : 'none';
@@ -8991,6 +9008,7 @@ AVA_CAT = 'def';
 let MY_AVATARS = [];
 async function openAvatars() {
   SEL_AVATAR = ME.avatar;
+  SEL_FRAME = ME.avatar_frame || '';
   await renderAvaGrid(AVA_CAT);
   openOv('avaOv');
 }
@@ -9046,7 +9064,15 @@ async function renderAvaGrid(cat) {
   $$('#avaGrid .ava-cell').forEach(c => c.onclick = () => {
     SEL_AVATAR = c.dataset.v;
     $$('#avaGrid .ava-cell').forEach(x => x.classList.toggle('sel', x.dataset.v === SEL_AVATAR));
+    renderAvaPreview();
   });
+  renderAvaPreview();
+}
+// معاينة الصورة المختارة مع الإطلالة المختارة
+function renderAvaPreview() {
+  const el = $('#avaPreview');
+  if (!el) return;
+  el.innerHTML = avatarHtml(SEL_AVATAR || (ME && ME.avatar) || '', '', SEL_FRAME);
 }
 $('#avaUploadBtn').onclick = () => $('#avaFile').click();
 $('#avaFile').onchange = async () => {
@@ -9061,21 +9087,51 @@ $('#avaFile').onchange = async () => {
     AVA_CAT = 'custom';
     $$('.ava-tab').forEach(x => x.classList.toggle('active', x.dataset.acat === 'custom'));
     await renderAvaGrid('custom');
+    renderAvaPreview();
     onLoggedIn();
     toast('تم رفع الصورة وحفظها في قائمة مرفوعاتي ✅');
   } catch (e) { toast(e.error || 'تعذر رفع الصورة', false); }
 };
 $('#avaSave').onclick = async () => {
   try {
+    let changed = false;
     if (SEL_AVATAR && SEL_AVATAR !== ME.avatar) {
       await api('/api/avatar', 'POST', { avatar: SEL_AVATAR });
       ME.avatar = SEL_AVATAR;
-      onLoggedIn();
+      changed = true;
     }
+    if (SEL_FRAME !== (ME.avatar_frame || '')) {
+      await api('/api/avatar-frame', 'POST', { frame: SEL_FRAME });
+      ME.avatar_frame = SEL_FRAME;
+      changed = true;
+    }
+    if (changed) onLoggedIn();
     closeOv('avaOv');
     toast('تم حفظ الصورة بنجاح ✅');
   } catch (e) { toast(e.error || 'تعذر حفظ الصورة', false); }
 };
+
+// ===== الإطلالات =====
+// زر «أضف إطلالة» يفتح شبكة الإطارات؛ الاختيار يُعاين فوراً ويُحفظ مع الصورة.
+$('#avaFrameBtn').onclick = () => { renderFrameGrid(); openOv('avaFrameOv'); };
+function renderFrameGrid() {
+  const grid = $('#frameGrid');
+  if (!grid) return;
+  const pic = SEL_AVATAR || (ME && ME.avatar) || '';
+  let html = `<div class="frame-cell ${!SEL_FRAME ? 'sel' : ''}" data-f="">
+      <span class="fc-none"><i class="f7-icons">nosign</i></span><b>بلا إطلالة</b></div>`;
+  AVATAR_FRAMES.forEach(f => {
+    html += `<div class="frame-cell ${SEL_FRAME === f ? 'sel' : ''}" data-f="${f}">
+      ${avatarHtml(pic, '', f)}<b>${esc(AVATAR_FRAME_NAMES[f] || f)}</b></div>`;
+  });
+  grid.innerHTML = html;
+  $$('#frameGrid .frame-cell').forEach(c => c.onclick = () => {
+    SEL_FRAME = c.dataset.f || '';
+    $$('#frameGrid .frame-cell').forEach(x => x.classList.toggle('sel', (x.dataset.f || '') === SEL_FRAME));
+    renderAvaPreview();
+  });
+}
+$('#frameSave').onclick = () => { renderAvaPreview(); closeOv('avaFrameOv'); };
 
 // =====================================================
 //  الحائط
@@ -9239,7 +9295,7 @@ document.addEventListener('keydown', event => {
 
 async function openWall() {
   if (!ME) return openLogin();
-  $('#wallComposeAvatar').innerHTML = avatarHtml(ME.avatar);
+  $('#wallComposeAvatar').innerHTML = avatarHtml(ME.avatar, '', frameOf(ME));
   $('#wallComposer').hidden = true;
   $('#wallCreateTrigger').hidden = !canUseMembershipFeature('wall_allowed_memberships');
   openOv('wallOv');
@@ -10348,7 +10404,7 @@ function onLoggedIn() {
   // الهيدر: إخفاء زر الدخول وإظهار الصورة + الاسم
   $('#headEnterBtn').style.display = 'none';
   $('#headUserBox').style.display = 'flex';
-  $('#headAva').innerHTML = avatarHtml(ME.avatar);
+  $('#headAva').innerHTML = avatarHtml(ME.avatar, '', frameOf(ME));
   syncInputBarAvatar();
   $('#headName').textContent = ME.username;
   $('#menuBal').textContent = ME.balance;
@@ -10361,7 +10417,7 @@ function onLoggedIn() {
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو (استبدال كامل لتجنب التداخل)
   const bm = $('#bnMenu');
-  bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar)}<em><i class="f7-icons">circle_grid3x3_fill</i></em></span><span>القائمة</span>`;
+  bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar, '', frameOf(ME))}<em><i class="f7-icons">circle_grid3x3_fill</i></em></span><span>القائمة</span>`;
 }
 let _sockTried = false;
 function connectSocketRetry() {

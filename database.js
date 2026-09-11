@@ -49,6 +49,9 @@ db.serialize(() => {
   // نبذة صوتية للعضو المسجل — ملف صوتي يُعرض في الملف الشخصي (أسفل النوع) كرابط صوتي.
   db.run(`ALTER TABLE users ADD COLUMN bio_audio TEXT DEFAULT ''`, () => { });
   db.run(`ALTER TABLE users ADD COLUMN bio_audio_duration INTEGER DEFAULT 0`, () => { });
+  // الإطلالة: إطار مزخرف يحيط بالصورة الشخصية في كل مكان تظهر فيه.
+  // القيمة معرّف الإطلالة (مثل 'gold') أو '' لبلا إطلالة.
+  db.run(`ALTER TABLE users ADD COLUMN avatar_frame TEXT DEFAULT ''`, () => { });
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_device_id ON users (device_id)`);
   // التحقق من البريد الإلكتروني (Gmail) عند التسجيل — المسجلون الحاليون (بدون بريد) يعتبرون مُفعّلين
   db.run(`ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 1`, () => { });

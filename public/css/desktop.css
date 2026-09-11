@@ -381,6 +381,8 @@
   }
 
   /* ---------- قالب تغيير الصورة الرمزية: تنسيق محسّن ---------- */
+  /* أوسع من بقية النوافذ ليتسع لعشرة أعمدة كما في التصميم المرجعي */
+  #avaOv .pvpage { width: 840px; }
   /* إصلاح عام: رأس الصفحات الثابت كان بهوامش سالبة تكسر البطاقات */
   .pvpage .pg-head.bar { margin: 0; padding: 13px 16px; border-bottom: 1px solid #e8ebf4; }
   .pvpage .seg.mid, .seg.blue.mid { margin: 14px 16px 12px; }
@@ -388,9 +390,10 @@
   #avaOv .pg-head.bar { flex: none; }
   #avaOv .seg.blue.mid { flex: none; }
   #avaOv .seg button { padding: 10px 0; font-size: 14px; }
+  /* الشبكة على الكمبيوتر: 10 أعمدة كما في التصميم المرجعي */
   #avaOv .ava-grid {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    gap: 9px;
     padding: 4px 16px 14px;
     flex: 1;
     min-height: 0;
@@ -399,9 +402,17 @@
   #avaOv .ava-cell { border-radius: 13px; border-width: 3px; transition: transform .15s ease, border-color .15s ease; }
   #avaOv .ava-cell:hover { transform: scale(1.06); }
   #avaOv .ava-cell.sel { box-shadow: 0 4px 14px var(--skin-glow, rgba(156,30,70,.35)); }
-  #avaOv .ava-foot { margin: 0 16px; padding: 12px 0 14px; flex: none; }
-  #avaOv .btn-upload, #avaOv .btn-pick { padding: 12px; border-radius: 11px; font-size: 14px; }
+  /* لوحة الاختيار: المعاينة يميناً والنص/الرفع يملأ الباقي */
+  #avaOv .ava-pick-panel { margin: 0 16px; padding: 16px 20px; gap: 22px; flex: none; }
+  #avaOv .ava-preview { width: 104px; height: 104px; border-radius: 14px; }
+  #avaOv .ava-pick-title { font-size: 16px; }
+  #avaOv .ava-pick-actions { flex-direction: row-reverse; justify-content: center; gap: 14px; }
+  #avaOv .btn-upload { flex: none; min-width: 130px; }
+  #avaOv .ava-foot { margin: 0 16px; padding: 14px 0 16px; flex: none; border-top: 0; }
+  #avaOv .btn-upload, #avaOv .btn-pick, #avaOv .btn-cancel { padding: 12px; border-radius: 9px; font-size: 14px; }
   #avaOv .btn-pick { background: var(--skin-btn, var(--main)); box-shadow: 0 4px 14px var(--skin-glow, rgba(156,30,70,.3)); }
+  /* شبكة الإطلالات أوسع على الشاشة الكبيرة */
+  #avaFrameOv .frame-grid { grid-template-columns: repeat(5, 1fr); }
 
   /* نافذة تسجيل الدخول — ورقة سفلية بعرض الشاشة ومحتواها في عمود ضيّق
      بالمنتصف، مع تراجع صفحة الغرف خلفها (page sheet). */
