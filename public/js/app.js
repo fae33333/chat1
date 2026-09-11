@@ -4770,7 +4770,9 @@ function buildGiftMiniBurst(details, opts) {
 // ===== 100 مفرقعة متنوّعة تملأ الشاشة =====
 // أشكال مختلفة (شرائط، دوائر، نجوم، معيّنات، قلوب، بريق) بألوان متعدّدة،
 // تنطلق مع فقاعات الهدية وتغطي الشاشة من أطرافها كلها.
-const GIFT_POP_SHAPES = ['strip', 'round', 'star', 'diamond', 'heart', 'spark'];
+// قصاصات ورقية ملوّنة: مستطيلات ورقية بأحجام وميول مختلفة، بعضها
+// مربّع صغير وبعضها شريط مموّج — كقصاصات حفلات حقيقية.
+const GIFT_POP_SHAPES = ['strip', 'strip', 'strip', 'square', 'ribbon', 'ribbon'];
 function buildGiftPopConfetti(opts) {
   const o = opts || {};
   const count = o.count || 100;
@@ -4781,17 +4783,20 @@ function buildGiftPopConfetti(opts) {
     const piece = document.createElement('i');
     const shape = GIFT_POP_SHAPES[i % GIFT_POP_SHAPES.length];
     piece.className = 'gpc ' + shape;
-    // نقطة الانطلاق موزّعة أفقياً كي تعمّ الشاشة لا أن تخرج من نقطة واحدة
+    // انفجار من المركز في كل الاتجاهات — توزيع شعاعي منتظم
     const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.7;
-    const spread = 0.35 + Math.random() * 0.65;
-    piece.style.setProperty('--tx', (Math.cos(ang) * 62 * spread).toFixed(1) + 'vw');
-    piece.style.setProperty('--ty', (Math.sin(ang) * 60 * spread - 6).toFixed(1) + 'vh');
+    const spread = 0.4 + Math.random() * 0.6;
+    piece.style.setProperty('--tx', (Math.cos(ang) * 68 * spread).toFixed(1) + 'vw');
+    piece.style.setProperty('--ty', (Math.sin(ang) * 64 * spread - 6).toFixed(1) + 'vh');
     piece.style.setProperty('--sway', ((Math.random() < 0.5 ? -1 : 1) * (16 + Math.random() * 34)).toFixed(0) + 'px');
     piece.style.setProperty('--rot', Math.round(Math.random() * 900 - 450) + 'deg');
     piece.style.setProperty('--sc', (0.6 + Math.random() * 0.8).toFixed(2));
     piece.style.setProperty('--color', GIFT_CONFETTI_COLORS[Math.floor(Math.random() * GIFT_CONFETTI_COLORS.length)]);
     piece.style.setProperty('--delay', (startAt + (i / count) * 0.45 + Math.random() * 0.18).toFixed(2) + 's');
     piece.style.setProperty('--dur', (1.05 + Math.random() * 0.6).toFixed(2) + 's');
+    // تقلُّب الورقة حول محورها أثناء الطيران (وجه/ظهر) بسرعات مختلفة
+    piece.style.setProperty('--flip', (0.35 + Math.random() * 0.45).toFixed(2) + 's');
+    piece.style.setProperty('--tilt', Math.round(Math.random() * 360) + 'deg');
     wrap.appendChild(piece);
   }
   return wrap;
