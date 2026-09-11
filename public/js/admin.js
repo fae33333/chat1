@@ -4656,6 +4656,7 @@ const PAGES = {
         if (!file) return;
         const fd = new FormData();
         fd.append('file', file);
+        fd.append('kind', 'favicon');
         try {
           toast('جاري رفع أيقونة الفافيكون...');
           const res = await api('/api/admin/upload/seo-image', 'POST', fd, true);
@@ -4692,6 +4693,7 @@ const PAGES = {
         if (!file) return;
         const fd = new FormData();
         fd.append('file', file);
+        fd.append('kind', 'favicon');
         try {
           toast('جاري رفع أيقونة الفافيكون...');
           const res = await api('/api/admin/upload/seo-image', 'POST', fd, true);

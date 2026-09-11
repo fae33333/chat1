@@ -582,7 +582,10 @@ app.get(/^\/t(f?)\/(\d{1,4})x(\d{1,4})\/(.+)$/, async (req, res) => {
   if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) return res.status(404).end();
 
   const key = (mode === 'fit' ? 'f' : '') + `${w}x${h}`;
-  const outAbs = path.join(pubRoot, 'thumbs', key, rel);
+  // المصغّرات تُولَّد دائماً بصيغة WebP (ما عدا GIF المتحركة التي أُرسلت كما هي
+  // أعلاه حفاظاً على الحركة) — تنسيق حديث يقلّل حجم التنزيل ويُلبي معايير Lighthouse.
+  const thumbRel = rel.slice(0, rel.length - ext.length) + '.webp';
+  const outAbs = path.join(pubRoot, 'thumbs', key, thumbRel);
   try {
     const srcStat = fs.statSync(absSrc);
     const cached = fs.existsSync(outAbs) ? fs.statSync(outAbs) : null;
@@ -590,6 +593,7 @@ app.get(/^\/t(f?)\/(\d{1,4})x(\d{1,4})\/(.+)$/, async (req, res) => {
       fs.mkdirSync(path.dirname(outAbs), { recursive: true });
       if (!(await makeThumb(absSrc, outAbs, w, h, mode))) return res.sendFile(absSrc);
     }
+    res.setHeader('Content-Type', 'image/webp');
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     return res.sendFile(outAbs);
   } catch (e) {
@@ -5646,8 +5650,12 @@ app.post('/api/admin/upload/seo-image', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'يجب أن يكون الملف المرفوع صورة' });
     }
-    await fitImage(req.file.path, 1200); // صورة SEO تُشارك للمعاينة — تصغير بحدٍّ كافٍ للجودة
-    res.json({ ok: true, path: '/uploads/' + req.file.filename });
+    // صورة الشعار (Open Graph) تُحوَّل إلى WebP بحدٍّ 1200px للجودة عند المشاركة؛
+    // الأيقونة (favicon) تُحوَّل إلى WebP بحدٍّ صغير (64px) ليطابق حجم عرضها.
+    const kind = String(req.body.kind || 'image');
+    const maxDim = kind === 'favicon' ? 64 : 1200;
+    const converted = await toWebP(req.file.path, maxDim);
+    res.json({ ok: true, path: '/uploads/' + path.basename(converted || req.file.path) });
   });
 });
 
@@ -8355,6 +8363,56 @@ async function sendBotMsg(b) {
 }
 reloadBots();
 
+// =====================================================
+//  ترحيل لمرة واحدة: تحويل صور المرفوعات القديمة (jpg/png)
+//  المخزّنة في قاعدة البيانات إلى WebP — يعمل عند كل إقلاع
+//  لكنه لا يلمس إلا الصور التي ما زالت بامتداد jpg/png، فيكون
+//  فعلياً «لمرة واحدة» ويُحدّث المسارات تلقائياً.
+// =====================================================
+async function convertStoredImageToWebP(storedPath, maxDim) {
+  const p = String(storedPath || '').trim();
+  if (!p.startsWith('/uploads/')) return p;
+  const ext = path.extname(p).toLowerCase();
+  if (!['.jpg', '.jpeg', '.png'].includes(ext)) return p; // gif/svg/ico/webp تُترك
+  const abs = path.join(__dirname, 'public', p.replace(/^\//, ''));
+  if (!fs.existsSync(abs)) return p;                        // ملف مفقود — يُترك
+  const converted = await toWebP(abs, maxDim);
+  return converted ? ('/uploads/' + path.basename(converted)) : p;
+}
+async function migrateUploadsToWebP() {
+  let changed = 0;
+  const updSettings = async (key, maxDim) => {
+    try {
+      const row = await q.get(`SELECT value FROM settings WHERE key=?`, key);
+      const p = row && row.value;
+      if (!p) return;
+      const np = await convertStoredImageToWebP(p, maxDim);
+      if (np && np !== p) { await q.run(`UPDATE settings SET value=? WHERE key=?`, np, key); changed++; }
+    } catch (e) { }
+  };
+  await updSettings('logo_url', 512);
+  await updSettings('seo_image', 1200);
+  await updSettings('favicon_url', 64);
+
+  try {
+    const rows = await q.all(`SELECT id, image FROM rooms WHERE image IS NOT NULL AND image != ''`);
+    for (const r of rows) {
+      const np = await convertStoredImageToWebP(r.image, 256);
+      if (np && np !== r.image) { await q.run(`UPDATE rooms SET image=? WHERE id=?`, np, r.id); changed++; }
+    }
+  } catch (e) { }
+
+  try {
+    const rows = await q.all(`SELECT id, logo_image FROM seo_pages WHERE logo_image IS NOT NULL AND logo_image != ''`);
+    for (const r of rows) {
+      const np = await convertStoredImageToWebP(r.logo_image, 1200);
+      if (np && np !== r.logo_image) { await q.run(`UPDATE seo_pages SET logo_image=? WHERE id=?`, np, r.id); changed++; }
+    }
+  } catch (e) { }
+
+  if (changed) console.log(`★ تم تحويل ${changed} صورة قديمة إلى WebP وتحديث مساراتها في قاعدة البيانات.`);
+}
+
 (async () => {
   await syncRoomBots(false).catch(() => { });
   server.listen(PORT, '0.0.0.0', () => {
@@ -8364,6 +8422,8 @@ reloadBots();
     prewarm(['css/style.css', 'css/desktop.css', 'css/fonts.css', 'js/app.js', 'js/skins.js', 'js/desktop.js'])
       .then(() => console.log('★ تم تصغير JS/CSS وتخزينها مؤقتاً (minify جاهز)'))
       .catch(() => { });
+    // تحويل صور المرفوعات القديمة (شعار/SEO/فافيكون/غرف) إلى WebP.
+    migrateUploadsToWebP().catch(() => { });
     if (BEHIND_NGINX) {
       console.log('★ HTTPS مُدار عبر nginx/Let\'s Encrypt (certbot) — ليست هناك حاجة لشهادات في مجلد المشروع.');
     } else if (HTTPS_ENABLED) {
