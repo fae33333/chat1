@@ -1881,8 +1881,10 @@ function applySettings() {
         siteLogo.insertBefore(logoImage, siteName || siteLogo.firstChild);
       }
       logoImage.className = 'site-logo-image';
-      logoImage.src = String(SETTINGS.logo_url);
+      logoImage.src = thumbUrl(String(SETTINGS.logo_url), 260, 72, true);
       logoImage.alt = activeSiteName;
+      logoImage.width = 130;
+      logoImage.height = 36;
       if (logoIcon) logoIcon.style.display = 'none';
     } else {
       if (logoImage) logoImage.remove();
@@ -3823,8 +3825,21 @@ async function loadRooms() {
   }
   renderRooms();
 }
+// يولّد رابط مصغّر (/t/..) للصور المحلية الكبيرة (شعار/غرف/أيقونات) ليُنزَّل حجم
+// العرض الفعلي فقط بدل الأصل كاملاً — يقلّل حمل الشبكة ويُحسّن LCP.
+function thumbUrl(src, w, h, fit) {
+  const s = String(src || '');
+  if (!s.startsWith('/')) return s;
+  if (s.startsWith('/uploads/') || s.startsWith('/img/') || s.startsWith('/avatars/')) {
+    return `/t${fit ? 'f' : ''}/${w}x${h === undefined ? w : h}${s}`;
+  }
+  return s;
+}
 function roomImgHtml(r, cls = 'room-img') {
-  if (r.image) return `<div class="${cls}"><img src="${esc(r.image)}" alt="${esc(r.name)}"></div>`;
+  if (r.image) {
+    const px = cls === 'rm-img' ? 92 : 104;
+    return `<div class="${cls}"><img src="${esc(thumbUrl(r.image, px))}" alt="${esc(r.name)}" width="${px}" height="${px}" decoding="async"></div>`;
+  }
   return `<div class="${cls}"><span>${esc(r.name)}</span></div>`;
 }
 function roomFeaturesHtml(r) {

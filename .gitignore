@@ -2,6 +2,9 @@
 node_modules/
 .env
 
+# Generated image thumbnails (cache) — recreated on demand
+/public/thumbs/
+
 # TLS private keys/certificates are supplied by the server (aaPanel/Let's Encrypt)
 /cert.pem
 /key.pem

@@ -314,9 +314,13 @@ app.get('/js/cloak.js', (req, res) => {
   res.send(fs.readFileSync(path.join(__dirname, 'lib/cloak.js'), 'utf-8'));
 });
 // وسم يُحقن في صفحات الواجهة لتفعيل التعمية تلقائياً على fetch وXHR
-function cloakBootstrapTag() {
+// معامل deferScripts=true يُستخدم في الصفحة العامة فقط لتأجيل سكربتي التعمية بعد
+// اكتمال تحليل الصفحة (تسريع FCP). في لوحة التحكم يُبقيان متزامنين لأن سكربت
+// ACTIVE_ADMIN_TOKEN المضمّن يحتاج window.NujumCloak جاهزاً فوراً.
+function cloakBootstrapTag(deferScripts = false) {
+  const d = deferScripts ? ' defer' : '';
   return `<script>window.__API_CLOAK__={key:"${CLOAK_KEY}",prefix:"${CLOAK_PREFIX}"};</script>`
-    + `<script src="/js/cloak.js?v=3"></script><script src="/js/cloak-client.js?v=3"></script>`;
+    + `<script src="/js/cloak.js?v=3"${d}></script><script src="/js/cloak-client.js?v=3"${d}></script>`;
 }
 
 app.use(express.json({ limit: '10mb' }));
@@ -555,6 +559,43 @@ app.get(['/admin', '/admin.html'], async (req, res) => {
   res.send(adminHtml);
 });
 
+// ---------- مسار المصغّرات (Thumbnails) ----------
+// يولّد نسخاً مصغّرة من الصور المرفوعة عند الطلب ويخزّنها على القرص (كاش دائم).
+// يُستخدم لعرض الشعار وصور الغرف بحجم العرض الفعلي بدل تنزيل الصورة الأصلية كاملة
+// (يقلّل حمل الشبكة على 4G ويُحسّن LCP). عند تعذر المعالجة يُرسل الأصل كاحتياط.
+app.get(/^\/t(f?)\/(\d{1,4})x(\d{1,4})\/(.+)$/, (req, res) => {
+  const mode = req.params[0] === 'f' ? 'fit' : 'cover';
+  const w = Math.min(1024, Math.max(8, +req.params[1]));
+  const h = Math.min(1024, Math.max(8, +req.params[2]));
+  const rel = String(req.params[3] || '');
+  const pubRoot = path.resolve(path.join(__dirname, 'public'));
+  const absSrc = path.resolve(pubRoot, rel);
+  // حماية من عبور المسارات ومن الوصول خارج مجلد public.
+  if (!rel || rel.includes('..') || /[?#\0]/.test(rel) || !absSrc.startsWith(pubRoot + path.sep)) {
+    return res.status(400).end();
+  }
+  if (!fs.existsSync(absSrc) || !fs.statSync(absSrc).isFile()) return res.status(404).end();
+  const ext = path.extname(absSrc).toLowerCase();
+  // الصور المتحركة (GIF) تُرسل كما هي (حفاظاً على الحركة)؛ أي ملف غير صورة يُرفض.
+  if (ext === '.gif') return res.sendFile(absSrc);
+  if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) return res.status(404).end();
+
+  const key = (mode === 'fit' ? 'f' : '') + `${w}x${h}`;
+  const outAbs = path.join(pubRoot, 'thumbs', key, rel);
+  try {
+    const srcStat = fs.statSync(absSrc);
+    const cached = fs.existsSync(outAbs) ? fs.statSync(outAbs) : null;
+    if (!cached || cached.mtimeMs < srcStat.mtimeMs) {
+      fs.mkdirSync(path.dirname(outAbs), { recursive: true });
+      if (!makeThumb(absSrc, outAbs, w, h, mode)) return res.sendFile(absSrc);
+    }
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.sendFile(outAbs);
+  } catch (e) {
+    return res.sendFile(absSrc);
+  }
+});
+
 // ملفات الواجهة تتغير أثناء إدارة الخادم؛ منع تخزين JS/CSS القديمة يمنع تشغيل
 // نسخة app.js سابقة بعد النشر (خصوصاً خطأ applySettings القديم).
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -595,7 +636,7 @@ function safeUploadFilename(originalName, defaultExt = '.png') {
 }
 
 // ضغط صور GIF/الصور الكبيرة تلقائياً بعد الرفع (الهدايا والدخول الملكي)
-const { compressUploadedImage, GIF_MAX_BYTES } = require('./lib/image-compress');
+const { compressUploadedImage, fitImage, makeThumb, GIF_MAX_BYTES } = require('./lib/image-compress');
 
 function cleanNameForFilename(name) {
   return String(name || 'user').trim().replace(/[/\\?%*:|"<>]/g, '_').slice(0, 30);
@@ -4022,6 +4063,7 @@ app.post('/api/admin/upload/avatar', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'ملف الرمزية يجب أن يكون صورة' });
     }
+    fitImage(req.file.path, 512);
     res.json({ ok: true, path: '/uploads/avatars/' + req.file.filename });
   });
 });
@@ -4060,6 +4102,7 @@ app.post('/api/admin/upload/emoji', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'ملف الإيموجي يجب أن يكون صورة' });
     }
+    fitImage(req.file.path, 256);
     res.json({ ok: true, path: '/uploads/emojis/' + req.file.filename });
   });
 });
@@ -4067,6 +4110,7 @@ app.post('/api/admin/upload/emoji', requireSuperAdmin, (req, res) => {
 app.post('/api/admin/upload/room', requireAdmin, (req, res) => {
   uploadMedia.single('file')(req, res, (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر الرفع: ' + (err ? err.message : 'لا يوجد ملف') });
+    fitImage(req.file.path, 512); // صورة الغرفة تُعرض 52px — تصغير تلقائي لتقليل الحجم
     res.json({ ok: true, path: '/uploads/rooms/' + req.file.filename });
   });
 });
@@ -4079,6 +4123,7 @@ app.post('/api/admin/upload/bot-avatar', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'صورة الروبوت يجب أن تكون ملف صورة' });
     }
+    fitImage(req.file.path, 512);
     res.json({ ok: true, path: '/uploads/bots/' + req.file.filename });
   });
 });
@@ -5231,7 +5276,10 @@ app.post('/api/notifications/:id/read', requireUser, async (req, res) => {
 // ---- الشعار ----
 app.post('/api/admin/logo', requireSuperAdmin, upload.single('logo'), async (req, res) => {
   let url = req.body.logo_url || '';
-  if (req.file) url = '/uploads/' + req.file.filename;
+  if (req.file) {
+    fitImage(req.file.path, 1024); // الشعار يُعرض بارتفاع 36px — تصغير تلقائي
+    url = '/uploads/' + req.file.filename;
+  }
   await q.run(`INSERT INTO settings (key,value) VALUES ('logo_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, url);
   res.json({ ok: true, logo_url: url });
 });
@@ -5589,6 +5637,7 @@ app.post('/api/admin/upload/seo-image', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'يجب أن يكون الملف المرفوع صورة' });
     }
+    fitImage(req.file.path, 1200); // صورة SEO تُشارك للمعاينة — تصغير بحدٍّ كافٍ للجودة
     res.json({ ok: true, path: '/uploads/' + req.file.filename });
   });
 });
@@ -6571,8 +6620,38 @@ ${faqSchema}
   `.trim();
 
   indexHtml = indexHtml.replace(/<title[\s\S]*?<\/title>/i, metaTags);
-  // تفعيل تعمية مسارات API قبل أي سكربت آخر في الصفحة
-  indexHtml = indexHtml.replace('</head>', cloakBootstrapTag() + '</head>');
+  // تفعيل تعمية مسارات API قبل أي سكربت آخر في الصفحة (مؤجّلة في الصفحة العامة لتسريع FCP)
+  indexHtml = indexHtml.replace('</head>', cloakBootstrapTag(true) + '</head>');
+  // عرض الغرف مسبقاً من الخادم داخل #roomsList: يجعل نص الغرف (عنصر LCP) ظاهراً
+  // من أول رسم للصفحة دون انتظار تحميل/تنفيذ app.js — يقلّل LCP بشكل كبير.
+  try {
+    const rooms = await q.all(`SELECT id, name, description, image, type, max_users, status, locked FROM rooms ORDER BY sort, id`);
+    if (rooms && rooms.length) {
+      const thumb = (src, px) => {
+        const s = String(src || '');
+        if (!s.startsWith('/')) return s;
+        if (s.startsWith('/uploads/') || s.startsWith('/img/') || s.startsWith('/avatars/')) {
+          return `/t/${px}x${px}${s}`;
+        }
+        return s;
+      };
+      const rowsHtml = rooms.map(r => {
+        const name = esc(String(r.name || ''));
+        const desc = esc(String(r.description || `أهلاً وسهلاً بكم في ${siteName} ★`));
+        const img = String(r.image || '');
+        const imgHtml = img
+          ? `<div class="room-img"><img src="${esc(thumb(img, 104))}" alt="${name}" width="104" height="104" decoding="async"></div>`
+          : `<div class="room-img"><span>${name}</span></div>`;
+        let feats = r.type === 'voice'
+          ? '<i class="f7-icons" title="دردشة كتابية">bubble_left_bubble_right_fill</i><i class="f7-icons" title="غرفة صوتية">music_mic</i>'
+          : '<i class="f7-icons" title="دردشة كتابية">bubble_left_bubble_right_fill</i>';
+        if (r.status !== 'open') feats += '<i class="f7-icons" title="الغرفة مغلقة" style="color:#dc2626">lock_circle_fill</i>';
+        if (r.locked) feats += '<i class="f7-icons" title="الغرفة برقم سري" style="color:#d946a6">lock_fill</i>';
+        return `<div class="room-row" data-id="${+r.id}">${imgHtml}<div class="room-info"><div class="room-name">${name}</div><div class="room-desc">${desc}</div></div><div class="room-side"><div class="room-count"><i class="f7-icons">person_2_fill</i><b>0</b>/${+r.max_users || 1000}</div><i class="f7-icons room-chev">chevron_right</i><div class="room-feats">${feats}</div></div></div>`;
+      }).join('');
+      indexHtml = indexHtml.replace('<div class="r-list" id="roomsList"></div>', `<div class="r-list" id="roomsList">${rowsHtml}</div>`);
+    }
+  } catch (e) { }
   // المحتوى الفريد يُحقن مباشرة بعد <body> حتى تراه محركات البحث قبل أي سكربت
   if (indexHtml.indexOf('id="seoLandingContent"') === -1) {
     indexHtml = indexHtml.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs}>\n${seoBody}`);

@@ -1,6 +1,10 @@
 /* =====================================================
    شات نجوم العرب - تصميم دردشتي (مثل الفيديو تماما)
 ===================================================== */
+/* عناصر الديسكتوب مخفية افتراضياً على الجوال (منقولة من desktop.css كي لا يحجب
+   desktop.css عرض الصفحة على الهاتف؛ على الكمبيوتر تُفعَّل داخل ميديا 1024px+) */
+.dsk-only { display: none; }
+.dsk-menu-drop, .dsk-drop-veil { display: none; }
 * {margin:0;padding:0;box-sizing:border-box;font-family:"Noto Sans Arabic","SF Arabic","SF Pro Text",Arial,sans-serif !important;-webkit-tap-highlight-color:transparent;}
 .f7-icons,.framework7-icons { font-family:"Framework7 Icons" !important; }
 :root {
