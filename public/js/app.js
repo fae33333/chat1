@@ -4770,13 +4770,20 @@ function buildGiftMiniBurst(details, opts) {
     const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.6;
     // sqrt يوزّع القطع على كامل القرص بدل تكدّسها قرب المركز
     const spread = Math.sqrt(0.12 + Math.random() * 0.88);
+    // نقطة التناثر: مائلة للأعلى قليلاً ليبقى للقطع مجال تسقط فيه
+    const ty = Math.sin(ang) * 52 * spread - 16;
     piece.style.setProperty('--tx', (Math.cos(ang) * 62 * spread).toFixed(1) + 'vw');
-    piece.style.setProperty('--ty', (Math.sin(ang) * 60 * spread - 6).toFixed(1) + 'vh');
+    piece.style.setProperty('--ty', ty.toFixed(1) + 'vh');
+    // نهاية السقوط: أسفل الشاشة دائماً مهما كان موضع التناثر
+    piece.style.setProperty('--fy', (74 + Math.random() * 12).toFixed(1) + 'vh');
+    // تمايل جانبي أثناء الهبوط
+    piece.style.setProperty('--sway', ((Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 7)).toFixed(1) + 'vw');
     piece.style.setProperty('--rot', Math.round(Math.random() * 540 - 270) + 'deg');
+    piece.style.setProperty('--rot2', Math.round(Math.random() * 420 - 210) + 'deg');
     piece.style.setProperty('--sc', (0.45 + Math.random() * 0.55).toFixed(2));
     // لا تتابع: التأخير واحد للجميع = انفجار واحد
     piece.style.setProperty('--delay', startAt.toFixed(2) + 's');
-    piece.style.setProperty('--dur', (1.0 + Math.random() * 0.4).toFixed(2) + 's');
+    piece.style.setProperty('--dur', (2.7 + Math.random() * 0.7).toFixed(2) + 's');
     piece.innerHTML = isImg ? `<img src="${esc(vis)}" alt="" aria-hidden="true">` : `<b>${esc(vis)}</b>`;
     wrap.appendChild(piece);
   }
@@ -4802,14 +4809,21 @@ function buildGiftPopConfetti(opts) {
     const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.7;
     // sqrt يملأ القرص كله بانتظام بدل تكدّس القصاصات في الوسط
     const spread = Math.sqrt(0.1 + Math.random() * 0.9);
+    // نقطة التناثر مرفوعة للأعلى: القصاصة تنتشر أولاً ثم تجد مجالاً لتتساقط
+    const ty = Math.sin(ang) * 58 * spread - 18;
     piece.style.setProperty('--tx', (Math.cos(ang) * 72 * spread).toFixed(1) + 'vw');
-    piece.style.setProperty('--ty', (Math.sin(ang) * 68 * spread - 6).toFixed(1) + 'vh');
+    piece.style.setProperty('--ty', ty.toFixed(1) + 'vh');
+    // كل قصاصة تُكمل طريقها إلى ما تحت حافة الشاشة
+    piece.style.setProperty('--fy', (74 + Math.random() * 14).toFixed(1) + 'vh');
+    // تمايل يميناً ويساراً أثناء الهبوط — كورقة تتهادى في الهواء
+    piece.style.setProperty('--sway', ((Math.random() < 0.5 ? -1 : 1) * (4 + Math.random() * 9)).toFixed(1) + 'vw');
     piece.style.setProperty('--rot', Math.round(Math.random() * 900 - 450) + 'deg');
+    piece.style.setProperty('--rot2', Math.round(Math.random() * 540 - 270) + 'deg');
     piece.style.setProperty('--sc', (0.6 + Math.random() * 0.8).toFixed(2));
     piece.style.setProperty('--color', GIFT_CONFETTI_COLORS[Math.floor(Math.random() * GIFT_CONFETTI_COLORS.length)]);
     // لا تتابع: كل القصاصات تنفجر في اللحظة نفسها
     piece.style.setProperty('--delay', startAt.toFixed(2) + 's');
-    piece.style.setProperty('--dur', (1.0 + Math.random() * 0.45).toFixed(2) + 's');
+    piece.style.setProperty('--dur', (2.8 + Math.random() * 0.8).toFixed(2) + 's');
     // تقلُّب الورقة حول محورها أثناء الطيران (وجه/ظهر) بسرعات مختلفة
     piece.style.setProperty('--flip', (0.3 + Math.random() * 0.4).toFixed(2) + 's');
     piece.style.setProperty('--tilt', Math.round(Math.random() * 360) + 'deg');
@@ -4832,7 +4846,8 @@ function triggerGiftCelebration(gift) {
   const fast = { fast: true, noConfetti: true };
   layer.appendChild(buildGiftBoxScene(details, fast));
   // انفجار واحد لحظي من المنتصف: 300 قصاصة ورقية + 100 صورة صغيرة
-  // للهدية، كلها تنطلق في اللحظة نفسها وتملأ الشاشة.
+  // للهدية، كلها تنطلق في اللحظة نفسها فتملأ الدردشة كاملة،
+  // ثم تتهادى نازلة كالمطر حتى تختفي تحت حافة الشاشة.
   layer.appendChild(buildGiftMiniBurst(details, { count: 100, startAt: 1.0 }));
   layer.appendChild(buildGiftPopConfetti({ count: 300, startAt: 1.0 }));
 
@@ -4847,9 +4862,9 @@ function triggerGiftCelebration(gift) {
     } catch (e) { }
   }
 
-  // الصندوق ← الهدية ← انفجار لحظي واحد يملأ الشاشة ← اختفاء.
-  // آخر قصاصة تنتهي عند ~2.45s فنمسح الطبقة بعدها مباشرة.
-  GIFT_EFFECT_TIMER = setTimeout(() => { layer.innerHTML = ''; }, 2600);
+  // الصندوق ← الهدية ← انفجار لحظي يملأ الشاشة ← تساقط كالمطر ← اختفاء.
+  // آخر قصاصة: 1.0s تأخير + 3.6s مدة = 4.6s، فنمسح الطبقة بعدها.
+  GIFT_EFFECT_TIMER = setTimeout(() => { layer.innerHTML = ''; }, 4700);
 }
 
 // ===== الهدية الملكية: صندوق عادي أولاً ← يُخفى عند إخراج الهدية ← تظهر الهدية مع مفرقعات بالخلفية =====

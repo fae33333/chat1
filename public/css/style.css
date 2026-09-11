@@ -2594,7 +2594,7 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
   width:26px; height:26px; margin:-13px 0 0 -13px;
   display:flex; align-items:center; justify-content:center;
   opacity:0; will-change:transform, opacity;
-  animation:giftMiniBurst var(--dur) cubic-bezier(.05,.9,.2,1) var(--delay) forwards;
+  animation:giftMiniBurst var(--dur) linear var(--delay) forwards;
 }
 .gmb-piece img { width:100%; height:100%; object-fit:contain; display:block;
   filter:drop-shadow(0 1px 3px rgba(0,0,0,.35)); }
@@ -2612,7 +2612,7 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
   position:absolute; left:0; top:0;
   width:0; height:0; opacity:0;
   will-change:transform, opacity;
-  animation:giftMiniBurst var(--dur) cubic-bezier(.05,.9,.2,1) var(--delay) forwards;
+  animation:giftMiniBurst var(--dur) linear var(--delay) forwards;
 }
 .gpc::before {
   content:''; position:absolute; left:0; top:0;
@@ -2636,19 +2636,36 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
   100% { transform:rotate(var(--tilt)) scaleX(1); }
 }
 
-/* تدفّق كالفقاعات: تنبع صغيرة من الهدية، تتمايل جانبياً وهي تنتشر
-   في كامل مساحة الدردشة، ثم تتلاشى في الأطراف. */
+/* مرحلتان: (1) انفجار لحظي من المنتصف ينثر القطعة إلى موضعها في
+   الدردشة كاملة خلال أول ~28% من الزمن، (2) ثم تتساقط كالمطر:
+   تهبط بتسارع الجاذبية وهي تتمايل يميناً ويساراً حتى تغيب تحت الحافة.
+   التوقيت linear لأن النِسَب أدناه هي التي ترسم منحنى الحركة. */
 @keyframes giftMiniBurst {
   0%   { transform:translate(0,0) rotate(0deg) scale(.35); opacity:0; }
-  4%   { opacity:1; }
-  /* اندفاع صاروخي: تقطع 62% من المسافة في أول 25% من الزمن */
-  25%  { transform:translate(calc(var(--tx) * .62), calc(var(--ty) * .62))
+  3%   { opacity:1; }
+  /* اندفاع صاروخي: 62% من المسافة في أول 10% من الزمن */
+  10%  { transform:translate(calc(var(--tx) * .62), calc(var(--ty) * .62))
                    rotate(calc(var(--rot) * .62)) scale(var(--sc)); opacity:1; }
-  /* ثم تتباطأ تدريجياً كأن الهواء يقاومها */
-  55%  { transform:translate(calc(var(--tx) * .88), calc(var(--ty) * .88))
-                   rotate(calc(var(--rot) * .88)) scale(var(--sc)); opacity:1; }
-  80%  { opacity:1; }
-  100% { transform:translate(var(--tx),var(--ty)) rotate(var(--rot)) scale(var(--sc)); opacity:0; }
+  /* يقاومها الهواء فتتباطأ حتى تتوقف عند نقطة التناثر */
+  20%  { transform:translate(calc(var(--tx) * .92), calc(var(--ty) * .92))
+                   rotate(calc(var(--rot) * .92)) scale(var(--sc)); opacity:1; }
+  28%  { transform:translate(var(--tx), var(--ty))
+                   rotate(var(--rot)) scale(var(--sc)); opacity:1; }
+  /* ===== التساقط: بطيء في البداية ثم يتسارع، مع تمايل جانبي ===== */
+  45%  { transform:translate(calc(var(--tx) + var(--sway)),
+                             calc(var(--ty) + (var(--fy) - var(--ty)) * .12))
+                   rotate(calc(var(--rot) + var(--rot2) * .2)) scale(var(--sc)); opacity:1; }
+  62%  { transform:translate(var(--tx),
+                             calc(var(--ty) + (var(--fy) - var(--ty)) * .3))
+                   rotate(calc(var(--rot) + var(--rot2) * .45)) scale(var(--sc)); opacity:1; }
+  78%  { transform:translate(calc(var(--tx) - var(--sway)),
+                             calc(var(--ty) + (var(--fy) - var(--ty)) * .56))
+                   rotate(calc(var(--rot) + var(--rot2) * .7)) scale(var(--sc)); opacity:1; }
+  90%  { transform:translate(var(--tx),
+                             calc(var(--ty) + (var(--fy) - var(--ty)) * .79))
+                   rotate(calc(var(--rot) + var(--rot2) * .9)) scale(var(--sc)); opacity:1; }
+  100% { transform:translate(calc(var(--tx) + var(--sway) * .5), var(--fy))
+                   rotate(calc(var(--rot) + var(--rot2))) scale(var(--sc)); opacity:1; }
 }
 
 @keyframes giftBoxIn {
