@@ -514,6 +514,18 @@
     z-index: 1;
   }
   #userSheet .dsk-sheet-arrow.show { display: block; }
+  /* عند فتحها من اسم في العام: تلتصق بالاسم المنقور بدل التثبيت بجانب اللوحة،
+     ويُخفى سهم الديسكتوب لأن للبطاقة سهمها الخاص الموجّه للاسم. */
+  #userSheet.anchored .sheet.anchored-sheet {
+    top: auto;
+    right: auto;
+    left: auto;
+    width: 300px;
+    max-height: none;
+    padding: 0;
+    border-radius: 16px;
+  }
+  #userSheet.anchored .dsk-sheet-arrow { display: none !important; }
 
   /* ---- قائمة الحالة السريعة: منسدلة تحت زر النقاط (تغيير الحالة) ---- */
   #quickOv { background: rgba(15, 18, 35, .28); backdrop-filter: blur(2px); }

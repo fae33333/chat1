@@ -352,6 +352,8 @@
     new MutationObserver(() => {
       if (!mq.matches) return;
       if (!ov.classList.contains('open')) return;
+      // الورقة الملتصقة باسم في العام تُدير موضعها بنفسها — لا نلمسها هنا.
+      if (ov.classList.contains('anchored')) { arrow.classList.remove('show'); dskPendingRowY = null; return; }
       if (dskPendingRowY != null && sheet) {
         const rel = dskPendingRowY - ov.getBoundingClientRect().top;
         const maxTop = window.innerHeight - sheet.offsetHeight - 14;

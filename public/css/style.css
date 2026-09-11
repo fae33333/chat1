@@ -1142,10 +1142,19 @@ body { background:#0e1220; display:flex; justify-content:center; }
   position:absolute;
   width:min(276px, calc(100% - 16px));
   border-radius:16px;
-  overflow:visible auto;
+  /* البطاقة نفسها لا تُمرَّر (كي لا يُقص السهم)؛ قائمة الخيارات هي التي تُمرَّر. */
+  overflow:visible;
+  display:flex;
+  flex-direction:column;
   animation:userSheetPop .16s ease-out;
   box-shadow:0 16px 44px rgba(15,22,45,.28);
 }
+#userSheet.anchored .anchored-sheet .us-usercard,
+#userSheet.anchored .anchored-sheet .us-cancel { flex:none; }
+#userSheet.anchored .anchored-sheet .us-actions { flex:1; min-height:0; overflow-y:auto; scrollbar-width:thin; }
+/* الزوايا تبقى ناعمة رغم أن التمرير داخلي */
+#userSheet.anchored .anchored-sheet .us-usercard { border-radius:16px 16px 0 0; }
+#userSheet.anchored .anchored-sheet .us-cancel { border-radius:0 0 16px 16px; border-top:1px solid #f0f1f6; }
 @keyframes userSheetPop { from { opacity:0; transform:translateY(-6px) scale(.97); } to { opacity:1; transform:none; } }
 /* السهم ينبثق من منتصف الاسم المنقور (موضعه الأفقي عبر المتغير --arrow-x) */
 #userSheet.anchored .anchored-sheet::before {

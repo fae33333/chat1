@@ -4896,7 +4896,16 @@ function anchorUserSheet(anchor) {
   USER_SHEET_ANCHOR = anchor || null;
   overlay.classList.toggle('anchored', !!anchor);
   sheet.classList.toggle('anchored-sheet', !!anchor);
-  if (!anchor) { sheet.style.top = sheet.style.left = ''; return; }
+  if (!anchor) {
+    // تنظيف كامل كي تعود ورقة سفلية/ديسكتوب عادية بلا بقايا من الوضع الملتصق.
+    sheet.classList.remove('arrow-below', 'arrow-above');
+    sheet.style.top = sheet.style.left = sheet.style.right = sheet.style.maxHeight = '';
+    sheet.style.removeProperty('--arrow-x');
+    return;
+  }
+  // سهم الديسكتوب الخاص بقائمة المستخدمين يُخفى كي لا يتعارض مع سهمنا.
+  const deskArrow = document.getElementById('dskSheetArrow');
+  if (deskArrow) deskArrow.classList.remove('show');
   positionAnchoredUserSheet();
 }
 // يضع الورقة أسفل الاسم (أو فوقه عند ضيق المساحة) داخل حدود الإطار ويوجّه السهم للاسم.
@@ -4905,27 +4914,38 @@ function positionAnchoredUserSheet() {
   const sheet = overlay && overlay.querySelector('.user-action-sheet');
   const anchor = USER_SHEET_ANCHOR;
   if (!overlay || !sheet || !anchor || !anchor.isConnected) return;
-  const frame = document.getElementById('frame') || document.body;
-  const frameRect = frame.getBoundingClientRect();
+  // الحاوية المرجعية هي الطبقة نفسها (تغطي الإطار على الجوال وكامل الشاشة على الديسكتوب).
+  const boxRect = overlay.getBoundingClientRect();
   const anchorRect = anchor.getBoundingClientRect();
   const margin = 8;
   const gap = 10;
-  // نقيس الورقة بعد تطبيق أقصى ارتفاع متاح كي لا تتجاوز الإطار.
-  const spaceBelow = frameRect.bottom - anchorRect.bottom - gap - margin;
-  const spaceAbove = anchorRect.top - frameRect.top - gap - margin;
-  const below = spaceBelow >= Math.min(300, spaceAbove) || spaceBelow >= spaceAbove;
-  sheet.style.maxHeight = Math.max(160, (below ? spaceBelow : spaceAbove)) + 'px';
-  const rect = sheet.getBoundingClientRect();
-  const top = below ? (anchorRect.bottom - frameRect.top + gap) : (anchorRect.top - frameRect.top - rect.height - gap);
-  const anchorCenter = anchorRect.left + anchorRect.width / 2 - frameRect.left;
-  const maxLeft = Math.max(margin, frameRect.width - rect.width - margin);
-  const left = Math.max(margin, Math.min(anchorCenter - rect.width / 2, maxLeft));
+  // نلغي أي تثبيت قادم من قواعد الديسكتوب قبل القياس.
+  sheet.style.right = 'auto';
+  sheet.style.maxHeight = '';
+  const spaceBelow = boxRect.bottom - anchorRect.bottom - gap - margin;
+  const spaceAbove = anchorRect.top - boxRect.top - gap - margin;
+  // ارتفاع المحتوى الكامل = البطاقة + كل الخيارات + زر الإغلاق (القائمة وحدها هي التي تُمرَّر).
+  const actions = sheet.querySelector('.us-actions');
+  const natural = Array.from(sheet.children)
+    .reduce((sum, child) => sum + (child === actions ? child.scrollHeight : child.offsetHeight), 0);
+  // نفضّل الأسفل، وننقلب للأعلى فقط إذا كانت المساحة هناك أوسع فعلاً.
+  const below = spaceBelow >= natural || spaceBelow >= spaceAbove;
+  const available = Math.max(160, below ? spaceBelow : spaceAbove);
+  sheet.style.maxHeight = available + 'px';
+  const height = Math.min(natural, available);
+  const width = sheet.offsetWidth || sheet.getBoundingClientRect().width;
+  const top = below
+    ? (anchorRect.bottom - boxRect.top + gap)
+    : (anchorRect.top - boxRect.top - height - gap);
+  const anchorCenter = anchorRect.left + anchorRect.width / 2 - boxRect.left;
+  const maxLeft = Math.max(margin, boxRect.width - width - margin);
+  const left = Math.max(margin, Math.min(anchorCenter - width / 2, maxLeft));
   sheet.style.top = Math.max(margin, top) + 'px';
   sheet.style.left = left + 'px';
   sheet.classList.toggle('arrow-below', below);
   sheet.classList.toggle('arrow-above', !below);
   // موضع السهم أفقياً بحيث ينبثق من منتصف الاسم المنقور.
-  sheet.style.setProperty('--arrow-x', Math.max(14, Math.min(anchorCenter - left, rect.width - 14)) + 'px');
+  sheet.style.setProperty('--arrow-x', Math.max(14, Math.min(anchorCenter - left, width - 14)) + 'px');
 }
 // تغيّر أبعاد الشاشة يعيد ضبط موضع الورقة الملتصقة (أو يعيدها ورقة سفلية إن اختفى الاسم).
 window.addEventListener('resize', () => {
