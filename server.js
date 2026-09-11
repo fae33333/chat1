@@ -215,6 +215,7 @@ app.use(compression({
 //  تعمية مسارات API: /api/... ← /s/<رمز مشفّر>
 // =====================================================
 const cloak = require('./lib/cloak');
+const { minifyStatic, prewarm } = require('./lib/minify-static');
 const CLOAK_KEY = process.env.API_CLOAK_KEY || crypto.createHash('sha256')
   .update('nujum-api-cloak::' + COOKIE_SECRET).digest('hex').slice(0, 48);
 const CLOAK_PREFIX = '/s/';
@@ -598,6 +599,9 @@ app.get(/^\/t(f?)\/(\d{1,4})x(\d{1,4})\/(.+)$/, async (req, res) => {
 
 // ملفات الواجهة تتغير أثناء إدارة الخادم؛ منع تخزين JS/CSS القديمة يمنع تشغيل
 // نسخة app.js سابقة بعد النشر (خصوصاً خطأ applySettings القديم).
+// تصغير JS/CSS عند الإرسال (يُقدَّم قبل التخزين الثابت ليتولى ملفات css/js أولاً).
+app.use('/css', minifyStatic('css'));
+app.use('/js', minifyStatic('js'));
 app.use(express.static(path.join(__dirname, 'public'), {
   index: false,
   etag: true,
@@ -8344,6 +8348,10 @@ reloadBots();
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`★ سيرفر الدردشة يعمل على ${SERVER_PROTOCOL}://0.0.0.0:${PORT}`);
     console.log(`★ لوحة التحكم: ${SERVER_PROTOCOL}://localhost:${PORT}/admin.html  (ax / 123456)`);
+    // تسخين التصغير مسبقاً للملفات الرئيسية حتى لا ينتظر أول مستخدم التصغير.
+    prewarm(['css/style.css', 'css/desktop.css', 'css/fonts.css', 'js/app.js', 'js/skins.js', 'js/desktop.js'])
+      .then(() => console.log('★ تم تصغير JS/CSS وتخزينها مؤقتاً (minify جاهز)'))
+      .catch(() => { });
     if (BEHIND_NGINX) {
       console.log('★ HTTPS مُدار عبر nginx/Let\'s Encrypt (certbot) — ليست هناك حاجة لشهادات في مجلد المشروع.');
     } else if (HTTPS_ENABLED) {
