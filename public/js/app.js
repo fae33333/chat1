@@ -1598,6 +1598,8 @@ function openOv(id) {
 function closeOv(id) {
   $('#' + id).classList.remove('open');
   if (typeof closeNamePopover === 'function') closeNamePopover();
+  // إغلاق ورقة المستخدم يلغي التصاقها بالاسم كي تعود ورقة سفلية عادية في المرة القادمة.
+  if (id === 'userSheet' && typeof anchorUserSheet === 'function') anchorUserSheet(null);
   if (id === 'userSheet' && typeof stopUserStatusActionWatcher === 'function') stopUserStatusActionWatcher();
   // إغلاق الملف الشخصي يوقف النبذة الصوتية فوراً (ويسجّل الميكروفون إن كان يعمل)
   if (id === 'profOv') {
@@ -4185,13 +4187,14 @@ function renderMsg(m) {
     // النقر على الصورة أو على الاسم يفتح قائمة خيارات المستخدم والرد على الرسالة
     if (!hiddenAdmin) {
       const msgUserData = { text: m.text, username: uname, avatar: u.avatar, rank: u.rank, membership: u.membership, gender: u.gender, registered: u.registered, muted: u.muted, broadcast_banned: (m.user && m.user.broadcast_banned) || (u.broadcast_banned) || 0 };
-      // النقر على الاسم أو الصورة يفتح قائمة منبثقة ملتصقة بالاسم مع سهم يشير إليه.
+      // النقر على الاسم أو الصورة يفتح نفس قائمة إجراءات المستخدم المعتادة،
+      // لكنها تُعرض ملتصقة بالاسم المنقور مع سهم يشير إليه بدل الورقة السفلية.
       const openSenderSheet = (e) => {
         if (e) e.stopPropagation();
-        const uid = +(m.user_id || (m.user && m.user.id) || 0);
+        const uid = m.user_id || (m.user && m.user.id);
         if (!uid) return;
         const anchor = (e && e.currentTarget) || el.querySelector('.mname');
-        openPublicNamePopover(anchor, uid, msgUserData);
+        openUserSheet(+uid, msgUserData, anchor);
       };
       const avaEl = el.querySelector('.mava');
       const nameEl = el.querySelector('.mname');
@@ -4866,6 +4869,8 @@ function syncUserActionSheet() {
     b.style.display = allowed ? 'flex' : 'none';
   });
   syncUserStatusAction();
+  // تغيّر عدد الخيارات يغيّر ارتفاع الورقة؛ نعيد ضبط موضعها لتبقى ملتصقة بالاسم.
+  if (USER_SHEET_ANCHOR) positionAnchoredUserSheet();
 }
 
 // يعرض/يخفي أزرار التحكم بالمذيع في ورقة المستخدم حسب حالة البث الحية ومنع الصعود.
@@ -4881,34 +4886,54 @@ function syncUserBroadcastControlButtons() {
   if (p2) p2.style.display = (notSelf && isLiveHost) ? 'flex' : 'none';
   if (ub) ub.style.display = (notSelf && isBanned) ? 'flex' : 'none';
 }
-// النقر على اسم في الدردشة العامة: قائمة منبثقة بجانب الاسم بدل الورقة السفلية.
-function openPublicNamePopover(anchor, uid, msg) {
-  setUsersPanel(false);
-  if (ME && +uid === +ME.id) { closeNamePopover(); return openOv('quickOv'); }
-  let u = ROOM_USERS.find(x => +x.id === +uid);
-  if (!u && msg) u = { id: +uid, username: msg.username, avatar: msg.avatar || '', rank: msg.rank || 'user', membership: msg.membership || 'none', gender: msg.gender || 'secret', registered: msg.registered === undefined ? 1 : msg.registered, muted: msg.muted ? 1 : 0, broadcast_banned: msg.broadcast_banned ? 1 : 0 };
-  if (!u) return;
-  const target = Object.assign({}, u, { id: +uid, msg: msg || null, hasStatus: activeStatusesForUser(uid).length > 0 });
-  CUR_TARGET = u;
-  US_MSG = msg || null;
-  openNamePopover(anchor, target, 'public');
-  // بيانات محدثة (كتم/حظر بث/حالة) تعيد بناء القائمة إن بقيت مفتوحة على نفس الاسم.
-  const stillOpen = () => NAME_POPOVER_TARGET && +NAME_POPOVER_TARGET.target.id === +uid && !$('#namePopover').hidden;
-  api('/api/user/' + uid).then(d => {
-    if (!d.user || !stillOpen()) return;
-    Object.assign(u, d.user);
-    if (CUR_TARGET && +CUR_TARGET.id === +uid) Object.assign(CUR_TARGET, d.user);
-    openNamePopover(NAME_POPOVER_TARGET.anchor, Object.assign(target, d.user, { id: +uid, msg: msg || null, hasStatus: target.hasStatus }), 'public', false);
-  }).catch(() => { });
-  api('/api/statuses').then(statuses => {
-    STATUSES = Array.isArray(statuses) ? statuses : [];
-    if (!stillOpen()) return;
-    const hasStatus = activeStatusesForUser(uid).length > 0;
-    if (hasStatus === !!NAME_POPOVER_TARGET.target.hasStatus) return;
-    openNamePopover(NAME_POPOVER_TARGET.anchor, Object.assign(NAME_POPOVER_TARGET.target, { hasStatus }), 'public', false);
-  }).catch(() => { });
+// عند تمرير «مرساة» (اسم/صورة في العام) تُعرض ورقة المستخدم نفسها ملتصقة بالاسم
+// مع سهم يشير إليه، بدل انزلاقها من أسفل الشاشة. كل الخيارات والمنطق تبقى كما هي.
+let USER_SHEET_ANCHOR = null;
+function anchorUserSheet(anchor) {
+  const overlay = $('#userSheet');
+  const sheet = overlay && overlay.querySelector('.user-action-sheet');
+  if (!overlay || !sheet) return;
+  USER_SHEET_ANCHOR = anchor || null;
+  overlay.classList.toggle('anchored', !!anchor);
+  sheet.classList.toggle('anchored-sheet', !!anchor);
+  if (!anchor) { sheet.style.top = sheet.style.left = ''; return; }
+  positionAnchoredUserSheet();
 }
-function openUserSheet(uid, msg) {
+// يضع الورقة أسفل الاسم (أو فوقه عند ضيق المساحة) داخل حدود الإطار ويوجّه السهم للاسم.
+function positionAnchoredUserSheet() {
+  const overlay = $('#userSheet');
+  const sheet = overlay && overlay.querySelector('.user-action-sheet');
+  const anchor = USER_SHEET_ANCHOR;
+  if (!overlay || !sheet || !anchor || !anchor.isConnected) return;
+  const frame = document.getElementById('frame') || document.body;
+  const frameRect = frame.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
+  const margin = 8;
+  const gap = 10;
+  // نقيس الورقة بعد تطبيق أقصى ارتفاع متاح كي لا تتجاوز الإطار.
+  const spaceBelow = frameRect.bottom - anchorRect.bottom - gap - margin;
+  const spaceAbove = anchorRect.top - frameRect.top - gap - margin;
+  const below = spaceBelow >= Math.min(300, spaceAbove) || spaceBelow >= spaceAbove;
+  sheet.style.maxHeight = Math.max(160, (below ? spaceBelow : spaceAbove)) + 'px';
+  const rect = sheet.getBoundingClientRect();
+  const top = below ? (anchorRect.bottom - frameRect.top + gap) : (anchorRect.top - frameRect.top - rect.height - gap);
+  const anchorCenter = anchorRect.left + anchorRect.width / 2 - frameRect.left;
+  const maxLeft = Math.max(margin, frameRect.width - rect.width - margin);
+  const left = Math.max(margin, Math.min(anchorCenter - rect.width / 2, maxLeft));
+  sheet.style.top = Math.max(margin, top) + 'px';
+  sheet.style.left = left + 'px';
+  sheet.classList.toggle('arrow-below', below);
+  sheet.classList.toggle('arrow-above', !below);
+  // موضع السهم أفقياً بحيث ينبثق من منتصف الاسم المنقور.
+  sheet.style.setProperty('--arrow-x', Math.max(14, Math.min(anchorCenter - left, rect.width - 14)) + 'px');
+}
+// تغيّر أبعاد الشاشة يعيد ضبط موضع الورقة الملتصقة (أو يعيدها ورقة سفلية إن اختفى الاسم).
+window.addEventListener('resize', () => {
+  if (!USER_SHEET_ANCHOR) return;
+  if (!USER_SHEET_ANCHOR.isConnected) return closeOv('userSheet');
+  positionAnchoredUserSheet();
+});
+function openUserSheet(uid, msg, anchor) {
   setUsersPanel(false);
   // النقر على اسمي/صورتي يفتح «تغيير الحالة» بدل ورقة المستخدم
   if (ME && uid === ME.id) { openOv('quickOv'); return; }
@@ -4918,7 +4943,10 @@ function openUserSheet(uid, msg) {
   CUR_TARGET = u;
   US_MSG = msg || null;
   syncUserActionSheet();
+  // الورقة نفسها بكل خياراتها؛ المرساة فقط تغيّر مكان ظهورها لتلتصق بالاسم.
+  anchorUserSheet(anchor);
   openOv('userSheet');
+  if (anchor) positionAnchoredUserSheet();
   syncUserStatusAction();
   // الحالات لا تُحمّل دائماً مسبقاً؛ اجلب القائمة النشطة كي يظهر زر «عرض الحالة»
   // سواء فُتحت الورقة من قائمة المستخدمين أو من رسالة عامة.
@@ -9085,82 +9113,32 @@ function closeNamePopover() {
   NAME_POPOVER_TARGET = null;
 }
 // يبني عناصر القائمة حسب السياق: الحائط قائمة مختصرة، والعام كل خيارات المستخدم.
-function namePopoverItems(target, context) {
+function namePopoverItems(target) {
   const isMe = !!(ME && +target.id === +ME.id);
   const items = [];
-  if (context === 'wall') {
-    if (!isMe) items.push({ key: 'private', icon: 'chat_bubble_fill', label: 'دردشة خاصة' });
-    items.push({ key: 'profile', icon: 'person_crop_circle_fill', label: 'عرض الملف الشخصي' });
-    return items;
-  }
-  // الدردشة العامة: نفس خيارات ورقة المستخدم القديمة.
-  if (target.hasStatus) items.push({ key: 'status', icon: 'play_fill', label: 'عرض الحالة', cls: 'ok' });
-  if (target.msg && target.msg.text !== undefined && target.msg.text !== null) items.push({ key: 'reply', icon: 'arrowshape_turn_up_left_fill', label: 'الرد على الرسالة' });
-  if (!isMe) {
-    items.push({ key: 'private', icon: 'chat_bubble_fill', label: 'دردشة خاصة' });
-    items.push({ key: 'gift', icon: 'gift_fill', label: 'ارسل هدية' });
-    items.push({ key: 'upgrade', icon: 'chart_bar_fill', label: 'ترقية هذا المستخدم' });
-    items.push({ key: 'ignore', icon: 'exclamationmark_circle_fill', label: IGNORED_USERS.has(+target.id) ? 'إلغاء التجاهل' : 'تجاهل', cls: 'warn' });
-  }
-  if (canModerateRank() && !isMe) {
-    const state = CUR_ROOM ? ROOM_BCAST[CUR_ROOM.id] : null;
-    const isLiveHost = !!(state && (state.hosts || []).some(h => +h.id === +target.id));
-    if (isLiveHost) {
-      items.push({ key: 'bcastPull', icon: 'mic_slash_fill', label: 'سحب المايك' });
-      items.push({ key: 'bcastPullBan', icon: 'mic_slash_fill', label: 'سحب مع منع صعود', cls: 'danger' });
-    }
-    if (target.broadcast_banned) items.push({ key: 'bcastUnban', icon: 'mic_fill', label: 'فك من البث', cls: 'ok' });
-    items.push({ key: 'mute', icon: target.muted ? 'mic_fill' : 'mic_slash_fill', label: target.muted ? 'إلغاء الكتم' : 'كتم المستخدم' });
-    items.push({ key: 'kick', icon: 'square_arrow_right_fill', label: 'طرد المستخدم', cls: 'warn' });
-    items.push({ key: 'ban', icon: 'nosign', label: 'حظر المستخدم', cls: 'danger' });
-  }
-  if (isAdmRank() && !isMe) items.push({ key: 'aliases', icon: 'person_2_square_stack_fill', label: 'كشف نكات' });
-  items.push({ key: 'profile', icon: 'person_crop_circle_fill', label: 'المعلومات الشخصية' });
+  if (!isMe) items.push({ key: 'private', icon: 'chat_bubble_fill', label: 'دردشة خاصة' });
+  items.push({ key: 'profile', icon: 'person_crop_circle_fill', label: 'عرض الملف الشخصي' });
   return items;
 }
 // ينفّذ خيار القائمة عبر إعادة استخدام منطق ورقة المستخدم الموجود.
 function runNamePopoverAction(key, target) {
-  const finish = () => closeNamePopover();
-  if (key === 'profile') { finish(); return openProfile(+target.id); }
+  closeNamePopover();
+  if (key === 'profile') return openProfile(+target.id);
   if (key === 'private') {
-    finish();
     if (!ME) return openLogin();
     const peer = ROOM_USERS.find(u => +u.id === +target.id) || { id: +target.id, username: target.username, avatar: target.avatar, registered: 1 };
     return openPrivateWith(peer);
   }
-  // بقية الخيارات تعيد استخدام أزرار ورقة المستخدم بعد ضبط الهدف.
-  finish();
-  const user = ROOM_USERS.find(u => +u.id === +target.id) || target.user || target;
-  CUR_TARGET = user;
-  US_MSG = target.msg || null;
-  const map = {
-    status: openTargetStatus,
-    reply: () => { if (US_MSG) setReply(US_MSG); },
-    gift: () => $('#usGift').onclick(),
-    upgrade: () => $('#usUpgrade').onclick(),
-    ignore: () => $('#usIgnore').onclick(),
-    mute: () => $('#usMute').onclick(),
-    kick: () => $('#usKick').onclick(),
-    ban: () => $('#usBan').onclick(),
-    aliases: () => $('#usAliases').onclick(),
-    bcastPull: () => $('#usBcastPull').onclick(),
-    bcastPullBan: () => $('#usBcastPullBan').onclick(),
-    bcastUnban: () => $('#usBcastUnban').onclick()
-  };
-  const run = map[key];
-  if (run) run();
 }
 // يفتح القائمة ملتصقة بالعنصر المنقور، والسهم يشير إليه.
-function openNamePopover(anchor, target, context = 'wall', allowToggle = true) {
+function openNamePopover(anchor, target) {
   if (!anchor || !target || !target.id) return;
   if (!ME) return openLogin();
   const pop = $('#namePopover');
   if (!pop) return;
-  // النقر على اسمي يفتح قائمة حسابي السريعة كما كان سابقاً.
-  if (ME && +target.id === +ME.id && context === 'public') { closeNamePopover(); return openOv('quickOv'); }
-  const same = allowToggle && NAME_POPOVER_TARGET && NAME_POPOVER_TARGET.anchor === anchor && !pop.hidden;
+  const same = NAME_POPOVER_TARGET && NAME_POPOVER_TARGET.anchor === anchor && !pop.hidden;
   if (same) return closeNamePopover();
-  NAME_POPOVER_TARGET = { anchor, target, context };
+  NAME_POPOVER_TARGET = { anchor, target };
   $('#namePopoverAvatar').innerHTML = avatarHtml(target.avatar);
   $('#namePopoverName').textContent = target.username || '-';
   $('#namePopoverName').style.color = userColor(target);
@@ -9168,7 +9146,7 @@ function openNamePopover(anchor, target, context = 'wall', allowToggle = true) {
     ? (RANK_NAMES[target.rank] || 'حساب إداري')
     : (target.membership && target.membership !== 'none' ? (MEM_NAMES[target.membership] || target.membership) : (target.registered === 0 ? 'زائر' : 'عضو مسجل'));
   $('#namePopoverMem').textContent = memberLabel;
-  const items = namePopoverItems(target, context);
+  const items = namePopoverItems(target);
   $('#namePopoverItems').innerHTML = items.map(item =>
     `<button class="name-popover-item ${item.cls || ''}" type="button" data-key="${item.key}"><i class="f7-icons np-ic">${item.icon}</i><span>${esc(item.label)}</span><i class="f7-icons np-go">chevron_left</i></button>`
   ).join('');
@@ -9210,7 +9188,16 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape') clos
 // أي تمرير للمحتوى يغلق القائمة كي لا تبقى معلّقة بعيداً عن الاسم.
 ['#msgArea', '#wallScroll'].forEach(selector => {
   const area = document.querySelector(selector);
-  if (area) area.addEventListener('scroll', () => { if (!$('#namePopover').hidden) closeNamePopover(); }, { passive: true });
+  if (!area) return;
+  area.addEventListener('scroll', () => {
+    if (!$('#namePopover').hidden) closeNamePopover();
+    // ورقة المستخدم الملتصقة تتبع الاسم أثناء التمرير وتُغلق إن خرج عن المنطقة المرئية.
+    if (!USER_SHEET_ANCHOR) return;
+    const areaRect = area.getBoundingClientRect();
+    const anchorRect = USER_SHEET_ANCHOR.getBoundingClientRect();
+    if (anchorRect.bottom < areaRect.top || anchorRect.top > areaRect.bottom) return closeOv('userSheet');
+    positionAnchoredUserSheet();
+  }, { passive: true });
 });
 function updateWallReactionDisplay(card, post) {
   const order = ['👍', '❤️', '😂', '😍', '😮'];
