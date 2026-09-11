@@ -215,7 +215,7 @@ app.use(compression({
 //  تعمية مسارات API: /api/... ← /s/<رمز مشفّر>
 // =====================================================
 const cloak = require('./lib/cloak');
-const { minifyStatic, prewarm, minifiedText } = require('./lib/minify-static');
+const { minifyStatic, prewarm, minifiedText, minifyJsText } = require('./lib/minify-static');
 const CLOAK_KEY = process.env.API_CLOAK_KEY || crypto.createHash('sha256')
   .update('nujum-api-cloak::' + COOKIE_SECRET).digest('hex').slice(0, 48);
 const CLOAK_PREFIX = '/s/';
@@ -308,11 +308,33 @@ function rejectUnsignedSocketPacket(socket, ev) {
     }
   } catch (e) { }
 }
-// مكتبة التعمية على الواجهة (نفس الخوارزمية بالضبط)
-app.get('/js/cloak.js', (req, res) => {
+// مكتبة التعمية على الواجهة (نفس الخوارزمية بالضبط) — تُخدَم مصغّرة (إزالة
+// التعليقات والفراغات فقط) لتقليل حجم النقل دون المساس بالخوارزمية.
+let CLOAK_JS_CACHED = null;
+async function cloakJsSource() {
+  if (CLOAK_JS_CACHED === null) {
+    const raw = fs.readFileSync(path.join(__dirname, 'lib/cloak.js'), 'utf-8');
+    CLOAK_JS_CACHED = await minifyJsText(raw);
+  }
+  return CLOAK_JS_CACHED;
+}
+app.get('/js/cloak.js', async (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
-  res.send(fs.readFileSync(path.join(__dirname, 'lib/cloak.js'), 'utf-8'));
+  res.send(await cloakJsSource());
+});
+
+// عميل Socket.IO مصغّر رسمياً (socket.io.min.js ~46KB بدل ~152KB من النسخة
+// غير المصغّرة) — يُخدَم من مسار آخر لأن engine.io يعترض /socket.io/* بالكامل.
+let SOCKET_IO_CLIENT_PATH = null;
+try {
+  SOCKET_IO_CLIENT_PATH = path.join(path.dirname(require.resolve('socket.io/package.json')), 'client-dist', 'socket.io.min.js');
+} catch (e) { }
+app.get('/js/socket.io.min.js', (req, res, next) => {
+  if (!SOCKET_IO_CLIENT_PATH || !fs.existsSync(SOCKET_IO_CLIENT_PATH)) return next();
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+  res.sendFile(SOCKET_IO_CLIENT_PATH);
 });
 // وسم يُحقن في صفحات الواجهة لتفعيل التعمية تلقائياً على fetch وXHR
 // معامل deferScripts=true يُستخدم في الصفحة العامة فقط لتأجيل سكربتي التعمية بعد
