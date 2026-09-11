@@ -636,7 +636,7 @@ function safeUploadFilename(originalName, defaultExt = '.png') {
 }
 
 // ضغط صور GIF/الصور الكبيرة تلقائياً بعد الرفع (الهدايا والدخول الملكي)
-const { compressUploadedImage, fitImage, makeThumb, GIF_MAX_BYTES } = require('./lib/image-compress');
+const { compressUploadedImage, fitImage, makeThumb, toWebP, GIF_MAX_BYTES } = require('./lib/image-compress');
 
 function cleanNameForFilename(name) {
   return String(name || 'user').trim().replace(/[/\\?%*:|"<>]/g, '_').slice(0, 30);
@@ -4063,8 +4063,9 @@ app.post('/api/admin/upload/avatar', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'ملف الرمزية يجب أن يكون صورة' });
     }
-    await fitImage(req.file.path, 512);
-    res.json({ ok: true, path: '/uploads/avatars/' + req.file.filename });
+    // تحويل الرمزيات الثابتة إلى WebP (GIF المتحركة تُبقى كما هي)
+    const converted = await toWebP(req.file.path, 512);
+    res.json({ ok: true, path: '/uploads/avatars/' + path.basename(converted || req.file.path) });
   });
 });
 
@@ -4102,16 +4103,19 @@ app.post('/api/admin/upload/emoji', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'ملف الإيموجي يجب أن يكون صورة' });
     }
-    await fitImage(req.file.path, 256);
-    res.json({ ok: true, path: '/uploads/emojis/' + req.file.filename });
+    // تحويل الإيموجي الثابت إلى WebP (GIF المتحركة تُبقى كما هي)
+    const converted = await toWebP(req.file.path, 256);
+    res.json({ ok: true, path: '/uploads/emojis/' + path.basename(converted || req.file.path) });
   });
 });
 // صورة الغرفة
 app.post('/api/admin/upload/room', requireAdmin, (req, res) => {
   uploadMedia.single('file')(req, res, async (err) => {
     if (err || !req.file) return res.status(500).json({ error: 'تعذر الرفع: ' + (err ? err.message : 'لا يوجد ملف') });
-    await fitImage(req.file.path, 512); // صورة الغرفة تُعرض 52px — تصغير تلقائي لتقليل الحجم
-    res.json({ ok: true, path: '/uploads/rooms/' + req.file.filename });
+    // تحويل تلقائي إلى WebP بحجم مناسب للعرض (52px في القائمة) — خفيفة وسريعة
+    const converted = await toWebP(req.file.path, 256);
+    const finalPath = converted || req.file.path;
+    res.json({ ok: true, path: '/uploads/rooms/' + path.basename(finalPath) });
   });
 });
 
@@ -4123,8 +4127,8 @@ app.post('/api/admin/upload/bot-avatar', requireSuperAdmin, (req, res) => {
       try { fs.unlinkSync(req.file.path); } catch (e) { }
       return res.status(400).json({ error: 'صورة الروبوت يجب أن تكون ملف صورة' });
     }
-    await fitImage(req.file.path, 512);
-    res.json({ ok: true, path: '/uploads/bots/' + req.file.filename });
+    const converted = await toWebP(req.file.path, 512);
+    res.json({ ok: true, path: '/uploads/bots/' + path.basename(converted || req.file.path) });
   });
 });
 
@@ -5277,8 +5281,9 @@ app.post('/api/notifications/:id/read', requireUser, async (req, res) => {
 app.post('/api/admin/logo', requireSuperAdmin, upload.single('logo'), async (req, res) => {
   let url = req.body.logo_url || '';
   if (req.file) {
-    await fitImage(req.file.path, 1024); // الشعار يُعرض بارتفاع 36px — تصغير تلقائي
-    url = '/uploads/' + req.file.filename;
+    // تحويل الشعار تلقائياً إلى WebP (يُعرض بارتفاع 36px) — خفيف وسريع
+    const converted = await toWebP(req.file.path, 512);
+    url = '/uploads/' + path.basename(converted || req.file.path);
   }
   await q.run(`INSERT INTO settings (key,value) VALUES ('logo_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, url);
   res.json({ ok: true, logo_url: url });

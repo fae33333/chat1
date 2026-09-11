@@ -10213,9 +10213,14 @@ function insertCustomEmojiToken(id) {
   input.setRangeText(token, start, end, 'end');
   input.focus();
 }
+// منتقي الإيموجي يُبنى كسولاً: لا تُحمَّل صور الإيموجي (GIF ثقيلة أحياناً) عند فتح
+// الصفحة، بل عند فتح اللوحة لأول مرة فقط — يقلّل حمولة التحميل الأولي بشكل كبير.
+let EMOJI_GRID_DIRTY = true;
 function renderEmojiPicker() {
-  $('#emojiGrid').innerHTML = CUSTOM_EMOJIS.length
-    ? CUSTOM_EMOJIS.map(e => `<img class="custom-emoji-choice" src="${esc(e.img)}" data-id="${e.id}" alt="emoji">`).join('')
+  const grid = $('#emojiGrid');
+  if (!grid) return;
+  grid.innerHTML = CUSTOM_EMOJIS.length
+    ? CUSTOM_EMOJIS.map(e => `<img class="custom-emoji-choice" src="${esc(e.img)}" data-id="${e.id}" alt="emoji" loading="lazy" decoding="async">`).join('')
     : '<div class="custom-emoji-empty">لا توجد إيموجيات مرفوعة حالياً</div>';
   $$('#emojiGrid .custom-emoji-choice').forEach(im => im.onclick = () => {
     if (!ME) return openLogin();
@@ -10225,10 +10230,16 @@ function renderEmojiPicker() {
     insertCustomEmojiToken(im.dataset.id);
     $('#emojiPanel').classList.remove('open');
   });
+  EMOJI_GRID_DIRTY = false;
+}
+function ensureEmojiPickerRendered() {
+  if (EMOJI_GRID_DIRTY) renderEmojiPicker();
 }
 async function loadCustomEmojis() {
   try { CUSTOM_EMOJIS = await api('/api/emojis'); } catch (e) { CUSTOM_EMOJIS = []; }
-  renderEmojiPicker();
+  EMOJI_GRID_DIRTY = true;
+  // نبني اللوحة الآن فقط إن كانت مفتوحة أمام المستخدم؛ وإلا تُبنى عند فتحها.
+  if ($('#emojiPanel') && $('#emojiPanel').classList.contains('open')) renderEmojiPicker();
 }
 loadCustomEmojis();
 api('/api/gifts').then(g => { GIFTS = g; }).catch(() => { });   // تحميل مسبق لقائمة الهدايا
@@ -10285,6 +10296,7 @@ $('#btnEmoji').onclick = (e) => {
   $('#colorPanel').classList.remove('open');
   const ep = $('#emojiPanel');
   ep.classList.remove('pm-mode');
+  ensureEmojiPickerRendered();
   ep.classList.toggle('open');
 };
 $('#colorPanel').classList.remove('open');
@@ -10683,6 +10695,7 @@ $('#pmEmoji').onclick = (e) => {
   $('#colorPanel').classList.remove('open');
   const ep = $('#emojiPanel');
   ep.classList.add('pm-mode');
+  ensureEmojiPickerRendered();
   ep.classList.toggle('open');
 };
 $('#privSettings').onclick = () => toast('اعدادات الخاص : استقبال الرسائل من الجميع');
