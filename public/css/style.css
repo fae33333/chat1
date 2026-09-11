@@ -1135,43 +1135,42 @@ body { background:#0e1220; display:flex; justify-content:center; }
   text-align:center;
 }
 
-/* ---- نفس ورقة إجراءات المستخدم لكن ملتصقة بالاسم المنقور في العام ----
-   الخيارات والتصميم كما هي؛ يتغيّر الموضع فقط (بطاقة عائمة + سهم من الاسم). */
-#userSheet.anchored { align-items:flex-start; justify-content:flex-start; background:rgba(27,31,44,.22); }
-#userSheet.anchored .user-action-sheet.anchored-sheet {
-  position:absolute;
-  width:min(276px, calc(100% - 16px));
-  border-radius:16px;
-  /* البطاقة نفسها لا تُمرَّر (كي لا يُقص السهم)؛ قائمة الخيارات هي التي تُمرَّر. */
-  overflow:visible;
-  display:flex;
-  flex-direction:column;
-  animation:userSheetPop .16s ease-out;
-  box-shadow:0 16px 44px rgba(15,22,45,.28);
+/* ---- نفس ورقة إجراءات المستخدم لكن بجانب الاسم المنقور في العام ----
+   تعمل على الشاشات الكبيرة فقط؛ على الهاتف تبقى الورقة السفلية المعتادة
+   تماماً كما تظهر عند النقر على مستخدم من قائمة المستخدمين. */
+@media (min-width: 1024px) {
+  #userSheet.anchored { align-items:flex-start; justify-content:flex-start; background:rgba(27,31,44,.22); }
+  #userSheet.anchored .user-action-sheet.anchored-sheet {
+    position:absolute;
+    width:min(276px, calc(100% - 16px));
+    border-radius:16px;
+    /* القائمة تظهر كاملة بلا أي تمرير داخلي */
+    overflow:visible;
+    max-height:none;
+    animation:userSheetPop .16s ease-out;
+    box-shadow:0 16px 44px rgba(15,22,45,.28);
+  }
+  #userSheet.anchored .anchored-sheet .us-actions { overflow:visible; max-height:none; }
+  #userSheet.anchored .anchored-sheet .us-usercard { border-radius:16px 16px 0 0; }
+  #userSheet.anchored .anchored-sheet .us-cancel { border-radius:0 0 16px 16px; border-top:1px solid #f0f1f6; }
+  @keyframes userSheetPop { from { opacity:0; transform:scale(.97); } to { opacity:1; transform:none; } }
+  /* السهم على جنب البطاقة يشير أفقياً إلى الاسم (موضعه العمودي عبر --arrow-y) */
+  #userSheet.anchored .anchored-sheet::before {
+    content:""; position:absolute; top:var(--arrow-y,24px); width:13px; height:13px;
+    background:#fff; transform:translateY(-50%) rotate(45deg); pointer-events:none;
+  }
+  #userSheet.anchored .anchored-sheet.arrow-end::before { right:-6px; box-shadow:2px -2px 3px rgba(15,22,45,.05); }
+  #userSheet.anchored .anchored-sheet.arrow-start::before { left:-6px; box-shadow:-2px 2px 3px rgba(15,22,45,.05); }
+  /* البطاقة أصغر قليلاً في الوضع الملتصق كي تناسب مساحة الشاشة بجانب الاسم */
+  #userSheet.anchored .anchored-sheet .us-usercard { min-height:52px; padding:9px 8px; }
+  #userSheet.anchored .anchored-sheet .us-avatar { width:40px; height:40px; }
+  #userSheet.anchored .anchored-sheet .us-userinfo b { max-width:170px; font-size:14px; }
+  #userSheet.anchored .anchored-sheet .us-userinfo small { font-size:11px; }
+  #userSheet.anchored .anchored-sheet .us-opt { min-height:26px; padding:7px 12px; font-size:14.5px; line-height:18px; }
+  #userSheet.anchored .anchored-sheet .us-opt i.us-icon { width:19px; font-size:19px; }
+  #userSheet.anchored .anchored-sheet .us-opt i.us-chevron { font-size:16px; }
+  #userSheet.anchored .anchored-sheet .us-cancel { padding:7px 12px 8px; }
 }
-#userSheet.anchored .anchored-sheet .us-usercard,
-#userSheet.anchored .anchored-sheet .us-cancel { flex:none; }
-#userSheet.anchored .anchored-sheet .us-actions { flex:1; min-height:0; overflow-y:auto; scrollbar-width:thin; }
-/* الزوايا تبقى ناعمة رغم أن التمرير داخلي */
-#userSheet.anchored .anchored-sheet .us-usercard { border-radius:16px 16px 0 0; }
-#userSheet.anchored .anchored-sheet .us-cancel { border-radius:0 0 16px 16px; border-top:1px solid #f0f1f6; }
-@keyframes userSheetPop { from { opacity:0; transform:translateY(-6px) scale(.97); } to { opacity:1; transform:none; } }
-/* السهم ينبثق من منتصف الاسم المنقور (موضعه الأفقي عبر المتغير --arrow-x) */
-#userSheet.anchored .anchored-sheet::before {
-  content:""; position:absolute; left:var(--arrow-x,24px); width:13px; height:13px;
-  background:#fff; transform:translateX(-50%) rotate(45deg); pointer-events:none;
-}
-#userSheet.anchored .anchored-sheet.arrow-below::before { top:-6px; box-shadow:-2px -2px 3px rgba(15,22,45,.05); }
-#userSheet.anchored .anchored-sheet.arrow-above::before { bottom:-6px; box-shadow:2px 2px 3px rgba(15,22,45,.05); }
-/* البطاقة أصغر قليلاً في الوضع الملتصق كي تناسب مساحة الشاشة بجانب الاسم */
-#userSheet.anchored .anchored-sheet .us-usercard { min-height:52px; padding:9px 8px; }
-#userSheet.anchored .anchored-sheet .us-avatar { width:40px; height:40px; }
-#userSheet.anchored .anchored-sheet .us-userinfo b { max-width:170px; font-size:14px; }
-#userSheet.anchored .anchored-sheet .us-userinfo small { font-size:11px; }
-#userSheet.anchored .anchored-sheet .us-opt { min-height:26px; padding:7px 12px; font-size:14.5px; line-height:18px; }
-#userSheet.anchored .anchored-sheet .us-opt i.us-icon { width:19px; font-size:19px; }
-#userSheet.anchored .anchored-sheet .us-opt i.us-chevron { font-size:16px; }
-#userSheet.anchored .anchored-sheet .us-cancel { padding:7px 12px 8px; }
 
 /* متجر الهدايا */
 .gsheet, .upsheet { border-radius:20px 20px 0 0; }

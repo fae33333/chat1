@@ -521,7 +521,9 @@
     right: auto;
     left: auto;
     width: 300px;
+    /* القائمة كاملة بلا تمرير داخلي، والسهم على جنبها يشير إلى الاسم */
     max-height: none;
+    overflow: visible;
     padding: 0;
     border-radius: 16px;
   }

@@ -4886,21 +4886,27 @@ function syncUserBroadcastControlButtons() {
   if (p2) p2.style.display = (notSelf && isLiveHost) ? 'flex' : 'none';
   if (ub) ub.style.display = (notSelf && isBanned) ? 'flex' : 'none';
 }
-// عند تمرير «مرساة» (اسم/صورة في العام) تُعرض ورقة المستخدم نفسها ملتصقة بالاسم
-// مع سهم يشير إليه، بدل انزلاقها من أسفل الشاشة. كل الخيارات والمنطق تبقى كما هي.
+// عند تمرير «مرساة» (اسم/صورة في العام) تُعرض ورقة المستخدم نفسها بجانب الاسم
+// مع سهم جانبي يشير إليه — على الشاشات الكبيرة فقط. على الهاتف تبقى ورقة سفلية
+// عادية تماماً كما تظهر عند النقر على مستخدم من قائمة المستخدمين.
 let USER_SHEET_ANCHOR = null;
+const USER_SHEET_ANCHOR_MQ = '(min-width: 1024px)';
+function canAnchorUserSheet() {
+  return !!(window.matchMedia && window.matchMedia(USER_SHEET_ANCHOR_MQ).matches);
+}
 function anchorUserSheet(anchor) {
   const overlay = $('#userSheet');
   const sheet = overlay && overlay.querySelector('.user-action-sheet');
   if (!overlay || !sheet) return;
-  USER_SHEET_ANCHOR = anchor || null;
-  overlay.classList.toggle('anchored', !!anchor);
-  sheet.classList.toggle('anchored-sheet', !!anchor);
-  if (!anchor) {
+  // على الهاتف نتجاهل المرساة تماماً كي تبقى الورقة السفلية المعتادة.
+  USER_SHEET_ANCHOR = (anchor && canAnchorUserSheet()) ? anchor : null;
+  overlay.classList.toggle('anchored', !!USER_SHEET_ANCHOR);
+  sheet.classList.toggle('anchored-sheet', !!USER_SHEET_ANCHOR);
+  if (!USER_SHEET_ANCHOR) {
     // تنظيف كامل كي تعود ورقة سفلية/ديسكتوب عادية بلا بقايا من الوضع الملتصق.
-    sheet.classList.remove('arrow-below', 'arrow-above');
+    sheet.classList.remove('arrow-start', 'arrow-end');
     sheet.style.top = sheet.style.left = sheet.style.right = sheet.style.maxHeight = '';
-    sheet.style.removeProperty('--arrow-x');
+    sheet.style.removeProperty('--arrow-y');
     return;
   }
   // سهم الديسكتوب الخاص بقائمة المستخدمين يُخفى كي لا يتعارض مع سهمنا.
@@ -4909,48 +4915,48 @@ function anchorUserSheet(anchor) {
   positionAnchoredUserSheet();
 }
 // يضع الورقة أسفل الاسم (أو فوقه عند ضيق المساحة) داخل حدود الإطار ويوجّه السهم للاسم.
+// تظهر البطاقة كاملة (بلا تمرير داخلي) إلى جانب الاسم، والسهم على جنبها يشير إليه.
 function positionAnchoredUserSheet() {
   const overlay = $('#userSheet');
   const sheet = overlay && overlay.querySelector('.user-action-sheet');
   const anchor = USER_SHEET_ANCHOR;
   if (!overlay || !sheet || !anchor || !anchor.isConnected) return;
-  // الحاوية المرجعية هي الطبقة نفسها (تغطي الإطار على الجوال وكامل الشاشة على الديسكتوب).
   const boxRect = overlay.getBoundingClientRect();
   const anchorRect = anchor.getBoundingClientRect();
   const margin = 8;
-  const gap = 10;
-  // نلغي أي تثبيت قادم من قواعد الديسكتوب قبل القياس.
+  const gap = 12;
+  // نلغي أي تثبيت قادم من قواعد الديسكتوب قبل القياس، وبلا حدّ للارتفاع (القائمة كاملة).
   sheet.style.right = 'auto';
-  sheet.style.maxHeight = '';
-  const spaceBelow = boxRect.bottom - anchorRect.bottom - gap - margin;
-  const spaceAbove = anchorRect.top - boxRect.top - gap - margin;
-  // ارتفاع المحتوى الكامل = البطاقة + كل الخيارات + زر الإغلاق (القائمة وحدها هي التي تُمرَّر).
-  const actions = sheet.querySelector('.us-actions');
-  const natural = Array.from(sheet.children)
-    .reduce((sum, child) => sum + (child === actions ? child.scrollHeight : child.offsetHeight), 0);
-  // نفضّل الأسفل، وننقلب للأعلى فقط إذا كانت المساحة هناك أوسع فعلاً.
-  const below = spaceBelow >= natural || spaceBelow >= spaceAbove;
-  const available = Math.max(160, below ? spaceBelow : spaceAbove);
-  sheet.style.maxHeight = available + 'px';
-  const height = Math.min(natural, available);
+  sheet.style.maxHeight = 'none';
   const width = sheet.offsetWidth || sheet.getBoundingClientRect().width;
-  const top = below
-    ? (anchorRect.bottom - boxRect.top + gap)
-    : (anchorRect.top - boxRect.top - height - gap);
-  const anchorCenter = anchorRect.left + anchorRect.width / 2 - boxRect.left;
+  const height = sheet.offsetHeight || sheet.getBoundingClientRect().height;
+
+  // الجانب: نضعها على يسار الاسم (اتجاه المحادثة RTL) وإن ضاقت المساحة ننقلها لليمين.
+  const spaceStart = anchorRect.left - boxRect.left - gap - margin;   // مساحة يسار الاسم
+  const spaceEnd = boxRect.right - anchorRect.right - gap - margin;   // مساحة يمين الاسم
+  const toStart = spaceStart >= width || spaceStart >= spaceEnd;
+  const left = toStart
+    ? (anchorRect.left - boxRect.left - gap - width)
+    : (anchorRect.right - boxRect.left + gap);
   const maxLeft = Math.max(margin, boxRect.width - width - margin);
-  const left = Math.max(margin, Math.min(anchorCenter - width / 2, maxLeft));
-  sheet.style.top = Math.max(margin, top) + 'px';
-  sheet.style.left = left + 'px';
-  sheet.classList.toggle('arrow-below', below);
-  sheet.classList.toggle('arrow-above', !below);
-  // موضع السهم أفقياً بحيث ينبثق من منتصف الاسم المنقور.
-  sheet.style.setProperty('--arrow-x', Math.max(14, Math.min(anchorCenter - left, width - 14)) + 'px');
+  const finalLeft = Math.max(margin, Math.min(left, maxLeft));
+
+  // نحاذي منتصف البطاقة مع منتصف الاسم، مع إبقائها كاملة داخل الشاشة.
+  const anchorMiddle = anchorRect.top + anchorRect.height / 2 - boxRect.top;
+  const maxTop = Math.max(margin, boxRect.height - height - margin);
+  const finalTop = Math.max(margin, Math.min(anchorMiddle - height / 2, maxTop));
+
+  sheet.style.left = finalLeft + 'px';
+  sheet.style.top = finalTop + 'px';
+  // السهم على الجنب المواجه للاسم، وموضعه العمودي عند منتصف الاسم.
+  sheet.classList.toggle('arrow-end', toStart);     // البطاقة يسار الاسم → السهم على يمينها
+  sheet.classList.toggle('arrow-start', !toStart);  // البطاقة يمين الاسم → السهم على يسارها
+  sheet.style.setProperty('--arrow-y', Math.max(14, Math.min(anchorMiddle - finalTop, height - 14)) + 'px');
 }
-// تغيّر أبعاد الشاشة يعيد ضبط موضع الورقة الملتصقة (أو يعيدها ورقة سفلية إن اختفى الاسم).
+// تغيّر أبعاد الشاشة: نعيد الضبط، وإن نزلنا لمقاس الهاتف نغلقها كي تعود ورقة سفلية.
 window.addEventListener('resize', () => {
   if (!USER_SHEET_ANCHOR) return;
-  if (!USER_SHEET_ANCHOR.isConnected) return closeOv('userSheet');
+  if (!USER_SHEET_ANCHOR.isConnected || !canAnchorUserSheet()) return closeOv('userSheet');
   positionAnchoredUserSheet();
 });
 function openUserSheet(uid, msg, anchor) {
