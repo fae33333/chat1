@@ -19,13 +19,16 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20260911-gift1">
-<link rel="stylesheet" href="/css/desktop.css?v=20260911-dsk14" media="(min-width: 1024px)">
+<link rel="stylesheet" href="/css/style.css?v=20260912-sheet1">
+<link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk15" media="(min-width: 1024px)">
 </head>
 <body>
 <div id="frame">
 
   <div class="top-strip"></div>
+
+  <!-- غلاف محتوى التطبيق: يتراجع للخلف (page sheet) عند فتح قالب الدخول -->
+  <main class="main-stage" id="mainStage">
 
   <!-- الشريط العائم للمكالمة الخاصة الجارية -->
   <div class="pm-call-floating-bar" id="pmCallFloatingBar" style="display:none">
@@ -207,6 +210,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <button class="bn-item" data-nav="wall"><i class="f7-icons">doc_text_fill</i><span>الحائط</span></button>
     <button class="bn-item" data-nav="menu" id="bnMenu"><i class="f7-icons" id="bnMenuIcon">square_grid2x2_fill</i><span>القائمة</span></button>
   </nav>
+  </main>
 
   <!-- ============ الحالات ============ -->
   <div class="overlay full" id="statusOv">
@@ -1478,7 +1482,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/app.js?v=20260911-gift1" defer></script>
+<script src="/js/app.js?v=20260912-sheet1" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

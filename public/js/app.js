@@ -1594,14 +1594,28 @@ function toast(msg, ok = true) {
   const duration = Math.min(6000, Math.max(2600, text.length * 45));
   t._tm = setTimeout(() => t.classList.remove('show'), duration);
 }
+// النوافذ التي تُصغِّر خلفية التطبيق خلفها (تأثير ورقة iOS).
+const SHEET_SCALE_OVS = ['loginOv', 'regOv'];
+// تُطبَّق على #frame ما دامت أي واحدة منها مفتوحة، وتُزال حين تُغلق كلها.
+function syncSheetScale() {
+  const frame = document.getElementById('frame');
+  if (!frame) return;
+  const anyOpen = SHEET_SCALE_OVS.some(id => {
+    const ov = document.getElementById(id);
+    return ov && ov.classList.contains('open');
+  });
+  frame.classList.toggle('sheet-scaled', anyOpen);
+}
 function openOv(id) {
   // أي نافذة تُفتح تُغلق القائمة المنبثقة للاسم كي لا تبقى معلّقة فوقها.
   if (id !== 'namePopover' && typeof closeNamePopover === 'function') closeNamePopover();
   $('#' + id).classList.add('open');
+  syncSheetScale();
   refreshNav();
 }
 function closeOv(id) {
   $('#' + id).classList.remove('open');
+  syncSheetScale();
   if (typeof closeNamePopover === 'function') closeNamePopover();
   // إغلاق ورقة المستخدم يلغي التصاقها بالاسم كي تعود ورقة سفلية عادية في المرة القادمة.
   if (id === 'userSheet' && typeof anchorUserSheet === 'function') anchorUserSheet(null);
@@ -8377,6 +8391,7 @@ async function logoutWithoutReload() {
   try { stopStatusMedia(); } catch (e) { }
   try { closeVoiceRecorder(); } catch (e) { }
   $$('.overlay.open').forEach(overlay => overlay.classList.remove('open'));
+  syncSheetScale();   // لا تبقَ الخلفية مصغَّرة بعد إغلاق كل النوافذ
   closeEnterDrop();
   $('#headEnterBtn').style.display = '';
   $('#headUserBox').style.display = 'none';
@@ -11165,7 +11180,7 @@ document.addEventListener('click', (e) => {
   }
 });
 // إغلاق النوافذ عند لمس الخلفية
-$$('.overlay:not(.full)').forEach(ov => ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); }));
+$$('.overlay:not(.full)').forEach(ov => ov.addEventListener('click', e => { if (e.target === ov) { ov.classList.remove('open'); syncSheetScale(); } }));
 
 var zise3 = 0;
 var zise4 = 0; 

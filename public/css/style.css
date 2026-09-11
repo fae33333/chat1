@@ -116,6 +116,33 @@ body { background:#0e1220; display:flex; justify-content:center; }
 /* غلاف المحتوى الرئيسي (علامة main) — يحافظ على تخطيط الـ flex داخل #frame */
 .main-stage { display:flex; flex-direction:column; flex:1; min-height:0; }
 
+/* ===== تراجع الخلفية عند فتح قالب الدخول (page sheet) =====
+   عند فتح «تسجيل الدخول» تتراجع صفحة الغرف للخلف مصغَّرة بزوايا دائرية
+   ويظهر الأسود خلفها، تماماً كأوراق iOS. الحركة على المحتوى وحده،
+   والقالب نفسه يبقى بحجمه فوقها. */
+#frame.sheet-scaled { background:#000; }
+.main-stage {
+  transform-origin: top center;
+  transition: transform .34s cubic-bezier(.32,.72,0,1),
+              border-radius .34s cubic-bezier(.32,.72,0,1),
+              opacity .34s ease;
+  will-change: transform;
+}
+#frame.sheet-scaled .main-stage {
+  transform: scale(.92) translateY(10px);
+  border-radius: 14px;
+  overflow: hidden;
+  opacity: .96;
+  /* خلفية معتمة كي لا يظهر الأسود من خلال البطاقة نفسها */
+  background: var(--bg);
+}
+/* الطبقات الاحتفالية تتبع المحتوى كي لا تطفو فوق التصغير */
+#frame.sheet-scaled .royal-entry-layer,
+#frame.sheet-scaled .gift-celebration-layer { opacity:0; }
+@media (prefers-reduced-motion: reduce) {
+  .main-stage { transition: none; }
+}
+
 .screen { flex:1; display:none; flex-direction:column; min-height:0; position:relative; }
 .screen.active { display:flex; }
 
@@ -1921,8 +1948,9 @@ body.lang-en .notif-info { direction:ltr; text-align:left; }
 
 /* ============ ورقة تسجيل الدخول (زائر/عضوية — مطابقة للمرجع) ============ */
 .lsheet {padding: 27px 26px 26px;flex-directon: column;}
-.lsheet h3 {text-align: end;font-size:19px;font-weight:900;color:var(--navy);margin:8px 4px 16px;}
-.lg-switchrow {display:flex;align-items: center;gap:10px;margin:0 4px 16px;justify-content: flex-end;}
+/* العنوان وصف المفتاح في المنتصف (مطابقة للتصميم المرجعي على الجوال والكمبيوتر) */
+.lsheet h3 {text-align: center;font-size:19px;font-weight:900;color:var(--navy);margin:8px 4px 16px;}
+.lg-switchrow {display:flex;align-items: center;gap:10px;margin:0 4px 16px;justify-content: center;}
 .lg-switchrow span { font-size:14.5px; font-weight:900; color:var(--navy); }
 .switch { width:46px; height:27px; border-radius:30px; background:#d9dde6; position:relative; cursor:pointer; transition:background .2s; flex:none; }
 .switch .knob { position:absolute; top:3px; inset-inline-start:3px; width:21px; height:21px; border-radius:50%; background:#fff; box-shadow:0 2px 5px rgba(0,0,0,.2); transition:inset-inline-start .2s; }
