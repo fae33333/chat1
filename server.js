@@ -2911,6 +2911,20 @@ async function cleanupExpiredStatuses() {
   expired.forEach(deleteStatusMedia);
 }
 
+// معرّفات أصحاب الحالات النشطة فقط — تستعملها الواجهة لرسم الدائرة حول الصورة
+// في قائمة المستخدمين والعام والخاص. حمولة خفيفة جداً (بلا محتوى الحالات).
+// نرسل مع كل معرّف أبعد وقت انتهاء له، فتزيل الواجهة الدائرة تلقائياً عند انتهائه.
+app.get('/api/statuses/active-users', requireUser, async (req, res) => {
+  await cleanupExpiredStatuses();
+  const now = Math.floor(Date.now() / 1000);
+  const rows = await q.all(`
+    SELECT s.user_id, MAX(s.expires_at) expires_at
+    FROM statuses s JOIN users u ON u.id=s.user_id
+    WHERE s.expires_at>? AND u.banned=0
+    GROUP BY s.user_id`, now);
+  res.json(rows.map(r => ({ user_id: +r.user_id, expires_at: +r.expires_at })));
+});
+
 // قائمة الحالات النشطة. عدد وأسماء المشاهدين لا يصلان إلا لصاحب الحالة.
 app.get('/api/statuses', requireUser, async (req, res) => {
   await cleanupExpiredStatuses();

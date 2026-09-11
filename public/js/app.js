@@ -113,6 +113,11 @@ let NOTIFS = [], CURRENT_NOTIFICATIONS = [], CURRENT_ANNOUNCEMENT = null;
 let READ_NOTIFS = new Set(), NOTIF_UNREAD = 0, STATUS_UNREAD = 0;
 let SEL_AVATAR = null, AVA_CAT = 'def';
 let STATUSES = [], STATUS_GROUP = [], STATUS_INDEX = 0, CURRENT_STATUS = null;
+// أصحاب الحالات النشطة: Map(user_id -> expires_at) لرسم الدائرة حول الصورة في
+// قائمة المستخدمين والعام والخاص. تُحدَّث فور نشر/حذف أي حالة، وتُنظَّف ذاتياً
+// عند انتهاء المدة (24 ساعة) فتختفي الدائرة بلا حاجة لتحديث الصفحة.
+let STATUS_OWNERS = new Map();
+let STATUS_OWNERS_TIMER = null;
 let WALL_POSTS = [], WALL_VIDEO_PATH = '', WALL_IMAGE_PATH = '', WALL_YOUTUBE_URL = '', WALL_YOUTUBE_RESULTS = [];
 let CUSTOM_EMOJIS = [];
 // قائمة التجاهل تُحمّل من الخادم وتبقى مرتبطة بالحساب.
@@ -1677,6 +1682,61 @@ function liveAvatarHtml(avatar, isLive) {
     <img class="live-avatar-frame-image" src="/img/live-avatar.png" alt="">
   </span>`;
 }
+// ===== دائرة الحالة حول الصورة =====
+// من له حالة نشطة تظهر حول صورته دائرة خضراء في قائمة المستخدمين وفي العام
+// وفي الخاص. تختفي فور حذف الحالة أو انتهاء مدتها.
+function hasActiveStatus(uid) {
+  const exp = STATUS_OWNERS.get(+uid);
+  return !!exp && exp > Math.floor(Date.now() / 1000);
+}
+// صفّ يُضاف إلى حاوية الصورة (uava / mava / pm-ava) ليرسم الدائرة.
+function statusRingClass(uid) { return hasActiveStatus(uid) ? ' has-status-ring' : ''; }
+// يعيد رسم الدوائر في كل الأماكن المعروضة حالياً دون إعادة بناء أي قائمة،
+// حتى لا تُقطع الرسائل أو يُعاد تشغيل أي وسائط.
+function refreshStatusRings() {
+  const mark = (el, uid) => {
+    if (!el) return;
+    el.classList.toggle('has-status-ring', hasActiveStatus(uid));
+  };
+  $$('#usersList .users-row').forEach(row => mark(row.querySelector('.uava'), +row.dataset.id));
+  $$('#msgArea .msg[data-uid]').forEach(msg => mark(msg.querySelector('.mava'), +msg.dataset.uid));
+  $$('#pmBody .pm-row[data-uid]').forEach(row => mark(row.querySelector('.pm-ava'), +row.dataset.uid));
+  scheduleStatusOwnersExpiry();
+}
+// مؤقّت يوقظ الواجهة عند أقرب انتهاء حالة فتُزال دائرتها في حينها بالضبط.
+function scheduleStatusOwnersExpiry() {
+  if (STATUS_OWNERS_TIMER) { clearTimeout(STATUS_OWNERS_TIMER); STATUS_OWNERS_TIMER = null; }
+  const now = Math.floor(Date.now() / 1000);
+  let soonest = Infinity;
+  STATUS_OWNERS.forEach((exp, uid) => {
+    if (exp <= now) STATUS_OWNERS.delete(uid);
+    else if (exp < soonest) soonest = exp;
+  });
+  if (!Number.isFinite(soonest)) return;
+  // سقف ساعة واحدة كي لا نضع مؤقتاً طويلاً جداً (المتصفح يحدّه أصلاً).
+  const ms = Math.min((soonest - now) * 1000 + 500, 3600000);
+  STATUS_OWNERS_TIMER = setTimeout(() => { STATUS_OWNERS_TIMER = null; refreshStatusRings(); }, Math.max(1000, ms));
+}
+// يشتق خريطة أصحاب الحالات من قائمة الحالات الكاملة (بعد أي تحميل لها).
+function syncStatusOwnersFromStatuses() {
+  const now = Math.floor(Date.now() / 1000);
+  const map = new Map();
+  (STATUSES || []).forEach(s => {
+    const uid = +s.user_id, exp = +s.expires_at;
+    if (!uid || !Number.isFinite(exp) || exp <= now) return;
+    if (!map.has(uid) || map.get(uid) < exp) map.set(uid, exp);
+  });
+  STATUS_OWNERS = map;
+  refreshStatusRings();
+}
+async function loadStatusOwners() {
+  if (!ME || !CHAT_TOKEN) return;
+  try {
+    const rows = await api('/api/statuses/active-users');
+    STATUS_OWNERS = new Map((Array.isArray(rows) ? rows : []).map(r => [+r.user_id, +r.expires_at]));
+    refreshStatusRings();
+  } catch (e) { /* تعذّر الجلب: تبقى الدوائر الحالية كما هي */ }
+}
 function statusDot(st) { return st === 'busy' ? 'red' : st === 'away' ? 'orange' : 'green'; }
 function statusName(st) { return st === 'busy' ? 'مشغول' : st === 'away' ? 'بالخارج' : 'متصل'; }
 async function loadIgnoredUsers() {
@@ -2328,6 +2388,17 @@ function connectSocket() {
   });
   SOCKET.on('statuses_changed', change => {
     const statusPageOpen = $('#statusOv').classList.contains('open');
+    // دائرة الحالة حول الصورة: تظهر فور النشر وتُزال فور الحذف — في قائمة
+    // المستخدمين والعام والخاص معاً. الحذف يحتاج تأكيداً من الخادم لأن العضو
+    // قد يملك أكثر من حالة، فلا تُزال الدائرة إلا إذا لم يبقَ له شيء نشط.
+    if (change && change.userId) {
+      if (change.action === 'created') {
+        STATUS_OWNERS.set(+change.userId, Math.floor(Date.now() / 1000) + 86400);
+        refreshStatusRings();
+      } else if (change.action === 'deleted') {
+        loadStatusOwners();
+      }
+    }
     if (change && change.action === 'created' && ME && +change.userId !== +ME.id && !statusPageOpen) {
       STATUS_UNREAD++;
       updateStatusUnreadBadge();
@@ -4164,8 +4235,10 @@ function renderMsg(m) {
     // الموجة المتحركة على القالب كامل: زهري للمميز، أسود للأدمن والسوبر أدمن.
     const waveKind = badgeKind === 'superadmin' ? 'superadmin' : (badgeKind === 'admin' ? 'admin' : (badgeKind === 'mmez' ? 'mmez' : ''));
     el.className = 'msg' + (hiddenAdmin ? ' hidden-admin-msg' : '');
+    // معرّف المرسل على القالب: يتيح تحديث دائرة الحالة لاحقاً بلا إعادة رسم الرسالة.
+    if (senderId) el.dataset.uid = senderId;
     el.innerHTML = `
-      <div class="mava${isLiveBroadcaster ? ' live-broadcaster-avatar' : ''}">${liveAvatarHtml(u.avatar, isLiveBroadcaster)}</div>
+      <div class="mava${isLiveBroadcaster ? ' live-broadcaster-avatar' : ''}${statusRingClass(senderId)}">${liveAvatarHtml(u.avatar, isLiveBroadcaster)}</div>
       <div class="mbody">
         ${(waveKind && SETTINGS.wave_enabled !== '0') ? `<span class="mwave mwave-${waveKind}" aria-hidden="true"></span>` : ''}
         ${rp ? `
@@ -4766,7 +4839,7 @@ function renderUsers() {
     return `
     <div class="users-row${u.muted ? ' muted-user' : ''}${ignored ? ' ignored-user' : ''}" data-id="${u.id}">
       <img class="ubadge" src="/badges/${badgeOf(u)}" alt="">
-      <div class="uava${isLiveBroadcaster ? ' live-broadcaster-avatar' : ''}">${liveAvatarHtml(u.avatar, isLiveBroadcaster)}<span class="dot ${statusDot(u.status)}"></span></div>
+      <div class="uava${isLiveBroadcaster ? ' live-broadcaster-avatar' : ''}${statusRingClass(u.id)}">${liveAvatarHtml(u.avatar, isLiveBroadcaster)}<span class="dot ${statusDot(u.status)}"></span></div>
       <div class="uname" style="color:${userColor(u)};font-weight:${userWeight(u)}">${esc(u.username)}${u.verified ? ' <i class="f7-icons vcheck">checkmark_seal_fill</i>' : ''}${u.royal ? ' <i class="f7-icons rcrown">crown_fill</i>' : ''}${expireNoteHtml(u)}${ignored ? `<span class="ignored-user-tag">${APP_LANG === 'en' ? '(Ignored)' : '(متجاهل)'}</span>` : ''}</div>
       ${u.muted ? '<i class="f7-icons muted-user-mark">mic_slash_fill</i>' : ''}
       <img class="ugender" src="/badges/${GENDER_IMG[u.gender] || 'secret.png'}" alt="">
@@ -5987,6 +6060,10 @@ function renderPm(p) {
   const mine = p.from_id === ME.id;
   const who = mine ? ME : PM_WITH;
   const el = document.createElement('div');
+  // معرّف صاحب الصورة في هذا الصف — لتحديث دائرة الحالة لاحقاً بلا إعادة رسم.
+  const whoId = +((who && who.id) || 0);
+  if (whoId) el.dataset.uid = whoId;
+  const ring = statusRingClass(whoId);
   const callInfo = parseCallMessage(p.text);
   const mediaInfo = parsePrivateMedia(p.text, p.media);
   const isCustomEmoji = typeof p.text === 'string' && p.text.startsWith('em::');
@@ -5994,7 +6071,7 @@ function renderPm(p) {
   if (callInfo) {
     el.className = 'pm-row ' + (mine ? 'me' : 'them') + ' is-call-event';
     el.innerHTML = `
-      <span class="pm-ava">${avatarHtml(who.avatar)}</span>
+      <span class="pm-ava${ring}">${avatarHtml(who.avatar)}</span>
       <div class="pm-bub pm-call-bubble ${callInfo.cls}">
         <div class="pm-bh"><span>${timeHm(p.created_at)}</span><b>${esc(who.username)}</b></div>
         <div class="pm-tx pm-call-msg">
@@ -6017,7 +6094,7 @@ function renderPm(p) {
       contentHtml = messageTextWithCustomEmojis(p.text);
     }
     el.innerHTML = `
-      <span class="pm-ava">${avatarHtml(who.avatar)}</span>
+      <span class="pm-ava${ring}">${avatarHtml(who.avatar)}</span>
       <div class="pm-bub">
         <div class="pm-bh"><span>${timeHm(p.created_at)}</span><b>${esc(who.username)}</b></div>
         <div class="pm-tx">${contentHtml}</div>
@@ -7659,6 +7736,8 @@ async function loadStatuses() {
   if (!ME) return;
   try {
     STATUSES = await api('/api/statuses');
+    // القائمة الكاملة مرجع موثوق لأصحاب الحالات — نعيد بناء خريطة الدوائر منها.
+    syncStatusOwnersFromStatuses();
     renderStatuses();
   } catch (e) {
     $('#statusList').innerHTML = '<div class="status-empty"><i class="f7-icons">exclamationmark_circle</i>تعذر تحميل الحالات</div>';
@@ -10101,6 +10180,7 @@ function onLoggedIn() {
   $('#headName').textContent = ME.username;
   $('#menuBal').textContent = ME.balance;
   loadIgnoredUsers();
+  loadStatusOwners();      // دوائر الحالات حول الصور تظهر من أول تحميل
   loadUnreadNotifCount();
   loadUnreadPrivCount();   // شارة الخاص تعكس فوراً غير المقروء من الخادم بعد التحديث
   loadCustomEmojis();      // تُحمَّل صور الإيموجي بعد الدخول بالاسم (لا عند فتح الصفحة)

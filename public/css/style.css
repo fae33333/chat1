@@ -874,6 +874,29 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .users-row .uname {font-weight:900;font-size: 17px;display:flex;align-items:center;gap:4px;}
 .users-row .uname i.vcheck {color: var(--main);font-size:13px;}
 .users-row .ugender { width:15px; height:17px; object-fit:contain; margin-left:auto; flex:none; }
+/* ===== دائرة «لديه حالة» حول الصورة =====
+   تُرسم بـ box-shadow فلا تغيّر مقاس الصورة ولا ترتيب أي عنصر، وتظهر حول
+   الصورة في قائمة المستخدمين وفي العام وفي الخاص. تُزال فور حذف الحالة أو
+   انتهاء مدتها (24 ساعة) بإزالة الصفّ has-status-ring من الحاوية. */
+.users-row .uava.has-status-ring,
+.pm-ava.has-status-ring {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #11a968;
+}
+/* في العام نُبقي ظل الصورة الأصلي ونضيف الحلقة فوقه */
+.msg .mava.has-status-ring {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #11a968, 0 3px 8px rgba(20, 25, 60, .18);
+}
+/* هامش بسيط كي لا تلامس الدائرة الفقاعة أو الاسم المجاور */
+.msg .mava.has-status-ring { margin-inline-end: 4px; }
+.pm-ava.has-status-ring { margin-inline-end: 3px; }
+.users-row .uava.has-status-ring { margin-inline-end: 3px; }
+/* المذيع على البث له إطار LIVE خاص يملأ الحيّز — لا نضيف فوقه حلقة ثانية. */
+.msg .mava.live-broadcaster-avatar.has-status-ring,
+.users-row .uava.live-broadcaster-avatar.has-status-ring {
+  box-shadow: none;
+  margin-inline-end: 0;
+}
+
 .dot { width:9px; height:9px; border-radius:50%; display:inline-block; flex:none; }
 .dot.green { background:#22c55e; } .dot.red { background:#ef4444; } .dot.orange { background:#f59e0b; }
 
