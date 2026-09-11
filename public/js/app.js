@@ -4765,6 +4765,35 @@ function buildGiftMiniBurst(details, opts) {
   }
   return wrap;
 }
+// ===== 100 مفرقعة متنوّعة تملأ الشاشة =====
+// أشكال مختلفة (شرائط، دوائر، نجوم، معيّنات، قلوب، بريق) بألوان متعدّدة،
+// تنطلق مع فقاعات الهدية وتغطي الشاشة من أطرافها كلها.
+const GIFT_POP_SHAPES = ['strip', 'round', 'star', 'diamond', 'heart', 'spark'];
+function buildGiftPopConfetti(opts) {
+  const o = opts || {};
+  const count = o.count || 100;
+  const startAt = (o.startAt != null) ? o.startAt : 1.0;
+  const wrap = document.createElement('div');
+  wrap.className = 'gift-pop-confetti';
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('i');
+    const shape = GIFT_POP_SHAPES[i % GIFT_POP_SHAPES.length];
+    piece.className = 'gpc ' + shape;
+    // نقطة الانطلاق موزّعة أفقياً كي تعمّ الشاشة لا أن تخرج من نقطة واحدة
+    const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.7;
+    const spread = 0.35 + Math.random() * 0.65;
+    piece.style.setProperty('--tx', (Math.cos(ang) * 62 * spread).toFixed(1) + 'vw');
+    piece.style.setProperty('--ty', (Math.sin(ang) * 60 * spread - 6).toFixed(1) + 'vh');
+    piece.style.setProperty('--sway', ((Math.random() < 0.5 ? -1 : 1) * (16 + Math.random() * 34)).toFixed(0) + 'px');
+    piece.style.setProperty('--rot', Math.round(Math.random() * 900 - 450) + 'deg');
+    piece.style.setProperty('--sc', (0.6 + Math.random() * 0.8).toFixed(2));
+    piece.style.setProperty('--color', GIFT_CONFETTI_COLORS[Math.floor(Math.random() * GIFT_CONFETTI_COLORS.length)]);
+    piece.style.setProperty('--delay', (startAt + (i / count) * 0.45 + Math.random() * 0.18).toFixed(2) + 's');
+    piece.style.setProperty('--dur', (1.05 + Math.random() * 0.6).toFixed(2) + 's');
+    wrap.appendChild(piece);
+  }
+  return wrap;
+}
 function triggerGiftCelebration(gift) {
   const details = gift || {};
   const layer = $('#giftCelebrationLayer');
@@ -4779,8 +4808,10 @@ function triggerGiftCelebration(gift) {
   // الألعاب النارية بالخلفية) — المشهد الملكي ما زال يستعملها كما هي.
   const fast = { fast: true, noConfetti: true };
   layer.appendChild(buildGiftBoxScene(details, fast));
-  // 100 مفرقعة من صورة الهدية ذاتها، تنطلق مع انبثاقها من الصندوق
+  // 100 فقاعة بشكل الهدية ذاتها، تنطلق مع انبثاقها من الصندوق
   layer.appendChild(buildGiftMiniBurst(details, { count: 100, startAt: 1.0 }));
+  // + 100 مفرقعة متنوّعة الأشكال والألوان تملأ الشاشة معها
+  layer.appendChild(buildGiftPopConfetti({ count: 100, startAt: 1.0 }));
 
   // بدون قالب الأسماء: الهدية العادية تعرض الصندوق + المفرقعات فقط (لا تظهر بطاقة اسم الهدية/المرسل/المستقبل)
 
@@ -11195,6 +11226,14 @@ $('#btnCam').onclick = () => {
   if (!canUseMembershipFeature('public_image_allowed_memberships'))
     return toast('عضويتك غير مسموح لها بإرسال الصور في العام', false);
   chooseChatMedia('image/*', 'image', 'public');
+};
+// صورتي في شريط الإدخال: نقرة عليها تفتح نافذة «تغيير الصورة» نفسها
+// المستعملة من القائمة — بنفس شرط التسجيل.
+const ciAvaEl = $('#ciAva');
+if (ciAvaEl) ciAvaEl.onclick = () => {
+  if (!ME) return openOv('loginOv');
+  if (!ME.registered) return openOv('needRegOv');
+  openAvatars();
 };
 $('#pmCam').onclick = () => {
   if (!PM_WITH) return toast('المحادثة الخاصة غير مفتوحة', false);

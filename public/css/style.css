@@ -2435,6 +2435,35 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
   filter:drop-shadow(0 1px 3px rgba(0,0,0,.35)); }
 .gmb-piece b { font-size:20px; line-height:1; font-weight:400;
   text-shadow:0 1px 3px rgba(0,0,0,.35); }
+/* ===== 100 مفرقعة متنوّعة تملأ الشاشة =====
+   أشكال مختلفة بألوان متعدّدة ترافق فقاعات الهدية. */
+.gift-pop-confetti {
+  position:absolute; left:50%; top:calc(50% - 118px);
+  width:0; height:0; z-index:4; pointer-events:none;
+}
+.gpc {
+  position:absolute; left:0; top:0;
+  width:11px; height:15px; margin:-7px 0 0 -5px;
+  background:var(--color); opacity:0;
+  will-change:transform, opacity;
+  animation:giftMiniBurst var(--dur) cubic-bezier(.15,.8,.35,1) var(--delay) forwards;
+}
+.gpc.strip   { border-radius:2px; }
+.gpc.round   { width:11px; height:11px; border-radius:50%; margin:-5px 0 0 -5px; }
+.gpc.diamond { width:12px; height:12px; border-radius:2px; rotate:45deg; margin:-6px 0 0 -6px; }
+.gpc.star {
+  width:15px; height:15px; margin:-7px 0 0 -7px;
+  clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);
+}
+.gpc.heart {
+  width:13px; height:13px; margin:-6px 0 0 -6px;
+  clip-path:path('M6.5 12.3 1.2 7C-1.3 4.5.5.4 4 .4c1.4 0 2.2.7 2.5 1.2C6.8 1.1 7.6.4 9 .4c3.5 0 5.3 4.1 2.8 6.6z');
+}
+.gpc.spark {
+  width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:1px;
+  clip-path:polygon(50% 0%,58% 42%,100% 50%,58% 58%,50% 100%,42% 58%,0% 50%,42% 42%);
+}
+
 /* تدفّق كالفقاعات: تنبع صغيرة من الهدية، تتمايل جانبياً وهي تنتشر
    في كامل مساحة الدردشة، ثم تتلاشى في الأطراف. */
 @keyframes giftMiniBurst {
@@ -2644,7 +2673,7 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
   100% { left:120%; opacity:0; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .royal-glow,.royal-crown,.royal-banner,.royal-spark,.royal-sweep,.giftbox,.giftbox-lid,.giftbox-gift,.giftbox-confetti i,.gift-side-cannon i,.gmb-piece,.rt-gift-king-wrap,.rt-gift-king-crown,.rt-gift-card,.rt-gift-card-shine { animation-duration:.01ms !important; animation-delay:0s !important; }
+  .royal-glow,.royal-crown,.royal-banner,.royal-spark,.royal-sweep,.giftbox,.giftbox-lid,.giftbox-gift,.giftbox-confetti i,.gift-side-cannon i,.gmb-piece,.gpc,.rt-gift-king-wrap,.rt-gift-king-crown,.rt-gift-card,.rt-gift-card-shine { animation-duration:.01ms !important; animation-delay:0s !important; }
 }
 
 /* تاج الملكية الذهبي بجوار الاسم */

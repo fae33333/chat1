@@ -19,8 +19,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20260912-bub1">
-<link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk16" media="(min-width: 1024px)">
+<link rel="stylesheet" href="/css/style.css?v=20260912-pop1">
+<link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk17" media="(min-width: 1024px)">
 </head>
 <body>
 <div id="frame">
@@ -194,7 +194,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <button class="ci-plain pink" id="btnApps"><i class="f7-icons" style="font-size:25px;color:var(--njomarab-theme-color)">circle_grid_hex_fill</i></button>
       <!-- كسر السطر + صورتي: يظهران على الكمبيوتر فقط (سطر الأيقونات فوق، ثم الصورة والحقل والإرسال) -->
       <span class="ci-break" aria-hidden="true"></span>
-      <span class="ci-ava" id="ciAva" aria-hidden="true"></span>
+      <span class="ci-ava" id="ciAva" role="button" tabindex="0" title="تغيير الصورة الشخصية" aria-label="تغيير الصورة الشخصية"></span>
       <textarea type="text" class="ci-field" id="msgInput" onfocus="activeresize()" placeholder="رسالة عامة" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
       <button class="ci-plain" id="btnMic"><i class="f7-icons">mic_fill</i></button>
       <button class="ci-plain talk-live" id="btnTalkLive" type="button" title="تحدث — الصعود كمذيع" hidden>
@@ -1485,7 +1485,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/app.js?v=20260912-bub1" defer></script>
+<script src="/js/app.js?v=20260912-pop1" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
