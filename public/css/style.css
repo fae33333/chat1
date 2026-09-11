@@ -2499,7 +2499,7 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
 .gb-fast .giftbox-gift { animation-duration:.8s; animation-delay:.7s; filter:none; }
 /* الصندوق والهدية يتلاشيان بعد انطلاق سيل الفقاعات، وتُترك الفقاعات
    تكمل تبعثرها في الدردشة وحدها. */
-.gb-fast { animation:giftSceneOut .45s ease-in 1.95s both; }
+.gb-fast { animation:giftSceneOut .4s ease-in 1.7s both; }
 @keyframes giftSceneOut {
   from { opacity:1; }
   to { opacity:0; }
@@ -2519,7 +2519,7 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
   width:26px; height:26px; margin:-13px 0 0 -13px;
   display:flex; align-items:center; justify-content:center;
   opacity:0; will-change:transform, opacity;
-  animation:giftMiniBurst var(--dur) cubic-bezier(.15,.85,.35,1) var(--delay) forwards;
+  animation:giftMiniBurst var(--dur) cubic-bezier(.05,.9,.2,1) var(--delay) forwards;
 }
 .gmb-piece img { width:100%; height:100%; object-fit:contain; display:block;
   filter:drop-shadow(0 1px 3px rgba(0,0,0,.35)); }
@@ -2537,7 +2537,7 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
   position:absolute; left:0; top:0;
   width:0; height:0; opacity:0;
   will-change:transform, opacity;
-  animation:giftMiniBurst var(--dur) cubic-bezier(.15,.8,.35,1) var(--delay) forwards;
+  animation:giftMiniBurst var(--dur) cubic-bezier(.05,.9,.2,1) var(--delay) forwards;
 }
 .gpc::before {
   content:''; position:absolute; left:0; top:0;
@@ -2564,12 +2564,15 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
 /* تدفّق كالفقاعات: تنبع صغيرة من الهدية، تتمايل جانبياً وهي تنتشر
    في كامل مساحة الدردشة، ثم تتلاشى في الأطراف. */
 @keyframes giftMiniBurst {
-  0%   { transform:translate(0,0) rotate(0deg) scale(.2); opacity:0; }
-  10%  { opacity:1; }
-  35%  { transform:translate(calc(var(--tx) * .34 + var(--sway)), calc(var(--ty) * .34))
-                   rotate(calc(var(--rot) * .34)) scale(var(--sc)); }
-  65%  { transform:translate(calc(var(--tx) * .68 - var(--sway)), calc(var(--ty) * .68))
-                   rotate(calc(var(--rot) * .68)) scale(var(--sc)); opacity:1; }
+  0%   { transform:translate(0,0) rotate(0deg) scale(.35); opacity:0; }
+  4%   { opacity:1; }
+  /* اندفاع صاروخي: تقطع 62% من المسافة في أول 25% من الزمن */
+  25%  { transform:translate(calc(var(--tx) * .62), calc(var(--ty) * .62))
+                   rotate(calc(var(--rot) * .62)) scale(var(--sc)); opacity:1; }
+  /* ثم تتباطأ تدريجياً كأن الهواء يقاومها */
+  55%  { transform:translate(calc(var(--tx) * .88), calc(var(--ty) * .88))
+                   rotate(calc(var(--rot) * .88)) scale(var(--sc)); opacity:1; }
+  80%  { opacity:1; }
   100% { transform:translate(var(--tx),var(--ty)) rotate(var(--rot)) scale(var(--sc)); opacity:0; }
 }
 
