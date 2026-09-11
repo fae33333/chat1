@@ -2264,7 +2264,7 @@ function connectSocket() {
       applySettings();
     } catch (e) { }
     try { GIFTS = await api('/api/gifts'); } catch (e) { }
-    loadCustomEmojis();
+    if (ME) loadCustomEmojis(true);   // تحديث قائمة الإيموجي بعد الدخول فقط
     loadRooms();          // تحديث قائمة الغرف واللوحة المضغوطة داخل الغرفة
     if (typeof renderRoomsPanel === 'function') renderRoomsPanel();
     if ($('#avaOv') && $('#avaOv').classList.contains('open')) renderAvaGrid(AVA_CAT);
@@ -9758,6 +9758,7 @@ function onLoggedIn() {
   loadIgnoredUsers();
   loadUnreadNotifCount();
   loadUnreadPrivCount();   // شارة الخاص تعكس فوراً غير المقروء من الخادم بعد التحديث
+  loadCustomEmojis();      // تُحمَّل صور الإيموجي بعد الدخول بالاسم (لا عند فتح الصفحة)
   armDesktopNotifyAsk();   // طلب إذن إشعارات سطح المكتب عند أول نقرة
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو (استبدال كامل لتجنب التداخل)
@@ -10214,8 +10215,9 @@ function insertCustomEmojiToken(id) {
   input.focus();
 }
 // منتقي الإيموجي يُبنى كسولاً: لا تُحمَّل صور الإيموجي (GIF ثقيلة أحياناً) عند فتح
-// الصفحة، بل عند فتح اللوحة لأول مرة فقط — يقلّل حمولة التحميل الأولي بشكل كبير.
+// الصفحة، ولا حتى بعد فتح اللوحة قبل تسجيل الدخول — تُجلب فقط بعد الدخول بالاسم.
 let EMOJI_GRID_DIRTY = true;
+let EMOJI_LOADED = false;
 function renderEmojiPicker() {
   const grid = $('#emojiGrid');
   if (!grid) return;
@@ -10233,15 +10235,21 @@ function renderEmojiPicker() {
   EMOJI_GRID_DIRTY = false;
 }
 function ensureEmojiPickerRendered() {
+  // لا نُحمّل صور الإيموجي قبل تسجيل الدخول بالاسم (طلب المالك).
+  if (!ME) return;
+  if (!EMOJI_LOADED) { loadCustomEmojis(); return; }
   if (EMOJI_GRID_DIRTY) renderEmojiPicker();
 }
-async function loadCustomEmojis() {
+async function loadCustomEmojis(force) {
+  if (!ME || (EMOJI_LOADED && !force)) return;
+  const grid = $('#emojiGrid');
+  if (grid && !EMOJI_LOADED) grid.innerHTML = '<div class="custom-emoji-empty">جارٍ تحميل الإيموجي...</div>';
   try { CUSTOM_EMOJIS = await api('/api/emojis'); } catch (e) { CUSTOM_EMOJIS = []; }
+  EMOJI_LOADED = true;
   EMOJI_GRID_DIRTY = true;
   // نبني اللوحة الآن فقط إن كانت مفتوحة أمام المستخدم؛ وإلا تُبنى عند فتحها.
   if ($('#emojiPanel') && $('#emojiPanel').classList.contains('open')) renderEmojiPicker();
 }
-loadCustomEmojis();
 api('/api/gifts').then(g => { GIFTS = g; }).catch(() => { });   // تحميل مسبق لقائمة الهدايا
 // قائمة الألوان — تغيير لون خط رسائلي (يُحفظ على جهازي)
 // لوحة الألوان (درجات Material) تُعرض كنقاط دائرية في منتقي الألوان.
