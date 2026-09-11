@@ -2404,9 +2404,12 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
             giftBoxShake .38s ease-in-out .3s 1;
 }
 .gb-fast .giftbox-lid { animation-duration:.5s; animation-delay:.62s; }
-.gb-fast .giftbox-gift { animation-duration:.8s; animation-delay:.7s; }
-/* تلاشٍ ناعم في آخر المشهد بدل الاختفاء المفاجئ */
-.gb-fast { animation:giftSceneOut .42s ease-in 2.1s both; }
+/* بلا الهالة الذهبية الدائرية حول الهدية — طُلب إلغاؤها.
+   المشهد الملكي يحتفظ بها. */
+.gb-fast .giftbox-gift { animation-duration:.8s; animation-delay:.7s; filter:none; }
+/* الصندوق والهدية يتلاشيان بعد انطلاق سيل الفقاعات، وتُترك الفقاعات
+   تكمل تبعثرها في الدردشة وحدها. */
+.gb-fast { animation:giftSceneOut .45s ease-in 1.95s both; }
 @keyframes giftSceneOut {
   from { opacity:1; }
   to { opacity:0; }
@@ -2432,10 +2435,15 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
   filter:drop-shadow(0 1px 3px rgba(0,0,0,.35)); }
 .gmb-piece b { font-size:20px; line-height:1; font-weight:400;
   text-shadow:0 1px 3px rgba(0,0,0,.35); }
+/* تدفّق كالفقاعات: تنبع صغيرة من الهدية، تتمايل جانبياً وهي تنتشر
+   في كامل مساحة الدردشة، ثم تتلاشى في الأطراف. */
 @keyframes giftMiniBurst {
-  0%   { transform:translate(0,0) rotate(0deg) scale(.25); opacity:0; }
-  12%  { opacity:1; }
-  70%  { opacity:1; }
+  0%   { transform:translate(0,0) rotate(0deg) scale(.2); opacity:0; }
+  10%  { opacity:1; }
+  35%  { transform:translate(calc(var(--tx) * .34 + var(--sway)), calc(var(--ty) * .34))
+                   rotate(calc(var(--rot) * .34)) scale(var(--sc)); }
+  65%  { transform:translate(calc(var(--tx) * .68 - var(--sway)), calc(var(--ty) * .68))
+                   rotate(calc(var(--rot) * .68)) scale(var(--sc)); opacity:1; }
   100% { transform:translate(var(--tx),var(--ty)) rotate(var(--rot)) scale(var(--sc)); opacity:0; }
 }
 

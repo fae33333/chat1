@@ -4743,18 +4743,23 @@ function buildGiftMiniBurst(details, opts) {
   wrap.className = 'gift-mini-burst';
   const vis = details.img || details.emoji || '🎁';
   const isImg = String(vis).startsWith('/');
+  // تتدفق كالفقاعات: تنبع من الهدية ثم تتبعثر في كامل مساحة الدردشة.
+  // النسب vw/vh تضمن وصولها لأطراف الشاشة مهما كان حجمها.
   for (let i = 0; i < count; i++) {
     const piece = document.createElement('span');
     piece.className = 'gmb-piece';
-    // توزيع شعاعي منتظم مع عشوائية بسيطة كي لا تبدو مصفوفة
-    const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
-    const dist = 70 + Math.random() * 230;
-    piece.style.setProperty('--tx', (Math.cos(ang) * dist).toFixed(1) + 'px');
-    piece.style.setProperty('--ty', (Math.sin(ang) * dist - 40).toFixed(1) + 'px');
-    piece.style.setProperty('--rot', Math.round(Math.random() * 720 - 360) + 'deg');
-    piece.style.setProperty('--sc', (0.5 + Math.random() * 0.6).toFixed(2));
-    piece.style.setProperty('--delay', (startAt + Math.random() * 0.18).toFixed(2) + 's');
-    piece.style.setProperty('--dur', (0.75 + Math.random() * 0.5).toFixed(2) + 's');
+    const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.6;
+    // مدى واسع بوحدات الشاشة ليعمّ التبعثر الدردشة كلها
+    const spread = 0.25 + Math.random() * 0.75;
+    piece.style.setProperty('--tx', (Math.cos(ang) * 58 * spread).toFixed(1) + 'vw');
+    piece.style.setProperty('--ty', (Math.sin(ang) * 55 * spread - 8).toFixed(1) + 'vh');
+    // انحراف جانبي متمايل أثناء الطيران — يعطي إحساس الفقاعات
+    piece.style.setProperty('--sway', ((Math.random() < 0.5 ? -1 : 1) * (14 + Math.random() * 30)).toFixed(0) + 'px');
+    piece.style.setProperty('--rot', Math.round(Math.random() * 540 - 270) + 'deg');
+    piece.style.setProperty('--sc', (0.45 + Math.random() * 0.55).toFixed(2));
+    // تدفّق متتابع لا دفعة واحدة: تخرج على شكل سيل من الصندوق
+    piece.style.setProperty('--delay', (startAt + (i / count) * 0.45 + Math.random() * 0.16).toFixed(2) + 's');
+    piece.style.setProperty('--dur', (1.05 + Math.random() * 0.55).toFixed(2) + 's');
     piece.innerHTML = isImg ? `<img src="${esc(vis)}" alt="" aria-hidden="true">` : `<b>${esc(vis)}</b>`;
     wrap.appendChild(piece);
   }
@@ -4788,9 +4793,9 @@ function triggerGiftCelebration(gift) {
     } catch (e) { }
   }
 
-  // مدة مختصرة: الصندوق ينفتح وتنبثق الهدية وتتلاشى المفرقعات خلال ~2.6 ثانية
-  // بدل 5.8، فلا يبقى المشهد معلقاً فوق الدردشة بعد انتهاء الحركة.
-  GIFT_EFFECT_TIMER = setTimeout(() => { layer.innerHTML = ''; }, 2600);
+  // الصندوق ← الهدية ← تدفّق الفقاعات وتبعثرها في الدردشة ← اختفاء.
+  // آخر فقاعة تنتهي عند ~3.2s فنمسح الطبقة بعدها مباشرة.
+  GIFT_EFFECT_TIMER = setTimeout(() => { layer.innerHTML = ''; }, 3300);
 }
 
 // ===== الهدية الملكية: صندوق عادي أولاً ← يُخفى عند إخراج الهدية ← تظهر الهدية مع مفرقعات بالخلفية =====
