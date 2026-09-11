@@ -4596,9 +4596,12 @@ const GIFT_CONFETTI_COLORS = ['#ff0055', '#ffcc00', '#00e5ff', '#ff00cc', '#00ff
 // ألوان المفرقعات الذهبية للهدية الملكية
 const GIFT_ROYAL_COLORS = ['#ffd700', '#ffc436', '#ffe27a', '#ff9d00', '#fff3c4', '#f59e0b', '#ffcc00', '#ffea00', '#ffb300', '#ffe082'];
 // مشهد صندوق الهدايا: الصندوق يهتز ← الغطاء ينفتح ← الهدية تنبثق مع مفرقعات
-function buildGiftBoxScene(details) {
+// opts.fast = النسخة المخفَّفة للهدية العادية (أسرع ومفرقعات أقل).
+// المشهد الملكي يستدعيها بلا خيارات فيبقى بتوقيته الأصلي كما هو.
+function buildGiftBoxScene(details, opts) {
+  const fast = !!(opts && opts.fast);
   const scene = document.createElement('div');
-  scene.className = 'giftbox-scene';
+  scene.className = 'giftbox-scene' + (fast ? ' gb-fast' : '');
   const giftVis = details.img || details.emoji || '🎁';
   const giftMediaHtml = String(giftVis).startsWith('/') ? `<img src="${esc(giftVis)}" alt="">` : `<span>${esc(giftVis)}</span>`;
   scene.innerHTML = `
@@ -4610,37 +4613,42 @@ function buildGiftBoxScene(details) {
     </div>`;
   // مفرقعات ملونة تنبثق من موقع الصندوق لحظة انفتاحه
   const confettiBox = scene.querySelector('.giftbox-confetti');
-  for (let c = 0; c < 42; c++) {
+  const pieces = fast ? 20 : 42;          // النسخة المخفَّفة: نصف المفرقعات
+  const burstAt = fast ? 0.62 : 1.05;     // تتزامن مع انفتاح الغطاء الأسرع
+  for (let c = 0; c < pieces; c++) {
     const piece = document.createElement('i');
     const ang = Math.random() * Math.PI * 2;
-    const dist = 90 + Math.random() * 240;
+    const dist = 90 + Math.random() * (fast ? 170 : 240);
     piece.style.setProperty('--tx', Math.cos(ang) * dist + 'px');
     piece.style.setProperty('--ty', (Math.sin(ang) * dist - 60) + 'px');
     piece.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
     piece.style.setProperty('--color', GIFT_CONFETTI_COLORS[c % GIFT_CONFETTI_COLORS.length]);
-    piece.style.setProperty('--delay', (1.05 + Math.random() * 0.25) + 's');
-    piece.style.setProperty('--dur', (0.9 + Math.random() * 0.9) + 's');
+    piece.style.setProperty('--delay', (burstAt + Math.random() * 0.22) + 's');
+    piece.style.setProperty('--dur', (fast ? 0.7 : 0.9) + Math.random() * (fast ? 0.6 : 0.9) + 's');
     if (Math.random() < 0.4) piece.className = 'round';
     confettiBox.appendChild(piece);
   }
   return scene;
 }
 // مدفعا مفرقعات جانبيان (يمين ويسار) — يظهران مع الهدية العادية والملكية معاً
-function buildGiftSideCannons(delayOffset = 0) {
+function buildGiftSideCannons(delayOffset = 0, opts) {
+  const fast = !!(opts && opts.fast);
   const wrap = document.createElement('div');
   wrap.className = 'gift-side-cannons';
+  const count = fast ? 12 : 26;              // المخفَّفة: أقل من نصف القصاصات
+  const startAt = fast ? 0.62 : 1.05;        // تنطلق مع انفتاح الغطاء
   ['left', 'right'].forEach(side => {
     const cannon = document.createElement('span');
     cannon.className = 'gift-side-cannon ' + side;
     const dir = side === 'left' ? 1 : -1;
-    for (let c = 0; c < 26; c++) {
+    for (let c = 0; c < count; c++) {
       const piece = document.createElement('i');
       piece.style.setProperty('--tx', (dir * (140 + Math.random() * 260)) + 'px');
       piece.style.setProperty('--ty', (-(30 + Math.random() * 180)) + 'px');
       piece.style.setProperty('--rot', (dir * (Math.random() * 540 + 180)) + 'deg');
       piece.style.setProperty('--color', GIFT_CONFETTI_COLORS[c % GIFT_CONFETTI_COLORS.length]);
-      piece.style.setProperty('--delay', (delayOffset + 1.05 + Math.random() * 0.35) + 's');
-      piece.style.setProperty('--dur', (0.8 + Math.random() * 0.8) + 's');
+      piece.style.setProperty('--delay', (delayOffset + startAt + Math.random() * 0.3) + 's');
+      piece.style.setProperty('--dur', (fast ? 0.7 : 0.8) + Math.random() * (fast ? 0.6 : 0.8) + 's');
       if (Math.random() < 0.4) piece.className = 'round';
       cannon.appendChild(piece);
     }
@@ -4649,8 +4657,15 @@ function buildGiftSideCannons(delayOffset = 0) {
   return wrap;
 }
 // 10 ألعاب نارية كبيرة متتالية منتشرة على كامل الشاشة (مفرقعات الخلفية)
-function buildGiftFireworks(layer, delayOffset = 0, colorSet = GIFT_CONFETTI_COLORS) {
-  const fireworkPositions = [
+function buildGiftFireworks(layer, delayOffset = 0, colorSet = GIFT_CONFETTI_COLORS, opts) {
+  const fast = !!(opts && opts.fast);
+  // النسخة المخفَّفة: 4 انفجارات متقاربة حول الصندوق بدل 10 تمتد أربع ثوانٍ.
+  const fireworkPositions = fast ? [
+    { x: '22%', y: '26%', delay: 0 },
+    { x: '78%', y: '30%', delay: 0.18 },
+    { x: '32%', y: '66%', delay: 0.36 },
+    { x: '70%', y: '62%', delay: 0.54 }
+  ] : [
     { x: '18%', y: '18%', delay: 0 },
     { x: '82%', y: '22%', delay: 0.45 },
     { x: '50%', y: '15%', delay: 0.9 },
@@ -4662,6 +4677,7 @@ function buildGiftFireworks(layer, delayOffset = 0, colorSet = GIFT_CONFETTI_COL
     { x: '34%', y: '30%', delay: 3.6 },
     { x: '66%', y: '32%', delay: 4.05 }
   ];
+  const sparks = fast ? 14 : 24;
 
   fireworkPositions.forEach((pos, idx) => {
     const firework = document.createElement('span');
@@ -4676,10 +4692,10 @@ function buildGiftFireworks(layer, delayOffset = 0, colorSet = GIFT_CONFETTI_COL
     ring.style.setProperty('--delay', (pos.delay + delayOffset) + 's');
     firework.appendChild(ring);
 
-    // 24 large glowing radial sparks
-    for (let spark = 0; spark < 24; spark++) {
+    // شرارات مضيئة شعاعية (أقل عدداً في النسخة المخفَّفة)
+    for (let spark = 0; spark < sparks; spark++) {
       const particle = document.createElement('i');
-      const angle = (Math.PI * 2 * spark) / 24;
+      const angle = (Math.PI * 2 * spark) / sparks;
       const distance = 80 + Math.random() * 70; // Large burst radius
       particle.className = 'gift-firework-spark';
       particle.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
@@ -4699,13 +4715,16 @@ function triggerGiftCelebration(gift) {
   layer.innerHTML = '';
   const colors = GIFT_CONFETTI_COLORS;
 
-  // ===== مشهد صندوق الهدايا: الصندوق يهتز ← الغطاء ينفتح ← الهدية تنبثق مع مفرقعات =====
-  layer.appendChild(buildGiftBoxScene(details));
+  // ===== مشهد صندوق الهدايا (نسخة مخفَّفة): الصندوق يهتز مرة ← الغطاء ينفتح ←
+  // الهدية تنبثق مع مفرقعات أقل. نفس الفكرة لكن أسرع وأنظف، والمشهد الملكي
+  // يبقى بكامل زخرفته كما هو. =====
+  const fast = { fast: true };
+  layer.appendChild(buildGiftBoxScene(details, fast));
   // مفرقعات جانبية من الجهتين (يمين ويسار)
-  layer.appendChild(buildGiftSideCannons(0));
+  layer.appendChild(buildGiftSideCannons(0, fast));
 
-  // 10 ألعاب نارية كبيرة متتالية — تُستخدم في الهدية العادية والملكية
-  buildGiftFireworks(layer, 0, colors);
+  // 4 انفجارات متقاربة بدل 10 ممتدة — تنتهي مع اختفاء المشهد
+  buildGiftFireworks(layer, 0, colors, fast);
 
   // بدون قالب الأسماء: الهدية العادية تعرض الصندوق + المفرقعات فقط (لا تظهر بطاقة اسم الهدية/المرسل/المستقبل)
 
@@ -4718,8 +4737,9 @@ function triggerGiftCelebration(gift) {
     } catch (e) { }
   }
 
-  // Exactly 5.8 seconds duration (صندوق + نبث الهدية + بطاقات المفارقات)
-  GIFT_EFFECT_TIMER = setTimeout(() => { layer.innerHTML = ''; }, 5800);
+  // مدة مختصرة: الصندوق ينفتح وتنبثق الهدية وتتلاشى المفرقعات خلال ~2.6 ثانية
+  // بدل 5.8، فلا يبقى المشهد معلقاً فوق الدردشة بعد انتهاء الحركة.
+  GIFT_EFFECT_TIMER = setTimeout(() => { layer.innerHTML = ''; }, 2600);
 }
 
 // ===== الهدية الملكية: صندوق عادي أولاً ← يُخفى عند إخراج الهدية ← تظهر الهدية مع مفرقعات بالخلفية =====

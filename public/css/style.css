@@ -2364,6 +2364,23 @@ textarea.pf-input { font-family:inherit; resize:none; line-height:1.8; min-heigh
   animation:confettiBurst var(--dur) cubic-bezier(.15,.85,.35,1) var(--delay) forwards;
 }
 .giftbox-confetti i.round { border-radius:50%; width:8px; height:8px; }
+/* ===== النسخة المخفَّفة لمشهد الهدية العادية =====
+   نفس الصندوق والفكرة، لكن: اهتزازة واحدة بدل اثنتين، والغطاء والهدية
+   يظهران أبكر، ثم يتلاشى المشهد بهدوء. المشهد الملكي لا يستعمل هذا الصفّ
+   فيبقى بتوقيته الأصلي بالكامل. */
+.gb-fast .giftbox {
+  animation:giftBoxIn .3s cubic-bezier(.3,1.4,.5,1) both,
+            giftBoxShake .38s ease-in-out .3s 1;
+}
+.gb-fast .giftbox-lid { animation-duration:.5s; animation-delay:.62s; }
+.gb-fast .giftbox-gift { animation-duration:.8s; animation-delay:.7s; }
+/* تلاشٍ ناعم في آخر المشهد بدل الاختفاء المفاجئ */
+.gb-fast { animation:giftSceneOut .42s ease-in 2.1s both; }
+@keyframes giftSceneOut {
+  from { opacity:1; }
+  to { opacity:0; }
+}
+
 @keyframes giftBoxIn {
   0% { transform:scale(.2); opacity:0; }
   100% { transform:scale(1); opacity:1; }
