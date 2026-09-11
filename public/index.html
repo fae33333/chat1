@@ -19,8 +19,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20260911-wall7">
-<link rel="stylesheet" href="/css/desktop.css?v=20260911-dsk13" media="(min-width: 1024px)">
+<link rel="stylesheet" href="/css/style.css?v=20260911-wall8">
+<link rel="stylesheet" href="/css/desktop.css?v=20260911-dsk14" media="(min-width: 1024px)">
 </head>
 <body>
 <div id="frame">
@@ -926,6 +926,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <button class="mn-item" id="mnAdminPanel" style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(168,85,247,.12));border:1.5px solid #c7d2fe"><span class="mni" style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff"><i class="f7-icons">shield_fill</i></span> لوحة التحكم الإدارية <i class="f7-icons mnc">chevron_right</i></button>
       </div>
       <div class="mn-list">
+        <button class="mn-item" id="mnStatuses"><span class="mni"><i class="f7-icons">circle_grid_hex_fill</i></span> الحالات <em class="bn-badge mn-badge" id="mnStatusBadge" style="display:none">0</em> <i class="f7-icons mnc">chevron_right</i></button>
         <button class="mn-item" id="mnAvatar"><span class="mni"><i class="f7-icons">photo_on_rectangle</i></span> تغيير الصورة <i class="f7-icons mnc">chevron_right</i></button>
         <button class="mn-item" id="mnMyGifts"><span class="mni"><i class="f7-icons">gift_fill</i></span> هدايا حسابي <i class="f7-icons mnc">chevron_right</i></button>
         <button class="mn-item" id="mnBlocks"><span class="mni"><i class="f7-icons">slash_circle_fill</i></span> قوائم الحظر <i class="f7-icons mnc">chevron_right</i></button>
@@ -1477,7 +1478,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/app.js?v=20260911-wall7" defer></script>
+<script src="/js/app.js?v=20260911-wall8" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

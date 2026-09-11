@@ -2056,6 +2056,7 @@ function restoreCurrentRoom(socket, attempt = 0) {
     showScreen('rooms');
     if (result && result.reason === 'password') openPassOv(room, false);
     else if (result && result.reason === 'wrong_pass') openPassOv(room, true);
+    else if (result && result.reason === 'members_only') { toast(result.text || '👤 هذه الغرفة للأعضاء المسجلين فقط', false); openOv('needRegOv'); }
     else toast((result && result.text) || 'تعذر استعادة دخول الغرفة', false);
   });
 }
@@ -2795,7 +2796,8 @@ function bcastRenderBar() {
         if (!h) return;
         if (ME && h.id === ME.id) { if (iAmHost) openOv('bcastOv'); return; } // صورتي أنا: أعد فتح شاشة بثي
         // المشرف: ينقر على المذيع لفتح ورقة المستخدم فيها أزرار «سحب المايك / سحب مع منع صعود / فك من البث».
-        if (modClickable) return openUserSheet(+h.id);
+        // على الكمبيوتر تُفتح الورقة ملتصقة بجانب صورة/اسم المذيع؛ وعلى الجوال تبقى ورقة سفلية كالمعتاد.
+        if (modClickable) return openUserSheet(+h.id, null, chip);
         if (pickable) return bcastOpenWatchConfirm(h);
       };
     });
@@ -3234,7 +3236,7 @@ function bcastRenderSpeakersList() {
   // المشرف: النقر على صف المذيع يعرض أزرار «سحب المايك / سحب مع منع صعود / فك من البث».
   if (modClickable) box.querySelectorAll('.bcast-speaker-row').forEach(row => {
     row.style.cursor = 'pointer';
-    row.onclick = () => openUserSheet(+row.dataset.uid);
+    row.onclick = () => openUserSheet(+row.dataset.uid, null, row);
   });
   // إعادة تطبيق حالة «يتحدث» على الصفوف الجديدة (إعادة البناء تمسح الصفات)
   try { bcastApplySpeaking(); } catch (e) {}
@@ -3689,11 +3691,13 @@ function updateNotifBadge() {
   updateUnreadTitle();
 }
 function updateStatusUnreadBadge() {
-  const badge = $('#statusUnreadBadge');
-  if (STATUS_UNREAD > 0) {
-    badge.textContent = STATUS_UNREAD > 99 ? '99+' : STATUS_UNREAD;
-    badge.style.display = 'flex';
-  } else badge.style.display = 'none';
+  const txt = STATUS_UNREAD > 99 ? '99+' : String(STATUS_UNREAD);
+  ['#statusUnreadBadge', '#mnStatusBadge'].forEach(sel => {
+    const badge = $(sel);
+    if (!badge) return;
+    if (STATUS_UNREAD > 0) { badge.textContent = txt; badge.style.display = 'flex'; }
+    else badge.style.display = 'none';
+  });
   updateUnreadTitle();
 }
 async function loadUnreadNotifCount() {
@@ -3868,6 +3872,8 @@ function roomFeaturesHtml(r) {
       ];
   if (r.status !== 'open') icons.push('<i class="f7-icons" title="الغرفة مغلقة" style="color:#dc2626">lock_circle_fill</i>');
   if (r.locked) icons.push('<i class="f7-icons" title="الغرفة برقم سري" style="color:#d946a6">lock_fill</i>');
+  // غرفة للأعضاء المسجلين فقط — تُميَّز بأيقونة عضو
+  if (r.audience === 'registered') icons.push('<i class="f7-icons" title="للأعضاء المسجلين فقط" style="color:#0ea5e9">person_badge_plus_fill</i>');
   return `<div class="room-feats">${icons.join('')}</div>`;
 }
 function roomRowHtml(r) {
@@ -3984,6 +3990,8 @@ function enterRoom(id, pwd, hiddenChoice) {
     if (res.reason === 'password') openPassOv(r, false);
     else if (res.reason === 'wrong_pass') openPassOv(r, true);
     else if (res.reason === 'kicked') toast(res.text || '🚫 أنت مطرود من هذه الغرفة', false);
+    // غرفة للأعضاء المسجلين فقط: ندعو الزائر لإنشاء حساب بدل رسالة عابرة
+    else if (res.reason === 'members_only') { toast(res.text || '👤 هذه الغرفة للأعضاء المسجلين فقط', false); openOv('needRegOv'); }
     else toast(res.text || 'تعذر الدخول للغرفة', false);
   });
 }
@@ -8240,6 +8248,8 @@ $('#mnVerify').onclick = () => {
   openVerify();
 };
 $('#mnUpgrade').onclick = () => { closeOv('menuOv'); if (!ME.registered) return openOv('needRegOv'); openUpgrade(ME); };
+// «الحالات» في القائمة: بديل زر الحالات المخفي من هيدر الغرفة على الجوال.
+$('#mnStatuses').onclick = () => { closeOv('menuOv'); openStatuses(); };
 $('#mnAvatar').onclick = () => { closeOv('menuOv'); if (!ME.registered) return openOv('needRegOv'); openAvatars(); };
 $('#mnMyGifts').onclick = () => { closeOv('menuOv'); openMyGifts(); };
 $('#mnBlocks').onclick = () => { closeOv('menuOv'); openBlocksList(); };

@@ -307,6 +307,12 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .cbtn i {font-size: 22px;}
 .cbtn.ghost { background:transparent; color:var(--navy); width:24px; }
 
+/* على الجوال: هيدر الغرفة يحمل ثلاثة أزرار فقط (الرئيسية / المتصلون / المزيد).
+   أي زر آخر يُخفى من الشريط، ووظيفته تبقى متاحة من القائمة. الديسكتوب لا يتأثر. */
+@media (max-width: 1023px) {
+  .c-top-btns > *:not(#btnHome):not(#btnRoomUsers):not(#btnRoomMore) { display: none !important; }
+}
+
 /* شريط البث المباشر */
 .c-notice {
   direction:ltr;
@@ -1345,6 +1351,7 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .mn-item .mni { width:34px; height:34px; border-radius:10px; background:var(--skin-btn) !important; color:#fff; display:flex; align-items:center; justify-content:center; flex:none; box-shadow:0 2px 8px var(--skin-glow); }
 .mn-item .mni i { font-size:18px; color:#fff; }
 .mn-item .mnc { margin-inline-start:auto; color:var(--main); font-size:17px; }
+.mn-item .mn-badge { position:static; margin-inline-start:auto; }
 .mn-title {font-size: 16px;color: #777b87;font-weight:800;padding:10px 8px 6px;}
 
 /* تغيير الصورة */

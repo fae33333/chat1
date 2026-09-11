@@ -3437,6 +3437,7 @@ const PAGES = {
                 <span class="chip">${r.max_users} مستخدم</span>
                 <span class="chip" style="color:${r.status === 'open' ? '#059669' : '#dc2626'}">${r.status === 'open' ? '● مفتوحة' : '● مغلقة'}</span>
                 ${r.password ? '<span class="chip" style="color:#d946a6">🔒 برقم سري</span>' : ''}
+                ${r.audience === 'registered' ? '<span class="chip" style="color:#0ea5e9">👤 للأعضاء المسجلين فقط</span>' : ''}
               </div>
             </div>
           </div>
@@ -3477,6 +3478,12 @@ const PAGES = {
             <option value="default" ${r.type !== 'voice' ? 'selected' : ''}>💬 افتراضية — كتابية فقط</option>
           </select></div>
       </div>
+      <div class="fgroup"><label><i class="f7-icons mi" style="color:#0ea5e9">person_2_square_stack_fill</i> من يدخل الغرفة؟</label>
+        <select class="inp" id="rAudience">
+          <option value="all" ${r.audience !== 'registered' ? 'selected' : ''}>🌍 للجميع — الزوار والأعضاء المسجلون</option>
+          <option value="registered" ${r.audience === 'registered' ? 'selected' : ''}>🔐 للأعضاء المسجلين فقط — الزائر لا يدخل</option>
+        </select>
+        <div style="font-size:11.5px;color:#9aa0b5;margin-top:5px">عند اختيار «للأعضاء المسجلين فقط» تُمنع حسابات الزوار من دخول الغرفة، وتظهر لهم رسالة تدعوهم لإنشاء حساب. الإدارة تدخل دائماً.</div></div>
       <div style="font-size:12.5px;color:#7b8495;font-weight:700;background:#f8f5ff;border:1px solid #e9ddff;border-radius:10px;padding:9px 13px;margin-top:10px">💡 الغرفة الصوتية: يظهر شريط البث وزر «تحدث» للصعود كمذيع. الغرفة الافتراضية: دردشة كتابية فقط — لا شريط بث ولا زر «تحدث».</div>
       <div class="section-title"><i class="f7-icons mi" style="color:#94a3b8">gear_alt_fill</i> إعدادات إضافية</div>
       ${roomSel('mic_fill', '#c084fc', 'تمكين الصوت', 'rSound', r.sound)}
@@ -3516,6 +3523,7 @@ const PAGES = {
           name: $('#rName').value.trim(), description: $('#rDesc').value,
           welcome: $('#rWelcome').value.trim(),
           status: $('#rStatus').value, max_users: +$('#rMax').value || 1000, type: $('#rType').value === 'voice' ? 'voice' : 'default',
+          audience: $('#rAudience').value === 'registered' ? 'registered' : 'all',
           sound: $('#rSound').value === '1', video: $('#rVideo').value === '1', bots: $('#rBots').value === '1',
           gifts: $('#rGifts').value === '1', games: $('#rGames').value === '1',
           password: $('#rPass').value.trim(),

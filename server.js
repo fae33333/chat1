@@ -2120,7 +2120,7 @@ app.post('/api/logout', (req, res) => {
 //  API - الشات (غرف، مستخدمون، هدايا، ترقية...)
 // =====================================================
 app.get('/api/rooms', async (req, res) => {
-  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password FROM rooms ORDER BY sort,id`);
+  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience FROM rooms ORDER BY sort,id`);
   const counts = {};
   Object.entries(roomUsers).forEach(([rid, set]) => counts[rid] = set.size);
   res.json(rooms.map(r => ({
@@ -2133,6 +2133,7 @@ app.get('/api/rooms', async (req, res) => {
     max_users: +r.max_users || 1000,
     status: String(r.status || 'open'),
     online: counts[r.id] || 0,
+    audience: String(r.audience || 'all') === 'registered' ? 'registered' : 'all',
     locked: !!(r.password && String(r.password).trim().length > 0)
   })));
 });
@@ -2140,7 +2141,7 @@ app.get('/api/rooms', async (req, res) => {
 app.get('/api/rooms/:id', async (req, res) => {
   const roomId = +req.params.id;
   if (!roomId) return res.status(400).json({ error: 'معرّف الغرفة غير صالح' });
-  const room = await q.get(`SELECT id, name, description, image, type, max_users, sort, status, password FROM rooms WHERE id=?`, roomId);
+  const room = await q.get(`SELECT id, name, description, image, type, max_users, sort, status, password, audience FROM rooms WHERE id=?`, roomId);
   if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
   res.json({
     id: +room.id,
@@ -2152,6 +2153,7 @@ app.get('/api/rooms/:id', async (req, res) => {
     max_users: +room.max_users || 1000,
     status: String(room.status || 'open'),
     online: (roomUsers[room.id] && roomUsers[room.id].size) || 0,
+    audience: String(room.audience || 'all') === 'registered' ? 'registered' : 'all',
     locked: !!(room.password && String(room.password).trim().length > 0)
   });
 });
@@ -4431,22 +4433,24 @@ app.post('/api/admin/rooms', requireAdmin, async (req, res) => {
   const r = req.body;
   // نوع الغرفة: 'voice' = صوتية (بث وزر تحدث)، أي قيمة أخرى = 'default' (كتابية فقط)
   const roomType = String(r.type || '') === 'voice' ? 'voice' : 'default';
+  // جمهور الغرفة: 'registered' = للأعضاء المسجلين فقط، وأي قيمة أخرى = 'all' (للجميع)
+  const roomAudience = String(r.audience || '') === 'registered' ? 'registered' : 'all';
   const isSuper = ['superadmin', 'supermaster'].includes(req.session.rank);
   if (r.id) {
     if (!isSuper) return res.status(403).json({ error: 'لا تملك صلاحية تعديل الغرف، يمكنك إضافة غرفة جديدة فقط' });
-    await q.run(`UPDATE rooms SET name=?,description=?,type=?,max_users=?,status=?,sound=?,video=?,bots=?,gifts=?,games=?,locked=?,welcome=?,password=?,image=? WHERE id=?`,
+    await q.run(`UPDATE rooms SET name=?,description=?,type=?,max_users=?,status=?,sound=?,video=?,bots=?,gifts=?,games=?,locked=?,welcome=?,password=?,image=?,audience=? WHERE id=?`,
       r.name, r.description || '', roomType, r.max_users || 1000, r.status || 'open',
       r.sound ? 1 : 0, r.video ? 1 : 0, r.bots ? 1 : 0, r.gifts ? 1 : 0, r.games ? 1 : 0, r.locked ? 1 : 0, r.welcome || '',
-      String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200), r.id);
+      String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200), roomAudience, r.id);
     // أصبحت الغرفة «كتابية فقط»: أنهِ أي بث قائم فوراً وأنزل كل المذيعين (يصلهم bcast:stopped).
     if (roomType !== 'voice') endBroadcast(+r.id, 'room_became_default');
     io.emit('sync');
     return res.json({ ok: true, id: r.id });
   }
-  const out = await q.run(`INSERT INTO rooms (name,description,type,max_users,status,sound,video,bots,gifts,games,locked,welcome,password,image) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+  const out = await q.run(`INSERT INTO rooms (name,description,type,max_users,status,sound,video,bots,gifts,games,locked,welcome,password,image,audience) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     r.name, r.description || '', roomType, r.max_users || 1000, r.status || 'open',
     r.sound ? 1 : 0, r.video ? 1 : 0, r.bots ? 1 : 0, r.gifts ? 1 : 0, r.games ? 1 : 0, r.locked ? 1 : 0, r.welcome || '',
-    String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200));
+    String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200), roomAudience);
   io.emit('sync');
   res.json({ ok: true, id: out.lastID });
 });
@@ -7581,6 +7585,9 @@ io.on('connection', async (socket) => {
     const enterHidden = isSuperMaster || alwaysHidden || (!!options.hidden && canChooseHidden && hiddenSetting);
     if (room.status !== 'open' && !isAdm)
       return done({ ok: false, reason: 'closed', text: '🔒 هذه الغرفة مغلقة حالياً من الإدارة' });
+    // غرفة مخصّصة للأعضاء المسجلين: الزائر لا يدخلها (الإدارة مستثناة)
+    if (String(room.audience || 'all') === 'registered' && !me.registered && !isAdm)
+      return done({ ok: false, reason: 'members_only', text: '👤 هذه الغرفة للأعضاء المسجلين فقط — أنشئ حساباً مجانياً للدخول' });
     if (room.password && !isAdm) {
       if (!pwd) return done({ ok: false, reason: 'password' });                 // يتطلب كلمة مرور
       if (String(pwd) !== String(room.password)) return done({ ok: false, reason: 'wrong_pass' });   // خاطئة — لا يدخل
