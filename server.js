@@ -215,7 +215,7 @@ app.use(compression({
 //  تعمية مسارات API: /api/... ← /s/<رمز مشفّر>
 // =====================================================
 const cloak = require('./lib/cloak');
-const { minifyStatic, prewarm } = require('./lib/minify-static');
+const { minifyStatic, prewarm, minifiedText } = require('./lib/minify-static');
 const CLOAK_KEY = process.env.API_CLOAK_KEY || crypto.createHash('sha256')
   .update('nujum-api-cloak::' + COOKIE_SECRET).digest('hex').slice(0, 48);
 const CLOAK_PREFIX = '/s/';
@@ -6515,6 +6515,18 @@ const RESERVED_SLUGS = new Set([
 
 async function renderSeoChatHtml(slug = 'default', req = null) {
   let indexHtml = fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf-8');
+  // حقن style.css مضمّناً بدل طلب خارجي حاجب للرسم: يُزيل زمن انتظار ملف CSS
+  // (render-blocking) ويحسّن FCP/LCP دون أي وميض بلا تنسيق — نفس التنسيقات تماماً.
+  try {
+    const inlineCss = await minifiedText('css/style.css');
+    if (inlineCss) {
+      const safeCss = inlineCss.replace(/<\/style/gi, '<\\/style');
+      indexHtml = indexHtml.replace(
+        /<link[^>]*href="\/css\/style\.css[^"]*"[^>]*>/,
+        '<style data-inline-style-css>' + safeCss + '</style>'
+      );
+    }
+  } catch (e) { }
   let seo = null;
   const isCustomSlug = slug && slug !== 'default' && slug !== '/';
   if (isCustomSlug) {
