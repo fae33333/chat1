@@ -39,7 +39,7 @@
         <span class="r-logo-txt" id="siteName"></span>
       </div>
       <button class="btn-enter" id="headEnterBtn">دخول</button>
-      <button class="head-user" id="headUserBox" style="display:none">
+      <button class="head-user" id="headUserBox" style="display:none" aria-label="حسابي">
         <span class="head-ava" id="headAva"></span>
         <span class="head-name" id="headName">-</span>
       </button>
@@ -94,7 +94,7 @@
     <div class="c-notice" id="liveBar">
       <!-- خلفية متحركة تظهر فقط عند وجود بث مباشر -->
       <div class="live-bar-animation" id="vfdvdvfd" aria-hidden="true">
-        <img class="dotlottie-playerq" src="/img/Video_2025.gif" alt="">
+        <img class="dotlottie-playerq" src="/img/Video_2025.gif" alt="" loading="lazy" decoding="async">
       </div>
       <div class="lb-hosts" id="liveBarHosts"></div>
       <span class="lb-text" id="roomNotice">لا يوجد احد في البث المباشر حي الان</span>
@@ -595,7 +595,7 @@
         <div class="gs-row2">
           <div class="gs-sel" id="gsSelGift"><span class="gs-emoji">🎁</span><span id="gsSelName">اختر هدية</span><span class="gs-price"><em id="gsSelPrice">0</em> 🪙</span></div>
           <div class="gs-qty">كمية :
-            <button id="gMinus">−</button><span id="gQty">1</span><button id="gPlus">+</button>
+            <button id="gMinus" aria-label="تقليل الكمية">−</button><span id="gQty">1</span><button id="gPlus" aria-label="زيادة الكمية">+</button>
           </div>
         </div>
         <div class="gs-cost">تحتاج لتنفق : <b id="gNeed">0</b> 🪙</div>
@@ -622,7 +622,7 @@
       <div class="gs-target">الترقية الى : <b id="upToName">-</b></div>
       <div class="gs-row2">
         <div class="gs-qty">المدة بالأشهر :
-          <button id="upMinus">−</button><span id="upQty">1</span><button id="upPlus">+</button>
+          <button id="upMinus" aria-label="تقليل المدة">−</button><span id="upQty">1</span><button id="upPlus" aria-label="زيادة المدة">+</button>
         </div>
       </div>
       <div class="gs-cost">التكلفة الإجمالية : <b id="upNeed">0</b> 🪙</div>
@@ -992,12 +992,12 @@
       </div>
       <div class="mn-title" style="padding:2px 4px 8px">عام</div>
       <div class="mn-list" id="setList">
-        <div class="set-row"><span>تفعيل الصوت</span><button class="switch on" data-set="snd_all"><em></em></button></div>
-        <div class="set-row"><span>صوت الرسائل الجديدة</span><button class="switch" data-set="snd_msg"><em></em></button></div>
-        <div class="set-row"><span>صوت دخول المستخدمين</span><button class="switch on" data-set="snd_join"><em></em></button></div>
-        <div class="set-row"><span>اظهار الوقت في الرسائل</span><button class="switch on" data-set="show_time"><em></em></button></div>
-        <div class="set-row"><span>استقبال الرسائل الخاصة</span><button class="switch on" data-set="pm_recv"><em></em></button></div>
-        <div class="set-row"><span>إشعارات سطح المكتب</span><button class="switch on" data-set="dsk_ntf"><em></em></button></div>
+        <div class="set-row"><span>تفعيل الصوت</span><button class="switch on" role="switch" aria-checked="true" aria-label="تفعيل الصوت" data-set="snd_all"><em></em></button></div>
+        <div class="set-row"><span>صوت الرسائل الجديدة</span><button class="switch" role="switch" aria-checked="false" aria-label="صوت الرسائل الجديدة" data-set="snd_msg"><em></em></button></div>
+        <div class="set-row"><span>صوت دخول المستخدمين</span><button class="switch on" role="switch" aria-checked="true" aria-label="صوت دخول المستخدمين" data-set="snd_join"><em></em></button></div>
+        <div class="set-row"><span>اظهار الوقت في الرسائل</span><button class="switch on" role="switch" aria-checked="true" aria-label="اظهار الوقت في الرسائل" data-set="show_time"><em></em></button></div>
+        <div class="set-row"><span>استقبال الرسائل الخاصة</span><button class="switch on" role="switch" aria-checked="true" aria-label="استقبال الرسائل الخاصة" data-set="pm_recv"><em></em></button></div>
+        <div class="set-row"><span>إشعارات سطح المكتب</span><button class="switch on" role="switch" aria-checked="true" aria-label="إشعارات سطح المكتب" data-set="dsk_ntf"><em></em></button></div>
         <button class="set-row settings-language-row" id="btnLanguage" type="button" aria-label="تغيير اللغة">
           <span class="settings-language-title"><i class="f7-icons">globe</i> تغيير اللغة</span>
           <span class="settings-language-value" id="currentLanguageLabel">العربية</span>
@@ -1442,10 +1442,10 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 </div>
-<script src="/socket.io/socket.io.js"></script>
-<script src="/js/skins.js?v=20260904-skins"></script>
-<script src="/js/app.js?v=20260911-wall3"></script>
-<script src="/js/desktop.js?v=20260911-dsk6"></script>
+<script src="/socket.io/socket.io.js" defer></script>
+<script src="/js/skins.js?v=20260904-skins" defer></script>
+<script src="/js/app.js?v=20260911-wall3" defer></script>
+<script src="/js/desktop.js?v=20260911-dsk6" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
    document.addEventListener("contextmenu", e => e.preventDefault());

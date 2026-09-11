@@ -13,6 +13,7 @@ const bcrypt = require('bcryptjs');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
 const multer = require('multer');
+const compression = require('compression');
 const { Server } = require('socket.io');
 const db = require('./database');
 
@@ -199,6 +200,16 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// ضغط الاستجابات النصية (HTML/CSS/JS/JSON/SVG/الخطوط) بـ gzip/br لتقليل حجم
+// النقل وتقليل زمن FCP/LCP بشكل كبير على الشبكات البطيئة (4G المحمول).
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  }
+}));
 
 // =====================================================
 //  تعمية مسارات API: /api/... ← /s/<رمز مشفّر>
@@ -554,6 +565,11 @@ app.use(express.static(path.join(__dirname, 'public'), {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
+    } else if (/\.(?:png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|otf|mp3|mp4|webm|ogg|aac|m4a)$/i.test(filePath)) {
+      // الأصول الثنائية (صور/خطوط/أيقونات/وسائط) أسماؤها فريدة المحتوى (طوابع زمنية
+      // للرفعات) أو نسخ مُرقّمة، فتُخزَّن في المتصفح لمدة أسبوع مع إعادة تحقق عند
+      // الانتهاء — تسريع التحميل للزيارات المتكررة دون خطر بقاء نسخة قديمة طويلة.
+      res.setHeader('Cache-Control', 'public, max-age=604800, must-revalidate');
     }
   }
 }));

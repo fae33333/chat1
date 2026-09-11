@@ -1641,12 +1641,12 @@ function badgeOf(u) {
 }
 // الصورة الرمزية: قد تكون مسار /.. أو "emoji:🙂:#hex" أو فارغة
 function avatarHtml(avatar, cls = '') {
-  if (avatar && avatar.startsWith('/')) return `<img class="${cls}" src="${esc(avatar)}">`;
+  if (avatar && avatar.startsWith('/')) return `<img class="${cls}" src="${esc(avatar)}" alt="">`;
   if (avatar && avatar.startsWith('emoji:')) {
     const [, e, bg] = avatar.split(':');
     return `<span class="${cls}" style="background:${bg}">${e}</span>`;
   }
-  return `<img class="${cls}" src="/avatars/default.png">`;   // الصورة الافتراضية للجميع
+  return `<img class="${cls}" src="/avatars/default.png" alt="">`;   // الصورة الافتراضية للجميع
 }
 // يحافظ على الصفر في إعدادات الأسعار: 0 = مجاني، وليس قيمة تستبدل بالافتراضي.
 function normalizeClientNonNegativeCost(value, fallback) {
@@ -1965,7 +1965,9 @@ function applySettings() {
 function applyPrefsToSwitches() {
   $$('#setList .switch').forEach(sw => {
     const k = sw.dataset.set;
-    sw.classList.toggle('on', !!PREFS[k]);
+    const on = !!PREFS[k];
+    sw.classList.toggle('on', on);
+    sw.setAttribute('aria-checked', on ? 'true' : 'false');
   });
 }
 
@@ -3822,7 +3824,7 @@ async function loadRooms() {
   renderRooms();
 }
 function roomImgHtml(r, cls = 'room-img') {
-  if (r.image) return `<div class="${cls}"><img src="${esc(r.image)}"></div>`;
+  if (r.image) return `<div class="${cls}"><img src="${esc(r.image)}" alt="${esc(r.name)}"></div>`;
   return `<div class="${cls}"><span>${esc(r.name)}</span></div>`;
 }
 function roomFeaturesHtml(r) {
@@ -5082,7 +5084,7 @@ function renderGiftGrid(cat) {
 $$('.gs-tab').forEach(t => t.onclick = () => renderGiftGrid(t.dataset.gcat));
 function updateGiftPick() {
   const gv = SEL_GIFT ? (SEL_GIFT.img || SEL_GIFT.emoji || '🎁') : '🎁';
-  $('#gsSelGift').querySelector('.gs-emoji').innerHTML = gv.startsWith('/') ? `<img src="${esc(gv)}" style="width:40px;height:40px;object-fit:contain">` : esc(gv);
+  $('#gsSelGift').querySelector('.gs-emoji').innerHTML = gv.startsWith('/') ? `<img src="${esc(gv)}" alt="" style="width:40px;height:40px;object-fit:contain">` : esc(gv);
   $('#gsSelName').textContent = SEL_GIFT ? SEL_GIFT.name : 'اختر هدية';
   $('#gsSelPrice').textContent = SEL_GIFT ? SEL_GIFT.price : 0;
   $('#gNeed').textContent = SEL_GIFT ? SEL_GIFT.price * G_QTY : 0;
@@ -5187,7 +5189,7 @@ async function openProfile(uid) {
     else if (u.membership !== 'none') memText = MEM_NAMES[u.membership];
     else memText = u.registered ? 'عضو مسجل' : 'زائر';
     // نفس لون اسم العضو في العام (سوبر/ادمن أسود وكل عضوية بلونها).
-    $('#profMem').innerHTML = `<img src="/badges/${d.badge}"> <span style="color:${userColor(u)}">${memText}</span>`;
+    $('#profMem').innerHTML = `<img src="/badges/${d.badge}" alt=""> <span style="color:${userColor(u)}">${memText}</span>`;
     if (isMe) {
       $('.profpage').classList.remove('visitor');
       document.querySelector('.prof-hero').style.display = '';
@@ -5762,7 +5764,7 @@ async function renderPrivConvs(tab = 'members') {
     <div class="pv-row ${c.registered ? '' : 'guest-pm'}" data-id="${c.id}">
       <div class="uava">${avatarHtml(c.avatar)}</div>
       <div class="ptxt">
-        <div class="pname">${esc(c.username)} ${c.verified ? '<i class="f7-icons" style="font-size:13px;color:#1685f5">checkmark_seal_fill</i>' : ''}<img src="/badges/${GENDER_IMG[c.gender] || 'secret.png'}"></div>
+        <div class="pname">${esc(c.username)} ${c.verified ? '<i class="f7-icons" style="font-size:13px;color:#1685f5">checkmark_seal_fill</i>' : ''}<img src="/badges/${GENDER_IMG[c.gender] || 'secret.png'}" alt=""></div>
         <div class="plast">${esc(c.last)}</div>
       </div>
       ${c.unread ? `<em class="bn-badge pm-conv-badge" style="position:static;display:inline-flex;margin-inline-start:auto;margin-inline-end:8px">${c.unread}</em>` : ''}
@@ -6236,7 +6238,7 @@ function beginPrivateCallFlow(callType) {
 
   // إعداد بيانات المستخدم المتصل به
   const peerAvatarSrc = PM_WITH.avatar ? (/^https?:\/\//.test(PM_WITH.avatar) || PM_WITH.avatar.startsWith('/') ? PM_WITH.avatar : '/avatars/' + PM_WITH.avatar) : '/avatars/default.png';
-  if (peerAva) peerAva.innerHTML = `<img src="${esc(peerAvatarSrc)}" onerror="this.src='/avatars/default.png'">`;
+  if (peerAva) peerAva.innerHTML = `<img src="${esc(peerAvatarSrc)}" alt="" onerror="this.src='/avatars/default.png'">`;
   if (peerName) peerName.textContent = PM_WITH.username || (APP_LANG === 'en' ? 'User' : 'مستخدم');
 
   // الحالة 1: المكالمة التجريبية الأولى المجانية (لم يقم بأي مكالمة سابقة)
@@ -8556,6 +8558,7 @@ $$('#setList .switch').forEach(sw => sw.onclick = () => {
   const k = sw.dataset.set;
   PREFS[k] = PREFS[k] ? 0 : 1;
   sw.classList.toggle('on', !!PREFS[k]);
+  sw.setAttribute('aria-checked', PREFS[k] ? 'true' : 'false');
   savePrefs();
   // إشعارات سطح المكتب: طلب الإذن يتحرك بمفعّل المستخدم نفسه (متطلب المتصفحات)
   if (k === 'dsk_ntf' && PREFS[k]) requestDesktopNotifyPermission(true);
@@ -8639,7 +8642,7 @@ async function renderAvaGrid(cat) {
     } else {
       MY_AVATARS.forEach(item => {
         const v = item.path;
-        html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${esc(v)}"><img src="${esc(v)}" loading="lazy"></div>`;
+        html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${esc(v)}"><img src="${esc(v)}" alt="" loading="lazy"></div>`;
       });
     }
   } else {
@@ -8648,14 +8651,14 @@ async function renderAvaGrid(cat) {
       if (serverAvatars && serverAvatars.length) {
         serverAvatars.forEach(item => {
           const v = item.path;
-          html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${esc(v)}"><img src="${esc(v)}" loading="lazy"></div>`;
+          html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${esc(v)}"><img src="${esc(v)}" alt="" loading="lazy"></div>`;
         });
       } else {
         const AVA_FALLBACK = { def: 20, nature: 16, other: 16 };
         const n = AVA_FALLBACK[cat] || 16;
         for (let i = 1; i <= n; i++) {
           const v = `/avatars/${cat}/${String(i).padStart(2, '0')}.jpg`;
-          html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${v}"><img src="${v}" loading="lazy"></div>`;
+          html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${v}"><img src="${v}" alt="" loading="lazy"></div>`;
         }
       }
     } catch (e) {
@@ -8663,7 +8666,7 @@ async function renderAvaGrid(cat) {
       const n = AVA_FALLBACK[cat] || 16;
       for (let i = 1; i <= n; i++) {
         const v = `/avatars/${cat}/${String(i).padStart(2, '0')}.jpg`;
-        html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${v}"><img src="${v}" loading="lazy"></div>`;
+        html += `<div class="ava-cell ${SEL_AVATAR === v ? 'sel' : ''}" data-v="${v}"><img src="${v}" alt="" loading="lazy"></div>`;
       }
     }
   }

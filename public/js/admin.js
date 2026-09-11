@@ -1854,7 +1854,7 @@ async function renderAdminGifts() {
   const list = await api('/api/admin/gifts');
   $('#gAdminList').innerHTML = list.map(g => `
     <div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e7eaf5;border-radius:12px;padding:10px 14px">
-      ${g.img && g.img.startsWith('/') ? `<img src="${esc(g.img)}" style="width:46px;height:46px;object-fit:contain;background:#f6f7fc;border-radius:10px;padding:4px">` : `<span style="font-size:32px;width:46px;text-align:center">${esc(g.img || '🎁')}</span>`}
+      ${g.img && g.img.startsWith('/') ? `<img src="${esc(g.img)}" alt="هدية" style="width:46px;height:46px;object-fit:contain;background:#f6f7fc;border-radius:10px;padding:4px">` : `<span style="font-size:32px;width:46px;text-align:center">${esc(g.img || '🎁')}</span>`}
       <div style="flex:1"><b style="font-size:13.5px;color:#2c3154">${esc(g.name)}</b>
         <div style="font-size:11.5px;color:#98a0b3;font-weight:700">القيمة: ${g.price} 🪙 ← يربح المستقبل: ${g.payout} 🪙 • التسكير: $${(+g.usd_value || 0)} • ${esc(g.cat)}</div>
         <div style="font-size:10.5px;color:${g.audio ? '#16a34a' : '#9ca3af'};font-weight:700;margin-top:3px">${g.audio ? '🔊 صوت الهدية مرفق' : '🔇 بدون صوت'} • ${g.style === 'royal' ? '👑 نمط ملكي' : (g.style === 'normal' ? '🎁 نمط عادي' : '⚙️ تلقائي حسب القيمة')}</div></div>
@@ -1909,7 +1909,7 @@ async function renderCashoutRequests() {
         statusChip = `<span class="chip" style="background:#fee2e2;color:#991b1b">⛔ مرفوض${r.note ? ' — ' + esc(r.note) : ''}</span>`;
       }
       const time = new Date((+r.created_at || 0) * 1000).toLocaleString('ar-JO');
-      const ava = r.avatar && r.avatar.startsWith('/') ? `<img src="${esc(r.avatar)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover">` : '<span style="width:40px;height:40px;border-radius:50%;background:#f3c8de;display:flex;align-items:center;justify-content:center;font-size:18px">👩</span>';
+      const ava = r.avatar && r.avatar.startsWith('/') ? `<img src="${esc(r.avatar)}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover">` : '<span style="width:40px;height:40px;border-radius:50%;background:#f3c8de;display:flex;align-items:center;justify-content:center;font-size:18px">👩</span>';
       return `
         <div style="background:#fff;border:1px solid #e7eaf5;border-radius:14px;padding:14px 16px">
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -2123,7 +2123,7 @@ async function renderAdminEmojis() {
   const list = await api('/api/admin/emojis');
   $('#emojiAdminGrid').innerHTML = list.map(e => `
     <div style="position:relative;background:#fff;border:1px solid #e7eaf5;border-radius:12px;padding:10px;display:flex;align-items:center;justify-content:center">
-      <img src="${esc(e.img)}" style="width:48px;height:48px;object-fit:contain">
+      <img src="${esc(e.img)}" alt="" style="width:48px;height:48px;object-fit:contain">
       <button class="emoji-del" data-id="${e.id}" style="position:absolute;top:4px;left:4px;border:0;background:#fee2e2;color:#dc2626;border-radius:8px;width:22px;height:22px;cursor:pointer;font-weight:900">×</button>
     </div>`).join('') || '<div style="color:#9aa0b5;font-weight:800;grid-column:1/-1;text-align:center">لا يوجد إيموجي مرفوع بعد</div>';
   $$('.emoji-del').forEach(b => b.onclick = async () => { await api('/api/admin/emojis/' + b.dataset.id + '/del', 'POST'); renderAdminEmojis(); });
@@ -2839,7 +2839,7 @@ const PAGES = {
     build: () => `
       <div class="page-title"><i class="f7-icons mi" style="color:#c084fc">paintbrush_fill</i> وضع الشعار</div>
       <div style="background:#f2f5ff;border:1px solid #dfe5ff;border-radius:12px;padding:30px;text-align:center;margin-bottom:22px">
-        ${SETTINGS.logo_url ? `<img src="${esc(SETTINGS.logo_url)}" style="max-width:260px;max-height:120px" onerror="this.outerHTML='<div style=&quot;color:#9ca3af&quot;>تعذر تحميل الشعار</div>'">` : `<div style="font-size:20px;font-weight:800;color:#4f46e5">★ ${esc(SETTINGS.site_name || 'الدردشة')}</div>`}
+        ${SETTINGS.logo_url ? `<img src="${esc(SETTINGS.logo_url)}" alt="شعار الموقع" style="max-width:260px;max-height:120px" onerror="this.outerHTML='<div style=&quot;color:#9ca3af&quot;>تعذر تحميل الشعار</div>'">` : `<div style="font-size:20px;font-weight:800;color:#4f46e5">★ ${esc(SETTINGS.site_name || 'الدردشة')}</div>`}
         <div style="color:#9ca3af;font-size:12px;margin-top:8px">الرابط : ${esc(SETTINGS.logo_url || 'الافتراضي')}</div>
       </div>
       <div class="section-title">رفع شعار جديد <i class="f7-icons mi" style="color:#818cf8">square_arrow_up_fill</i></div>
@@ -2895,7 +2895,7 @@ const PAGES = {
     build: () => {
       const ge = ED_GIFT || {};
       const vis = ge.img
-        ? (ge.img.startsWith('/') ? `<img src="${esc(ge.img)}" style="width:54px;height:54px;object-fit:contain">` : `<span style="font-size:40px">${esc(ge.img)}</span>`)
+        ? (ge.img.startsWith('/') ? `<img src="${esc(ge.img)}" alt="" style="width:54px;height:54px;object-fit:contain">` : `<span style="font-size:40px">${esc(ge.img)}</span>`)
         : '<span style="font-size:38px">🎁</span>';
       return `
       <div class="page-title"><i class="f7-icons mi" style="color:#f472b6">gift_fill</i> ادارة الهدايا</div>
@@ -2948,7 +2948,7 @@ const PAGES = {
         const fd = new FormData(); fd.append('file', $('#gFile').files[0]);
         const d = await api('/api/admin/upload/gift', 'POST', fd, true);
         $('#gImgPath').textContent = d.path;
-        $('#gPrev').innerHTML = `<img src="${esc(d.path)}" style="width:54px;height:54px;object-fit:contain">`;
+        $('#gPrev').innerHTML = `<img src="${esc(d.path)}" alt="معاينة الهدية" style="width:54px;height:54px;object-fit:contain">`;
         toast('تم رفع الصورة');
       };
       $('#gAudioUpBtn').onclick = () => $('#gAudioFile').click();
@@ -3044,11 +3044,11 @@ const PAGES = {
         $('#ugUsers').innerHTML = users.length ? users.slice(0, 30).map(u => `
           <div class="list-card">
             <div style="display:flex;align-items:center;gap:10px">
-              ${u.avatar ? `<img class="avatar" src="${esc(u.avatar)}" style="width:36px;height:36px;border-radius:50%">` : `<span style="width:36px;height:36px;border-radius:50%;background:#312e81;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px"><i class="f7-icons">person_fill</i></span>`}
+              ${u.avatar ? `<img class="avatar" src="${esc(u.avatar)}" alt="" style="width:36px;height:36px;border-radius:50%">` : `<span style="width:36px;height:36px;border-radius:50%;background:#312e81;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px"><i class="f7-icons">person_fill</i></span>`}
               <div>
                 <div style="font-weight:800">${esc(u.username)}</div>
                 <div style="display:flex;gap:6px;margin-top:4px;align-items:center;flex-wrap:wrap">
-                  <img src="/badges/${u.badge}" style="width:18px;height:18px">
+                  <img src="/badges/${u.badge}" alt="" style="width:18px;height:18px">
                   <span class="chip">رصيد: ${u.balance}</span>
                   ${u.gender === 'girl' ? '<span class="chip" style="color:#d43d6e">♀ فتاة</span>' : ''}
                 </div>
@@ -3069,7 +3069,7 @@ const PAGES = {
         catch (e) { box.innerHTML = `<div class="empty">${esc(e.error || 'تعذر تحميل الهدايا')}</div>`; return; }
         const u = d.user, tt = d.totals;
         const media = (g) => String(g.gift_img || '').startsWith('/')
-          ? `<img src="${esc(g.gift_img)}" style="width:34px;height:34px;object-fit:contain">`
+          ? `<img src="${esc(g.gift_img)}" alt="" style="width:34px;height:34px;object-fit:contain">`
           : `<span style="font-size:26px">${esc(g.gift_img || '🎁')}</span>`;
         box.innerHTML = `
           <div class="section-title"><i class="f7-icons mi" style="color:#ec4899">gift_fill</i> هدايا ${esc(u.username)}</div>
@@ -3219,7 +3219,7 @@ const PAGES = {
         const list = await api('/api/admin/avatars?category=' + currentCat);
         $('#adminAvaList').innerHTML = list.length ? list.map(a => `
           <div style="position:relative;border-radius:14px;overflow:hidden;background:#f1f5f9;border:1px solid #e2e8f0;aspect-ratio:1">
-            <img src="${esc(a.path)}" style="width:100%;height:100%;object-fit:cover">
+            <img src="${esc(a.path)}" alt="إعلان" style="width:100%;height:100%;object-fit:cover">
             <button class="btn-del-ava" data-id="${a.id}" style="position:absolute;top:4px;right:4px;background:rgba(220,38,38,0.92);color:#fff;border:0;border-radius:6px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;font-weight:900" title="حذف">×</button>
           </div>
         `).join('') : '<div class="empty" style="grid-column:1/-1">لا توجد رمزيات في هذا القسم</div>';
@@ -3428,7 +3428,7 @@ const PAGES = {
       $('#roomsList').innerHTML = rooms.length ? rooms.map(r => `
         <div class="list-card">
           <div style="display:flex;align-items:center;gap:12px">
-            <div style="width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,#9c1f46,#d43d6e);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;overflow:hidden">${r.image ? `<img src="${esc(r.image)}" style="width:100%;height:100%;object-fit:cover">` : '<i class="f7-icons">house_fill</i>'}</div>
+            <div style="width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,#9c1f46,#d43d6e);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;overflow:hidden">${r.image ? `<img src="${esc(r.image)}" alt="صورة الغرفة" style="width:100%;height:100%;object-fit:cover">` : '<i class="f7-icons">house_fill</i>'}</div>
             <div>
               <div style="font-weight:800;color:#111827">${esc(r.name)}</div>
               <div style="font-size:12.5px;color:#6b7280">${esc(r.description)}</div>
@@ -3488,7 +3488,7 @@ const PAGES = {
         <input class="inp" id="rPass" placeholder="اتركها فارغة بدون كلمة مرور" value="${esc(r.password || '')}"></div>
       <div class="fgroup"><label><i class="f7-icons mi" style="color:#22c55e">photo_fill</i> صورة الغرفة</label>
         <div style="display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #e7eaf5;border-radius:12px;padding:12px 14px">
-          <div id="roomImgPrev" style="width:64px;height:64px;border-radius:14px;background:linear-gradient(135deg,#9c1f46,#d43d6e);display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;overflow:hidden;flex:0 0 auto">${r.image ? `<img src="${esc(r.image)}" style="width:100%;height:100%;object-fit:cover">` : '<i class="f7-icons">house_fill</i>'}</div>
+          <div id="roomImgPrev" style="width:64px;height:64px;border-radius:14px;background:linear-gradient(135deg,#9c1f46,#d43d6e);display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;overflow:hidden;flex:0 0 auto">${r.image ? `<img src="${esc(r.image)}" alt="صورة الغرفة" style="width:100%;height:100%;object-fit:cover">` : '<i class="f7-icons">house_fill</i>'}</div>
           <div style="flex:1">
             <button type="button" class="btn btn-gray" id="roomImgBtn"><i class="f7-icons">square_arrow_up_fill</i> رفع صورة الغرفة</button>
             <input type="file" id="roomImgFile" accept="image/*" style="display:none">
@@ -3507,7 +3507,7 @@ const PAGES = {
         const fd = new FormData(); fd.append('file', $('#roomImgFile').files[0]);
         const d = await api('/api/admin/upload/room', 'POST', fd, true);
         $('#roomImgPath').textContent = d.path;
-        $('#roomImgPrev').innerHTML = `<img src="${esc(d.path)}" style="width:100%;height:100%;object-fit:cover">`;
+        $('#roomImgPrev').innerHTML = `<img src="${esc(d.path)}" alt="معاينة الغرفة" style="width:100%;height:100%;object-fit:cover">`;
         toast('تم رفع صورة الغرفة');
       };
       $('#saveRoomBtn').onclick = async () => {
@@ -4102,11 +4102,11 @@ const PAGES = {
           return `
           <div class="list-card">
             <div style="display:flex;align-items:center;gap:10px">
-              ${u.avatar ? `<img class="avatar" src="${esc(u.avatar)}" style="width:36px;height:36px;border-radius:50%">` : `<span style="width:36px;height:36px;border-radius:50%;background:#312e81;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px"><i class="f7-icons">person_fill</i></span>`}
+              ${u.avatar ? `<img class="avatar" src="${esc(u.avatar)}" alt="" style="width:36px;height:36px;border-radius:50%">` : `<span style="width:36px;height:36px;border-radius:50%;background:#312e81;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px"><i class="f7-icons">person_fill</i></span>`}
               <div>
                 <div style="font-weight:800">${esc(u.username)}</div>
                 <div style="display:flex;gap:6px;margin-top:4px;align-items:center;flex-wrap:wrap">
-                  <img src="/badges/${u.badge}" style="width:18px;height:18px">
+                  <img src="/badges/${u.badge}" alt="" style="width:18px;height:18px">
                   <span class="chip">رصيد: ${u.balance}</span>
                   ${u.ip ? `<span class="chip" dir="ltr">IP: ${esc(u.ip)}</span>` : ''}
                   ${u.banned ? '<span class="chip" style="color:#dc2626">محظور</span>' : ''}
@@ -4249,7 +4249,7 @@ const PAGES = {
           </div>
           <div class="u-cell">
             <div class="u-name">${esc(u.username)}
-              <span class="avatar-i">${u.avatar ? `<img class="avatar" src="${esc(u.avatar)}" style="width:34px;height:34px;border-radius:50%">` : '<i class="f7-icons">person_fill</i>'}</span>
+              <span class="avatar-i">${u.avatar ? `<img class="avatar" src="${esc(u.avatar)}" alt="" style="width:34px;height:34px;border-radius:50%">` : '<i class="f7-icons">person_fill</i>'}</span>
             </div>
             <span class="rank-pill" style="border-color:${rankColor};color:${rankColor}"><span class="star">★</span> ${rankLabel}</span>
           </div>
@@ -4759,7 +4759,7 @@ const PAGES = {
                 <span class="chip">اسم الدردشة: ${esc(p.site_name || 'افتراضي')}</span>
                 <span class="chip">الكلمات: ${esc(p.keywords || '—')}</span>
                 ${p.logo_image ? `<span class="chip" style="color:#0284c7">🖼️ الشعار مرفق</span>` : ''}
-                ${p.favicon ? `<span class="chip" style="color:#7c3aed"><img src="${esc(p.favicon)}" style="width:13px;height:13px;vertical-align:-2px;margin-left:4px;border-radius:3px"> أيقونة خاصة</span>` : '<span class="chip" style="color:#94a3b8">⏳ أيقونة تلقائية</span>'}
+                ${p.favicon ? `<span class="chip" style="color:#7c3aed"><img src="${esc(p.favicon)}" alt="" style="width:13px;height:13px;vertical-align:-2px;margin-left:4px;border-radius:3px"> أيقونة خاصة</span>` : '<span class="chip" style="color:#94a3b8">⏳ أيقونة تلقائية</span>'}
                 ${p.h1 || p.intro ? '<span class="chip" style="background:#f0fdf4;color:#166534">🧬 محتوى فريد</span>' : '<span class="chip" style="background:#fef2f2;color:#b91c1c">⚠️ بلا محتوى فريد</span>'}
               </div>
             </div>
@@ -5041,7 +5041,7 @@ const PAGES = {
               let contentHtml = esc(m.text);
               if (m.text && m.text.startsWith('media::image::')) {
                 const imgPath = m.text.slice('media::image::'.length);
-                contentHtml = `<a href="${esc(imgPath)}" target="_blank"><img src="${esc(imgPath)}" style="max-width:200px;max-height:160px;border-radius:8px;display:block;margin-top:4px"></a>`;
+                contentHtml = `<a href="${esc(imgPath)}" target="_blank"><img src="${esc(imgPath)}" alt="صورة" style="max-width:200px;max-height:160px;border-radius:8px;display:block;margin-top:4px"></a>`;
               } else if (m.text && m.text.startsWith('media::audio::')) {
                 const audioPath = m.text.slice('media::audio::'.length).split('::')[0];
                 contentHtml = `<audio src="${esc(audioPath)}" controls style="height:34px;margin-top:4px;width:100%"></audio>`;
@@ -5972,12 +5972,12 @@ async function renderRoomAdminsList() {
       <div class="list-card" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;border-right:4px solid #fb923c">
         <div style="display:flex;align-items:center;gap:12px">
           <div style="width:44px;height:44px;border-radius:50%;overflow:hidden;flex:none;background:#e2e8f0;display:flex;align-items:center;justify-content:center">
-            ${item.user_avatar ? `<img src="${esc(item.user_avatar)}" style="width:100%;height:100%;object-fit:cover">` : '<i class="f7-icons" style="font-size:22px;color:#64748b">person_fill</i>'}
+            ${item.user_avatar ? `<img src="${esc(item.user_avatar)}" alt="" style="width:100%;height:100%;object-fit:cover">` : '<i class="f7-icons" style="font-size:22px;color:#64748b">person_fill</i>'}
           </div>
           <div>
             <div style="display:flex;align-items:center;gap:8px">
               <b style="font-size:14.5px;color:#0f172a">${esc(item.username)}</b>
-              <span class="chip" style="background:#fff7ed;color:#ea580c;font-weight:900"><img src="/badges/roomadmin.png" style="width:14px;height:14px;vertical-align:middle;margin-inline-end:3px"> أدمن غرفة</span>
+              <span class="chip" style="background:#fff7ed;color:#ea580c;font-weight:900"><img src="/badges/roomadmin.png" alt="" style="width:14px;height:14px;vertical-align:middle;margin-inline-end:3px"> أدمن غرفة</span>
             </div>
             <div style="display:flex;gap:10px;margin-top:4px;font-size:12px;color:#64748b;flex-wrap:wrap">
               <span>🏠 الغرفة: <b style="color:#0f172a">${esc(item.room_name || 'غرفة')}</b></span>
