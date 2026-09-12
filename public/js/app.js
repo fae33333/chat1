@@ -1646,6 +1646,9 @@ function closeOv(id) {
     try { stopProfileAudioStream(); } catch (e) { }
     CUR_PROFILE_USER = null;
   }
+  // الخروج من المحادثة الخاصة: لم نعد داخلها، فأي رسالة جديدة من الشخص نفسه
+  // يجب أن تُظهر الإشعار من جديد وتزيد العداد.
+  if (id === 'pmOv') PM_WITH = null;
   refreshNav();
 }
 function refreshNav() {
@@ -3934,14 +3937,17 @@ function showPmBanner(p) {
   if (timeEl) timeEl.textContent = 'الآن';
   if (avaEl) avaEl.src = pmSenderAvatarUrl(p.from_id);
   // النقر يفتح محادثة المُرسِل مباشرة
-  el.onclick = () => {
+  el.onclick = async () => {
     hidePmBanner();
     try {
-      openPrivateWith({
+      await openPrivateWith({
         id: +p.from_id, username: name,
         registered: +p.from_registered || 0, unread: 0,
         avatar: pmSenderAvatarUrl(p.from_id)
       });
+      // فتح المحادثة يعلّم رسائلها مقروءة على الخادم، فنعيد حساب الشارة
+      // من المصدر حتى يختفي العدد فوراً بدل أن يبقى معلّقاً.
+      loadUnreadPrivCount();
     } catch (e) { }
   };
   el.classList.add('show');
