@@ -19,7 +19,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20260912-swroom25">
+<link rel="stylesheet" href="/css/style.css?v=20260912-pmbanner26">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body>
@@ -1535,10 +1535,23 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- إشعار الرسالة الخاصة الوارد من الأعلى -->
+  <div class="pm-banner" id="pmBanner" role="alert" aria-live="polite">
+    <img class="pmb-ava" id="pmBannerAva" src="/avatars/default.png" alt="" width="44" height="44" decoding="async">
+    <div class="pmb-body">
+      <div class="pmb-head">
+        <span class="pmb-name" id="pmBannerName">-</span>
+        <span class="pmb-time" id="pmBannerTime">الآن</span>
+      </div>
+      <div class="pmb-line" id="pmBannerLine">ارسل لك رسالة خاصة</div>
+      <div class="pmb-hint">انتقل إلى قائمة الرسائل الخاصة لقراءتها</div>
+    </div>
+  </div>
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/app.js?v=20260912-swroom25" defer></script>
+<script src="/js/app.js?v=20260912-pmbanner26" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

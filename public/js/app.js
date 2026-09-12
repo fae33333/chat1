@@ -2302,6 +2302,7 @@ function connectSocket() {
       PRIV_UNREAD++;
       updatePrivBadge();
       if (PREFS.pm_recv) beep(880, .15);
+      showPmBanner(p);         // شريط الإشعار داخل الصفحة (كمبيوتر وهاتف)
       notifyDesktopPrivate(p); // إشعار سطح المكتب (متصفح الكمبيوتر)
     }
     if ($('#privOv').classList.contains('open')) renderPrivConvs(PRIV_TAB);
@@ -3916,6 +3917,43 @@ function pmSenderAvatarUrl(uid) {
   } catch (e) { }
   return '/avatars/default.png';
 }
+// =====================================================
+//  شريط إشعار الرسالة الخاصة (ينزل من أعلى الصفحة)
+// =====================================================
+// يظهر داخل الصفحة نفسها على الكمبيوتر والهاتف، والنقر عليه يفتح المحادثة.
+let PM_BANNER_TIMER = null;
+function showPmBanner(p) {
+  const el = $('#pmBanner');
+  if (!el || !p) return;
+  const name = p.from_name || 'مستخدم';
+  const nameEl = $('#pmBannerName');
+  const avaEl = $('#pmBannerAva');
+  const timeEl = $('#pmBannerTime');
+  if (nameEl) nameEl.textContent = name;
+  if (timeEl) timeEl.textContent = 'الآن';
+  if (avaEl) avaEl.src = pmSenderAvatarUrl(p.from_id);
+  // النقر يفتح محادثة المُرسِل مباشرة
+  el.onclick = () => {
+    hidePmBanner();
+    try {
+      openPrivateWith({
+        id: +p.from_id, username: name,
+        registered: +p.from_registered || 0, unread: 0,
+        avatar: pmSenderAvatarUrl(p.from_id)
+      });
+    } catch (e) { }
+  };
+  el.classList.add('show');
+  clearTimeout(PM_BANNER_TIMER);
+  PM_BANNER_TIMER = setTimeout(hidePmBanner, 5000);
+}
+function hidePmBanner() {
+  const el = $('#pmBanner');
+  if (!el) return;
+  clearTimeout(PM_BANNER_TIMER);
+  el.classList.remove('show');
+}
+
 // إشعار سطح المكتب لرسالة خاصة وصلت والمحادثة غير مفتوحة
 function notifyDesktopPrivate(p) {
   if (!p || !ME || +p.from_id === +ME.id) return;
