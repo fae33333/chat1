@@ -19,7 +19,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20260912-pmbanner26">
+<link rel="stylesheet" href="/css/style.css?v=20260913-feat2">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body>
@@ -85,6 +85,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <!-- كبسولة الراديو (بنفس شكل زر المايك): زر تشغيل/إيقاف + اسم الراديو -->
         <button class="c-mic radio-pill" id="radioPill" type="button" hidden title="تشغيل الراديو">
           <i class="f7-icons" id="radioIcon">play_fill</i>
+          <span class="radio-spin" id="radioSpin"></span>
           <span class="radio-pill-name" id="radioName"></span>
           <span class="live-dot" id="radioDot"></span>
         </button>
@@ -135,6 +136,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <div class="enter-drop chat-drop" id="roomDrop">
       <button id="dropLeaveRoom">مغادرة الغرفة <i class="f7-icons">chevron_right</i></button>
       <button id="dropRefreshRooms">تحديث الغرف <i class="f7-icons">chevron_right</i></button>
+      <button id="dropHideWelcome" title="حذف «العام» من شاشة أنت فقط — يظل ظاهراً لبقية المستخدمين">حذف العام <i class="f7-icons">chevron_right</i></button>
+      <button id="dropWipeWelcome" style="display:none" title="حذف «العام» نهائياً من الغرفة لجميع المستخدمين">حذف العام للجميع <i class="f7-icons">chevron_right</i></button>
     </div>
     <!-- طبقة العلامة المائية الثابتة في خلفية الدردشة العامة خلف كل الرسائل -->
     <div class="chat-bg-watermark" id="chatBgWatermark" aria-hidden="true">
@@ -1551,7 +1554,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/app.js?v=20260912-beat30" defer></script>
+<script src="/js/app.js?v=20260913-feat2" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

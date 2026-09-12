@@ -4118,6 +4118,29 @@ body.lang-en .system-event-message { margin-right:0; margin-left:21px; }
   line-height:1.65;
   word-break:break-word;
 }
+/* أزرار تعديل/حذف رسالة الروبوت (تظهر للإدارة فقط) */
+.robot-msg-actions { display:flex; gap:6px; margin-inline-end:auto; flex-wrap:wrap; }
+.robot-msg-act {
+  display:inline-flex; align-items:center; gap:4px;
+  border:1px solid #e5c9dd; background:#fdf2f8; color:#9d174d;
+  font-size:11px; font-weight:800; padding:3px 10px; border-radius:9px;
+  cursor:pointer; font-family:inherit; line-height:1.4;
+}
+.robot-msg-act:hover { background:#fce7f3; }
+.robot-msg-act:active { transform:scale(.95); }
+.robot-msg-act.danger { border-color:#fecaca; background:#fef2f2; color:#b91c1c; }
+.robot-msg-act.danger:hover { background:#fee2e2; }
+.robot-msg-act i { font-size:12px; }
+/* محرر رسالة الروبوت المدمج */
+.robot-edit-form { width:100%; display:flex; flex-direction:column; gap:8px; margin:2px 0 6px 22px; }
+.robot-edit-text {
+  width:100%; box-sizing:border-box; border:1px solid #e7d6e2; border-radius:9px;
+  padding:7px 10px; font-size:13px; font-family:inherit; background:#fffdf9; color:#111827;
+}
+.robot-edit-text:focus { outline:none; border-color:#d946a6; box-shadow:0 0 0 3px rgba(217,70,166,.12); }
+.robot-edit-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.robot-edit-color { width:40px; height:32px; border:1px solid #e7d6e2; border-radius:8px; padding:2px; background:#fff; cursor:pointer; }
+.robot-edit-size { width:64px; border:1px solid #e7d6e2; border-radius:8px; padding:6px 8px; font-size:12px; font-family:inherit; }
 body.lang-en .robot-system-message { direction:ltr; }
 
 /* زر اللغة داخل صفحة الإعدادات */
@@ -6118,6 +6141,14 @@ body.lang-tr .system-event.gift-system .up-msg-card { margin-right:0; margin-lef
 .c-mic.radio-pill .live-dot { display: none; }
 /* حالة الاتصال بالبث: نقطة حمراء تنبض قبل بدء الصوت */
 .c-mic.radio-pill.is-connecting .live-dot { display: block; animation: radioDotPulse 1s infinite; }
+/* دائرة التحميل على زر الراديو: تظهر أثناء تحميل البث وتختفي عند بدء التشغيل */
+.c-mic.radio-pill .radio-spin {
+  display:none; width:14px; height:14px; flex:none;
+  border:2px solid rgba(0,0,0,.12); border-top-color:#ef4444; border-radius:50%;
+  animation:radioSpin .8s linear infinite;
+}
+.c-mic.radio-pill.is-connecting .radio-spin { display:inline-block; }
+@keyframes radioSpin { to { transform: rotate(360deg); } }
 /* حالة التشغيل المباشر: أيقونة إيقاف حمراء + الاسم وردي + نقطة مباشر */
 .c-mic.radio-pill.is-playing { background: #fbdce9; }
 .c-mic.radio-pill.is-playing i { color: #ef4444; }

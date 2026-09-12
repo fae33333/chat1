@@ -301,7 +301,44 @@ select.inp { cursor:pointer; }
 .trk-ref { color:#94a3b8; font-size:10.5px; direction:ltr; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .trk-ip { font-weight:800; color:#4338ca; white-space:nowrap; }
 .trk-time { color:#94a3b8; font-size:11px; white-space:nowrap; }
-@media(max-width:700px) { .trk-table-wrap { max-height:none; } .trk-link { max-width:150px; } }
+.trk-actions-cell { white-space:nowrap; }
+/* ====== نافذة «الإعدادات» لكل مستخدم دخل (تفاصيل + حظر) ====== */
+.trk-detail-card { max-width:680px; }
+.trk-detail-body { padding:18px 20px; overflow-y:auto; }
+.trk-dt-identity { display:flex; align-items:center; gap:12px; padding:14px; background:#f8fafc; border:1px solid #eef2f7; border-radius:14px; margin-bottom:6px; flex-wrap:wrap; }
+.trk-dt-avatar { width:52px; height:52px; border-radius:50%; object-fit:cover; border:2px solid #e2e8f0; background:#eef2f7; display:flex; align-items:center; justify-content:center; font-size:24px; color:#94a3b8; flex:none; }
+.trk-dt-name { font-size:16px; font-weight:900; color:#0f172a; word-break:break-word; }
+.trk-dt-chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+.trk-dt-sec { font-size:13px; font-weight:900; color:#334155; margin:16px 0 8px; display:flex; align-items:center; gap:7px; }
+.trk-dt-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.trk-dt-row { display:flex; align-items:baseline; justify-content:space-between; gap:10px; background:#fff; border:1px solid #eef2f7; border-radius:10px; padding:9px 11px; }
+.trk-dt-lbl { font-size:11px; font-weight:800; color:#64748b; display:flex; align-items:center; gap:5px; flex:none; }
+.trk-dt-lbl i { font-size:13px; }
+.trk-dt-val { font-size:12px; font-weight:800; color:#0f172a; text-align:left; word-break:break-word; min-width:0; }
+.trk-dt-val.empty { color:#cbd5e1; }
+.trk-dt-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+.trk-dt-actions .btn { flex:1; min-width:180px; }
+.trk-dt-note { font-size:11px; color:#94a3b8; margin-top:10px; line-height:1.9; }
+@media(max-width:700px) {
+  .trk-table-wrap { max-height:none; }
+  .trk-link { max-width:150px; }
+  #trkSearch { min-width:0; }
+  /* على الهاتف يتحول الجدول إلى بطاقات — كل خلية: عنوان + قيمة */
+  .trk-table thead { display:none; }
+  .trk-table, .trk-table tbody { display:block; }
+  .trk-table tbody tr { display:block; background:#fff; border:1px solid #e7eaf5; border-radius:12px; margin-bottom:10px; overflow:hidden; }
+  .trk-table td { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; border-top:1px solid #f1f5f9; padding:9px 12px; }
+  .trk-table td::before { content:attr(data-label); font-size:10.5px; font-weight:900; color:#64748b; white-space:nowrap; flex:none; padding-top:2px; }
+  .trk-table td[data-label=""]::before { content:none; }
+  .trk-table td[data-label="المستخدم"] { background:#f8fafc; font-size:13.5px; padding:11px 12px; }
+  .trk-table td[data-label="المستخدم"]::before { content:none; }
+  .trk-table td[data-label="إجراءات"], .trk-table td.trk-actions-cell { justify-content:flex-end; background:#fbfcff; }
+  .trk-link { max-width:none; text-align:left; }
+  .trk-dt-grid { grid-template-columns:1fr; }
+  .trk-dt-actions .btn { min-width:100%; }
+  .trk-detail-ov { padding:0; }
+  .trk-detail-ov .trk-detail-card { max-width:100%; max-height:100vh; height:100%; border-radius:0; }
+}
 
 /* توليد روبوت مستخدم داخل الغرفة */
 .room-bot-form { background:#fff; border:1px solid #e7eaf5; border-radius:14px; padding:16px; margin-bottom:22px; }

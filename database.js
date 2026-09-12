@@ -127,7 +127,12 @@ db.serialize(() => {
   )`);
   db.run(`ALTER TABLE room_bots ADD COLUMN reply_enabled INTEGER DEFAULT 0`, () => { });
   db.run(`ALTER TABLE room_bots ADD COLUMN reply_text TEXT DEFAULT 'نعم؟'`, () => { });
+  // نوع الروبوت: 'robot' = روبوت الغرفة، 'visitor' = «زائر عادي» يُولَّد تلقائياً مع كل روبوت جديد
+  db.run(`ALTER TABLE room_bots ADD COLUMN kind TEXT DEFAULT 'robot'`, () => { });
+  // معرّف الروبوت الذي وُلّد هذا الزائر تلقائياً معه (لمسحهما معاً عند الحذف)
+  db.run(`ALTER TABLE room_bots ADD COLUMN parent_id INTEGER DEFAULT 0`, () => { });
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_bots_room ON room_bots (room_id, active)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_room_bots_parent ON room_bots (parent_id)`);
 
   // ---------- مشرفو الغرف المستقلون (أدمن لكل غرفة) ----------
   db.run(`CREATE TABLE IF NOT EXISTS room_admins (
@@ -430,6 +435,18 @@ db.serialize(() => {
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_kicks_room_ip ON room_kicks (room_id, ip)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_kicks_room_user ON room_kicks (room_id, user_id)`);
+  // ---------- إخفاء «العام» (رسالة الترحيب) لمستخدم واحد ----------
+  // المستخدم العادي يحذف الرسالة له فقط: تُخزن النسخة المخفية كي لا تُعرض له
+  // عند دخوله الغرفة مجدداً، ما لم تغيّر الإدارة نصها.
+  db.run(`CREATE TABLE IF NOT EXISTS room_welcome_hides (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL,
+    hidden_text TEXT DEFAULT '',
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(user_id, room_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_room_welcome_hides_lookup ON room_welcome_hides (user_id, room_id)`);
 
   // ---------- التوثيق ----------
   db.run(`CREATE TABLE IF NOT EXISTS verified (

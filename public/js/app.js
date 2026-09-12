@@ -1441,6 +1441,18 @@ if (sessionConflictReloadBtn) sessionConflictReloadBtn.onclick = () => { REFRESH
 // ---------- أدوات ----------
 // مؤشر موحّد يظهر فوق الواجهة أثناء أي طلب يحتاج وقتاً. نستخدم عدّاداً
 // حتى لا يختفي المؤشر إذا كانت هناك أكثر من عملية تعمل في الوقت نفسه.
+// عمليات سريعة «صامتة» لا يعرض لها المؤشر إطلاقاً: فتح قوالب الحالة/الخاص/
+// الإشعارات/الحائط، النقر على اسم مستخدم، تغيير الصور والملف الشخصي،
+// وتطبيقات تغييرات الإدارة على الشات (مزامنة settings/gifts/rooms...).
+const SILENT_LOADING_PATTERNS = [
+  '/api/statuses', '/api/private', '/api/notifications', '/api/wall',
+  '/api/my-avatars', '/api/avatars', '/api/profile', '/api/user/',
+  '/api/public-settings', '/api/gifts', '/api/emojis', '/api/rooms'
+];
+function isSilentLoading(url) {
+  const u = String(url || '');
+  return SILENT_LOADING_PATTERNS.some(p => u.includes(p));
+}
 let GLOBAL_LOADING_COUNT = 0;
 let GLOBAL_LOADING_HIDE_TIMER = null;
 function operationLoadingLabel(url, method = 'GET') {
@@ -1490,11 +1502,12 @@ function waitForOperation(ms) {
   return new Promise(resolve => setTimeout(resolve, Math.max(0, ms || 0)));
 }
 async function trackedFetch(url, options = {}, label) {
-  showGlobalOperationLoading(label || operationLoadingLabel(url, options.method || 'GET'));
+  const willShow = !isSilentLoading(url);
+  if (willShow) showGlobalOperationLoading(label || operationLoadingLabel(url, options.method || 'GET'));
   try {
     return await fetch(url, options);
   } finally {
-    hideGlobalOperationLoading();
+    if (willShow) hideGlobalOperationLoading();
   }
 }
 // =====================================================
@@ -1520,7 +1533,8 @@ async function api(url, method = 'GET', body, isForm = false) {
   if (CHAT_TOKEN) o.headers['X-Chat-Token'] = CHAT_TOKEN;
   if (body && !isForm) { o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); }
   if (body && isForm) o.body = body;
-  showGlobalOperationLoading(operationLoadingLabel(url, method));
+  const willShow = !isSilentLoading(url);
+  if (willShow) showGlobalOperationLoading(operationLoadingLabel(url, method));
   try {
     const r = await fetch(url, o);
     const d = await r.json().catch(() => ({}));
@@ -1530,7 +1544,7 @@ async function api(url, method = 'GET', body, isForm = false) {
     }
     return d;
   } finally {
-    hideGlobalOperationLoading();
+    if (willShow) hideGlobalOperationLoading();
   }
 }
 let ACTIVE_UPLOAD_ID = 0, UPLOAD_HIDE_TIMER = null;
@@ -2489,6 +2503,13 @@ function connectSocket() {
     openAnnouncementPopup(a);
     beep(660, .2);
     notifyDesktopSystem({ text: a.text, icon: 'announcement' });
+  });
+  // عندما تفريغ الإدارة «العام» (حذف العام للجميع): تختفي الرسالة مباشرة
+  // من شاشة كل من هو داخل الغرفة دون انتظار إعادة تحميل.
+  SOCKET.on('welcome_cleared', d => {
+    if (CUR_ROOM && d && +d.roomId === +CUR_ROOM.id) {
+      $$('#msgArea .room-welcome').forEach(el => el.remove());
+    }
   });
   SOCKET.on('membership_changed', ({ plan }) => { if (ME) { ME.membership = plan; MYBADGE = badgeOf(ME); } });
   SOCKET.on('wall_changed', change => {
@@ -4354,6 +4375,64 @@ function expireNoteHtml(u) {
 }
 // الموجة المتحركة: نمط النقاط المتموجة (mwave.gif) يغطي فقاعة الرسالة كاملة —
 // زهري للمميز، وأسود للأدمن والسوبر أدمن (التلوين عبر فلاتر SVG في index.html).
+// تعديل رسالة روبوت من داخل الدردشة: محرر مدمج بالنص واللون والحجم
+function startBotMsgEdit(el, m) {
+  const body = el.querySelector('.robot-system-body');
+  if (!body || body.querySelector('.robot-edit-form')) return;
+  const curColor = /^#[0-9a-fA-F]{6}$/.test(String(m.color || '')) ? m.color : '#d946a6';
+  const curSize = Math.min(40, Math.max(12, +m.size || 16));
+  body.innerHTML = `
+    <div class="robot-edit-form">
+      <input class="robot-edit-text" type="text" maxlength="200" value="${esc(m.text)}" placeholder="نص رسالة الروبوت">
+      <div class="robot-edit-row">
+        <input class="robot-edit-color" type="color" value="${curColor}" title="اللون">
+        <input class="robot-edit-size" type="number" min="12" max="40" value="${curSize}" title="حجم الخط">
+        <button type="button" class="btn btn-green btn-sm robot-edit-save"><i class="f7-icons">checkmark</i> حفظ</button>
+        <button type="button" class="btn btn-gray btn-sm robot-edit-cancel"><i class="f7-icons">xmark</i> إلغاء</button>
+      </div>
+    </div>`;
+  const textInp = body.querySelector('.robot-edit-text');
+  const colorInp = body.querySelector('.robot-edit-color');
+  const sizeInp = body.querySelector('.robot-edit-size');
+  const saveBtn = body.querySelector('.robot-edit-save');
+  const cancelBtn = body.querySelector('.robot-edit-cancel');
+  const restore = () => {
+    body.innerHTML = `
+      <div class="u-msg robot-system-text" style="font-size:${curSize}px;color:${curColor}">${linkifyEscaped(esc(m.text))}</div>`;
+  };
+  cancelBtn.onclick = (ev) => { ev.stopPropagation(); restore(); };
+  saveBtn.onclick = async (ev) => {
+    ev.stopPropagation();
+    const text = textInp.value.trim();
+    if (!text) return toast('اكتب نص رسالة الروبوت', false);
+    saveBtn.disabled = true;
+    try {
+      await api('/api/admin/bots', 'POST', {
+        id: +m.bot_id,
+        text,
+        color: colorInp.value,
+        size: +sizeInp.value || 16,
+        room_id: +m.bot_room_id || 0,
+        interval_min: +m.bot_interval || 5,
+        active: m.bot_active === 0 ? 0 : 1
+      });
+      const txt = el.querySelector('.robot-system-text');
+      if (txt) {
+        txt.style.fontSize = Math.min(40, Math.max(12, +sizeInp.value || 16)) + 'px';
+        txt.style.color = colorInp.value;
+        txt.innerHTML = linkifyEscaped(esc(text));
+      }
+      toast('تم تعديل رسالة الروبوت ✅');
+    } catch (err) {
+      toast((err && err.error) || 'تعذر تعديل الرسالة', false);
+      saveBtn.disabled = false;
+    }
+  };
+  textInp.onkeydown = (ev) => { if (ev.key === 'Enter') saveBtn.onclick(ev); };
+  textInp.focus();
+  textInp.select();
+}
+
 function renderMsg(m) {
   // تتبع المعرّفات المرسومة — يُستخدم لإدراك الرسائل الفائتة عند استعادة الاتصال
   if (m && m.id) {
@@ -4442,14 +4521,32 @@ function renderMsg(m) {
     const botSize = Math.min(40, Math.max(12, +m.size || 16));
     const botColor = /^#[0-9a-fA-F]{6}$/.test(String(m.color || '')) ? m.color : '#660033';
     el.className = 'robot-system-message';
+    // للإدارة (أدمن/سوبر أدمن/سوبر ماستر): زرّا تعديل وحذف على رسالة الروبوت نفسها
+    const botActions = (isAdmRank() && m.bot_id) ? `
+      <div class="robot-msg-actions">
+        <button type="button" class="robot-msg-act" data-rmact="edit" title="تعديل رسالة الروبوت"><i class="f7-icons">pencil</i> تعديل</button>
+        <button type="button" class="robot-msg-act danger" data-rmact="del" title="حذف رسالة الروبوت"><i class="f7-icons">trash</i> حذف</button>
+      </div>` : '';
     el.innerHTML = `
-      <div class="robot-system-head">
+      <div class="robot-system-head">${botActions}
         <img src="/img/robot-message.svg" width="20" height="20" alt="">
         <div class="robot-system-title">رسالة النظام</div>
       </div>
       <div class="font_msg robot-system-body">
         <div class="u-msg robot-system-text" style="font-size:${botSize}px;color:${botColor}">${linkifyEscaped(esc(m.text))}</div>
       </div>`;
+    const editBtn = el.querySelector('[data-rmact="edit"]');
+    if (editBtn) editBtn.onclick = (ev) => { ev.stopPropagation(); startBotMsgEdit(el, m); };
+    const delBtn = el.querySelector('[data-rmact="del"]');
+    if (delBtn) delBtn.onclick = async (ev) => {
+      ev.stopPropagation();
+      if (!confirm('حذف رسالة الروبوت هذه نهائياً؟\nلن تُعرض مجدداً في الدردشة.')) return;
+      try {
+        await api('/api/admin/bots/' + m.bot_id + '/del', 'POST');
+        el.remove();
+        toast('تم حذف رسالة الروبوت 🗑️');
+      } catch (err) { toast((err && err.error) || 'تعذر حذف الرسالة', false); }
+    };
   } else if (m.type === 'welcome') {
     el.className = 'room-welcome supervision-welcome';
     el.innerHTML = `
@@ -10869,6 +10966,7 @@ window.toggleUsersPanel = toggleUsersPanel;
 // الاسم والرابط والتفعيل من لوحة الإدارة، ويتحدث فوراً مع كل مزامنة sync.
 let RADIO_PLAYING = false;
 let RADIO_RETRY_TIMER = null;
+let RADIO_CONNECT_GUARD = null;   // يوقف دائرة التحميل بعد 30 ثانية إن لم يصل أي حدث
 function radioCfg() {
   return {
     enabled: String(SETTINGS.radio_enabled) === '1',
@@ -10893,8 +10991,12 @@ function renderRadioPill() {
     if (wasPlaying) radioPlay();
   }
 }
+function radioClearConnectGuard() {
+  if (RADIO_CONNECT_GUARD) { clearTimeout(RADIO_CONNECT_GUARD); RADIO_CONNECT_GUARD = null; }
+}
 function radioSetPlaying(playing) {
   RADIO_PLAYING = playing;
+  radioClearConnectGuard();
   const pill = $('#radioPill'); if (!pill) return;
   pill.classList.toggle('is-playing', playing);
   pill.classList.remove('is-connecting');
@@ -10908,11 +11010,15 @@ function radioPlay() {
   if (RADIO_RETRY_TIMER) { clearTimeout(RADIO_RETRY_TIMER); RADIO_RETRY_TIMER = null; }
   if ((audio.getAttribute('src') || '') !== cfg.url) audio.src = cfg.url;
   audio.volume = 0.9;
+  // دائرة التحميل على الزر: تبقى مرئية حتى يبدأ البث فعلياً (حدث playing)
   pill.classList.add('is-connecting');
+  radioClearConnectGuard();
+  RADIO_CONNECT_GUARD = setTimeout(() => { pill.classList.remove('is-connecting'); }, 30000);
   audio.load();
   audio.play().catch(() => {
     // سياسات التشغيل التلقائي بالمتصفحات: يلزم نقرة المستخدم نفسها
     pill.classList.remove('is-connecting');
+    radioClearConnectGuard();
     toast('اضغط زر الراديو مرة أخرى للاستماع', true);
   });
 }
@@ -10920,6 +11026,7 @@ function radioStop() {
   const audio = $('#radioAudio');
   if (!audio) return;
   if (RADIO_RETRY_TIMER) { clearTimeout(RADIO_RETRY_TIMER); RADIO_RETRY_TIMER = null; }
+  radioClearConnectGuard();
   try { audio.pause(); } catch (e) { }
   radioSetPlaying(false);
 }
@@ -10965,7 +11072,38 @@ function leaveRoom() {
 $('#btnRoomUsers').onclick = () => setUsersPanel(!$('#usersPanel').classList.contains('open'));
 // زر النقاط: قائمة خيارات الغرفة
 function closeRoomDrop() { $('#roomDrop').classList.remove('open'); $('#roomDropBg').style.display = 'none'; }
-$('#btnRoomMore').onclick = (e) => { e.stopPropagation(); $('#roomDropBg').style.display = 'block'; $('#roomDrop').classList.toggle('open'); };
+$('#btnRoomMore').onclick = (e) => {
+  e.stopPropagation();
+  // «حذف العام للجميع» يظهر للإدارة فقط (أدمن/سوبر أدمن/سوبر ماستر)
+  const wipe = $('#dropWipeWelcome');
+  if (wipe) wipe.style.display = isAdmRank() ? '' : 'none';
+  $('#roomDropBg').style.display = 'block';
+  $('#roomDrop').classList.toggle('open');
+};
+// «حذف العام» للمستخدم العادي: تختفي الرسالة منه هو فقط (تُحفظ في حسابه)
+$('#dropHideWelcome').onclick = async (e) => {
+  e.stopPropagation();
+  closeRoomDrop();
+  if (!CUR_ROOM) return;
+  try {
+    await api(`/api/rooms/${CUR_ROOM.id}/hide-welcome`, 'POST');
+    $$('#msgArea .room-welcome').forEach(el => el.remove());
+    toast('تم حذف «العام» لديك فقط — يبقى ظاهراً لبقية المستخدمين');
+  } catch (err) { toast((err && err.error) || 'تعذر حذف «العام»', false); }
+};
+// «حذف العام للجميع» للإدارة: تفريغ الرسالة من الغرفة فتختفي عند الجميع
+$('#dropWipeWelcome').onclick = async (e) => {
+  e.stopPropagation();
+  closeRoomDrop();
+  if (!CUR_ROOM) return;
+  if (!confirm('حذف «العام» نهائياً من هذه الغرفة لجميع المستخدمين؟')) return;
+  try {
+    await api(`/api/admin/rooms/${CUR_ROOM.id}/wipe-welcome`, 'POST');
+    $$('#msgArea .room-welcome').forEach(el => el.remove());
+    toast('تم حذف «العام» لجميع المستخدمين ✅');
+  } catch (err) { toast((err && err.error) || 'تعذر حذف «العام» للجميع', false); }
+};
+// (حدث welcome_cleared يُربط داخل connectSocket مع بقية أحداث السوكيت)
 $('#btnLanguage').onclick = () => { setLanguage(APP_LANG, false); openOv('languageOv'); };
 
 // ===== تغيير كلمة المرور (لحسابات مسجلة فقط) =====

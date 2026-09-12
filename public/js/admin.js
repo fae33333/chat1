@@ -2097,7 +2097,7 @@ function renderTrackingRows(d) {
   box.innerHTML = `<div class="trk-table-wrap"><table class="trk-table">
     <thead><tr>
       <th>المستخدم</th><th>من أين دخل</th><th>كلمة البحث</th>
-      <th>الرابط / المسار</th><th>IP</th><th>الدولة</th><th>الوقت</th>
+      <th>الرابط / المسار</th><th>IP</th><th>الدولة</th><th>الوقت</th><th>إجراءات</th>
     </tr></thead><tbody>` + rows.map(r => {
       const st = trackingSourceStyle(r.source);
       const time = r.created_at ? new Date(r.created_at * 1000).toLocaleString('ar-JO') : '-';
@@ -2106,22 +2106,192 @@ function renderTrackingRows(d) {
       // الرابط الكامل يظهر عند المرور بالفأرة، والمختصر داخل الخلية
       const refShort = r.referrer ? String(r.referrer).replace(/^https?:\/\//, '').slice(0, 46) : '';
       return `<tr>
-        <td>${who}</td>
-        <td><span class="trk-src" style="background:${st.bg};color:${st.fg}">
+        <td data-label="المستخدم">${who}</td>
+        <td data-label="من أين دخل"><span class="trk-src" style="background:${st.bg};color:${st.fg}">
           <i class="f7-icons">${st.icon}</i>${esc(r.source)}</span></td>
-        <td>${r.search_query
+        <td data-label="كلمة البحث">${r.search_query
           ? `<span class="trk-q">${esc(r.search_query)}</span>`
           : '<span class="trk-dash">—</span>'}</td>
-        <td dir="ltr" class="trk-link">
+        <td data-label="الرابط / المسار" dir="ltr" class="trk-link">
           ${r.landing ? `<div class="trk-landing">${esc(r.landing)}</div>` : ''}
           ${refShort ? `<div class="trk-ref" title="${esc(r.referrer)}">${esc(refShort)}${r.referrer.length > 53 ? '…' : ''}</div>` : ''}
           ${!r.landing && !refShort ? '<span class="trk-dash">—</span>' : ''}
         </td>
-        <td dir="ltr" class="trk-ip">${esc(r.ip || '-')}</td>
-        <td>${esc(r.country || 'غير معروف')}</td>
-        <td class="trk-time">${time}</td>
+        <td data-label="IP" dir="ltr" class="trk-ip">${esc(r.ip || '-')}</td>
+        <td data-label="الدولة">${esc(r.country || 'غير معروف')}</td>
+        <td data-label="الوقت" class="trk-time">${time}</td>
+        <td data-label="" class="trk-actions-cell">
+          <button type="button" class="btn btn-purple btn-sm trk-gear" data-id="${r.id}" title="الاعدادات: كل التفاصيل + الحظر">
+            <i class="f7-icons">gearshape_fill</i> الإعدادات
+          </button>
+        </td>
       </tr>`;
     }).join('') + `</tbody></table></div>`;
+  // زر الإعدادات لكل مستخدم دخل: يفتح كل تفاصيله مع خيارات الحظر
+  box.querySelectorAll('.trk-gear').forEach(btn => {
+    btn.onclick = () => openTrackingDetail(+btn.dataset.id);
+  });
+}
+
+// ====== نافذة «الإعدادات» لكل مستخدم دخل: كل تفاصيله + الحظر ======
+let TRK_DETAIL_ESC = null;
+function closeTrackingDetail() {
+  const ov = $('#trkDetailOverlay');
+  if (ov) ov.remove();
+  if (TRK_DETAIL_ESC) { document.removeEventListener('keydown', TRK_DETAIL_ESC); TRK_DETAIL_ESC = null; }
+}
+function trkDtRow(icon, color, label, value, ltr) {
+  const empty = value === '' || value == null || value === 0 && label !== 'العمر';
+  return `<div class="trk-dt-row">
+    <span class="trk-dt-lbl"><i class="f7-icons" style="color:${color}">${icon}</i> ${label}:</span>
+    <span class="trk-dt-val${empty ? ' empty' : ''}"${ltr ? ' dir="ltr"' : ''}>${empty ? '—' : esc(value)}</span>
+  </div>`;
+}
+async function openTrackingDetail(loginId) {
+  closeTrackingDetail();
+  const ov = document.createElement('div');
+  ov.className = 'admin-modal-overlay trk-detail-ov';
+  ov.id = 'trkDetailOverlay';
+  ov.innerHTML = `
+    <div class="admin-modal-card trk-detail-card">
+      <div class="admin-modal-header">
+        <div class="admin-modal-title">
+          <div class="seo-ai-icon" style="background:linear-gradient(135deg,#ec4899,#f472b6)"><i class="f7-icons">gearshape_fill</i></div>
+          <div>
+            <h3>الإعدادات — تفاصيل المستخدم</h3>
+            <p>كل ما دخل به هذا الشخص + بيانات حسابه + أدوات الحظر</p>
+          </div>
+        </div>
+        <button class="admin-modal-close" type="button" data-close><i class="f7-icons">xmark</i></button>
+      </div>
+      <div class="trk-detail-body">
+        <div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل التفاصيل...</div>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov || (e.target.closest && e.target.closest('[data-close]'))) closeTrackingDetail(); });
+  TRK_DETAIL_ESC = (e) => { if (e.key === 'Escape') closeTrackingDetail(); };
+  document.addEventListener('keydown', TRK_DETAIL_ESC);
+
+  const body = ov.querySelector('.trk-detail-body');
+  let d;
+  try {
+    d = await api('/api/admin/user-tracking/' + loginId + '/details');
+  } catch (e) {
+    body.innerHTML = `<div class="empty-state" style="padding:22px;text-align:center;color:#dc2626">تعذر تحميل التفاصيل: ${esc(e.error || '')}</div>`;
+    return;
+  }
+  const L = d.login, U = d.user;
+  const rankNames = { user: 'مستخدم', roomadmin: 'أدمن غرفة', admin: 'أدمن', superadmin: 'سوبر أدمن', supermaster: 'ملك الدردشة 👑' };
+  const membershipNames = { none: 'بدون عضوية', mmez: 'مميز', plus: 'Plus', premium: 'Premium', vip: 'VIP' };
+  const genderNames = { boy: 'ذكر', girl: 'أنثى', secret: 'سري' };
+  const fmtTime = ts => ts ? new Date(ts * 1000).toLocaleString('ar-JO') : '—';
+
+  // ---- هوية المستخدم ----
+  let identity = `
+    <div class="trk-dt-identity">
+      ${U && U.avatar
+        ? `<img class="trk-dt-avatar" src="${esc(U.avatar)}" alt="">`
+        : `<span class="trk-dt-avatar"><i class="f7-icons">person_fill</i></span>`}
+      <div style="min-width:0">
+        <div class="trk-dt-name">${esc(L.username || 'بلا اسم')}</div>
+        <div class="trk-dt-chips">
+          <span class="chip" style="${L.registered ? 'background:#dcfce7;color:#166534' : 'background:#fee2e2;color:#991b1b'}">${L.registered ? '✅ عضو مسجل' : '👤 زائر (غير مسجل)'}</span>
+          <span class="chip" style="${d.online ? 'background:#ecfdf5;color:#047857' : 'background:#f1f5f9;color:#64748b'}">${d.online ? '🟢 متصل الآن' : '⚪ غير متصل حالياً'}</span>
+          ${U && U.banned ? '<span class="chip" style="background:#fee2e2;color:#dc2626">🚫 محظور</span>' : ''}
+          ${U && U.muted ? '<span class="chip" style="background:#fef3c7;color:#92400e">🔇 مكتوم</span>' : ''}
+        </div>
+      </div>
+    </div>`;
+
+  // ---- تفاصيل هذا الدخول ----
+  const st = trackingSourceStyle(L.source);
+  let loginSec = `
+    <div class="trk-dt-sec"><i class="f7-icons" style="color:#ec4899">location_north_line_fill</i> تفاصيل هذا الدخول</div>
+    <div class="trk-dt-grid">
+      <div class="trk-dt-row"><span class="trk-dt-lbl"><i class="f7-icons" style="color:${st.fg}">${st.icon}</i> المصدر:</span>
+        <span class="trk-dt-val"><span class="trk-src" style="background:${st.bg};color:${st.fg}"><i class="f7-icons">${st.icon}</i>${esc(L.source || 'غير معروف')}</span></span></div>
+      ${trkDtRow('search', '#f59e0b', 'كلمة البحث', L.search_query || '')}
+      ${trkDtRow('link', '#10b981', 'الرابط القادم', L.referrer || '', true)}
+      ${trkDtRow('signpost_right', '#0ea5e9', 'المسار الذي دخل إليه', L.landing || '', true)}
+      ${trkDtRow('network', '#6366f1', 'عنوان IP', L.ip || '', true)}
+      ${trkDtRow('globe_2', '#10b981', 'الدولة', L.country || 'غير معروف')}
+      ${trkDtRow('mobile_vibration', '#8b5cf6', 'الجهاز / المتصفح', L.user_agent || '', true)}
+      ${trkDtRow('clock', '#94a3b8', 'وقت الدخول', fmtTime(L.created_at))}
+    </div>`;
+
+  // ---- تفاصيل الحساب (إن وُجد) ----
+  let userSec = '';
+  if (U) {
+    userSec = `
+    <div class="trk-dt-sec"><i class="f7-icons" style="color:#8b5cf6">person_crop_circle_fill</i> تفاصيل الحساب</div>
+    <div class="trk-dt-grid">
+      ${trkDtRow('rosette', '#f59e0b', 'الصلاحية', rankNames[U.rank] || U.rank)}
+      ${trkDtRow('money_dollar_circle', '#f59e0b', 'العضوية', membershipNames[U.membership] || U.membership)}
+      ${trkDtRow('person_2', '#38bdf8', 'النوع', genderNames[U.gender] || U.gender)}
+      ${trkDtRow('123', '#38bdf8', 'العمر', U.age ? U.age : '')}
+      ${trkDtRow('globe_2', '#10b981', 'دولة الحساب', U.country || '')}
+      ${trkDtRow('cube_box', '#f59e0b', 'الرصيد (ذهب)', U.balance)}
+      ${trkDtRow('calendar', '#94a3b8', 'تاريخ إنشاء الحساب', fmtTime(U.created_at))}
+      ${trkDtRow('arrow_uturn_left', '#6366f1', 'آخر دخول', fmtTime(d.stats ? d.stats.last_login : 0))}
+      ${trkDtRow('list_number', '#6366f1', 'إجمالي عمليات الدخول', d.stats ? d.stats.logins : 0)}
+      ${trkDtRow('message', '#ec4899', 'النبذة', U.bio || '')}
+    </div>
+    ${d.online && d.currentRooms.length ? `
+    <div class="trk-dt-sec"><i class="f7-icons" style="color:#22c55e">antenna_radiowaves_left_right</i> الغرف المتواجد بها الآن</div>
+    <div class="trk-dt-chips" style="margin-bottom:4px">${d.currentRooms.map(rm => `<span class="chip" style="background:#f0fdf4;color:#15803d">🏠 ${esc(rm.name)}</span>`).join('')}</div>` : ''}`;
+  } else {
+    userSec = `
+    <div class="trk-dt-sec"><i class="f7-icons" style="color:#94a3b8">exclamationmark_triangle_fill</i> ملاحظة</div>
+    <div class="empty-state" style="padding:14px;text-align:center;color:#64748b;font-size:12.5px">
+      لا يوجد حساب مرتبط بهذا الدخول في قاعدة البيانات حالياً (حُذف أو أنه اسم زائر مؤقت لم يُنشأ له حساب).
+      يمكنك حظر عنوان IP أدناه لمنع عودته.
+    </div>`;
+  }
+
+  // ---- أدوات الحظر ----
+  let banSec = `
+    <div class="trk-dt-sec"><i class="f7-icons" style="color:#dc2626">slash_circle_fill</i> الحظر والإجراءات</div>
+    <div class="trk-dt-actions">
+      ${U ? `<button type="button" class="btn ${U.banned ? 'btn-green' : 'btn-red'}" data-act="ban-user">
+        <i class="f7-icons">${U.banned ? 'arrow_uturn_left' : 'slash_circle_fill'}</i> ${U.banned ? 'فك الحظر عن الحساب' : '🚫 حظر المستخدم (الحساب + الجهاز)'}</button>` : ''}
+      ${L.ip && L.ip !== 'غير معروف' ? `<button type="button" class="btn btn-red" data-act="ban-ip">
+        <i class="f7-icons">network</i> 🌐 حظر IP + كل أجهزته (${esc(L.ip)})</button>` : ''}
+    </div>
+    <div class="trk-dt-note">
+      الحظر يفصل المستخدم فوراً ويمنعه من العودة من نفس الحساب/IP/الجهاز حتى يتم فك الحظر من «قائمة الحظر».
+      ${U && U.registered ? 'لأنه عضو مسجل فالأفضل «حظر المستخدم» — أما الزائر غير المسجل فيُحظر عبر IP وأجهزته.' : ''}
+    </div>`;
+
+  body.innerHTML = identity + loginSec + userSec + banSec;
+
+  // ---- ربط الأزرار ----
+  const banUserBtn = body.querySelector('[data-act="ban-user"]');
+  if (banUserBtn) {
+    banUserBtn.onclick = async () => {
+      const willBan = !U.banned;
+      const msg = willBan
+        ? `حظر «${L.username}» نهائيّاً؟\nسيُفصل فوراً من الدردشة ولن يعود من نفس الحساب/الجهاز حتى فك الحظر.`
+        : `فك الحظر عن «${L.username}»؟`;
+      if (!confirm(msg)) return;
+      try {
+        await api(`/api/admin/users/${U.id}/ban`, 'POST', { banned: willBan ? 1 : 0, reason: 'حظر من صفحة تتبع المستخدمين' });
+        toast(willBan ? 'تم حظر المستخدم وفصله فوراً 🚫' : 'تم فك الحظر عن المستخدم');
+        closeTrackingDetail();
+      } catch (e) { toast(e.error || 'تعذر تنفيذ الحظر', false); }
+    };
+  }
+  const banIpBtn = body.querySelector('[data-act="ban-ip"]');
+  if (banIpBtn) {
+    banIpBtn.onclick = async () => {
+      if (!confirm(`حظر نهائي لكل من يستخدم عنوان IP ${L.ip} وأجهزتهم؟\nسيتم فصل جميع اتصالاتهم فوراً.`)) return;
+      try {
+        const result = await api('/api/admin/ip/ban', 'POST', { ip: L.ip, reason: 'حظر من صفحة تتبع المستخدمين' });
+        toast('تم حظر عنوان IP' + (result && result.devices ? ` و${result.devices} جهاز مرتبط به` : '') + ' وفصل جميع اتصالاتهم 🚫');
+        closeTrackingDetail();
+      } catch (e) { toast(e.error || 'تعذر حظر عنوان IP', false); }
+    };
+  }
 }
 
 async function refreshTeamMonitor() {
@@ -2138,13 +2308,16 @@ async function renderRoomBots() {
       : (bot.reply_enabled === 2
         ? `<span class="chip" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe">💬 متحدث مخصص (${esc(bot.reply_text || 'نعم؟')})</span>`
         : '<span class="chip" style="background:#f1f5f9;color:#64748b">🔇 صامت (لا يتحدث)</span>');
+    const kindBadge = (bot.kind === 'visitor')
+      ? '<span class="chip" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">👤 زائر عادي (مولّد تلقائياً)</span>'
+      : '';
     return `
     <div class="room-bot-card${bot.active ? '' : ' inactive'}">
       <img class="room-bot-avatar" src="${esc(bot.avatar)}" alt="">
       <div class="room-bot-info">
         <b>${esc(bot.username)} ${bot.verified ? '<i class="f7-icons room-bot-verified">checkmark_seal_fill</i>' : ''}</b>
         <span>🏠 ${esc(bot.room_name || 'غرفة محذوفة')} • ${rankNames[bot.rank] || bot.rank} • ${membershipNames[bot.membership] || bot.membership}</span>
-        <small>${bot.active ? '🟢 متواجد داخل الغرفة' : '⚪ متوقف وغير ظاهر'} • ${replyBadge}</small>
+        <small>${bot.active ? '🟢 متواجد داخل الغرفة' : '⚪ متوقف وغير ظاهر'} • ${replyBadge} ${kindBadge}</small>
       </div>
       <div class="room-bot-actions">
         <button class="btn btn-gray rb-toggle" data-id="${bot.id}">${bot.active ? 'إيقاف' : 'تشغيل'}</button>
@@ -2169,9 +2342,13 @@ async function renderRoomBots() {
     await renderRoomBots();
   });
   $$('.rb-delete').forEach(button => button.onclick = async () => {
-    if (!confirm(t('حذف هذا الروبوت نهائياً؟'))) return;
+    const target = bots.find(item => item.id === +button.dataset.id);
+    const withVisitor = target && target.kind !== 'visitor';
+    if (!confirm(withVisitor
+      ? 'حذف هذا الروبوت نهائياً؟\nسيُحذف معه «الزائر العادي» المولّد تلقائياً معه إن وُجد.'
+      : 'حذف هذا الزائر نهائياً؟')) return;
     await api('/api/admin/room-bots/' + button.dataset.id, 'DELETE');
-    toast('تم حذف الروبوت');
+    toast('تم الحذف');
     EDIT_ROOM_BOT = null;
     await renderRoomBots();
   });
@@ -3720,6 +3897,11 @@ const PAGES = {
       const replyMode = bot.reply_enabled !== undefined ? bot.reply_enabled : 1;
       return `
       <div class="page-title"><i class="f7-icons mi" style="color:#7c3aed">person_badge_plus_fill</i> توليد وإعداد روبوت الغرفة</div>
+      <div class="info-box" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;margin-bottom:16px">
+        <i class="f7-icons mi" style="color:#10b981">wand_stars</i>
+        عند توليد أي روبوت يُنشأ تلقائياً بجانبه <b>«زائر عادي»</b>: اسم وصورة طبيعية وبلا أي شارة روبوت،
+        ويدخل نفس الغرفة ليعطي انطباعاً واقعيّاً بالحركة. يظهر الزائر في القائمة بالأسفل ويمكن إدارته كأي روبوت.
+      </div>
       <div class="room-bot-form">
         <div class="room-bot-form-head">
           <div class="room-bot-preview" id="roomBotPreview">${bot.avatar ? `<img src="${esc(bot.avatar)}" alt="">` : '<i class="f7-icons">person_crop_circle_fill</i>'}</div>
@@ -3765,6 +3947,7 @@ const PAGES = {
         <div class="room-bot-checks">
           <label><input type="checkbox" id="roomBotVerified" ${bot.verified ? 'checked' : ''}><span>حساب موثق</span><i class="f7-icons">checkmark_seal_fill</i></label>
           <label><input type="checkbox" id="roomBotActive" ${bot.active === 0 ? '' : 'checked'}><span>متواجد داخل الغرفة</span><i class="f7-icons">antenna_radiowaves_left_right</i></label>
+          ${bot.id ? '' : `<label title="زائر بلا شارة روبوت باسم وصورة طبيعية يدخل نفس الغرفة"><input type="checkbox" id="roomBotWithVisitor" checked><span>توليد «زائر عادي» معه تلقائياً</span><i class="f7-icons">person_fill</i></label>`}
         </div>
         <div class="btn-row" style="justify-content:flex-start">
           <button class="btn btn-purple" id="roomBotSave"><i class="f7-icons">wand_stars</i> ${bot.id ? 'حفظ تعديل الروبوت' : 'توليد الروبوت وإدخاله'}</button>
@@ -3802,7 +3985,8 @@ const PAGES = {
         try {
           const avatarText = $('#roomBotAvatarPath').textContent.trim();
           const replyMode = +$('#roomBotReplyMode').value;
-          await api('/api/admin/room-bots', 'POST', {
+          const isCreate = !(EDIT_ROOM_BOT && EDIT_ROOM_BOT.id);
+          const saved = await api('/api/admin/room-bots', 'POST', {
             id: EDIT_ROOM_BOT && EDIT_ROOM_BOT.id,
             username: $('#roomBotName').value.trim(),
             avatar: avatarText.startsWith('/') ? avatarText : ((EDIT_ROOM_BOT && EDIT_ROOM_BOT.avatar) || ''),
@@ -3812,10 +3996,15 @@ const PAGES = {
             verified: $('#roomBotVerified').checked,
             active: $('#roomBotActive').checked,
             reply_enabled: replyMode,
-            reply_text: $('#roomBotReplyText') ? $('#roomBotReplyText').value : ''
+            reply_text: $('#roomBotReplyText') ? $('#roomBotReplyText').value : '',
+            with_visitor: isCreate && $('#roomBotWithVisitor') ? ($('#roomBotWithVisitor').checked ? 1 : 0) : 0
           });
           EDIT_ROOM_BOT = null;
-          toast('تم حفظ الروبوت بنجاح ⚡');
+          if (isCreate && saved && saved.visitor) {
+            toast(`تم توليد الروبوت + «زائر عادي» باسم ${saved.visitor.username} ⚡`);
+          } else {
+            toast('تم حفظ الروبوت بنجاح ⚡');
+          }
           loadPage('roomBots');
         } catch (e) { toast(e.error || 'تعذر حفظ الروبوت', false); }
       };

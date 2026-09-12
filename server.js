@@ -4284,9 +4284,48 @@ app.post('/api/admin/upload/bot-avatar', requireSuperAdmin, (req, res) => {
 });
 
 // ---- روبوتات افتراضية تظهر كمستخدمين داخل الغرف ----
+// ---------- توليد «زائر عادي» تلقائياً مع كل روبوت غرفة ----------
+// زائر بلا أي شارة روبوت: اسم عربي طبيعي + رقم، صورة من مكتبة الرمزيات،
+// عضوية وبدون صلاحية، مسجل=0 (شارة زائر) — يظهر في الغرفة كأي زائر حقيقي.
+const VISITOR_NAME_POOL = ['زياد', 'ملك', 'عبدالله', 'جود', 'ماجد', 'سارة', 'فارس', 'لين', 'عمر', 'دانة', 'هيثم', 'لينا', 'رامي', 'جنى', 'وليد', 'رحاب', 'كريم', 'شهد', 'أنس', 'ميرا', 'طارق', 'نور', 'يوسف', 'لما', 'حمزة', 'تالا', 'باسل', 'دينا', 'سالم', 'هيا', 'فهد', 'دنيا', 'مازن', 'رنا', 'جواد', 'ألمى', 'عبدالرحمن', 'جوري', 'محمد', 'ليان'];
+async function spawnVisitorBotForRoom(roomId, active, parentId) {
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  let visitorName = '';
+  for (let attempt = 0; attempt < 60 && !visitorName; attempt++) {
+    const candidate = pick(VISITOR_NAME_POOL) + ' ' + crypto.randomInt(1000, 10000);
+    const inDb = await q.get(`SELECT id FROM users WHERE username=?`, candidate);
+    const online = Object.values(onlineUsers).some(ou => ou && ou.username && ou.username.toLowerCase() === candidate.toLowerCase());
+    if (!inDb && !online) visitorName = candidate;
+  }
+  if (!visitorName) throw new Error('تعذر توليد اسم زائر فريد');
+  const gender = pick(['boy', 'girl']);
+  const age = 18 + crypto.randomInt(0, 23);
+  const folders = ['def', 'other', 'nature'];
+  const folder = pick(folders);
+  const file = `${folder}/${String(1 + crypto.randomInt(0, folder === 'def' ? 20 : 16)).padStart(2, '0')}.jpg`;
+  const avatar = fs.existsSync(path.join(__dirname, 'public/avatars', file)) ? '/avatars/' + file : '';
+  const vUser = await q.run(`
+    INSERT INTO users (username,password,gender,age,balance,membership,rank,registered,avatar,status,is_bot)
+    VALUES (?,NULL,?,?,0,'none','user',0,?,'online',1)`, visitorName, gender, age, avatar);
+  await q.run(`INSERT INTO room_bots (user_id,room_id,active,reply_enabled,reply_text,kind,parent_id) VALUES (?,?,?,0,'نعم؟','visitor',?)`,
+    vUser.lastID, roomId, active, parentId);
+  return { user_id: +vUser.lastID, username: visitorName, avatar };
+}
+// إزالة بيانات مستخدم روبوت (روبوت غرفة أو زائر عادي) من كل الجداول
+async function removeRoomBotUserData(item) {
+  await q.run(`DELETE FROM room_bots WHERE id=?`, +item.id);
+  await q.run(`DELETE FROM verified WHERE username=?`, item.username);
+  await q.run(`DELETE FROM user_ignores WHERE user_id=? OR ignored_id=?`, item.user_id, item.user_id);
+  await q.run(`DELETE FROM private_messages WHERE from_id=? OR to_id=?`, item.user_id, item.user_id);
+  await q.run(`DELETE FROM users WHERE id=? AND is_bot=1`, item.user_id);
+  if (item.avatar && item.avatar.startsWith('/uploads/bots/')) {
+    try { fs.unlinkSync(path.join(__dirname, 'public/uploads/bots', path.basename(item.avatar))); } catch (e) { }
+  }
+}
+
 app.get('/api/admin/room-bots', requireSuperAdmin, async (req, res) => {
   const rows = await q.all(`
-    SELECT rb.id,rb.room_id,rb.active,rb.reply_enabled,rb.reply_text,rb.created_at,r.name room_name,
+    SELECT rb.id,rb.room_id,rb.active,rb.reply_enabled,rb.reply_text,rb.created_at,COALESCE(rb.kind,'robot') kind,COALESCE(rb.parent_id,0) parent_id,r.name room_name,
       u.id user_id,u.username,u.avatar,u.rank,u.membership,u.gender,
       EXISTS(SELECT 1 FROM verified v WHERE v.username=u.username) verified
     FROM room_bots rb JOIN users u ON u.id=rb.user_id
@@ -4310,7 +4349,7 @@ app.post('/api/admin/room-bots', requireSuperAdmin, async (req, res) => {
   const room = await q.get(`SELECT id FROM rooms WHERE id=?`, roomId);
   if (!room) return res.status(400).json({ error: 'اختر غرفة صحيحة' });
 
-  let userId, oldUsername = '', oldAvatar = '';
+  let userId, oldUsername = '', oldAvatar = '', visitor = null;
   if (id) {
     const bot = await q.get(`SELECT rb.user_id,u.username,u.avatar FROM room_bots rb JOIN users u ON u.id=rb.user_id WHERE rb.id=?`, id);
     if (!bot) return res.status(404).json({ error: 'الروبوت غير موجود' });
@@ -4327,7 +4366,14 @@ app.post('/api/admin/room-bots', requireSuperAdmin, async (req, res) => {
       INSERT INTO users (username,password,gender,age,balance,membership,rank,registered,avatar,status,is_bot)
       VALUES (?,NULL,'secret',25,0,?,?,1,?,'online',1)`, username, membership, rank, avatar);
     userId = user.lastID;
-    await q.run(`INSERT INTO room_bots (user_id,room_id,active,reply_enabled,reply_text) VALUES (?,?,?,?,?)`, userId, roomId, active, replyEnabled, replyText);
+    const mainRow = await q.run(`INSERT INTO room_bots (user_id,room_id,active,reply_enabled,reply_text,kind,parent_id) VALUES (?,?,?,?,?,'robot',0)`,
+      userId, roomId, active, replyEnabled, replyText);
+    // توليد «زائر عادي» تلقائياً مع كل روبوت جديد (يمكن إلغاؤه من خيار النموذج)
+    const wantsVisitor = !(body.with_visitor === 0 || body.with_visitor === false || body.with_visitor === '0');
+    if (wantsVisitor) {
+      try { visitor = await spawnVisitorBotForRoom(roomId, active, mainRow.lastID); }
+      catch (e) { visitor = null; }   // فشل توليد الزائر لا يوقف توليد الروبوت نفسه
+    }
   }
 
   if (oldUsername) await q.run(`DELETE FROM verified WHERE username=?`, oldUsername);
@@ -4339,23 +4385,22 @@ app.post('/api/admin/room-bots', requireSuperAdmin, async (req, res) => {
   await refreshVerified();
   await syncRoomBots();
   io.emit('sync');
-  res.json({ ok: true, user_id: userId });
+  res.json({ ok: true, user_id: userId, visitor });
 });
 app.delete('/api/admin/room-bots/:id', requireSuperAdmin, async (req, res) => {
-  const bot = await q.get(`SELECT rb.user_id,u.username,u.avatar FROM room_bots rb JOIN users u ON u.id=rb.user_id WHERE rb.id=?`, +req.params.id);
+  const bot = await q.get(`SELECT rb.id,rb.user_id,COALESCE(rb.kind,'robot') kind,COALESCE(rb.parent_id,0) parent_id,u.username,u.avatar FROM room_bots rb JOIN users u ON u.id=rb.user_id WHERE rb.id=?`, +req.params.id);
   if (!bot) return res.status(404).json({ error: 'الروبوت غير موجود' });
-  await q.run(`DELETE FROM room_bots WHERE id=?`, +req.params.id);
-  await q.run(`DELETE FROM verified WHERE username=?`, bot.username);
-  await q.run(`DELETE FROM user_ignores WHERE user_id=? OR ignored_id=?`, bot.user_id, bot.user_id);
-  await q.run(`DELETE FROM private_messages WHERE from_id=? OR to_id=?`, bot.user_id, bot.user_id);
-  await q.run(`DELETE FROM users WHERE id=? AND is_bot=1`, bot.user_id);
-  if (bot.avatar && bot.avatar.startsWith('/uploads/bots/')) {
-    try { fs.unlinkSync(path.join(__dirname, 'public/uploads/bots', path.basename(bot.avatar))); } catch (e) { }
+  // حذف الروبوت يحذف معه «الزائر العادي» الذي وُلّد تلقائياً
+  const toRemove = [bot];
+  if (bot.kind !== 'visitor') {
+    const children = await q.all(`SELECT rb.id,rb.user_id,rb.kind,u.username,u.avatar FROM room_bots rb JOIN users u ON u.id=rb.user_id WHERE rb.parent_id=?`, +bot.id);
+    toRemove.push(...children);
   }
+  for (const item of toRemove) await removeRoomBotUserData(item);
   await refreshVerified();
   await syncRoomBots();
   io.emit('sync');
-  res.json({ ok: true });
+  res.json({ ok: true, removed: toRemove.length });
 });
 
 // ---- رسائل الروبوت المجدولة ----
@@ -4363,7 +4408,8 @@ app.get('/api/admin/bots', requireSuperAdmin, async (req, res) => {
   const bots = await q.all(`SELECT b.*, COALESCE(r.name,'كل الغرف') room_name FROM bots b LEFT JOIN rooms r ON r.id=b.room_id ORDER BY b.id DESC`);
   res.json(bots);
 });
-app.post('/api/admin/bots', requireSuperAdmin, async (req, res) => {
+// تُدرَج هنا «الأدمن» أيضاً حتى يمكن تعديل/إيقاف رسالة الروبوت من داخل الدردشة نفسها.
+app.post('/api/admin/bots', requireAdmin, async (req, res) => {
   const b = req.body || {};
   if (!String(b.text || '').trim()) return res.status(400).json({ error: 'اكتب نص رسالة الروبوت' });
   const color = /^#[0-9a-fA-F]{6}$/.test(String(b.color || '')) ? b.color : '#d946a6';
@@ -4380,7 +4426,8 @@ app.post('/api/admin/bots', requireSuperAdmin, async (req, res) => {
   io.emit('sync');
   res.json({ ok: true });
 });
-app.post('/api/admin/bots/:id/del', requireSuperAdmin, async (req, res) => {
+// «الأدمن» أيضاً يحذف رسالة الروبوت من داخل الدردشة (زر الحذف الظاهر على الرسالة).
+app.post('/api/admin/bots/:id/del', requireAdmin, async (req, res) => {
   await q.run(`DELETE FROM bots WHERE id=?`, +req.params.id);
   reloadBots();
   io.emit('sync');
@@ -4493,6 +4540,44 @@ app.get('/api/admin/user-tracking', requireSuperAdmin, async (req, res) => {
       search_query: r.search_query || '', landing: r.landing || '',
       user_agent: r.user_agent || '', created_at: +r.created_at || 0
     }))
+  });
+});
+
+// ---- تفاصيل «مستخدم» واحد من سجل التتبع: كل ما دخل به + بيانات حسابه + حالة اتصاله الآن + أدوات الحظر ----
+app.get('/api/admin/user-tracking/:id/details', requireSuperAdmin, async (req, res) => {
+  const login = await q.get(`SELECT * FROM login_history WHERE id=?`, +req.params.id);
+  if (!login) return res.status(404).json({ error: 'السجل غير موجود' });
+  const user = login.user_id ? await q.get(`SELECT * FROM users WHERE id=?`, +login.user_id) : null;
+  // هل هذا المستخدم متصل الآن؟ وعلى أي غرف؟
+  let online = false, currentRooms = [];
+  const liveSocketIds = userSockets[+login.user_id] || [];
+  online = liveSocketIds.some(socketId => io.sockets.sockets.has(socketId));
+  if (online && user) {
+    const rooms = await q.all(`SELECT id,name FROM rooms`);
+    const byId = new Map(rooms.map(r => [+r.id, r.name]));
+    for (const [rid, set] of Object.entries(roomUsers)) {
+      if (set.has(+login.user_id)) currentRooms.push({ id: +rid, name: byId.get(+rid) || `غرفة #${rid}` });
+    }
+  }
+  const stats = user ? await q.get(`SELECT COUNT(*) c, MAX(created_at) last_login FROM login_history WHERE user_id=?`, +user.id) : null;
+  res.json({
+    ok: true,
+    login: {
+      id: +login.id, user_id: +login.user_id, username: login.username || '',
+      ip: login.ip || '', country: login.country || '', country_code: login.country_code || '',
+      registered: login.registered ? 1 : 0, referrer: login.referrer || '', source: login.source || '',
+      search_query: login.search_query || '', landing: login.landing || '',
+      user_agent: login.user_agent || '', device_id: login.device_id || '', created_at: +login.created_at || 0
+    },
+    user: user ? {
+      id: +user.id, username: user.username, avatar: user.avatar || '', gender: user.gender || 'secret',
+      age: +user.age || 0, country: user.country || '', balance: +user.balance || 0,
+      membership: user.membership || 'none', rank: user.rank || 'user', registered: user.registered ? 1 : 0,
+      bio: user.bio || '', banned: user.banned ? 1 : 0, muted: user.muted ? 1 : 0,
+      created_at: +user.created_at || 0, ip: user.ip || '', device_id: user.device_id || ''
+    } : null,
+    online, currentRooms,
+    stats: stats ? { logins: +stats.c, last_login: +stats.last_login || 0 } : { logins: 0, last_login: 0 }
   });
 });
 
@@ -4619,6 +4704,26 @@ app.delete('/api/admin/rooms/:id', requireSuperAdmin, async (req, res) => {
   await q.run(`DELETE FROM rooms WHERE id=?`, req.params.id);
   await q.run(`DELETE FROM messages WHERE room_id=?`, req.params.id);
   await syncRoomBots();
+  io.emit('sync');
+  res.json({ ok: true });
+});
+
+// ---- «حذف العام» (رسالة الترحيب/الإشراف) ----
+// 1) للمستخدم نفسه فقط: يخفيها له هو دون بقية المستخدمين.
+app.post('/api/rooms/:id/hide-welcome', requireUser, async (req, res) => {
+  const room = await q.get(`SELECT id, welcome FROM rooms WHERE id=?`, +req.params.id);
+  if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+  const text = String(room.welcome || '').trim();
+  await q.run(`INSERT INTO room_welcome_hides (user_id,room_id,hidden_text) VALUES (?,?,?)
+    ON CONFLICT(user_id,room_id) DO UPDATE SET hidden_text=excluded.hidden_text`, req.authUid, room.id, text);
+  res.json({ ok: true });
+});
+// 2) للإدارة (أدمن/سوبر أدمن/سوبر ماستر): تفريغ الرسالة من الغرفة فتختفي عند الجميع.
+app.post('/api/admin/rooms/:id/wipe-welcome', requireAdmin, async (req, res) => {
+  const room = await q.get(`SELECT id FROM rooms WHERE id=?`, +req.params.id);
+  if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+  await q.run(`UPDATE rooms SET welcome='' WHERE id=?`, room.id);
+  io.to('room_' + room.id).emit('welcome_cleared', { roomId: room.id });
   io.emit('sync');
   res.json({ ok: true });
 });
@@ -7938,8 +8043,15 @@ io.on('connection', async (socket) => {
       }
     }
     // ترحيب الإدارة الاختياري يظهر في الدخول الجديد فقط، وليس عند استعادة WebSocket.
+    // «حذف العام» من قائمة الغرفة يخفيه للمستخدم نفسه فقط: إن كان قد أخفى هذه
+    // الرسالة بالذات (بنفس النص) فلا تُعرض له، أما بقية المستخدمين فيرونها.
     const welcome = String(room.welcome || '').trim();
-    if (welcome && !restoredConnection) socket.emit('msg', {
+    let welcomeHiddenForMe = false;
+    if (welcome && uid) {
+      const hideRow = await q.get(`SELECT hidden_text FROM room_welcome_hides WHERE user_id=? AND room_id=?`, uid, roomId);
+      welcomeHiddenForMe = !!(hideRow && hideRow.hidden_text === welcome);
+    }
+    if (welcome && !restoredConnection && !welcomeHiddenForMe) socket.emit('msg', {
       id: Date.now(), room_id: +roomId, username: 'رسالة النظام',
       text: welcome, type: 'welcome', created_at: Math.floor(Date.now() / 1000)
     });
@@ -8707,6 +8819,7 @@ async function sendBotMsg(b) {
     io.to('room_' + rid).emit('msg', {
       id: Date.now(), room_id: +rid, username: 'روبوت',
       text: b.text, type: 'bot', color: b.color || '#d946a6', size: b.size || 16,
+      bot_id: b.id, bot_room_id: b.room_id, bot_interval: b.interval_min, bot_active: b.active ? 1 : 0,
       created_at: Math.floor(Date.now() / 1000)
     });
   }
