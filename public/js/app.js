@@ -10561,7 +10561,12 @@ function attemptLeaveRoom() {
     'bcast'
   );
 }
-// قالب تأكيد الانتقال: يظهر عند اختيار غرفة أخرى والمستخدم داخل غرفة حالياً
+// قالب تأكيد الانتقال: يظهر عند اختيار غرفة أخرى والمستخدم داخل غرفة حالياً.
+// سطح المكتب فقط — على الهاتف يبقى الانتقال مباشراً كما كان تماماً.
+const SWITCH_ROOM_MQ = '(min-width: 1024px)';
+function canAskRoomSwitch() {
+  return !!(window.matchMedia && window.matchMedia(SWITCH_ROOM_MQ).matches);
+}
 let SWITCH_ROOM_PENDING = 0;
 function askRoomSwitch(roomId) {
   const r = ROOMS.find(x => x.id === +roomId);
@@ -10593,8 +10598,8 @@ if (_srNo) _srNo.onclick = () => { SWITCH_ROOM_PENDING = 0; };
 // يمنع الانتقال إلى غرفة أخرى أثناء مكالمة أو بث — يعرض القالب، وبعد الإيقاف يدخل الغرفة المطلوبة
 // confirmed=true يعني أن المستخدم وافق على قالب «دخول الى الغرفة المختارة»
 function attemptRoomSwitch(roomId, confirmed = false) {
-  // داخل غرفة وينتقل إلى غرفة أخرى: نسأله أولاً
-  if (!confirmed && CUR_ROOM && +roomId !== CUR_ROOM.id) return askRoomSwitch(+roomId);
+  // داخل غرفة وينتقل إلى غرفة أخرى: نسأله أولاً — على الكمبيوتر فقط
+  if (!confirmed && canAskRoomSwitch() && CUR_ROOM && +roomId !== CUR_ROOM.id) return askRoomSwitch(+roomId);
   const inCall = inActiveCall();
   const inBcast = inActiveBroadcast();
   if (!inCall && !inBcast) return enterRoom(roomId);
