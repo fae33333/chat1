@@ -1863,15 +1863,16 @@ function beep(freq = 660, dur = .12) {
   } catch (e) { }
 }
 
-// النغمة الافتراضية لكل نوع إشعار (دخول/رسالة/خروج).
+// النغمة الافتراضية لكل نوع إشعار (دخول/رسالة/خروج/خاص/إعلان).
 function beepDefaultFor(kind) {
+  if (kind === 'pm' || kind === 'ntf') return beep(880, .15);
   const freq = kind === 'join' ? 520 : (kind === 'msg' ? 740 : (kind === 'leave' ? 360 : 880));
   const dur = kind === 'msg' ? .07 : .1;
   beep(freq, dur);
 }
 
 // تشغيل صوت إشعار: يفضل الصوت المخصص المرفوع من لوحة الإدارة، وإلا النغمة الافتراضية.
-// kind = 'join' | 'msg' | 'leave'
+// kind = 'join' | 'msg' | 'leave' | 'pm' (رسالة خاصة) | 'ntf' (إعلان للجميع)
 function playNotifSound(kind) {
   if (!PREFS.snd_all) return;
   const setting = 'snd_' + kind;
@@ -2301,7 +2302,7 @@ function connectSocket() {
     } else if (p.from_id !== ME.id) {
       PRIV_UNREAD++;
       updatePrivBadge();
-      if (PREFS.pm_recv) beep(880, .15);
+      if (PREFS.pm_recv) playNotifSound('pm'); // صوت إشعار الرسالة الخاصة (مخصص أو افتراضي)
       showPmBanner(p);         // شريط الإشعار داخل الصفحة (كمبيوتر وهاتف)
       notifyDesktopPrivate(p); // إشعار سطح المكتب (متصفح الكمبيوتر)
     }
@@ -2319,7 +2320,7 @@ function connectSocket() {
   });
   SOCKET.on('notify', (n) => {
     if (ME && typeof n.balance === 'number') { ME.balance = n.balance; $('#menuBal').textContent = n.balance; }
-    pushNotif(n.icon, n.text, n); toast(n.text); beep(880, .15);
+    pushNotif(n.icon, n.text, n); toast(n.text); playNotifSound('ntf'); // صوت إشعار الإعلان للجميع
     notifyDesktopSystem(n); // إشعار سطح المكتب حين يكون التاب خلفياً
   });
   // تحديث فوري لحساب وبيانات المستخدم عند التعديل من لوحة الإدارة

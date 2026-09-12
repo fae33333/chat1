@@ -2767,6 +2767,8 @@ const PAGES = {
       ${soundRow('person_badge_plus_fill', '#60a5fa', 'صوت عند دخول المستخدم (b1)', 'snd_join', 'يُشغَّل تلقائياً عند دخول أي مستخدم إلى الغرفة.')}
       ${soundRow('paperplane_fill', '#94a3b8', 'صوت عند ارسال رسالة (b4)', 'snd_msg', 'يُشغَّل تلقائياً عند وصول رسالة جديدة في العام.')}
       ${soundRow('square_arrow_right_fill', '#fb923c', 'صوت عند خروج المستخدم (b5)', 'snd_leave', 'يُشغَّل تلقائياً عند مغادرة أي مستخدم للغرفة.')}
+      ${soundRow('bubble_left_bubble_right_fill', '#14b8a6', 'صوت إشعار الرسالة الخاصة', 'snd_pm', 'يُشغَّل عند وصول رسالة خاصة جديدة والمحادثة غير مفتوحة.')}
+      ${soundRow('bolt_badge_a_fill', '#ec4899', 'صوت إشعار الإعلان للجميع', 'snd_ntf', 'يُشغَّل عند وصول إعلان عام أو إشعار من الإدارة إلى جميع المستخدمين.')}
       <div class="style-hint" style="margin:6px 4px 14px">⬆️ ارفع ملفاً صوتياً لتشغيله بدل النغمة الافتراضية. الحقل يدعم MP3 / WAV / OGG / M4A / AAC / OPUS حتى 12 ميجا.</div>
       <div class="btn-row" style="justify-content:flex-start">
         <button class="btn btn-purple" id="saveGen"><i class="f7-icons">square_arrow_down_fill</i> حفظ الاعدادات</button>

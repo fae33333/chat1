@@ -655,6 +655,8 @@ const defaultSettings = {
   snd_join: '1',
   snd_msg: '0',
   snd_leave: '1',
+  snd_pm: '1',
+  snd_ntf: '1',
   logo_url: '',
   favicon_url: '',
   skin: 'default',

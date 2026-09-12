@@ -4040,6 +4040,7 @@ app.post('/api/admin/settings', requireSuperAdmin, async (req, res) => {
   const liveSettingKeys = new Set([
     'show_smiles', 'show_voice', 'show_image', 'hidden_super', 'wave_enabled',
     'snd_join', 'snd_msg', 'snd_leave', 'snd_join_url', 'snd_msg_url', 'snd_leave_url', 'show_time', 'msg_max',
+    'snd_pm', 'snd_ntf', 'snd_pm_url', 'snd_ntf_url',
     'public_message_cooldown_seconds', 'public_message_spacing_px',
     'public_message_name_size_px', 'public_message_body_width',
     ...PUBLIC_MESSAGE_BADGE_SETTING_KEYS
@@ -6803,10 +6804,15 @@ app.get('/api/public-settings', async (req, res) => {
     snd_join: s.snd_join !== undefined ? s.snd_join : '1',
     snd_msg: s.snd_msg !== undefined ? s.snd_msg : '0',
     snd_leave: s.snd_leave !== undefined ? s.snd_leave : '1',
+    // صوت إشعار الرسالة الخاصة وصوت إشعار الإعلان للجميع
+    snd_pm: s.snd_pm !== undefined ? s.snd_pm : '1',
+    snd_ntf: s.snd_ntf !== undefined ? s.snd_ntf : '1',
     // أصوات الإشعارات المخصصة (روابط الملفات المرفوعة من لوحة الإدارة) — تُشغَّل بدل النغمة الافتراضية
     snd_join_url: s.snd_join_url || '',
     snd_msg_url: s.snd_msg_url || '',
     snd_leave_url: s.snd_leave_url || '',
+    snd_pm_url: s.snd_pm_url || '',
+    snd_ntf_url: s.snd_ntf_url || '',
     // الراديو المباشر: يُدار من لوحة التحكم (اسم + رابط بث + تفعيل) ويظهر مشغله أعلى الدردشة
     radio_enabled: s.radio_enabled !== undefined ? s.radio_enabled : '0',
     radio_name: s.radio_name || '',
