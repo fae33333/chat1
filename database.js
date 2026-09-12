@@ -401,6 +401,12 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_login_history_ip ON login_history (ip, created_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_login_history_user ON login_history (user_id, created_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_login_history_device ON login_history (device_id)`);
+  // ---------- تتبّع مصدر الزيارة (من أين دخل المستخدم إلى الدردشة) ----------
+  db.run(`ALTER TABLE login_history ADD COLUMN referrer TEXT DEFAULT ''`, () => { });       // الرابط الذي أتى منه
+  db.run(`ALTER TABLE login_history ADD COLUMN source TEXT DEFAULT ''`, () => { });         // اسم المصدر: Google / Facebook / مباشر ...
+  db.run(`ALTER TABLE login_history ADD COLUMN search_query TEXT DEFAULT ''`, () => { });   // كلمة البحث إن وُجدت
+  db.run(`ALTER TABLE login_history ADD COLUMN landing TEXT DEFAULT ''`, () => { });        // المسار الذي دخل إليه داخل الموقع
+  db.run(`ALTER TABLE login_history ADD COLUMN user_agent TEXT DEFAULT ''`, () => { });     // الجهاز/المتصفح
 
   // ---------- كتم الزوار حسب عنوان IP ----------
   db.run(`CREATE TABLE IF NOT EXISTS ip_mutes (

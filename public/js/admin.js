@@ -1705,7 +1705,8 @@ const MENU = [
     { id: 'verified', icon: 'checkmark_shield_fill', label: 'التوثيق والدخول الملكي' },
     { id: 'royalAnimals', icon: 'crown_fill', label: 'صور وأصوات الدخول الملكي', superAdminOnly: true }]},
   { icon: 'eye_fill', color: '#f472b6', label: 'رصد فريق', superAdminOnly: true, subs: [
-    { id: 'monitor', icon: 'eye_fill', label: 'رصد فريق', superAdminOnly: true }]},
+    { id: 'monitor', icon: 'eye_fill', label: 'رصد فريق', superAdminOnly: true },
+    { id: 'userTracking', icon: 'location_north_line_fill', label: 'تتبع المستخدمين', superAdminOnly: true }]},
 ];
 
 function buildMenu() {
@@ -2048,6 +2049,81 @@ function updateTeamMonitor(items) {
     finally { button.disabled = false; }
   });
 }
+// =====================================================
+//  تتبع المستخدمين: عرض المصادر وسجل الدخول
+// =====================================================
+// لون ورمز لكل مصدر زيارة
+function trackingSourceStyle(src) {
+  const n = String(src || '').toLowerCase();
+  if (n.includes('google')) return { bg: '#e8f0fe', fg: '#1a73e8', icon: 'search' };
+  if (n.includes('bing') || n.includes('yahoo') || n.includes('duckduckgo') || n.includes('yandex') || n.includes('ecosia') || n.includes('brave'))
+    return { bg: '#eef2ff', fg: '#4338ca', icon: 'search' };
+  if (n.includes('facebook')) return { bg: '#e7f0fd', fg: '#1877f2', icon: 'globe' };
+  if (n.includes('instagram')) return { bg: '#fdeef5', fg: '#c13584', icon: 'camera_fill' };
+  if (n.includes('twitter') || n.includes('x')) return { bg: '#e8f5fd', fg: '#1d9bf0', icon: 'globe' };
+  if (n.includes('tiktok')) return { bg: '#f1f1f1', fg: '#111', icon: 'music_note_2' };
+  if (n.includes('youtube')) return { bg: '#fdeaea', fg: '#ff0000', icon: 'play_rectangle_fill' };
+  if (n.includes('whatsapp')) return { bg: '#e7f7ef', fg: '#25d366', icon: 'chat_bubble_2_fill' };
+  if (n.includes('telegram')) return { bg: '#e8f4fb', fg: '#229ed9', icon: 'paperplane_fill' };
+  if (n.includes('مباشر')) return { bg: '#f1f5f9', fg: '#475569', icon: 'arrow_right_circle_fill' };
+  if (n.includes('داخل الموقع')) return { bg: '#f0fdf4', fg: '#15803d', icon: 'arrow_2_squarepath' };
+  return { bg: '#f8fafc', fg: '#64748b', icon: 'link' };
+}
+// بطاقات ملخّص: كم زيارة من كل مصدر
+function renderTrackingSources(d) {
+  const box = $('#trkSources');
+  if (!box) return;
+  const list = (d && d.sources) || [];
+  if (!list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="trk-cards">` + list.map(s => {
+    const st = trackingSourceStyle(s.source);
+    return `<div class="trk-card" style="background:${st.bg};border-color:${st.fg}22">
+      <i class="f7-icons" style="color:${st.fg}">${st.icon}</i>
+      <b style="color:${st.fg}">${s.count}</b>
+      <span>${esc(s.source)}</span>
+    </div>`;
+  }).join('') + `</div>
+  <div class="trk-total">إجمالي عمليات الدخول المسجّلة: <b>${d.total || 0}</b></div>`;
+}
+// جدول السجل
+function renderTrackingRows(d) {
+  const box = $('#trkList');
+  if (!box) return;
+  const rows = (d && d.rows) || [];
+  if (!rows.length) {
+    box.innerHTML = '<div class="empty-state" style="padding:26px;text-align:center;color:#94a3b8">لا توجد سجلات مطابقة</div>';
+    return;
+  }
+  box.innerHTML = `<div class="trk-table-wrap"><table class="trk-table">
+    <thead><tr>
+      <th>المستخدم</th><th>من أين دخل</th><th>كلمة البحث</th>
+      <th>الرابط / المسار</th><th>IP</th><th>الدولة</th><th>الوقت</th>
+    </tr></thead><tbody>` + rows.map(r => {
+      const st = trackingSourceStyle(r.source);
+      const time = r.created_at ? new Date(r.created_at * 1000).toLocaleString('ar-JO') : '-';
+      const who = `${esc(r.username || 'بلا اسم')}${r.registered
+        ? '<span class="trk-tag reg">عضو</span>' : '<span class="trk-tag guest">زائر</span>'}`;
+      // الرابط الكامل يظهر عند المرور بالفأرة، والمختصر داخل الخلية
+      const refShort = r.referrer ? String(r.referrer).replace(/^https?:\/\//, '').slice(0, 46) : '';
+      return `<tr>
+        <td>${who}</td>
+        <td><span class="trk-src" style="background:${st.bg};color:${st.fg}">
+          <i class="f7-icons">${st.icon}</i>${esc(r.source)}</span></td>
+        <td>${r.search_query
+          ? `<span class="trk-q">${esc(r.search_query)}</span>`
+          : '<span class="trk-dash">—</span>'}</td>
+        <td dir="ltr" class="trk-link">
+          ${r.landing ? `<div class="trk-landing">${esc(r.landing)}</div>` : ''}
+          ${refShort ? `<div class="trk-ref" title="${esc(r.referrer)}">${esc(refShort)}${r.referrer.length > 53 ? '…' : ''}</div>` : ''}
+          ${!r.landing && !refShort ? '<span class="trk-dash">—</span>' : ''}
+        </td>
+        <td dir="ltr" class="trk-ip">${esc(r.ip || '-')}</td>
+        <td>${esc(r.country || 'غير معروف')}</td>
+        <td class="trk-time">${time}</td>
+      </tr>`;
+    }).join('') + `</tbody></table></div>`;
+}
+
 async function refreshTeamMonitor() {
   try { updateTeamMonitor(await api('/api/admin/monitor')); } catch (e) { }
 }
@@ -4465,6 +4541,53 @@ const PAGES = {
     bind: async () => {
       await refreshTeamMonitor();
       MONITOR_TIMER = setInterval(refreshTeamMonitor, 2000);
+    }
+  },
+
+  // ====== تتبع المستخدمين: من أين دخل كل مستخدم ======
+  userTracking: {
+    build: () => `
+      <div class="page-title"><i class="f7-icons mi" style="color:#f472b6">location_north_line_fill</i> تتبع المستخدمين</div>
+      <div class="info-box" style="background:#fdf2f8;border-color:#fbcfe8;color:#9d174d;margin-bottom:16px">
+        سجل كامل لكل دخول إلى الدردشة: الاسم الذي دخل به، ومن أي رابط جاء، ومن أين دخل
+        (Google أو فيسبوك أو دخول مباشر…)، وكلمة البحث إن توفّرت، وعنوان IP، والدولة.
+      </div>
+      <div id="trkSources" class="trk-sources"></div>
+      <div class="section" style="margin-bottom:14px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input class="inp" id="trkSearch" placeholder="ابحث باسم المستخدم أو IP أو كلمة البحث أو الدولة..." style="flex:1;min-width:220px">
+          <select class="inp" id="trkLimit" style="max-width:150px">
+            <option value="200">آخر 200</option>
+            <option value="500">آخر 500</option>
+            <option value="1000">آخر 1000</option>
+          </select>
+          <button class="btn" id="trkRefresh"><i class="f7-icons">arrow2_circlepath</i> تحديث</button>
+        </div>
+      </div>
+      <div id="trkList"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل سجل التتبع...</div></div>`,
+    bind: async () => {
+      const load = async () => {
+        const box = $('#trkList');
+        if (box) box.innerHTML = '<div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري التحميل...</div>';
+        try {
+          const search = encodeURIComponent(($('#trkSearch')?.value || '').trim());
+          const limit = $('#trkLimit')?.value || 200;
+          const d = await api(`/api/admin/user-tracking?limit=${limit}&search=${search}`);
+          renderTrackingSources(d);
+          renderTrackingRows(d);
+        } catch (e) {
+          if (box) box.innerHTML = `<div class="empty-state">تعذر تحميل سجل التتبع: ${esc(e.error || '')}</div>`;
+        }
+      };
+      const btn = $('#trkRefresh'); if (btn) btn.onclick = load;
+      const inp = $('#trkSearch');
+      if (inp) {
+        let t = null;
+        inp.oninput = () => { clearTimeout(t); t = setTimeout(load, 350); };
+        inp.onkeydown = (e) => { if (e.key === 'Enter') { clearTimeout(t); load(); } };
+      }
+      const lim = $('#trkLimit'); if (lim) lim.onchange = load;
+      await load();
     }
   },
 

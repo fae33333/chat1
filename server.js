@@ -1823,15 +1823,67 @@ async function lookupIpCountry(ip) {
   return unknown;
 }
 
-// يسجّل كل دخول ناجح (عضو أو زائر) مع الوقت وعنوان IP والدولة والجهاز.
-async function recordLoginHistory(user, ip, deviceId) {
+// =====================================================
+//  تتبّع مصدر الزيارة: من أين دخل المستخدم إلى الدردشة
+// =====================================================
+// محركات البحث المعروفة ومعامل كلمة البحث في كل منها
+const SEARCH_ENGINES = [
+  { host: 'google.', name: 'Google', param: 'q' },
+  { host: 'bing.', name: 'Bing', param: 'q' },
+  { host: 'yahoo.', name: 'Yahoo', param: 'p' },
+  { host: 'duckduckgo.', name: 'DuckDuckGo', param: 'q' },
+  { host: 'yandex.', name: 'Yandex', param: 'text' },
+  { host: 'ecosia.', name: 'Ecosia', param: 'q' },
+  { host: 'brave.', name: 'Brave Search', param: 'q' }
+];
+// مواقع التواصل المعروفة
+const SOCIAL_SOURCES = [
+  { host: 'facebook.', name: 'Facebook' }, { host: 'fb.', name: 'Facebook' },
+  { host: 'instagram.', name: 'Instagram' }, { host: 'twitter.', name: 'Twitter/X' },
+  { host: 'x.com', name: 'Twitter/X' }, { host: 'tiktok.', name: 'TikTok' },
+  { host: 'youtube.', name: 'YouTube' }, { host: 'youtu.be', name: 'YouTube' },
+  { host: 'whatsapp', name: 'WhatsApp' }, { host: 'telegram', name: 'Telegram' },
+  { host: 't.me', name: 'Telegram' }, { host: 'snapchat', name: 'Snapchat' },
+  { host: 'reddit.', name: 'Reddit' }, { host: 'linkedin.', name: 'LinkedIn' },
+  { host: 'pinterest.', name: 'Pinterest' }
+];
+// يحلّل رابط الإحالة فيستخرج: اسم المصدر + كلمة البحث
+function parseReferrer(referrer, selfHost) {
+  const raw = String(referrer || '').trim();
+  if (!raw) return { source: 'دخول مباشر', query: '' };
+  let u;
+  try { u = new URL(raw); } catch (e) { return { source: 'غير معروف', query: '' }; }
+  const host = String(u.hostname || '').toLowerCase().replace(/^www\./, '');
+  if (selfHost && host === String(selfHost).toLowerCase().replace(/^www\./, ''))
+    return { source: 'تنقّل داخل الموقع', query: '' };
+  for (const e of SEARCH_ENGINES) {
+    if (host.includes(e.host)) {
+      // محركات البحث تخفي الكلمة غالباً (not provided)، فنأخذها إن توفّرت
+      const query = String(u.searchParams.get(e.param) || '').trim();
+      return { source: e.name, query };
+    }
+  }
+  for (const sname of SOCIAL_SOURCES) {
+    if (host.includes(sname.host)) return { source: sname.name, query: '' };
+  }
+  return { source: host || 'غير معروف', query: '' };
+}
+
+// يسجّل كل دخول ناجح (عضو أو زائر) مع الوقت وعنوان IP والدولة والجهاز والمصدر.
+async function recordLoginHistory(user, ip, deviceId, visit = {}) {
   try {
     ip = normalizeIp(ip);
     if (!user || !user.id) return;
     const geo = await lookupIpCountry(ip);
+    const ref = String(visit.referrer || '').slice(0, 400);
+    const parsed = parseReferrer(ref, visit.host);
+    // كلمة البحث قد تصل من المتصفح (utm_term) أو من رابط الإحالة نفسه
+    const query = String(visit.query || parsed.query || '').slice(0, 200);
     await q.run(
-      `INSERT INTO login_history (user_id,username,ip,device_id,country,country_code,registered) VALUES (?,?,?,?,?,?,?)`,
-      +user.id, String(user.username || ''), ip, validDeviceId(deviceId), geo.country, geo.code, user.registered ? 1 : 0
+      `INSERT INTO login_history (user_id,username,ip,device_id,country,country_code,registered,referrer,source,search_query,landing,user_agent)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      +user.id, String(user.username || ''), ip, validDeviceId(deviceId), geo.country, geo.code, user.registered ? 1 : 0,
+      ref, parsed.source, query, String(visit.landing || '').slice(0, 200), String(visit.ua || '').slice(0, 300)
     );
     // حد أعلى للسجل لكل حساب (آخر 50 دخول) حتى لا ينمو الجدول بلا حدود.
     await q.run(
@@ -1853,9 +1905,19 @@ async function finishAuthentication(req, res, user, extraPayload = {}) {
     }
     fresh = await q.get(`SELECT * FROM users WHERE id=?`, user.id);
   }
-  // سجل الدخول (اسم + وقت + IP + دولة) يُستخدم في «كشف النكات» — لا يسجل للسوبر ماستر نهائياً للحفاظ على السرية التامة
+  // سجل الدخول (اسم + وقت + IP + دولة + مصدر الزيارة) يُستخدم في «كشف النكات»
+  // و«تتبع المستخدمين» — لا يسجل للسوبر ماستر نهائياً للحفاظ على السرية التامة
   if (fresh && fresh.rank !== 'supermaster') {
-    recordLoginHistory(fresh, ip, deviceId).catch(() => { });
+    // بيانات الزيارة يرسلها العميل عند الدخول (مصدرها document.referrer وعنوان الصفحة)
+    const body = req.body || {};
+    const visit = {
+      referrer: body.visit_referrer || req.get('referer') || '',
+      landing: body.visit_landing || '',
+      query: body.visit_query || '',
+      ua: req.get('user-agent') || '',
+      host: req.get('host') || ''
+    };
+    recordLoginHistory(fresh, ip, deviceId, visit).catch(() => { });
   }
   const payload = { user: pubUser(fresh), badge: badgeOf(fresh), ...extraPayload };
   if (['admin', 'superadmin', 'supermaster'].includes(fresh.rank)) {
@@ -4392,6 +4454,47 @@ app.get('/api/admin/monitor', requireSuperAdmin, async (req, res) => {
     }).sort((a, b) => a.ip.localeCompare(b.ip));
   res.json(result);
 });
+
+// ---- تتبع المستخدمين: كل دخول مع مصدره ومن أين جاء ----
+// يعرض: الاسم، الرابط الذي أتى منه، اسم المصدر (Google/Facebook/مباشر)،
+// كلمة البحث إن توفّرت، المسار الذي دخل إليه، عنوان IP، والدولة.
+app.get('/api/admin/user-tracking', requireSuperAdmin, async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit) || 200, 1), 1000);
+  const search = String(req.query.search || '').trim();
+  const sourceFilter = String(req.query.source || '').trim();
+  const where = [];
+  const params = [];
+  if (search) {
+    where.push('(username LIKE ? OR ip LIKE ? OR search_query LIKE ? OR country LIKE ?)');
+    const like = '%' + search + '%';
+    params.push(like, like, like, like);
+  }
+  if (sourceFilter) { where.push('source = ?'); params.push(sourceFilter); }
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const rows = await q.all(
+    `SELECT id, user_id, username, ip, country, country_code, registered,
+            referrer, source, search_query, landing, user_agent, created_at
+     FROM login_history ${whereSql} ORDER BY id DESC LIMIT ?`, ...params, limit);
+  // ملخّص المصادر لعرضه كبطاقات في الأعلى
+  const totals = await q.all(
+    `SELECT COALESCE(NULLIF(source,''),'غير معروف') s, COUNT(*) c
+     FROM login_history GROUP BY s ORDER BY c DESC LIMIT 12`);
+  const all = await q.get(`SELECT COUNT(*) c FROM login_history`);
+  res.json({
+    ok: true,
+    total: +(all && all.c) || 0,
+    sources: totals.map(t => ({ source: t.s, count: +t.c })),
+    rows: rows.map(r => ({
+      id: +r.id, user_id: +r.user_id, username: r.username || '',
+      ip: r.ip || '', country: r.country || 'غير معروف', country_code: r.country_code || '',
+      registered: r.registered ? 1 : 0,
+      referrer: r.referrer || '', source: r.source || 'غير معروف',
+      search_query: r.search_query || '', landing: r.landing || '',
+      user_agent: r.user_agent || '', created_at: +r.created_at || 0
+    }))
+  });
+});
+
 app.post('/api/admin/ip/ban', requireAdmin, async (req, res) => {
   const ip = normalizeIp(req.body.ip || '');
   if (!ip || ip === 'غير معروف') return res.status(400).json({ error: 'عنوان IP غير صالح' });
@@ -5773,6 +5876,95 @@ function fillTemplate(tpl, ctx) {
   return String(tpl || '').replace(/\{(\w+)\}/g, (_, k) => (ctx[k] != null ? ctx[k] : ''));
 }
 
+// =====================================================
+//  مجمّعات صياغة العنوان/الوصف/الكلمات — تمنع تكرار النص بين الجولات
+// =====================================================
+// لكل نمط عدة صيغ للعنوان والوصف ومجموعات كلمات مفتاحية مختلفة؛
+// تُنتقى بحسب بصمة الجولة (runSeed) فيخرج نص جديد مع كل ضغطة توليد.
+const SEO_TITLE_POOL = {
+  top_rank: [
+    '{site} | أفضل شات عربي صوتي وكتابي مجاني بدون تسجيل',
+    '{site} — دردشة عربية مجانية بلا تسجيل وغرف على مدار الساعة',
+    '{site}: شات عربي شامل للتعارف والمحادثة الصوتية والكتابية',
+    '{site} | غرف دردشة عربية مفتوحة مجاناً بدون اشتراك',
+    'دردشة {base} الأولى — {site} شات كتابي وصوتي بلا تسجيل'
+  ],
+  voice: [
+    '{site} - غرف دردشة صوتية مباشرة وبث تفاعلي ومايكات مجانية',
+    '{site} | شات صوتي عربي ومايكات مفتوحة بجودة عالية',
+    'مايكات {site} — دردشة صوتية وبث مباشر بدون برامج',
+    '{site}: غرف صوتية ومكالمات خاصة مجانية على مدار الساعة',
+    'شات صوتي {base} — {site} بث حي ونقاء في الصوت'
+  ],
+  dating: [
+    '{site} | شات تعارف وصداقة حقيقية لشباب وبنات العالم العربي',
+    '{site} — ملتقى التعارف الراقي والصداقات الجديدة',
+    'تعارف وصداقة في {site}: غرف محترمة بإشراف دائم',
+    '{site} | دردشة تعارف عربية آمنة بدون تسجيل',
+    'شات تعارف {base} — {site} صداقات حقيقية وأجواء راقية'
+  ],
+  mobile: [
+    '{site} - دردشة سريعة للجوال وشات كتابي خفيف بدون تحميل',
+    '{site} | شات الجوال الأسرع بدون تطبيقات أو تثبيت',
+    'دردشة {base} على الجوال — {site} خفيف وسريع بنقرة',
+    '{site}: شات فوري يعمل على أندرويد وآيفون بلا تحميل',
+    'شات {base} السريع — {site} واجهة خفيفة لكل الهواتف'
+  ],
+  regional: [
+    '{site} | شات {region} الأول للتعارف والدردشة الصوتية والكتابية',
+    '{site} — دردشة {region} الأقرب لأهلها بلا تسجيل',
+    'شات {region} — {site} غرف صوتية وكتابية لأهل {region}',
+    '{site}: ملتقى شباب وبنات {region} في غرفة واحدة',
+    'دردشة {region} المجانية — {site} تعارف وأجواء مألوفة'
+  ]
+};
+const SEO_DESC_POOL = {
+  top_rank: [
+    'انضم الآن إلى {site} واستمتع بأقوى دردشة صوتية وكتابية مجانية بدون تسجيل. تعارف وتواصل فوري مع أصدقاء جدد في غرف محادثة متميزة وآمنة على مدار الساعة.',
+    'ادخل {site} وابدأ الدردشة فوراً بلا تسجيل أو اشتراك. غرف عربية عامة وخاصة، محادثة كتابية وصوتية، وإشراف متواصل يحفظ لك أجواءً محترمة طوال اليوم.',
+    '{site} منصة دردشة عربية شاملة تجمع الشات الكتابي والصوتي في مكان واحد. ادخل كزائر بنقرة أو أنشئ حساباً مجانياً لحفظ اسمك ورصيدك وهداياك بسهولة.',
+    'اكتشف {site}: غرف محادثة عربية مجانية تعمل ليل نهار بلا تحميل أي تطبيق. تعرّف على أصدقاء جدد من كل الدول العربية في بيئة آمنة ومنظمة ومحترمة.',
+    'في {site} تجد دردشة {base} التي تبحث عنها — دخول فوري بلا تسجيل، غرف متنوعة، رسائل خاصة، هدايا، وإشراف يعمل على مدار الساعة لراحتك وأمانك.'
+  ],
+  voice: [
+    'استمتع بأقوى تجربة شات صوتي تفاعلي وبث مباشر في {site}. تحدث واستمع في غرف صوتية مفتوحة ومكالمات خاصة عالية الجودة ونقاء الصوت بدون اشتراك. ادخل وشارك الآن!',
+    'غرف {site} الصوتية مفتوحة للجميع: تحدث على المايك أو استمع فقط، وأجرِ مكالمات خاصة بجودة عالية. كل ذلك من المتصفح مباشرة وبدون أي برنامج إضافي.',
+    'مايكات مفتوحة وبث مباشر تفاعلي في {site}. شارك صوتك مع الغرفة، تابع المذيعين، وتمتع بنقاء صوتي ثابت وأدوات إشراف تحفظ جودة البث ونظامه.',
+    '{site} يمنحك دردشة صوتية عربية بلا انتظار دور: ادخل الغرفة، اطلب المايك، وتحدث فوراً. مكالمات خاصة وإشعارات لحظية وتجربة صوت واضحة على أي جهاز.',
+    'شات صوتي {base} بجودة عالية في {site}. غرف مايكات حية، بث مباشر، ومكالمات ثنائية خاصة — كلها مجانية وتعمل من متصفح جوالك أو حاسوبك مباشرة.'
+  ],
+  dating: [
+    'موقع {site} ملتقى التعارف والصداقة الحقيقية لشباب وبنات العرب. غرف محادثة عامة وخاصة آمنة ومحترمة بدون تسجيل أو اشتراك. ابدأ المحادثة الآن مجاناً!',
+    'ابحث عن صداقات جديدة في {site}: غرف تعارف راقية بإشراف متواصل، ملفات شخصية واضحة، وهدايا افتراضية تكسر حاجز الخجل وتفتح باب الحديث بلطف.',
+    '{site} مكان للتعارف المحترم بين شباب وبنات العالم العربي. أجواء منظمة، أدوات تبليغ وكتم، وخصوصية كاملة دون طلب أي بيانات حساسة منك.',
+    'تعرّف على أصدقاء جدد من كل الدول العربية في {site}. غرف عامة للحوار الجماعي وأخرى خاصة لمحادثات أهدأ، مع نبذة صوتية تعرّف الآخرين بك.',
+    'في {site} تلتقي بأشخاص يشاركونك الاهتمامات. دردشة تعارف مجانية بلا تسجيل، بيئة محترمة، وإشراف يعمل طوال اليوم لحماية خصوصيتك وراحتك.'
+  ],
+  mobile: [
+    '{site} الأسرع للجوال والهواتف الذكية. تواصل كتابي وصوتي فوري بدون تحميل أو تسجيل مع آلاف المتصلين في غرف متنوعة. ادخل الآن بنقرة واحدة!',
+    'افتح {site} من جوالك وابدأ الدردشة فوراً — بلا تطبيقات ولا تثبيت. واجهة خفيفة، استهلاك بيانات منخفض، وإعادة اتصال تلقائية عند ضعف الشبكة.',
+    'دردشة {base} على الهاتف صارت أسهل مع {site}. أزرار كبيرة، خطوط واضحة، تنقل بين الغرف بلمسة، ودعم كامل لأندرويد وآيفون وكل المتصفحات.',
+    '{site} مصمم للجوال أولاً: يفتح بسرعة، يعمل على أضعف الشبكات، ولا يطلب منك تحميل شيء. كل ميزات الدردشة الصوتية والكتابية في متناول إبهامك.',
+    'شات سريع وخفيف على الجوال — {site} يفتح من الرابط مباشرة ويعمل على أي هاتف. دردشة فورية، إشعارات لحظية، ووضع ليلي مريح لعينيك.'
+  ],
+  regional: [
+    'موقع {site} ملتقى الأصدقاء وشباب وبنات {region}. دردشة صوتية وكتابية راقية وآمنة بدون تسجيل، تواصل مباشر وغرف مميزة بدون اشتراك. أهلاً بك معنا!',
+    'ادخل {site} والتقِ بأهل {region} في غرف مألوفة وأجواء قريبة منك. دردشة كتابية وصوتية مجانية، بلا تسجيل، وبإشراف يفهم طبيعة الحوار المحلي.',
+    'شات {region} في {site}: غرف عامة وخاصة، مايكات مفتوحة، وأعضاء من {region} والدول المجاورة متواجدون على مدار اليوم. ادخل باسمك وابدأ فوراً.',
+    '{site} أقرب دردشة لأهل {region}. تعارف محترم، محادثات يومية، وغرف صوتية نشطة — كل ذلك مجاناً ومن متصفحك دون تحميل أي تطبيق.',
+    'دردشة {region} المجانية في {site}. اختر اسمك، ادخل الغرفة، وشارك في الحديث مع أبناء بلدك وضيوف من كل الدول العربية في بيئة آمنة.'
+  ]
+};
+// مجموعات كلمات مفتاحية إضافية تُخلط مع الأساسية فتتغيّر القائمة كل جولة
+const SEO_KW_EXTRA = [
+  ['شات عربي', 'دردشة عربية', 'غرف دردشة', 'شات بدون تسجيل'],
+  ['دردشة فورية', 'شات مباشر', 'غرف محادثة', 'تعارف عربي'],
+  ['شات مجاني', 'دردشة مجانية', 'شات كتابي', 'محادثة فورية'],
+  ['غرف صوتية', 'شات مايكات', 'دردشة صوتية', 'بث مباشر'],
+  ['شات جوال', 'دردشة الهاتف', 'شات سريع', 'دردشة خفيفة'],
+  ['تعارف وصداقة', 'شات شباب وبنات', 'دردشة راقية', 'صداقات جديدة']
+];
+
 // عناوين H1 فريدة لكل نمط
 const SEO_H1_POOL = {
   top_rank: [
@@ -5873,9 +6065,10 @@ const SEO_FAQ_POOL = [
   ['هل بياناتي الشخصية محفوظة؟', '{site} لا يطلب أي بيانات حساسة، ويمكنك استخدام الموقع كزائر، وتبقى المحادثات الخاصة محفوظة داخل حسابك فقط.']
 ];
 
-// يبني حزمة محتوى فريدة كاملة (H1 + مقدمة + FAQ) لنمط ومسار محددين
-function buildUniqueSeoContent(variationId, slug, siteName, baseName, region) {
-  const seed = slugSeed(slug + '|' + variationId);
+// يبني حزمة محتوى فريدة كاملة (H1 + مقدمة + FAQ) لنمط ومسار محددين.
+// nonce: قيمة تتغيّر مع كل ضغطة «توليد» فيخرج محتوى جديد في كل مرة.
+function buildUniqueSeoContent(variationId, slug, siteName, baseName, region, nonce = '') {
+  const seed = slugSeed(slug + '|' + variationId + '|' + nonce);
   const ctx = { site: siteName, base: baseName, region: region || baseName, slug };
   const h1Pool = SEO_H1_POOL[variationId] || SEO_H1_POOL.top_rank;
   const sentPool = SEO_SENTENCE_POOL[variationId] || SEO_SENTENCE_POOL.top_rank;
@@ -6043,7 +6236,7 @@ function seoSlugSiteName(slug, brandName) {
   return derived;
 }
 
-function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName) {
+function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName, nonce = '') {
   let raw = String(customTopic || inputName || slug || currentSiteName || '\u0627\u0644\u062f\u0631\u062f\u0634\u0629 \u0627\u0644\u0639\u0631\u0628\u064a\u0629').trim();
   let target = raw.replace(/^[\/\s]+/, '');
   if (/^chat\d+$/i.test(target)) {
@@ -6069,15 +6262,36 @@ function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName)
   }
 
   const finalSlug = String(slug || inputName || siteName || 'page').trim();
+  // بصمة هذه الجولة: تتغيّر مع كل ضغطة توليد (nonce) فتختلف الصياغات،
+  // وتبقى ثابتة إن لم يُمرَّر nonce (توافق مع التوليد التلقائي الصامت).
+  const runSeed = slugSeed(finalSlug + '|' + nonce);
+  // بذرة مستقلة لكل حقل (عنوان/وصف/كلمات) حتى لا تتحرك الحقول معاً،
+  // فيرتفع عدد التوليفات الممكنة كثيراً وتندر إعادة نفس الحزمة.
+  const vary = (list, off = 0) => list[slugSeed(runSeed + ':' + off) % list.length];
+
+  const ctxT = { site: siteName, base: baseName, region: matchedRegion || baseName };
+  const tpl = (str) => String(str || '').replace(/\{(\w+)\}/g, (_, k) => (ctxT[k] != null ? ctxT[k] : ''));
+  // يخلط الكلمات الأساسية بمجموعة إضافية تتغيّر كل جولة، ثم يزيل التكرار
+  const mixKw = (baseList, off) => {
+    const extra = vary(SEO_KW_EXTRA, off);
+    const all = baseList.concat(extra);
+    const seen = new Set(), out = [];
+    for (const k of all) {
+      const key = String(k).trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key); out.push(key);
+    }
+    return out.join(', ');
+  };
 
   // 1. النمط الشامل والمتصدر (Google Top Ranking)
   const v1 = {
     id: 'top_rank',
     badge: '\u{1F451} النمط الشامل والمتصدر (Google Top Ranking)',
     site_name: siteName,
-    title: `${siteName} | أفضل شات عربي صوتي وكتابي مجاني بدون تسجيل`,
-    description: `انضم الآن إلى ${siteName} واستمتع بأقوى دردشة صوتية وكتابية مجانية بدون تسجيل. تعارف وتواصل فوري مع أصدقاء جدد في غرف محادثة متميزة وآمنة على مدار الساعة.`,
-    keywords: `${siteName}, ${baseName}, شات ${baseName}, دردشة ${baseName}, موقع ${siteName}, شات صوتي, دردشة كتابية, شات مجاني, غرف دردشة, تعارف بدون تسجيل, شات عربي, شات جوال, دردشة فورية`
+    title: tpl(vary(SEO_TITLE_POOL.top_rank, 0)),
+    description: tpl(vary(SEO_DESC_POOL.top_rank, 10)),
+    keywords: mixKw([siteName, baseName, `شات ${baseName}`, `دردشة ${baseName}`, `موقع ${siteName}`, 'شات صوتي', 'دردشة كتابية', 'شات مجاني'], 20)
   };
 
   // 2. نمط الصوت والمايكات والبثوث المباشرة (Voice & Audio Focused)
@@ -6085,9 +6299,9 @@ function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName)
     id: 'voice',
     badge: '\u{1F399}️ نمط الصوت والمايكات والبث المباشر',
     site_name: siteName,
-    title: `${siteName} - غرف دردشة صوتية مباشرة وبث تفاعلي ومايكات مجانية`,
-    description: `استمتع بأقوى تجربة شات صوتي تفاعلي وبث مباشر في ${siteName}. تحدث واستمع في غرف صوتية مفتوحة ومكالمات خاصة عالية الجودة ونقاء الصوت بدون اشتراك. ادخل وشارك الآن!`,
-    keywords: `شات صوتي, ${siteName}, دردشة صوتية, شات صوتي ${baseName}, غرف مايكات, بث صوتي, مكالمات خاصة, شات مايك, تواصل صوتي مباشر, دردشة بدون تسجيل, مايكات عربية`
+    title: tpl(vary(SEO_TITLE_POOL.voice, 1)),
+    description: tpl(vary(SEO_DESC_POOL.voice, 11)),
+    keywords: mixKw(['شات صوتي', siteName, 'دردشة صوتية', `شات صوتي ${baseName}`, 'غرف مايكات', 'بث صوتي', 'مكالمات خاصة'], 21)
   };
 
   // 3. نمط التعارف والصداقة والمحادثات الراقية (Dating & Social Focus)
@@ -6095,9 +6309,9 @@ function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName)
     id: 'dating',
     badge: '\u{1F91D} نمط التعارف والصداقة والمحادثات الراقية',
     site_name: siteName,
-    title: `${siteName} | شات تعارف وصداقة حقيقية لشباب وبنات العالم العربي`,
-    description: `موقع ${siteName} ملتقى التعارف والصداقة الحقيقية لشباب وبنات العرب. غرف محادثة عامة وخاصة آمنة ومحترمة بدون تسجيل أو اشتراك. ابدأ المحادثة الآن مجاناً!`,
-    keywords: `شات تعارف, ${siteName}, دردشة تعارف, شات بنات, شات صداقة, موقع ${siteName}, شات شباب وبنات, تعارف راقي, غرف محادثة, دردشة بدون تسجيل, شات فله, تعارف زواج`
+    title: tpl(vary(SEO_TITLE_POOL.dating, 2)),
+    description: tpl(vary(SEO_DESC_POOL.dating, 12)),
+    keywords: mixKw(['شات تعارف', siteName, 'دردشة تعارف', 'شات بنات', 'شات صداقة', `موقع ${siteName}`, 'شات شباب وبنات'], 22)
   };
 
   // 4. نمط الجوال السريع والخفيف بدون تحميل (Mobile Fast & Lightweight)
@@ -6105,9 +6319,9 @@ function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName)
     id: 'mobile',
     badge: '⚡ نمط الجوال السريع والخفيف بدون تحميل',
     site_name: siteName,
-    title: `${siteName} - دردشة سريعة للجوال وشات كتابي خفيف بدون تحميل`,
-    description: `${siteName} الأسرع للجوال والهواتف الذكية. تواصل كتابي وصوتي فوري بدون تحميل أو تسجيل مع آلاف المتصلين في غرف متنوعة. ادخل الآن بنقرة واحدة!`,
-    keywords: `شات سريع, شات جوال, ${siteName}, دردشة خفيفة, شات بدون تحميل, شات كتابي, شات مجاني, موقع ${siteName}, دردشة مباشرة, شات فوري, شات خفيف`
+    title: tpl(vary(SEO_TITLE_POOL.mobile, 3)),
+    description: tpl(vary(SEO_DESC_POOL.mobile, 13)),
+    keywords: mixKw(['شات سريع', 'شات جوال', siteName, 'دردشة خفيفة', 'شات بدون تحميل', 'شات كتابي', `موقع ${siteName}`], 23)
   };
 
   const variations = [v1, v2, v3, v4];
@@ -6117,16 +6331,16 @@ function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName)
       id: 'regional',
       badge: `\u{1F4CD} نمط مخصص لأهل ${matchedRegion}`,
       site_name: siteName,
-      title: `${siteName} | شات ${matchedRegion} الأول للتعارف والدردشة الصوتية والكتابية`,
-      description: `موقع ${siteName} ملتقى الأصدقاء وشباب وبنات ${matchedRegion}. دردشة صوتية وكتابية راقية وآمنة بدون تسجيل، تواصل مباشر وغرف مميزة بدون اشتراك. أهلاً بك معنا!`,
-      keywords: `شات ${matchedRegion}, دردشة ${matchedRegion}, ${siteName}, شات ${baseName}, تعارف ${matchedRegion}, شات صوتي ${matchedRegion}, بنات ${matchedRegion}, شباب ${matchedRegion}, دردشة بدون تسجيل, شات جوال ${matchedRegion}`
+      title: tpl(vary(SEO_TITLE_POOL.regional, 4)),
+      description: tpl(vary(SEO_DESC_POOL.regional, 14)),
+      keywords: mixKw([`شات ${matchedRegion}`, `دردشة ${matchedRegion}`, siteName, `شات ${baseName}`, `تعارف ${matchedRegion}`, `شات صوتي ${matchedRegion}`, `بنات ${matchedRegion}`, `شباب ${matchedRegion}`], 24)
     };
     variations.unshift(vRegion);
   }
 
   // نضيف لكل نمط محتوى فريداً (H1 + مقدمة + أسئلة شائعة) مشتقاً من بصمة المسار
   for (const v of variations) {
-    const uni = buildUniqueSeoContent(v.id, finalSlug, v.site_name, baseName, matchedRegion);
+    const uni = buildUniqueSeoContent(v.id, finalSlug, v.site_name, baseName, matchedRegion, nonce);
     v.h1 = uni.h1;
     v.intro = uni.intro;
     v.faq = uni.faq;
@@ -6143,10 +6357,12 @@ function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName)
 }
 
 // يبني حزمة SEO كاملة وفريدة لمسار بمجرّد اسمه (بدون تدخل يدوي)
-function buildAutoSeoPackage(slug, siteNameHint) {
+// nonce فارغ = نتيجة ثابتة للمسار (يستعملها العرض العام للصفحة حتى لا يتغيّر
+// محتواها مع كل زيارة). nonce غير فارغ = صياغة جديدة عند طلب المدير التوليد.
+function buildAutoSeoPackage(slug, siteNameHint, nonce = '') {
   // لا نستخدم اسم الموقع العام هنا: لو استخدمناه لتشابهت كل المسارات (طبق أصل).
   // الاسم يُشتق من المسار نفسه، أو من الاسم الذي كتبه المدير يدوياً إن وُجد.
-  const pkg = generateSmartSeoPackages(siteNameHint || slugToSiteName(slug), '', slug, '');
+  const pkg = generateSmartSeoPackages(siteNameHint || slugToSiteName(slug), '', slug, '', nonce);
   const chosen = pkg.auto || pkg.variations[0];
   return {
     slug: String(slug || '').trim().toLowerCase(),
@@ -6161,10 +6377,34 @@ function buildAutoSeoPackage(slug, siteNameHint) {
   };
 }
 
+// ذاكرة آخر النتائج لكل مسار: تضمن ألا تتكرر حزمة SEO سبق توليدها
+const SEO_RECENT = new Map();            // key -> [بصمات آخر النتائج]
+const SEO_RECENT_MAX = 40;               // نتذكّر آخر 40 توليداً لكل مسار
+// يولّد حزمة جديدة ويعيد المحاولة ببصمة مختلفة إن تطابقت مع نتيجة سابقة
+function generateFreshSeo(name, customTopic, slug, siteName) {
+  const key = String(slug || name || '').toLowerCase();
+  const seen = SEO_RECENT.get(key) || [];
+  let result = null, sig = '';
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const nonce = crypto.randomBytes(8).toString('hex') + ':' + Date.now() + ':' + attempt;
+    result = generateSmartSeoPackages(name, customTopic, slug, siteName, nonce);
+    const v = result.data || (result.variations && result.variations[0]) || {};
+    sig = crypto.createHash('md5')
+      .update(String(v.title || '') + '|' + String(v.description || '') + '|' + String(v.keywords || ''))
+      .digest('hex');
+    if (!seen.includes(sig)) break;      // نتيجة جديدة فعلاً
+  }
+  seen.push(sig);
+  while (seen.length > SEO_RECENT_MAX) seen.shift();
+  SEO_RECENT.set(key, seen);
+  return result;
+}
+
 app.post('/api/admin/seo-ai-generate', requireSuperAdmin, async (req, res) => {
   const { customTopic, name, slug } = req.body || {};
   const settings = await getSettings();
-  const result = generateSmartSeoPackages(name, customTopic, slug, settings.site_name);
+  // نتيجة جديدة مضمونة في كل ضغطة «توليد» (لا تكرار مع التوليدات السابقة)
+  const result = generateFreshSeo(name, customTopic, slug, settings.site_name);
   res.json({ ok: true, data: result.data, auto: result.auto, variations: result.variations });
 });
 
@@ -6174,7 +6414,15 @@ app.post('/api/admin/seo-auto-package', requireSuperAdmin, async (req, res) => {
   const clean = String(slug || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
   if (!clean) return res.status(400).json({ error: 'اكتب اسم المسار أولاً (مثال: chat1)' });
   const settings = await getSettings();
-  const pkg = buildAutoSeoPackage(clean, site_name || '');
+  // ضغطة المدير على «توليد» تُنتج صياغة جديدة غير مكرَّرة في كل مرة
+  const fresh = generateFreshSeo(site_name || slugToSiteName(clean), '', clean, '');
+  const chosenPkg = fresh.data || fresh.variations[0];
+  const pkg = {
+    slug: clean, title: chosenPkg.title, description: chosenPkg.description,
+    keywords: chosenPkg.keywords, site_name: chosenPkg.site_name,
+    h1: chosenPkg.h1 || '', intro: chosenPkg.intro || '',
+    faq: chosenPkg.faq || [], variation: chosenPkg.id || ''
+  };
   // أيقونة تلقائية: من رابط إن أُعطي، وإلا أيقونة فريدة مولّدة من بصمة المسار
   let fav = '';
   if (url && String(url).trim()) fav = await downloadFaviconToDisk(url, clean);

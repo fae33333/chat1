@@ -1497,6 +1497,24 @@ async function trackedFetch(url, options = {}, label) {
     hideGlobalOperationLoading();
   }
 }
+// =====================================================
+//  بيانات الزيارة: من أين دخل المستخدم إلى الدردشة
+// =====================================================
+// تُلتقط مرة واحدة عند فتح الصفحة (قبل أن يغيّر التطبيق الرابط)، ثم تُرسل
+// مع أول تسجيل دخول/تسجيل/دخول كزائر لتُحفظ في سجل التتبّع.
+const VISIT_INFO = (() => {
+  try {
+    const params = new URLSearchParams(location.search || '');
+    // كلمة البحث إن مرّرها رابط الحملة
+    const query = params.get('utm_term') || params.get('q') || params.get('query') || '';
+    return {
+      visit_referrer: document.referrer || '',
+      visit_landing: (location.pathname || '/') + (location.search || ''),
+      visit_query: String(query || '').slice(0, 200)
+    };
+  } catch (e) { return { visit_referrer: '', visit_landing: '', visit_query: '' }; }
+})();
+
 async function api(url, method = 'GET', body, isForm = false) {
   const o = { method, credentials: 'same-origin', headers: { 'X-Chat-Client': '1' } };
   if (CHAT_TOKEN) o.headers['X-Chat-Token'] = CHAT_TOKEN;
@@ -10231,7 +10249,7 @@ $('#doLogin').onclick = async () => {
     btn.innerHTML = '<i class="f7-icons">arrow2_circlepath</i> جارٍ تسجيل الدخول...';
   }
   try {
-    const d = await api('/api/login', 'POST', { username: $('#lUser').value.trim(), password: $('#lPass').value });
+    const d = await api('/api/login', 'POST', { username: $('#lUser').value.trim(), password: $('#lPass').value, ...VISIT_INFO });
     // حساب مسجل غير مُفعَّل بريده: يُفعّل بقالب الرمز بعد إظهار التحميل 3.5 ثوانٍ.
     if (d.needs_verification) { await revealEmailVerificationAfterDelay(d, startedAt); return; }
     CHAT_TOKEN = d.tab_token || '';
@@ -10261,7 +10279,7 @@ $('#doGuest').onclick = async () => {
     const gender = $('#gGenderSel').value;
     let name = $('#gName').value.trim();
     if (!name) { const names = ['زائر', 'ضيف', 'نجم', 'عاشق', 'مغامر', 'رامي', 'فارس', 'همس', 'شهم', 'ذوق']; name = names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 900 + 100); }
-    const d = await api('/api/guest', 'POST', { username: name, gender });
+    const d = await api('/api/guest', 'POST', { username: name, gender, ...VISIT_INFO });
     CHAT_TOKEN = d.tab_token || '';
     ME = d.user; MYBADGE = d.badge;
     closeOv('loginOv');
@@ -10413,7 +10431,7 @@ $('#doRegister').onclick = async () => {
   try {
     const d = await api('/api/register', 'POST', {
       username: $('#rUser').value.trim(), password: $('#rPass').value,
-      gender, age: +$('#rAge').value || 25, bio, email
+      gender, age: +$('#rAge').value || 25, bio, email, ...VISIT_INFO
     });
     // التسجيل يتطلب تفعيل البريد: يبقى مؤشر التحميل 3.5 ثوانٍ
     // ثم يظهر قالب إدخال الرمز الذي أُرسل إلى Gmail.
