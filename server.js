@@ -8576,6 +8576,17 @@ io.on('connection', async (socket) => {
     Object.keys(roomUsers).forEach(rid => { if (roomUsers[rid].has(uid)) emitRoomUsers(rid); });
   });
 
+  // نبضة إبقاء الاتصال حيّاً: حزمة موقّعة/معتمة كبقية الحزم يرسلها العميل
+  // دورياً حتى وهو في الخلفية، فلا يعتبره الخادم منقطعاً ولا يسقط السوكيت.
+  // ترد بـ ack ليقيس العميل الاستجابة ويعرف أن الاتصال ما زال حياً.
+  socket.on('keepalive', (payload, ack) => {
+    socket.data.lastBeatAt = Date.now();
+    if (onlineUsers[uid]) onlineUsers[uid].lastSeen = Date.now();
+    if (typeof ack === 'function') {
+      try { ack({ ok: true, ts: Date.now(), hidden: !!(payload && payload.hidden) }); } catch (e) { }
+    }
+  });
+
   socket.on('disconnect', async () => {
     const activeCall = activePrivateCalls.get(uid);
     if (activeCall && (!userSockets[uid] || userSockets[uid].length <= 1)) {

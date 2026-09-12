@@ -2254,6 +2254,57 @@ function stopChatPing() {
   if (CHAT_PING_TIMER) { clearInterval(CHAT_PING_TIMER); CHAT_PING_TIMER = null; }
 }
 
+// ===== نبضة السوكيت المعتمة (keepalive) =====
+// حزمة موقّعة/معتمة تماماً كبقية الحزم (يوقّعها cloak-client تلقائياً) تُرسل
+// كل 15 ثانية لتبقي الاتصال حيّاً حتى والنافذة في الخلفية أو على صفحة أخرى.
+// المؤقّت داخل Web Worker لأن المتصفح يخنق مؤقّتات الصفحة الخلفية.
+let BEAT_WORKER = null;
+let BEAT_FALLBACK_TIMER = null;
+let BEAT_MISSED = 0;
+const BEAT_EVERY_MS = 15000;
+function sendKeepaliveBeat() {
+  if (!ME || !CHAT_TOKEN) return;
+  // السوكيت ساقط أصلاً: أعد الاتصال بدل إرسال نبضة في الفراغ
+  if (!SOCKET || !SOCKET.connected) {
+    if (navigator.onLine && !CONNECTION_INTERRUPTED) forceReconnectNow();
+    return;
+  }
+  let answered = false;
+  try {
+    // الحزمة تمر عبر نفس طبقة التوقيع والتعتيم المطبّقة على كل الأحداث
+    SOCKET.emit('keepalive', { hidden: document.visibilityState === 'hidden' }, () => {
+      answered = true;
+      BEAT_MISSED = 0;
+    });
+  } catch (e) { return; }
+  // لم يصل ردّ خلال 10 ثوانٍ: الاتصال ميت فعلياً رغم أن الحالة تقول متصل
+  setTimeout(() => {
+    if (answered) return;
+    BEAT_MISSED++;
+    if (BEAT_MISSED >= 2 && navigator.onLine) { BEAT_MISSED = 0; forceReconnectNow(); }
+  }, 10000);
+}
+function startKeepaliveBeat() {
+  stopKeepaliveBeat();
+  BEAT_MISSED = 0;
+  try {
+    BEAT_WORKER = new Worker('/js/beat-worker.js');
+    BEAT_WORKER.onmessage = (e) => { if (e.data && e.data.beat) sendKeepaliveBeat(); };
+    BEAT_WORKER.postMessage({ cmd: 'start', every: BEAT_EVERY_MS });
+  } catch (e) {
+    // متصفح بلا Worker: مؤقّت عادي (يُخنق في الخلفية لكنه أفضل من لا شيء)
+    BEAT_WORKER = null;
+    BEAT_FALLBACK_TIMER = setInterval(sendKeepaliveBeat, BEAT_EVERY_MS);
+  }
+}
+function stopKeepaliveBeat() {
+  if (BEAT_WORKER) {
+    try { BEAT_WORKER.postMessage({ cmd: 'stop' }); BEAT_WORKER.terminate(); } catch (e) { }
+    BEAT_WORKER = null;
+  }
+  if (BEAT_FALLBACK_TIMER) { clearInterval(BEAT_FALLBACK_TIMER); BEAT_FALLBACK_TIMER = null; }
+}
+
 function connectSocket() {
   if (!ME || !CHAT_TOKEN) return;
   // هوية هذه الصفحة تنتقل إلى الخادم عبر WebSocket ولا تعتمد على كوكي مشترك بين التبويبات.
@@ -2270,6 +2321,7 @@ function connectSocket() {
   });
   SOCKET = socket;
   startChatPing(); // نبضة الاحتفاظ بالجلسة (تبقى حية حتى من تبويب خلفية)
+  startKeepaliveBeat(); // نبضة السوكيت المعتمة — تبقي الاتصال حياً في الخلفية
   // بعد كل اتصال نعيد الانضمام للغرفة نفسها ثم نخفي إشعار الانقطاع.
   socket.on('connect', () => restoreCurrentRoom(socket));
   SOCKET.on('msg', (m) => {
@@ -8634,6 +8686,7 @@ async function logoutWithoutReload() {
   CONNECTION_INTERRUPTED = false;
   hideConnectionOverlay();
   try { stopChatPing(); } catch (e) {}
+  try { stopKeepaliveBeat(); } catch (e) {}
   SOCKET = null; CHAT_TOKEN = ''; ME = null; MYBADGE = 'guest.png';
   stopUserStatusActionWatcher(); USER_STATUS_REQUEST_ID++;
   CUR_ROOM = null; CUR_TARGET = null; PM_WITH = null; ROOM_USERS = [];
