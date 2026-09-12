@@ -185,6 +185,19 @@ db.serialize(() => {
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_user_ignores_pair ON user_ignores (user_id, ignored_id)`);
 
+  // ---------- إخفاء المحادثات الخاصة (حذف من طرف واحد) ----------
+  // عند حذف المستخدم لمحادثة نسجّل آخر رسالة كانت ظاهرة له؛ فتختفي عنده
+  // وحده، وتبقى عند الطرف الآخر. وإن وصلته رسالة جديدة بعدها تعود المحادثة.
+  db.run(`CREATE TABLE IF NOT EXISTS private_hidden (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    other_id INTEGER NOT NULL,
+    last_msg_id INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(user_id, other_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_private_hidden_pair ON private_hidden (user_id, other_id)`);
+
   // ---------- حالات المستخدمين (تختفي بعد 24 ساعة) ----------
   db.run(`CREATE TABLE IF NOT EXISTS statuses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

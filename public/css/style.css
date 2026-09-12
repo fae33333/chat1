@@ -1334,6 +1334,19 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .pv-row .pname img { width:15px; height:15px; }
 .pv-row .plast { font-size:11.5px; color:#8b91a5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
 .pv-row .ptime { font-size:10px; color:#6a7186; }
+/* زر حذف المحادثة داخل الصف: دائرة حمراء خفيفة بجانب سهم الدخول */
+.pm-del-btn {
+  flex:none; width:30px; height:30px; padding:0; border:0; border-radius:50%;
+  background:#fff1f2; color:#e0245e; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .15s ease, transform .15s ease;
+}
+.pm-del-btn i { font-size:16px; }
+.pm-del-btn:hover { background:#ffe0e6; }
+.pm-del-btn:active { transform:scale(.92); }
+.pm-del-btn:disabled { opacity:.5; cursor:default; }
+/* الصف بلا شارة غير مقروء: ادفع الزر إلى الطرف */
+.pv-row > .pm-del-btn:nth-child(3) { margin-inline-start:auto; }
 
 /* محادثة فردية */
 /* ============ قالب الرسائل الخاصة (مطابق للمرجع) ============ */

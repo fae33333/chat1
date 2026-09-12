@@ -2246,11 +2246,16 @@ app.get('/api/private', requireUser, async (req, res) => {
     WHERE p.from_id=? OR p.to_id=? ORDER BY p.id DESC`, uid, uid, uid);
   const ignoreRows = await q.all(`SELECT user_id,ignored_id FROM user_ignores WHERE user_id=? OR ignored_id=?`, uid, uid);
   const hiddenPrivateUsers = new Set(ignoreRows.map(i => +(i.user_id === uid ? i.ignored_id : i.user_id)));
+  // المحادثات التي حذفها المستخدم: تُخفى ما لم تصل رسالة أحدث من لحظة الحذف
+  const delRows = await q.all(`SELECT other_id,last_msg_id FROM private_hidden WHERE user_id=?`, uid);
+  const deletedUpTo = new Map(delRows.map(d => [+d.other_id, +d.last_msg_id]));
   const seen = {};
   const convs = [];
   for (const r of rows) {
     const oid = r.from_id === uid ? r.to_id : r.from_id;
     if (hiddenPrivateUsers.has(+oid) || seen[oid]) continue;
+    // rows مرتّبة تنازلياً، فأول صف لكل طرف هو أحدث رسالة بينهما
+    if (deletedUpTo.has(+oid) && +r.id <= deletedUpTo.get(+oid)) { seen[oid] = 1; continue; }
     seen[oid] = 1;
     const unread = await q.get(`SELECT COUNT(*) c FROM private_messages WHERE from_id=? AND to_id=? AND read=0`, oid, uid);
     convs.push({
@@ -2272,6 +2277,26 @@ app.get('/api/private/:uid', requireUser, async (req, res) => {
     uid, other, other, uid);
   await q.run(`UPDATE private_messages SET read=1 WHERE from_id=? AND to_id=?`, other, uid);
   res.json(rows);
+});
+
+// حذف محادثة خاصة من عند صاحب الطلب وحده.
+// لا تُمحى الرسائل من قاعدة البيانات: نسجّل آخر رسالة كانت ظاهرة له، فتختفي
+// المحادثة من قائمته بينما تبقى سليمة عند الطرف الآخر. وإن راسله لاحقاً عادت.
+app.delete('/api/private/:uid', requireUser, async (req, res) => {
+  const uid = req.authUid, other = +req.params.uid;
+  if (!other) return res.status(400).json({ error: 'المستخدم غير صالح' });
+  const last = await q.get(
+    `SELECT MAX(id) m FROM private_messages
+     WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)`, uid, other, other, uid);
+  const lastId = +(last && last.m) || 0;
+  if (!lastId) return res.status(404).json({ error: 'لا توجد محادثة' });
+  await q.run(
+    `INSERT INTO private_hidden (user_id, other_id, last_msg_id) VALUES (?,?,?)
+     ON CONFLICT(user_id, other_id) DO UPDATE SET last_msg_id=excluded.last_msg_id`,
+    uid, other, lastId);
+  // الرسائل المحذوفة تُعتبر مقروءة حتى لا تبقى شارة معلّقة
+  await q.run(`UPDATE private_messages SET read=1 WHERE from_id=? AND to_id=? AND read=0`, other, uid);
+  res.json({ ok: true, deleted: lastId });
 });
 
 // الهدايا

@@ -6154,6 +6154,7 @@ async function renderPrivConvs(tab = 'members') {
       </div>
       ${c.unread ? `<em class="bn-badge pm-conv-badge" style="position:static;display:inline-flex;margin-inline-start:auto;margin-inline-end:8px">${c.unread}</em>` : ''}
       ${c.registered ? '' : '<span class="pm-guest-tag">زائر</span>'}
+      <button class="pm-del-btn" type="button" data-del="${c.id}" aria-label="حذف المحادثة" title="حذف المحادثة"><i class="f7-icons">trash</i></button>
       <i class="f7-icons" style="color:#c3c8d8">chevron_right</i>
     </div>`).join('') : (tab === 'spam'
       ? `<div class="pv-empty pv-empty-protect">
@@ -6172,6 +6173,26 @@ async function renderPrivConvs(tab = 'members') {
       const rowBadge = r.querySelector('.pm-conv-badge');
       if (rowBadge) rowBadge.remove();
       openPrivateWith(conv);
+    }
+  });
+  // زر الحذف: يحذف المحادثة من عند صاحب الحساب وحده ولا يفتحها
+  $$('#privList .pm-del-btn').forEach(b => b.onclick = async (ev) => {
+    ev.stopPropagation();                 // لا تفتح المحادثة عند الضغط على السلة
+    const oid = +b.dataset.del;
+    const conv = convs.find(x => x.id === oid);
+    if (!conv) return;
+    if (!confirm(`حذف المحادثة مع ${conv.username}؟ ستختفي من عندك فقط.`)) return;
+    b.disabled = true;
+    try {
+      await api('/api/private/' + oid, 'DELETE');
+      // خصم غير المقروء من العداد العام قبل إزالة الصف
+      const un = +conv.unread || 0;
+      if (un > 0) { PRIV_UNREAD = Math.max(0, PRIV_UNREAD - un); updatePrivBadge(); }
+      await renderPrivConvs(PRIV_TAB);
+      toast('تم حذف المحادثة ✅');
+    } catch (e) {
+      b.disabled = false;
+      toast(e.error || 'تعذر حذف المحادثة', false);
     }
   });
 }
