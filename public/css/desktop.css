@@ -459,7 +459,20 @@
   #statusViewersOv .sheet, #chpwOv .sheet {
        /* إلغاء شكل الشريط السفلي (الزوايا السفلية المربعة) */
   }
-  #giftOv .sheet .gs-grid { max-height: 42vh; }
+  /* ---------- متجر الهدايا على الكمبيوتر ---------- */
+  #giftOv .sheet { width: 640px; max-width: 100%; border-radius: 16px; }
+  #giftOv .sheet .gs-grid { max-height: 42vh; gap: 9px; }
+  #giftOv .gift-cell { border-radius: 12px; padding: 11px 4px; }
+  #giftOv .gift-cell .ge { font-size: 29px; }
+  #giftOv .gift-cell .ge img { width: 34px; height: 34px; }
+  #giftOv .gift-cell .gn { font-size: 11px; }
+  #giftOv .gs-panel { padding: 16px 18px; gap: 18px; }
+  #giftOv .gs-sel { min-width: 92px; padding: 11px 13px; }
+  #giftOv .gs-emoji { font-size: 36px; }
+  #giftOv .gs-emoji img { width: 48px; height: 48px; }
+  #giftOv .gs-lab, #giftOv .gs-val { font-size: 13.5px; }
+  #giftOv .gs-btns { margin-top: 16px; }
+  #giftOv .gs-btns button { padding: 12px; border-radius: 9px; }
 
   /* ============================================================
      3.ح) حركة ظهور ناعمة لجميع القوالب

@@ -5421,7 +5421,7 @@ function renderGiftGrid(cat) {
 $$('.gs-tab').forEach(t => t.onclick = () => renderGiftGrid(t.dataset.gcat));
 function updateGiftPick() {
   const gv = SEL_GIFT ? (SEL_GIFT.img || SEL_GIFT.emoji || '🎁') : '🎁';
-  $('#gsSelGift').querySelector('.gs-emoji').innerHTML = gv.startsWith('/') ? `<img src="${esc(gv)}" alt="" style="width:40px;height:40px;object-fit:contain">` : esc(gv);
+  $('#gsSelGift').querySelector('.gs-emoji').innerHTML = gv.startsWith('/') ? `<img src="${esc(gv)}" alt="">` : esc(gv);
   $('#gsSelName').textContent = SEL_GIFT ? SEL_GIFT.name : 'اختر هدية';
   $('#gsSelPrice').textContent = SEL_GIFT ? SEL_GIFT.price : 0;
   $('#gNeed').textContent = SEL_GIFT ? SEL_GIFT.price * G_QTY : 0;

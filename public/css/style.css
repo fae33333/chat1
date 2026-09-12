@@ -1234,27 +1234,50 @@ body { background:#0e1220; display:flex; justify-content:center; }
 /* متجر الهدايا */
 .gsheet, .upsheet { border-radius:20px 20px 0 0; }
 .seg.blue { border-color:var(--main); }
-.gs-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:12px 0; max-height:220px; overflow-y:auto; }
-.gift-cell { background:#f8f9fc; border:1.5px solid #eceef6; border-radius:12px; padding:8px 4px; text-align:center; cursor:pointer; }
-.gift-cell.sel { border-color:var(--main); background:#f0f7ff; }
-.gift-cell .ge { font-size:30px; }
-.gift-cell .gn { font-size:10.5px; font-weight:800; color:#374151; margin-top:3px; }
+/* شبكة الهدايا: خمسة أعمدة، كل خلية بطاقة بيضاء بحدّ رفيع */
+.gs-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:7px; margin:12px 0; max-height:220px; overflow-y:auto; }
+.gift-cell { background:#fff; border:1px solid #e8ebf4; border-radius:10px; padding:9px 3px; text-align:center; cursor:pointer; }
+.gift-cell.sel { border-color:var(--main); border-width:2px; background:#f0f7ff; padding:8px 2px; }
+.gift-cell .ge { font-size:26px; line-height:1.1; }
+.gift-cell .ge img { width:30px; height:30px; object-fit:contain; }
+.gift-cell .gn { font-size:10px; font-weight:800; color:#374151; margin-top:3px; }
 .gift-cell .gp { font-size:10px; color:#b8860b; font-weight:900; margin-top:2px; }
-.gs-pick { border-top:1px dashed #e5e7f0; padding-top:12px; }
+.gs-pick { padding-top:12px; }
+/* بطاقة التفاصيل: صورة الهدية على اليسار والحقول على اليمين */
+.gs-panel {
+  display:flex; align-items:flex-start; gap:14px; flex-direction:row-reverse;
+  border:1px solid #e4e7f0; border-radius:12px; padding:14px; background:#fff;
+}
+.gs-fields { flex:1; min-width:0; }
+/* كل سطر: العنوان يمين والقيمة يسار، تفصل بينهما مسافة مرنة */
+.gs-frow { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:9px; }
+.gs-lab { font-size:13px; font-weight:800; color:#374151; white-space:nowrap; }
+.gs-val { font-size:13px; font-weight:900; color:#374151; }
+.gs-val b { font-weight:900; }
+.gs-frow:first-child .gs-val b { color:var(--main); }
+.gs-coin { color:#b8860b; }
+.gs-stepper { display:inline-flex; align-items:center; gap:6px; }
+.gs-stepper button { width:30px; height:28px; border:0; border-radius:7px; background:var(--main); color:#fff; font-size:17px; font-weight:900; cursor:pointer; line-height:1; }
+.gs-stepper span { min-width:30px; text-align:center; font-weight:900; font-size:13px;
+  border:1px solid #e4e7f0; border-radius:6px; padding:3px 6px; }
+.gs-sel { display:flex; flex-direction:column; align-items:center; gap:2px; flex:none;
+  background:#fff; border:1px solid #e4e7f0; border-radius:10px; padding:9px 10px; min-width:78px; }
+.gs-emoji { font-size:30px; line-height:1.1; }
+.gs-emoji img { width:40px; height:40px; object-fit:contain; display:block; }
+#gsSelName { font-size:11px; font-weight:800; color:#374151; }
+.gs-price { font-size:11px; font-weight:900; color:#b8860b; }
+/* تنبيه بالأحمر: يوضّح أن الرقم أعلاه من نصيب المستلِم */
+.gs-hint { font-size:10.5px; color:#e0245e; font-weight:700; margin:-3px 0 9px; }
+.gs-btns { display:flex; gap:10px; margin-top:14px; }
+/* قالب الترقية ما زال يستعمل هذه الأصناف — أُبقيت كما كانت تماماً */
 .gs-target { text-align:center; font-size:13.5px; font-weight:800; color:#374151; margin-bottom:10px; }
 .gs-target b { color:var(--main); }
 .gs-row2 { display:flex; justify-content:space-between; align-items:center; margin-bottom:9px; gap:8px; }
-.gs-sel { display:flex; flex-direction:column; align-items:center; background:#f0f7ff; border:1.5px solid #cfe2ff; border-radius:12px; padding:8px 14px; min-width:86px; }
-.gs-emoji { font-size:28px; }
-#gsSelName { font-size:11px; font-weight:800; color:#374151; }
-.gs-price { font-size:11px; font-weight:900; color:#b8860b; }
 .gs-qty { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:800; color:#374151; }
 .gs-qty button { width:30px; height:30px; border:0; border-radius:8px; background:var(--main); color:#fff; font-size:17px; font-weight:900; cursor:pointer; }
 .gs-qty span { min-width:22px; text-align:center; font-weight:900; }
 .gs-cost { font-size:13px; font-weight:800; color:#374151; margin-bottom:5px; }
 .gs-sub { font-size:12.5px; color:#6b7280; font-weight:700; margin-bottom:4px; }
-.gs-hint { font-size:10.5px; color:#9ca3af; margin-bottom:6px; }
-.gs-btns { display:flex; gap:10px; margin-top:12px; }
 .btn-cancel { flex:1; background:#e5e7eb; color:#9ca3af; border:0; border-radius:10px; padding:11px; font-weight:900; font-size:14px; cursor:pointer; }
 .btn-send { flex:2; background:var(--main); color:#fff; border:0; border-radius:10px; padding:11px; font-weight:900; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:7px; }
 .btn-send i { font-size:17px; }

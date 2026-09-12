@@ -19,8 +19,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20260912-rain19">
-<link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk18" media="(min-width: 1024px)">
+<link rel="stylesheet" href="/css/style.css?v=20260912-gs20">
+<link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body>
 <div id="frame">
@@ -604,22 +604,27 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       </div>
       <div class="seg blue mid">
         <button class="gs-tab" data-gcat="فاخرة">فاخرة</button>
-        <button class="gs-tab" data-gcat="جواهر">جواهر</button>
+        <button class="gs-tab" data-gcat="جواهر">مجوهرات</button>
         <button class="gs-tab active" data-gcat="افتراضي">افتراضي</button>
       </div>
       <div class="gs-grid" id="giftGrid"></div>
       <div class="gs-pick" id="giftPick">
-        <div class="gs-target">هدية لـ : <b id="giftToName">-</b></div>
-        <div class="gs-row2">
-          <div class="gs-sel" id="gsSelGift"><span class="gs-emoji">🎁</span><span id="gsSelName">اختر هدية</span><span class="gs-price"><em id="gsSelPrice">0</em> 🪙</span></div>
-          <div class="gs-qty">كمية :
-            <button id="gMinus" aria-label="تقليل الكمية">−</button><span id="gQty">1</span><button id="gPlus" aria-label="زيادة الكمية">+</button>
+        <!-- بطاقة التفاصيل: معاينة الهدية يساراً وبيانات الإرسال يميناً -->
+        <div class="gs-panel">
+          <div class="gs-fields">
+            <div class="gs-frow"><span class="gs-lab">هدية لـ :</span><span class="gs-val"><b id="giftToName">-</b></span></div>
+            <div class="gs-frow"><span class="gs-lab">كمية :</span><span class="gs-val">
+              <span class="gs-stepper">
+                <button id="gMinus" aria-label="تقليل الكمية">−</button><span id="gQty">1</span><button id="gPlus" aria-label="زيادة الكمية">+</button>
+              </span>
+            </span></div>
+            <div class="gs-frow"><span class="gs-lab">تحتاج لتنفق :</span><span class="gs-val gs-coin"><b id="gNeed">0</b> 🪙</span></div>
+            <div class="gs-frow"><span class="gs-lab">جائزة هذه الهدية :</span><span class="gs-val gs-coin"><b id="gPrize">0</b> 🪙</span></div>
+            <div class="gs-hint">يحصل مستلم هذه الهدية على هذا الرصيد</div>
+            <div class="gs-frow"><span class="gs-lab">رصيدك الحالي :</span><span class="gs-val gs-coin"><b id="gBal">0</b> 🪙</span></div>
           </div>
+          <div class="gs-sel" id="gsSelGift"><span class="gs-emoji">🎁</span><span id="gsSelName">اختر هدية</span><span class="gs-price"><em id="gsSelPrice">0</em> 🪙</span></div>
         </div>
-        <div class="gs-cost">تحتاج لتنفق : <b id="gNeed">0</b> 🪙</div>
-        <div class="gs-sub">جائزة هذه الهدية : <b id="gPrize">0</b> 🪙</div>
-        <div class="gs-hint">يحصل مستلم هذه الهدية على هذا الرصيد</div>
-        <div class="gs-sub">رصيدك الحالي : <b id="gBal">0</b> 🪙</div>
         <div class="gs-btns">
           <button class="btn-cancel" data-close="giftOv">الغاء</button>
           <button class="btn-send" id="sendGiftBtn"><i class="f7-icons">gift_fill</i> أرسل</button>
@@ -1512,7 +1517,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/app.js?v=20260912-rain19" defer></script>
+<script src="/js/app.js?v=20260912-gs20" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
