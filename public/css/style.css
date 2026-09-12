@@ -334,10 +334,12 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .cbtn i {font-size: 22px;}
 .cbtn.ghost { background:transparent; color:var(--navy); width:24px; }
 
-/* على الجوال: هيدر الغرفة يحمل ثلاثة أزرار فقط (الرئيسية / المتصلون / المزيد).
+/* على الجوال: هيدر الغرفة يحمل أربعة أزرار (الحالات / الرئيسية / المتصلون / المزيد).
    أي زر آخر يُخفى من الشريط، ووظيفته تبقى متاحة من القائمة. الديسكتوب لا يتأثر. */
 @media (max-width: 1023px) {
-  .c-top-btns > *:not(#btnHome):not(#btnRoomUsers):not(#btnRoomMore) { display: none !important; }
+  .c-top-btns > *:not(#btnAddStatus):not(#btnHome):not(#btnRoomUsers):not(#btnRoomMore) { display: none !important; }
+  /* زر الحالات بجانب زر الغرف مباشرةً، بنفس مقاس بقية الأزرار */
+  .c-top-btns > #btnAddStatus { display: flex !important; }
 }
 
 /* شريط البث المباشر */
@@ -3892,6 +3894,9 @@ body.lang-en .card-payment-dialog, body.lang-es .card-payment-dialog, body.lang-
   .c-top-btns { gap:1px; }
   .cbtn { width:26px; height:29px; }
   .cbtn.ghost { width:22px; }
+  /* أربعة أزرار في شاشة ضيقة جداً: نصغّر أيقونة الحالات وشارتها */
+  .status-cbtn svg { width:17px; height:17px; }
+  .status-unread-badge { min-width:13px; height:13px; font-size:8px; }
 }
 
 /* رسالة ترحيب الغرفة — تخطيط خفيف كما في القالب المرجعي */
