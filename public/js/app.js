@@ -10561,8 +10561,40 @@ function attemptLeaveRoom() {
     'bcast'
   );
 }
+// قالب تأكيد الانتقال: يظهر عند اختيار غرفة أخرى والمستخدم داخل غرفة حالياً
+let SWITCH_ROOM_PENDING = 0;
+function askRoomSwitch(roomId) {
+  const r = ROOMS.find(x => x.id === +roomId);
+  if (!r) return;
+  SWITCH_ROOM_PENDING = +roomId;
+  const nameEl = $('#switchRoomName');
+  const descEl = $('#switchRoomDesc');
+  const imgEl = $('#switchRoomImg');
+  if (nameEl) nameEl.textContent = r.name || '';
+  if (descEl) descEl.textContent = r.description || ('غرفة مستخدمين ' + (r.owner_name || ''));
+  if (imgEl) {
+    // الغرف بلا صورة تعرض الشعار الافتراضي بدل رابط مكسور
+    if (r.image) { imgEl.src = thumbUrl(r.image, 92); imgEl.style.visibility = 'visible'; }
+    else { imgEl.removeAttribute('src'); imgEl.style.visibility = 'hidden'; }
+  }
+  openOv('switchRoomOv');
+}
+// زر «نعم»: يغلق القالب ثم ينتقل فعلياً إلى الغرفة المختارة
+const _srYes = $('#switchRoomYes');
+if (_srYes) _srYes.onclick = () => {
+  const id = SWITCH_ROOM_PENDING;
+  SWITCH_ROOM_PENDING = 0;
+  closeOv('switchRoomOv');
+  if (id) attemptRoomSwitch(id, true);
+};
+const _srNo = $('#switchRoomNo');
+if (_srNo) _srNo.onclick = () => { SWITCH_ROOM_PENDING = 0; };
+
 // يمنع الانتقال إلى غرفة أخرى أثناء مكالمة أو بث — يعرض القالب، وبعد الإيقاف يدخل الغرفة المطلوبة
-function attemptRoomSwitch(roomId) {
+// confirmed=true يعني أن المستخدم وافق على قالب «دخول الى الغرفة المختارة»
+function attemptRoomSwitch(roomId, confirmed = false) {
+  // داخل غرفة وينتقل إلى غرفة أخرى: نسأله أولاً
+  if (!confirmed && CUR_ROOM && +roomId !== CUR_ROOM.id) return askRoomSwitch(+roomId);
   const inCall = inActiveCall();
   const inBcast = inActiveBroadcast();
   if (!inCall && !inBcast) return enterRoom(roomId);

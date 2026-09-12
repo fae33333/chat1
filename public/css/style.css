@@ -2019,6 +2019,21 @@ body.lang-en .notif-info { direction:ltr; text-align:left; }
 #exitNo { color:var(--main); }
 #exitYes { color:#a3b3d8; }
 
+/* ============= قالب تأكيد الانتقال إلى غرفة أخرى ============= */
+.switch-room-dialog { max-width:330px; }
+.switch-room-dialog .dlg-body { padding:6px 14px 14px; }
+.sr-room {
+  display:flex; align-items:center; gap:10px; text-align:right;
+  padding:9px; border:1px solid #e8ebf5; border-radius:12px; background:#f8fafc;
+}
+.sr-img { width:52px; height:52px; border-radius:11px; object-fit:cover; flex:none; background:#eef1f7; }
+.sr-meta { min-width:0; flex:1; }
+.sr-name { font-size:13.5px; font-weight:900; color:var(--navy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sr-desc { font-size:11px; font-weight:700; color:#8b93ad; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sr-ask { margin-top:11px; font-size:12.5px; font-weight:800; color:#565d77; }
+#switchRoomNo { color:var(--main); }
+#switchRoomYes { color:#16a34a; }
+
 /* ============= قالب منع مغادرة الغرفة (مكالمة / بث مباشر) ============= */
 .exit-block-card {
   position:relative;

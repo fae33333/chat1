@@ -19,7 +19,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20260912-pmdel22">
+<link rel="stylesheet" href="/css/style.css?v=20260912-swroom24">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body>
@@ -1308,6 +1308,27 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     </div>
   </div>
 
+  <!-- تأكيد الانتقال إلى غرفة أخرى -->
+  <div class="overlay center" id="switchRoomOv">
+    <div class="dialog switch-room-dialog">
+      <div class="dlg-title">دخول الى الغرفة المختارة</div>
+      <div class="dlg-body">
+        <div class="sr-room">
+          <img class="sr-img" id="switchRoomImg" src="/img/room.png" alt="" width="58" height="58" decoding="async">
+          <div class="sr-meta">
+            <div class="sr-name" id="switchRoomName">-</div>
+            <div class="sr-desc" id="switchRoomDesc"></div>
+          </div>
+        </div>
+        <div class="sr-ask">هل تريد الانتقال إلى هذه الغرفة ؟</div>
+      </div>
+      <div class="dlg-btns">
+        <button id="switchRoomNo" data-close="switchRoomOv">لا</button>
+        <button id="switchRoomYes">نعم</button>
+      </div>
+    </div>
+  </div>
+
   <!-- منع مغادرة الغرفة أثناء مكالمة أو بث مباشر -->
   <div class="overlay center" id="exitBlockOv">
     <div class="exit-block-card" id="exitBlockCard">
@@ -1517,7 +1538,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/app.js?v=20260912-trk23" defer></script>
+<script src="/js/app.js?v=20260912-swroom24" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
