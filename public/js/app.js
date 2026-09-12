@@ -9569,6 +9569,12 @@ function runNamePopoverAction(key, target) {
   if (key === 'private') {
     if (!ME) return openLogin();
     const peer = ROOM_USERS.find(u => +u.id === +target.id) || { id: +target.id, username: target.username, avatar: target.avatar, registered: 1 };
+    // القائمة قد تُفتح من داخل الحائط أو من قائمة المتفاعلين:
+    // نغلقهما أولاً حتى لا يبقيا فوق نافذة الخاص.
+    ['wallReactorsOv', 'wallOv'].forEach(ovId => {
+      const ov = $('#' + ovId);
+      if (ov && ov.classList.contains('open')) closeOv(ovId);
+    });
     return openPrivateWith(peer);
   }
 }
