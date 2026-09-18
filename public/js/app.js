@@ -1721,8 +1721,14 @@ function avatarHtml(avatar, cls = '', frame = '') {
   return frame ? wrapAvatarFrame(inner, frame) : inner;
 }
 // قائمة الإطلالات المتاحة (مطابقة لقائمة الخادم في AVATAR_FRAMES)
-const AVATAR_FRAMES = ['gold', 'neon', 'fire', 'ice', 'royal', 'hearts', 'leaf', 'rainbow'];
+// الإطلالات الاحترافية المتحركة أولاً ثم الكلاسيكية — كلها متاحة مجاناً للجميع.
+const AVATAR_FRAMES = [
+  'stars', 'galaxy', 'diamond', 'energy', 'aurora', 'emerald', 'platinum', 'sunset',
+  'gold', 'neon', 'fire', 'ice', 'royal', 'hearts', 'leaf', 'rainbow'
+];
 const AVATAR_FRAME_NAMES = {
+  stars: 'نجوم متلألئة', galaxy: 'مجرة', diamond: 'ماسة', energy: 'طاقة',
+  aurora: 'شفق قطبي', emerald: 'زمردي', platinum: 'بلاتينية', sunset: 'غروب',
   gold: 'ذهبية', neon: 'نيون', fire: 'لهب', ice: 'جليد',
   royal: 'ملكية', hearts: 'قلوب', leaf: 'أوراق', rainbow: 'قوس قزح'
 };

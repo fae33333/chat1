@@ -2973,7 +2973,11 @@ app.post('/api/avatar', requireUser, (req, res) => {
 
 // الإطلالة: إطار مزخرف حول الصورة الشخصية. القيمة معرّف من قائمة ثابتة
 // على الخادم (لا يقبل قيماً حرة) أو '' لإزالتها.
-const AVATAR_FRAMES = ['gold', 'neon', 'fire', 'ice', 'royal', 'hearts', 'leaf', 'rainbow'];
+// الإطلالات الاحترافية المتحركة أولاً ثم الكلاسيكية — متاحة مجاناً للجميع.
+const AVATAR_FRAMES = [
+  'stars', 'galaxy', 'diamond', 'energy', 'aurora', 'emerald', 'platinum', 'sunset',
+  'gold', 'neon', 'fire', 'ice', 'royal', 'hearts', 'leaf', 'rainbow'
+];
 app.get('/api/avatar-frames', requireUser, (req, res) => {
   res.json(AVATAR_FRAMES);
 });

@@ -1529,19 +1529,160 @@ body { background:#0e1220; display:flex; justify-content:center; }
 .ava-framed > img, .ava-framed > span {
   width:100%; height:100%; object-fit:cover; display:block; border-radius:50%;
 }
-.af-gold    { background-image:linear-gradient(#fff,#fff), linear-gradient(135deg,#ffd700,#ff9d00,#fff3c4,#f59e0b); }
-.af-neon    { background-image:linear-gradient(#fff,#fff), linear-gradient(135deg,#00e5ff,#a855f7,#ff00cc,#00e5ff); }
-.af-fire    { background-image:linear-gradient(#fff,#fff), linear-gradient(135deg,#ff7700,#ff0055,#ffcc00,#ff3300); }
-.af-ice     { background-image:linear-gradient(#fff,#fff), linear-gradient(135deg,#a5f3fc,#3b82f6,#e0f2fe,#0ea5e9); }
-.af-royal   { background-image:linear-gradient(#fff,#fff), linear-gradient(135deg,#a855f7,#ffd700,#7c3aed,#fbbf24); }
-.af-hearts  { background-image:linear-gradient(#fff,#fff), linear-gradient(135deg,#ff5a8a,#ec4899,#ffb3c9,#e11d48); }
-.af-leaf    { background-image:linear-gradient(#fff,#fff), linear-gradient(135deg,#22c55e,#a3e635,#15803d,#4ade80); }
-.af-rainbow { background-image:linear-gradient(#fff,#fff), linear-gradient(135deg,#ff0055,#ff7700,#ffd700,#00ff66,#00e5ff,#a855f7); }
-/* دوران لطيف للإطلالات المتحركة */
-.af-neon, .af-rainbow, .af-royal { animation:avaFrameSpin 3.5s linear infinite; }
-@keyframes avaFrameSpin { to { filter:hue-rotate(360deg); } }
+
+/* محرّكا الحركة: زاوية دوران التدرّج وزاوية اللمعة الدوّارة حول الإطار.
+   تُسجّلان كخصائص CSS فتدوران بسلاسة تامة في المتصفحات الحديثة،
+   وفي المتصفحات القديمة تبقى الإطلالة ثابتة بأناقة دون أي خلل بصري. */
+@property --ang   { syntax:'<angle>'; initial-value:0deg; inherits:false; }
+@property --glint { syntax:'<angle>'; initial-value:0deg; inherits:false; }
+
+/* طبقات كل إطلالة: خلفية بيضاء تحت الصورة + لمعة دوّارة + تدرّج الإطار المتحرك */
+.af-gold, .af-neon, .af-fire, .af-ice, .af-royal, .af-hearts, .af-leaf, .af-rainbow,
+.af-stars, .af-diamond, .af-galaxy, .af-energy, .af-emerald, .af-platinum, .af-sunset, .af-aurora {
+  background-clip:content-box, border-box, border-box;
+}
+
+/* — المجموعة الاحترافية المتحركة الجديدة — */
+/* نجوم متلألئة: سماء ليلية تتبدل ونجوم ذهبية تدور وتلمع */
+.af-stars {
+  --glow: rgba(255,199,71,.6);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,215,130,.95) 12deg, transparent 32deg, transparent 150deg, rgba(255,255,255,.92) 164deg, transparent 184deg, transparent 300deg, rgba(255,223,141,.85) 312deg, transparent 330deg),
+    conic-gradient(from var(--ang), #0f2557, #2b4bb3, #6b5ce7, #1a2c6b, #0f2557);
+  animation:afRot 8s linear infinite, afGlint 3.6s linear infinite, afGlowPulse 2.8s ease-in-out infinite;
+}
+/* ماسة: بريق جليدي لامع يلفّ الصورة بلمعان قصّ زجاجي سريع */
+.af-diamond {
+  --glow: rgba(147,216,255,.65);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,1) 8deg, transparent 22deg, transparent 120deg, rgba(255,255,255,.85) 132deg, transparent 148deg),
+    conic-gradient(from var(--ang), #ffffff, #7dd3fc, #e0f2fe, #38bdf8, #bae6fd, #ffffff);
+  animation:afRot 2.6s linear infinite, afGlint 2s linear infinite, afGlowPulse 2.2s ease-in-out infinite;
+}
+/* مجرة: درب التبانة بنجومها البنفسجية والوردية يدور بهدوء */
+.af-galaxy {
+  --glow: rgba(168,85,247,.6);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.9) 14deg, transparent 38deg),
+    conic-gradient(from var(--ang), #1e1b4b, #7e22ce, #db2777, #4f46e5, #312e81, #1e1b4b);
+  animation:afRot 9s linear infinite, afGlint 4.2s linear infinite, afGlowPulse 3.2s ease-in-out infinite;
+}
+/* طاقة: نبضة كهربائية زرقاء وبنفسجية سريعة نابضة بالحيوية */
+.af-energy {
+  --glow: rgba(34,211,238,.7);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,1) 10deg, transparent 26deg),
+    conic-gradient(from var(--ang), #06b6d4, #8b5cf6, #22d3ee, #4f46e5, #06b6d4);
+  animation:afRot 2.2s linear infinite, afGlint 1.7s linear infinite, afGlowPulse 1.6s ease-in-out infinite;
+}
+/* زمردي: ياقوتة خضراء تتوهج بلمعة فاخرة */
+.af-emerald {
+  --glow: rgba(16,185,129,.55);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.92) 14deg, transparent 40deg),
+    conic-gradient(from var(--ang), #065f46, #10b981, #a7f3d0, #059669, #047857, #065f46);
+  animation:afRot 5.5s linear infinite, afGlint 3.2s linear infinite, afGlowPulse 3s ease-in-out infinite;
+}
+/* بلاتينية: فضة صافية تدور ببطء فاخر مع لمعة راقية */
+.af-platinum {
+  --glow: rgba(203,213,225,.8);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 18deg, transparent 48deg),
+    conic-gradient(from var(--ang), #f9fafb, #9ca3af, #e5e7eb, #6b7280, #f3f4f6, #f9fafb);
+  animation:afRot 6s linear infinite, afGlint 3.8s linear infinite, afGlowPulse 3.4s ease-in-out infinite;
+}
+/* غروب: ألوان الشفق الدافئة تموج حول الصورة */
+.af-sunset {
+  --glow: rgba(251,146,60,.6);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,244,214,.95) 14deg, transparent 40deg),
+    conic-gradient(from var(--ang), #f97316, #ec4899, #8b5cf6, #f59e0b, #fb7185, #f97316);
+  animation:afRot 6.5s linear infinite, afGlint 3.4s linear infinite, afGlowPulse 2.8s ease-in-out infinite;
+}
+/* شفق قطبي: أضواء القطب المتلألئة تتراقص بألوانها الفيروزية */
+.af-aurora {
+  --glow: rgba(52,211,153,.6);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(224,255,250,.9) 16deg, transparent 44deg),
+    conic-gradient(from var(--ang), #06b6d4, #34d399, #8b5cf6, #22d3ee, #2dd4bf, #06b6d4);
+  animation:afRot 7s linear infinite, afGlint 3.6s linear infinite, afGlowPulse 3s ease-in-out infinite;
+}
+
+/* — الإطلالات الكلاسيكية بحلّة متحركة جديدة (تدوير + لمعة + توهج) — */
+.af-gold {
+  --glow: rgba(255,190,60,.6);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 14deg, transparent 38deg),
+    conic-gradient(from var(--ang), #ffd700, #fff3c4, #f59e0b, #ff9d00, #ffd700);
+  animation:afRot 5s linear infinite, afGlint 3s linear infinite, afGlowPulse 2.6s ease-in-out infinite;
+}
+.af-neon {
+  --glow: rgba(0,229,255,.65);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 12deg, transparent 32deg),
+    conic-gradient(from var(--ang), #00e5ff, #a855f7, #ff00cc, #00e5ff);
+  animation:afRot 3s linear infinite, afGlint 2.4s linear infinite, afGlowPulse 2s ease-in-out infinite;
+}
+.af-fire {
+  --glow: rgba(255,110,20,.7);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,220,.95) 10deg, transparent 28deg),
+    conic-gradient(from var(--ang), #ff7700, #ff0055, #ffcc00, #ff3300, #ff7700);
+  animation:afRot 2.4s linear infinite, afGlint 1.5s linear infinite, afGlowPulse 1.3s ease-in-out infinite;
+}
+.af-ice {
+  --glow: rgba(125,211,252,.6);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 12deg, transparent 34deg),
+    conic-gradient(from var(--ang), #a5f3fc, #3b82f6, #e0f2fe, #0ea5e9, #a5f3fc);
+  animation:afRot 4.5s linear infinite, afGlint 3s linear infinite, afGlowPulse 2.8s ease-in-out infinite;
+}
+.af-royal {
+  --glow: rgba(168,85,247,.65);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 14deg, transparent 38deg),
+    conic-gradient(from var(--ang), #a855f7, #ffd700, #7c3aed, #fbbf24, #a855f7);
+  animation:afRot 4s linear infinite, afGlint 2.8s linear infinite, afGlowPulse 2.4s ease-in-out infinite;
+}
+.af-hearts {
+  --glow: rgba(236,72,153,.6);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,228,240,.95) 14deg, transparent 38deg),
+    conic-gradient(from var(--ang), #ff5a8a, #ec4899, #ffb3c9, #e11d48, #ff5a8a);
+  animation:afRot 4.5s linear infinite, afGlint 3.2s linear infinite, afHeartbeat 1.6s ease-in-out infinite;
+}
+.af-leaf {
+  --glow: rgba(74,222,128,.55);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.9) 14deg, transparent 40deg),
+    conic-gradient(from var(--ang), #22c55e, #a3e635, #15803d, #4ade80, #22c55e);
+  animation:afRot 6s linear infinite, afGlint 3.6s linear infinite, afGlowPulse 3.2s ease-in-out infinite;
+}
+.af-rainbow {
+  --glow: rgba(255,128,200,.6);
+  background-image:linear-gradient(#fff,#fff),
+    conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 12deg, transparent 34deg),
+    conic-gradient(from var(--ang), #ff0055, #ff7700, #ffd700, #00ff66, #00e5ff, #a855f7, #ff0055);
+  animation:afRot 4s linear infinite, afGlint 2.6s linear infinite, afGlowPulse 2.4s ease-in-out infinite;
+}
+
+/* حركات المحرّكات: دوران كامل للتدرّج، دوران اللمعة، وتوهج نابض */
+@keyframes afRot   { to { --ang: 360deg; } }
+@keyframes afGlint { to { --glint: 360deg; } }
+@keyframes afGlowPulse {
+  0%, 100% { box-shadow:0 0 5px 0 var(--glow, rgba(255,255,255,.5)); }
+  50%      { box-shadow:0 0 15px 2px var(--glow, rgba(255,255,255,.95)); }
+}
+/* نبضات قلب مزدوجة لإطلالة القلوب */
+@keyframes afHeartbeat {
+  0%, 100% { box-shadow:0 0 5px 0 var(--glow, rgba(236,72,153,.6)); }
+  18%      { box-shadow:0 0 16px 3px var(--glow, rgba(236,72,153,.9)); }
+  32%      { box-shadow:0 0 6px 0 var(--glow, rgba(236,72,153,.6)); }
+  50%      { box-shadow:0 0 14px 2px var(--glow, rgba(236,72,153,.85)); }
+}
 @media (prefers-reduced-motion:reduce) {
-  .af-neon, .af-rainbow, .af-royal { animation:none; }
+  .af-gold, .af-neon, .af-fire, .af-ice, .af-royal, .af-hearts, .af-leaf, .af-rainbow,
+  .af-stars, .af-diamond, .af-galaxy, .af-energy, .af-emerald, .af-platinum, .af-sunset, .af-aurora { animation:none; }
 }
 
 /* الإعدادات */
