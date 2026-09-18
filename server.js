@@ -4288,32 +4288,55 @@ app.post('/api/admin/upload/bot-avatar', requireSuperAdmin, (req, res) => {
 });
 
 // ---- روبوتات افتراضية تظهر كمستخدمين داخل الغرف ----
-// ---------- توليد «زائر عادي» تلقائياً مع كل روبوت غرفة ----------
-// زائر بلا أي شارة روبوت: اسم عربي طبيعي + رقم، صورة من مكتبة الرمزيات،
-// عضوية وبدون صلاحية، مسجل=0 (شارة زائر) — يظهر في الغرفة كأي زائر حقيقي.
-const VISITOR_NAME_POOL = ['زياد', 'ملك', 'عبدالله', 'جود', 'ماجد', 'سارة', 'فارس', 'لين', 'عمر', 'دانة', 'هيثم', 'لينا', 'رامي', 'جنى', 'وليد', 'رحاب', 'كريم', 'شهد', 'أنس', 'ميرا', 'طارق', 'نور', 'يوسف', 'لما', 'حمزة', 'تالا', 'باسل', 'دينا', 'سالم', 'هيا', 'فهد', 'دنيا', 'مازن', 'رنا', 'جواد', 'ألمى', 'عبدالرحمن', 'جوري', 'محمد', 'ليان'];
-async function spawnVisitorBotForRoom(roomId, active, parentId) {
+// ---------- توليد «زائر عادي» كخيار مستقل في نموذج التوليد ----------
+// زائر بلا أي شارة روبوت: اسم عربي طبيعي + رقم وصورة من مكتبة الرمزيات،
+// مسجل=0 (شارة زائر) — يظهر في الغرفة كأي زائر حقيقي. النوع (ذكر/أنثى/مجهول)
+// يُختار من لوحة التحكم: الاسم يُسحب من قائمة تناسب النوع، و«مجهول» يخلط القائمتين.
+const VISITOR_MALE_NAMES = ['زياد', 'عبدالله', 'ماجد', 'فارس', 'عمر', 'هيثم', 'رامي', 'وليد', 'كريم', 'أنس', 'طارق', 'يوسف', 'حمزة', 'باسل', 'سالم', 'فهد', 'مازن', 'جواد', 'عبدالرحمن', 'محمد'];
+const VISITOR_FEMALE_NAMES = ['ملك', 'جود', 'سارة', 'لين', 'لينا', 'دانة', 'جنى', 'رحاب', 'شهد', 'ميرا', 'نور', 'لما', 'تالا', 'دينا', 'هيا', 'دنيا', 'رنا', 'ألمى', 'جوري', 'ليان'];
+
+// يولّد اسم زائر عربي طبيعي فريد: ذكر يسحب من أسماء الذكور، أنثى من أسماء
+// الإناث، ومجهول يخلط القائمتين معاً.
+async function generateVisitorName(gender) {
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-  let visitorName = '';
-  for (let attempt = 0; attempt < 60 && !visitorName; attempt++) {
-    const candidate = pick(VISITOR_NAME_POOL) + ' ' + crypto.randomInt(1000, 10000);
+  const pool = gender === 'boy' ? VISITOR_MALE_NAMES
+    : gender === 'girl' ? VISITOR_FEMALE_NAMES
+      : VISITOR_MALE_NAMES.concat(VISITOR_FEMALE_NAMES);
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const candidate = pick(pool) + ' ' + crypto.randomInt(1000, 10000);
     const inDb = await q.get(`SELECT id FROM users WHERE username=?`, candidate);
     const online = Object.values(onlineUsers).some(ou => ou && ou.username && ou.username.toLowerCase() === candidate.toLowerCase());
-    if (!inDb && !online) visitorName = candidate;
+    if (!inDb && !online) return candidate;
   }
-  if (!visitorName) throw new Error('تعذر توليد اسم زائر فريد');
-  const gender = pick(['boy', 'girl']);
-  const age = 18 + crypto.randomInt(0, 23);
+  throw new Error('تعذر توليد اسم زائر فريد');
+}
+
+// صورة عشوائية من مكتبة رمزيات الشات
+function randomLibraryAvatar() {
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
   const folders = ['def', 'other', 'nature'];
   const folder = pick(folders);
   const file = `${folder}/${String(1 + crypto.randomInt(0, folder === 'def' ? 20 : 16)).padStart(2, '0')}.jpg`;
-  const avatar = fs.existsSync(path.join(__dirname, 'public/avatars', file)) ? '/avatars/' + file : '';
+  return fs.existsSync(path.join(__dirname, 'public/avatars', file)) ? '/avatars/' + file : '';
+}
+
+// إنشاء «زائر عادي»: النوع من اختيار الإدارة، والاسم والصورة تلقائيان إن تُركا فارغين.
+async function spawnVisitorBotForRoom(roomId, opts = {}) {
+  const gender = ['boy', 'girl', 'secret'].includes(opts.gender) ? opts.gender : 'secret';
+  const username = String(opts.username || '').trim().slice(0, 20) || await generateVisitorName(gender);
+  if (await q.get(`SELECT id FROM users WHERE username=?`, username))
+    throw new Error('اسم الزائر مستخدم مسبقاً');
+  const avatar = String(opts.avatar || '').trim() || randomLibraryAvatar();
+  const age = 18 + crypto.randomInt(0, 23);
+  const rank = ['user', 'roomadmin', 'admin', 'superadmin', 'supermaster'].includes(opts.rank) ? opts.rank : 'user';
+  const membership = ['none', 'mmez', 'plus', 'premium', 'vip'].includes(opts.membership) ? opts.membership : 'none';
+  const active = opts.active === 0 || opts.active === false ? 0 : 1;
   const vUser = await q.run(`
     INSERT INTO users (username,password,gender,age,balance,membership,rank,registered,avatar,status,is_bot)
-    VALUES (?,NULL,?,?,0,'none','user',0,?,'online',1)`, visitorName, gender, age, avatar);
-  await q.run(`INSERT INTO room_bots (user_id,room_id,active,reply_enabled,reply_text,kind,parent_id) VALUES (?,?,?,0,'نعم؟','visitor',?)`,
-    vUser.lastID, roomId, active, parentId);
-  return { user_id: +vUser.lastID, username: visitorName, avatar };
+    VALUES (?,NULL,?,?,0,?,?,0,?,'online',1)`, username, gender, age, membership, rank, avatar);
+  const row = await q.run(`INSERT INTO room_bots (user_id,room_id,active,reply_enabled,reply_text,kind,parent_id) VALUES (?,?,?,0,'نعم؟','visitor',0)`,
+    vUser.lastID, roomId, active);
+  return { id: +row.lastID, user_id: +vUser.lastID, username, avatar };
 }
 // إزالة بيانات مستخدم روبوت (روبوت غرفة أو زائر عادي) من كل الجداول
 async function removeRoomBotUserData(item) {
@@ -4339,6 +4362,7 @@ app.get('/api/admin/room-bots', requireSuperAdmin, async (req, res) => {
 app.post('/api/admin/room-bots', requireSuperAdmin, async (req, res) => {
   const body = req.body || {};
   const id = +body.id || 0;
+  const isVisitorType = body.account_type === 'visitor';
   const username = String(body.username || '').trim().slice(0, 20);
   const roomId = +body.room_id;
   const avatar = String(body.avatar || '').slice(0, 180);
@@ -4348,48 +4372,62 @@ app.post('/api/admin/room-bots', requireSuperAdmin, async (req, res) => {
   const replyEnabled = +body.reply_enabled === 2 ? 2 : (+body.reply_enabled === 1 || body.reply_enabled === true ? 1 : 0);
   const replyText = String(body.reply_text || 'نعم؟').trim().slice(0, 150) || 'نعم؟';
   const verified = body.verified ? 1 : 0;
-  if (!username) return res.status(400).json({ error: 'اكتب اسم الروبوت' });
-  if (!avatar) return res.status(400).json({ error: 'ارفع صورة الروبوت' });
+  const gender = ['boy', 'girl', 'secret'].includes(body.gender) ? body.gender : '';
   const room = await q.get(`SELECT id FROM rooms WHERE id=?`, roomId);
   if (!room) return res.status(400).json({ error: 'اختر غرفة صحيحة' });
 
-  let userId, oldUsername = '', oldAvatar = '', visitor = null;
+  let userId, finalUsername = username, finalAvatar = avatar, kind = 'robot', oldUsername = '', oldAvatar = '';
   if (id) {
-    const bot = await q.get(`SELECT rb.user_id,u.username,u.avatar FROM room_bots rb JOIN users u ON u.id=rb.user_id WHERE rb.id=?`, id);
+    // ---- تعديل حساب قائم: نوعه (روبوت/زائر) يبقى كما هو في السجل،
+    // والنوع ذكر/أنثى/مجهول قابل للتحديث (الزائر يبقى صامتاً وغير مسجل) ----
+    const bot = await q.get(`SELECT rb.user_id,COALESCE(rb.kind,'robot') kind,u.username,u.avatar,u.gender FROM room_bots rb JOIN users u ON u.id=rb.user_id WHERE rb.id=?`, id);
     if (!bot) return res.status(404).json({ error: 'الروبوت غير موجود' });
+    if (!username) return res.status(400).json({ error: 'اكتب الاسم' });
     const duplicate = await q.get(`SELECT id FROM users WHERE username=? AND id<>?`, username, bot.user_id);
-    if (duplicate) return res.status(400).json({ error: 'اسم الروبوت مستخدم مسبقاً' });
-    userId = +bot.user_id; oldUsername = bot.username; oldAvatar = bot.avatar || '';
-    await q.run(`UPDATE users SET username=?,avatar=?,rank=?,membership=?,registered=1,is_bot=1,status='online' WHERE id=?`,
-      username, avatar, rank, membership, userId);
-    await q.run(`UPDATE room_bots SET room_id=?,active=?,reply_enabled=?,reply_text=? WHERE id=?`, roomId, active, replyEnabled, replyText, id);
+    if (duplicate) return res.status(400).json({ error: 'الاسم مستخدم مسبقاً' });
+    kind = bot.kind;
+    userId = +bot.user_id;
+    oldUsername = bot.username; oldAvatar = bot.avatar || '';
+    finalUsername = username;
+    finalAvatar = avatar || oldAvatar;
+    const botGender = gender || bot.gender || 'secret';
+    await q.run(`UPDATE users SET username=?,avatar=?,rank=?,membership=?,gender=?,registered=?,is_bot=1,status='online' WHERE id=?`,
+      finalUsername, finalAvatar, rank, membership, botGender, kind === 'visitor' ? 0 : 1, userId);
+    await q.run(`UPDATE room_bots SET room_id=?,active=?,reply_enabled=?,reply_text=? WHERE id=?`,
+      roomId, active, kind === 'visitor' ? 0 : replyEnabled, replyText, id);
+  } else if (isVisitorType) {
+    // ---- توليد «زائر عادي» يدوياً: بلا شارة روبوت، الاسم والصورة تلقائيان
+    // إن تُركا فارغين، والنوع (ذكر/أنثى/مجهول) من اختيار الإدارة ----
+    try {
+      const v = await spawnVisitorBotForRoom(roomId, { gender, username, avatar, rank, membership, active });
+      userId = v.user_id; finalUsername = v.username; finalAvatar = v.avatar; kind = 'visitor';
+    } catch (e) {
+      return res.status(400).json({ error: e.message || 'تعذر توليد الزائر' });
+    }
   } else {
+    // ---- روبوت كما كان: الاسم والصورة مطلوبان، والنوع يُحفظ في حسابه ----
+    if (!username) return res.status(400).json({ error: 'اكتب اسم الروبوت' });
+    if (!avatar) return res.status(400).json({ error: 'ارفع صورة الروبوت' });
     if (await q.get(`SELECT id FROM users WHERE username=?`, username))
       return res.status(400).json({ error: 'اسم الروبوت مستخدم مسبقاً' });
     const user = await q.run(`
       INSERT INTO users (username,password,gender,age,balance,membership,rank,registered,avatar,status,is_bot)
-      VALUES (?,NULL,'secret',25,0,?,?,1,?,'online',1)`, username, membership, rank, avatar);
+      VALUES (?,NULL,?,25,0,?,?,1,?,'online',1)`, username, gender || 'secret', membership, rank, avatar);
     userId = user.lastID;
-    const mainRow = await q.run(`INSERT INTO room_bots (user_id,room_id,active,reply_enabled,reply_text,kind,parent_id) VALUES (?,?,?,?,?,'robot',0)`,
+    await q.run(`INSERT INTO room_bots (user_id,room_id,active,reply_enabled,reply_text,kind,parent_id) VALUES (?,?,?,?,?,'robot',0)`,
       userId, roomId, active, replyEnabled, replyText);
-    // توليد «زائر عادي» تلقائياً مع كل روبوت جديد (يمكن إلغاؤه من خيار النموذج)
-    const wantsVisitor = !(body.with_visitor === 0 || body.with_visitor === false || body.with_visitor === '0');
-    if (wantsVisitor) {
-      try { visitor = await spawnVisitorBotForRoom(roomId, active, mainRow.lastID); }
-      catch (e) { visitor = null; }   // فشل توليد الزائر لا يوقف توليد الروبوت نفسه
-    }
   }
 
   if (oldUsername) await q.run(`DELETE FROM verified WHERE username=?`, oldUsername);
-  if (verified) await q.run(`INSERT OR IGNORE INTO verified (username) VALUES (?)`, username);
-  else await q.run(`DELETE FROM verified WHERE username=?`, username);
-  if (oldAvatar && oldAvatar !== avatar && oldAvatar.startsWith('/uploads/bots/')) {
+  if (verified) await q.run(`INSERT OR IGNORE INTO verified (username) VALUES (?)`, finalUsername);
+  else await q.run(`DELETE FROM verified WHERE username=?`, finalUsername);
+  if (oldAvatar && oldAvatar !== finalAvatar && oldAvatar.startsWith('/uploads/bots/')) {
     try { fs.unlinkSync(path.join(__dirname, 'public/uploads/bots', path.basename(oldAvatar))); } catch (e) { }
   }
   await refreshVerified();
   await syncRoomBots();
   io.emit('sync');
-  res.json({ ok: true, user_id: userId, visitor });
+  res.json({ ok: true, user_id: userId, kind, username: finalUsername });
 });
 app.delete('/api/admin/room-bots/:id', requireSuperAdmin, async (req, res) => {
   const bot = await q.get(`SELECT rb.id,rb.user_id,COALESCE(rb.kind,'robot') kind,COALESCE(rb.parent_id,0) parent_id,u.username,u.avatar FROM room_bots rb JOIN users u ON u.id=rb.user_id WHERE rb.id=?`, +req.params.id);

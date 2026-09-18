@@ -2309,7 +2309,7 @@ async function renderRoomBots() {
         ? `<span class="chip" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe">💬 متحدث مخصص (${esc(bot.reply_text || 'نعم؟')})</span>`
         : '<span class="chip" style="background:#f1f5f9;color:#64748b">🔇 صامت (لا يتحدث)</span>');
     const kindBadge = (bot.kind === 'visitor')
-      ? '<span class="chip" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">👤 زائر عادي (مولّد تلقائياً)</span>'
+      ? '<span class="chip" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">👤 زائر عادي</span>'
       : '';
     return `
     <div class="room-bot-card${bot.active ? '' : ' inactive'}">
@@ -3895,12 +3895,14 @@ const PAGES = {
     build: () => {
       const bot = EDIT_ROOM_BOT || {};
       const replyMode = bot.reply_enabled !== undefined ? bot.reply_enabled : 1;
+      const accountType = bot.kind === 'visitor' ? 'visitor' : 'robot';
+      const botGender = bot.gender || 'secret';
       return `
       <div class="page-title"><i class="f7-icons mi" style="color:#7c3aed">person_badge_plus_fill</i> توليد وإعداد روبوت الغرفة</div>
       <div class="info-box" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;margin-bottom:16px">
         <i class="f7-icons mi" style="color:#10b981">wand_stars</i>
-        عند توليد أي روبوت يُنشأ تلقائياً بجانبه <b>«زائر عادي»</b>: اسم وصورة طبيعية وبلا أي شارة روبوت،
-        ويدخل نفس الغرفة ليعطي انطباعاً واقعيّاً بالحركة. يظهر الزائر في القائمة بالأسفل ويمكن إدارته كأي روبوت.
+        اختر <b>«زائر عادي»</b> من خيار نوع الحساب لتوليد زائر بلا أي شارة روبوت: اسم عربي طبيعي وصورة عشوائية
+        إن تُركا فارغين، ويدخل الغرفة كأي زائر حقيقي. ويمكن تحديد <b>النوع (ذكر / أنثى / مجهول)</b> لكل حساب تولّده.
       </div>
       <div class="room-bot-form">
         <div class="room-bot-form-head">
@@ -3911,8 +3913,19 @@ const PAGES = {
             <div class="room-bot-path" id="roomBotAvatarPath">${esc(bot.avatar || 'لم تُرفع صورة بعد')}</div>
           </div>
         </div>
-        <div class="inp-row"><label>اسم الروبوت</label><input class="inp" id="roomBotName" maxlength="20" value="${esc(bot.username || '')}" placeholder="مثال: رفيق_الدردشة"></div>
+        <div class="inp-row"><label id="roomBotNameLabel">اسم الروبوت</label><input class="inp" id="roomBotName" maxlength="20" value="${esc(bot.username || '')}" placeholder="مثال: رفيق_الدردشة"></div>
         <div class="inp-row"><label>الغرفة التي يدخل إليها</label><select class="inp" id="roomBotRoom"><option value="">جاري تحميل الغرف...</option></select></div>
+        <div class="grid2">
+          <div class="inp-row"><label>نوع الحساب</label><select class="inp" id="roomBotAccountType">
+            <option value="robot" ${accountType === 'robot' ? 'selected' : ''}>🤖 روبوت (شارة روبوت)</option>
+            <option value="visitor" ${accountType === 'visitor' ? 'selected' : ''}>👤 زائر عادي (بلا شارة)</option>
+          </select></div>
+          <div class="inp-row"><label>النوع</label><select class="inp" id="roomBotGender">
+            <option value="secret" ${botGender === 'secret' ? 'selected' : ''}>مجهول</option>
+            <option value="boy" ${botGender === 'boy' ? 'selected' : ''}>ذكر</option>
+            <option value="girl" ${botGender === 'girl' ? 'selected' : ''}>أنثى</option>
+          </select></div>
+        </div>
         <div class="grid2">
           <div class="inp-row"><label>نوع الصلاحية</label><select class="inp" id="roomBotRank">
             <option value="user" ${(!bot.rank || bot.rank === 'user') ? 'selected' : ''}>مستخدم عادي</option>
@@ -3930,7 +3943,7 @@ const PAGES = {
           </select></div>
         </div>
         
-        <div class="inp-row">
+        <div class="inp-row" id="roomBotReplyRow">
           <label><i class="f7-icons mi" style="color:#6366f1">sparkles</i> وضع التحدث والرد في الغرفة :</label>
           <select class="inp" id="roomBotReplyMode">
             <option value="1" ${replyMode === 1 ? 'selected' : ''}>🤖 متحدث ذكي (يرد بالذكاء الاصطناعي عند مناداته بالاسم)</option>
@@ -3939,7 +3952,7 @@ const PAGES = {
           </select>
         </div>
 
-        <div class="inp-row" id="roomBotCustomRow" style="${replyMode === 2 ? '' : 'display:none'}">
+        <div class="inp-row" id="roomBotCustomRow" style="${replyMode === 2 && accountType !== 'visitor' ? '' : 'display:none'}">
           <label>الرد المخصص عند مناداة اسم الروبوت :</label>
           <input class="inp" id="roomBotReplyText" maxlength="120" value="${esc(bot.reply_text || 'نعم يا {name}؟')}" placeholder="مثال: نعم يا {name}؟">
         </div>
@@ -3947,10 +3960,9 @@ const PAGES = {
         <div class="room-bot-checks">
           <label><input type="checkbox" id="roomBotVerified" ${bot.verified ? 'checked' : ''}><span>حساب موثق</span><i class="f7-icons">checkmark_seal_fill</i></label>
           <label><input type="checkbox" id="roomBotActive" ${bot.active === 0 ? '' : 'checked'}><span>متواجد داخل الغرفة</span><i class="f7-icons">antenna_radiowaves_left_right</i></label>
-          ${bot.id ? '' : `<label title="زائر بلا شارة روبوت باسم وصورة طبيعية يدخل نفس الغرفة"><input type="checkbox" id="roomBotWithVisitor" checked><span>توليد «زائر عادي» معه تلقائياً</span><i class="f7-icons">person_fill</i></label>`}
         </div>
         <div class="btn-row" style="justify-content:flex-start">
-          <button class="btn btn-purple" id="roomBotSave"><i class="f7-icons">wand_stars</i> ${bot.id ? 'حفظ تعديل الروبوت' : 'توليد الروبوت وإدخاله'}</button>
+          <button class="btn btn-purple" id="roomBotSave"><i class="f7-icons">wand_stars</i> ${bot.id ? 'حفظ التعديلات' : (accountType === 'visitor' ? 'توليد الزائر وإدخاله' : 'توليد الروبوت وإدخاله')}</button>
           ${bot.id ? '<button class="btn btn-gray" id="roomBotCancel">إلغاء التعديل</button>' : ''}
         </div>
       </div>
@@ -3970,6 +3982,33 @@ const PAGES = {
         };
       }
 
+      // تبديل السلوك حسب نوع الحساب: زائر عادي (اسم وصورة اختياريان وصامت دائماً)
+      // أو روبوت (اسم وصورة مطلوبان ويتحدث حسب الوضع المختار).
+      const accountTypeSelect = $('#roomBotAccountType');
+      const syncAccountTypeUi = () => {
+        const isVisitor = accountTypeSelect.value === 'visitor';
+        $('#roomBotNameLabel').textContent = isVisitor ? 'اسم الزائر (اختياري)' : 'اسم الروبوت';
+        $('#roomBotName').placeholder = isVisitor
+          ? 'اتركه فارغاً لتوليد اسم عربي طبيعي تلقائياً'
+          : 'مثال: رفيق_الدردشة';
+        $('#roomBotReplyRow').style.display = isVisitor ? 'none' : 'block';
+        if (isVisitor) $('#roomBotCustomRow').style.display = 'none';
+        else if (replyModeSelect && replyModeSelect.value === '2') $('#roomBotCustomRow').style.display = 'block';
+        if (!EDIT_ROOM_BOT || !EDIT_ROOM_BOT.id) {
+          const pathEl = $('#roomBotAvatarPath');
+          const current = pathEl.textContent.trim();
+          if (isVisitor && (!current || current === 'لم تُرفع صورة بعد' || !current.startsWith('/')))
+            pathEl.textContent = 'ستُختار صورة عشوائية من المكتبة تلقائياً';
+          else if (!isVisitor && current === 'ستُختار صورة عشوائية من المكتبة تلقائياً')
+            pathEl.textContent = 'لم تُرفع صورة بعد';
+          $('#roomBotSave').innerHTML = `<i class="f7-icons">wand_stars</i> ${isVisitor ? 'توليد الزائر وإدخاله' : 'توليد الروبوت وإدخاله'}`;
+        }
+      };
+      if (accountTypeSelect) {
+        accountTypeSelect.onchange = syncAccountTypeUi;
+        syncAccountTypeUi();
+      }
+
       $('#roomBotUpload').onclick = () => $('#roomBotFile').click();
       $('#roomBotFile').onchange = async () => {
         const file = $('#roomBotFile').files[0]; if (!file) return;
@@ -3978,16 +4017,19 @@ const PAGES = {
           const uploaded = await api('/api/admin/upload/bot-avatar', 'POST', fd, true);
           $('#roomBotAvatarPath').textContent = uploaded.path;
           $('#roomBotPreview').innerHTML = `<img src="${esc(uploaded.path)}" alt="">`;
-          toast('تم رفع صورة الروبوت');
+          toast('تم رفع الصورة');
         } catch (e) { toast(e.error || 'تعذر رفع الصورة', false); }
       };
       $('#roomBotSave').onclick = async () => {
         try {
           const avatarText = $('#roomBotAvatarPath').textContent.trim();
-          const replyMode = +$('#roomBotReplyMode').value;
           const isCreate = !(EDIT_ROOM_BOT && EDIT_ROOM_BOT.id);
+          const accountType = $('#roomBotAccountType') ? $('#roomBotAccountType').value : 'robot';
+          const isVisitor = accountType === 'visitor';
           const saved = await api('/api/admin/room-bots', 'POST', {
             id: EDIT_ROOM_BOT && EDIT_ROOM_BOT.id,
+            account_type: accountType,
+            gender: $('#roomBotGender') ? $('#roomBotGender').value : 'secret',
             username: $('#roomBotName').value.trim(),
             avatar: avatarText.startsWith('/') ? avatarText : ((EDIT_ROOM_BOT && EDIT_ROOM_BOT.avatar) || ''),
             room_id: +$('#roomBotRoom').value,
@@ -3995,18 +4037,19 @@ const PAGES = {
             membership: $('#roomBotMembership').value,
             verified: $('#roomBotVerified').checked,
             active: $('#roomBotActive').checked,
-            reply_enabled: replyMode,
-            reply_text: $('#roomBotReplyText') ? $('#roomBotReplyText').value : '',
-            with_visitor: isCreate && $('#roomBotWithVisitor') ? ($('#roomBotWithVisitor').checked ? 1 : 0) : 0
+            reply_enabled: isVisitor ? 0 : +$('#roomBotReplyMode').value,
+            reply_text: $('#roomBotReplyText') ? $('#roomBotReplyText').value : ''
           });
           EDIT_ROOM_BOT = null;
-          if (isCreate && saved && saved.visitor) {
-            toast(`تم توليد الروبوت + «زائر عادي» باسم ${saved.visitor.username} ⚡`);
+          if (isCreate && isVisitor && saved && saved.username) {
+            toast(`تم توليد «زائر عادي» باسم ${saved.username} ✅`);
+          } else if (isCreate) {
+            toast('تم توليد الروبوت وإدخاله ⚡');
           } else {
-            toast('تم حفظ الروبوت بنجاح ⚡');
+            toast('تم حفظ التعديلات بنجاح ⚡');
           }
           loadPage('roomBots');
-        } catch (e) { toast(e.error || 'تعذر حفظ الروبوت', false); }
+        } catch (e) { toast(e.error || 'تعذر الحفظ', false); }
       };
       const cancel = $('#roomBotCancel'); if (cancel) cancel.onclick = () => { EDIT_ROOM_BOT = null; loadPage('roomBots'); };
     }
