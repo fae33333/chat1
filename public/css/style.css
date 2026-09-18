@@ -7117,3 +7117,31 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
   white-space: normal;
   border: 0;
 }
+
+/* ===== دعم اللغات من اليسار لليمين (LTR) — تغيير اللغة فقط دون نقل/قلب الأيقونات ===== */
+body.lang-ltr { text-align: left; }
+body.lang-ltr,
+body.lang-ltr button,
+body.lang-ltr input,
+body.lang-ltr textarea,
+body.lang-ltr select {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+               Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji" !important;
+}
+body.lang-fr, body.lang-fr.pvpage, body.lang-fr .sheet, body.lang-fr .dialog { direction: ltr; text-align: left; }
+body.lang-ltr .c-top,
+body.lang-ltr .r-head,
+body.lang-ltr .bottomnav,
+body.lang-ltr .c-input { direction: ltr; }
+/* لا نقلب أيقونة العودة — تبقى في مكانها كما في العربية، يتغير النص فقط */
+body.lang-ltr .ci-circle,
+body.lang-ltr .ci-plain,
+body.lang-ltr .ci-ava,
+body.lang-ltr .btn-enter { order: 0; }
+body.lang-ltr .bn-item span,
+body.lang-ltr .c-room-name,
+body.lang-ltr .room-name,
+body.lang-ltr .pm-peer,
+body.lang-ltr .m-text,
+body.lang-ltr .pm-tx { direction: ltr; text-align: left; }
+body.lang-ltr .r-logo { padding-inline-start: 0; }

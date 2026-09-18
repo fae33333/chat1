@@ -235,5 +235,114 @@
     📌 لتفعيل إطلالتك داخل الشات:<br>
     الملف الشخصي ← الصورة الشخصية ← <b>أضف إطلالة</b> ← اختر ما يعجبك ← حفظ ✅
   </div>
+
+  <script src="/js/i18n-words.js?v=20260918-i18n4"></script>
+  <script>
+  (function(){
+    // قراءة اللغة المختارة من localStorage (أو افتراضي العربية)
+    function getLang(){
+      try { return localStorage.getItem('chatLang') || 'ar'; } catch(e){ return 'ar'; }
+    }
+    const FRAME_TRANS = {
+      en: {
+        title: "Celeb Avatars ✨",
+        sub: "Animated <b>professional</b> frames for your profile picture — <b>free for all users</b>",
+        "في الشات":"In Chat", "في القائمة":"In List", "في الرسائل":"In Messages", "في ملفك":"In Profile",
+        "نجوم متلألئة":"Twinkling Stars", "مجرة":"Galaxy", "ماسة":"Diamond", "طاقة":"Energy",
+        "شفق قطبي":"Aurora", "زمردي":"Emerald", "بلاتينية":"Platinum", "غروب":"Sunset",
+        "ذهبية":"Gold", "نيون":"Neon", "لهب":"Flame", "جليد":"Ice", "ملكية":"Royal",
+        "قلوب":"Hearts", "أوراق":"Leaves", "قوس قزح":"Rainbow",
+        "جديدة":"New", "مطوّرة":"Updated",
+        hint: "📌 To activate your frame inside the chat:<br>Profile ← Profile Picture ← <b>Add Frame</b> ← Choose what you like ← Save ✅"
+      },
+      es: {
+        title: "Avatares Estrella ✨",
+        sub: "Marcos <b>profesionales animados</b> para tu foto de perfil — <b>gratis para todos</b>",
+        "في الشات":"En el Chat", "في القائمة":"En la Lista", "في الرسائل":"En Mensajes", "في ملفك":"En tu Perfil",
+        "نجوم متلألئة":"Estrellas Brillantes", "مجرة":"Galaxia", "ماسة":"Diamante", "طاقة":"Energía",
+        "شفق قطبي":"Aurora", "زمردي":"Esmeralda", "بلاتينية":"Platino", "غروب":"Atardecer",
+        "ذهبية":"Oro", "نيون":"Neón", "لهب":"Llama", "جليد":"Hielo", "ملكية":"Real",
+        "قلوب":"Corazones", "أوراق":"Hojas", "قوس قزح":"Arcoíris",
+        "جديدة":"Nuevo", "مطوّرة":"Actualizado",
+        hint: "📌 Para activar tu marco dentro del chat:<br>Perfil ← Foto de Perfil ← <b>Añadir Marco</b> ← Elige tu favorito ← Guardar ✅"
+      },
+      tr: {
+        title: "Yıldız Görünümler ✨",
+        sub: "Profil resmin için <b>animasyonlu profesyonel</b> görünümler — <b>tüm kullanıcılara ücretsiz</b>",
+        "في الشات":"Sohbette", "في القائمة":"Listede", "في الرسائل":"Mesajlarda", "في ملفك":"Profilinde",
+        "نجوم متلألئة":"Parıldayan Yıldızlar", "مجرة":"Galaksi", "ماسة":"Elmas", "طاقة":"Enerji",
+        "شفق قطبي":"Aurora", "زمردي":"Zümrüt", "بلاتينية":"Platin", "غروب":"Gün Batımı",
+        "ذهبية":"Altın", "نيون":"Neon", "لهب":"Alev", "جليد":"Buz", "ملكية":"Kraliyet",
+        "قلوب":"Kalpler", "أوراق":"Yapraklar", "قوس قزح":"Gökkuşağı",
+        "جديدة":"Yeni", "مطوّرة":"Geliştirilmiş",
+        hint: "📌 Sohbet içinde görünümünü etkinleştirmek için:<br>Profil ← Profil Resmi ← <b>Görünüm Ekle</b> ← Beğendiğini Seç ← Kaydet ✅"
+      },
+      fr: {
+        title: "Looks de Stars ✨",
+        sub: "Cadres <b>professionnels animés</b> pour votre photo de profil — <b>gratuits pour tous</b>",
+        "في الشات":"Dans le Tchat", "في القائمة":"Dans la Liste", "في الرسائل":"Dans les Messages", "في ملفك":"Dans votre Profil",
+        "نجوم متلألئة":"Étoiles Scintillantes", "مجرة":"Galaxie", "ماسة":"Diamant", "طاقة":"Énergie",
+        "شفق قطبي":"Aurora", "زمردي":"Émeraude", "بلاتينية":"Platine", "غروب":"Coucher",
+        "ذهبية":"Or", "نيون":"Néon", "لهب":"Flammes", "جليد":"Glace", "ملكية":"Royal",
+        "قلوب":"Cœurs", "أوراق":"Feuilles", "قوس قزح":"Arc-en-ciel",
+        "جديدة":"Nouveau", "مطوّرة":"Amélioré",
+        hint: "📌 Pour activer votre cadre dans le tchat :<br>Profil ← Photo de profil ← <b>Ajouter un cadre</b> ← Choisissez ← Enregistrer ✅"
+      }
+    };
+
+    function applyFramesLang(lang){
+      lang = lang || 'ar';
+      document.documentElement.lang = lang;
+      const isRTL = lang === 'ar';
+      document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
+      document.body.classList.remove('lang-ar','lang-en','lang-es','lang-tr','lang-fr');
+      document.body.classList.add('lang-' + lang);
+      if (lang === 'ar') {
+        // إعادة النصوص الأصلية العربية (نسترجع من data-ar إن وُجد)
+        document.querySelectorAll('[data-ar]').forEach(el => {
+          const tag = el.tagName.toLowerCase();
+          if (tag === 'title') { el.textContent = el.getAttribute('data-ar'); }
+          else if (el.dataset.arHtml) el.innerHTML = el.dataset.arHtml;
+          else el.textContent = el.getAttribute('data-ar');
+        });
+        document.title = "إطلالات نجوم العرب ✨";
+        return;
+      }
+      const t = FRAME_TRANS[lang] || FRAME_TRANS.en;
+      if (!document.querySelector('title').getAttribute('data-ar')){
+        document.querySelector('title').setAttribute('data-ar', document.title);
+      }
+      document.title = t.title;
+      document.querySelector('h1').setAttribute('data-ar', document.querySelector('h1').getAttribute('data-ar') || '✨ إطلالات نجوم العرب ✨');
+      document.querySelector('h1').textContent = t.title;
+      const sub = document.querySelector('.sub');
+      if (!sub.dataset.arHtml) sub.dataset.arHtml = sub.innerHTML;
+      sub.innerHTML = t.sub;
+      document.querySelectorAll('.hero-item small').forEach(s => {
+        const ar = s.getAttribute('data-ar') || s.textContent;
+        s.setAttribute('data-ar', ar);
+        s.textContent = t[ar] || (window.__i18nWordTranslate ? window.__i18nWordTranslate(ar, lang) : ar);
+      });
+      document.querySelectorAll('.card b').forEach(b => {
+        const ar = b.getAttribute('data-ar') || b.textContent;
+        b.setAttribute('data-ar', ar);
+        b.textContent = t[ar] || (window.__i18nWordTranslate ? window.__i18nWordTranslate(ar, lang) : ar);
+      });
+      document.querySelectorAll('.card .tag').forEach(tag => {
+        const ar = tag.getAttribute('data-ar') || tag.textContent;
+        tag.setAttribute('data-ar', ar);
+        tag.textContent = t[ar] || (window.__i18nWordTranslate ? window.__i18nWordTranslate(ar, lang) : ar);
+      });
+      const hint = document.querySelector('.hint');
+      if (!hint.dataset.arHtml) hint.dataset.arHtml = hint.innerHTML;
+      hint.innerHTML = t.hint;
+    }
+    const LANG = getLang();
+    applyFramesLang(LANG);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'chatLang') applyFramesLang(e.newValue || 'ar');
+    });
+  })();
+  </script>
 </body>
 </html>

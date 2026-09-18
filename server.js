@@ -359,6 +359,9 @@ const sessionMw = session({
 });
 app.use(sessionMw);
 app.use(cookieParser(COOKIE_SECRET));
+// ترجمة الخادم: يقرأ ?lang= أو كوكي chat_language أو Accept-Language ويُرجم رسائل الخطأ تلقائياً.
+const serverI18n = require('./lib/server-i18n');
+app.use(serverI18n.middleware);
 // معرف موقع وموقّع يبقى مع المتصفح عند تبديل الشبكة أو عنوان IP. لا يحتوي
 // معلومات شخصية، ويستخدم فقط لربط الحظر الإداري بالجهاز نفسه.
 app.use((req, res, next) => {
@@ -508,23 +511,35 @@ app.get(['/admin', '/admin.html'], async (req, res) => {
 
   if (!isValid) {
     const isPresentInChat = auth ? isUserActiveInChat(auth.uid) : false;
-    const reasonText = !auth
-      ? 'تم إبطال رمز الأمان القديم عند تسجيل الدخول أو التحديث داخل الدردشة.'
-      : (!isPresentInChat
-        ? 'يجب أن تكون متواجداً ومتصلاً داخل الدردشة في نفس الوقت لتتمكن من استخدام لوحة الإدارة.'
-        : 'هذا الرابط مشفر ومربوط بالجهاز والمتصفح المصدر فقط، ولا يمكن فتحه من جهاز أو متصفح آخر.');
+    const lang = req.detectedLang || 'ar';
+    const isRTL = lang === 'ar';
+    const dir = isRTL ? 'rtl' : 'ltr';
+    const latinFont = isRTL
+      ? '"Noto Sans Arabic","SF Arabic",Arial,sans-serif'
+      : '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
+    const iconTransform = "";
+    const headingKey = !auth ? 'oldToken' : (!isPresentInChat ? 'notInChat' : 'prefixReason');
+    // جلب النصوص المترجمة
+    const title = serverI18n.t('title', 'admin403', lang);
+    const heading = serverI18n.t('heading', 'admin403', lang);
+    const backBtn = serverI18n.t('backBtn', 'admin403', lang);
+    const prefixReason = serverI18n.t('prefixReason', 'admin403', lang);
+    const msgReason = serverI18n.t('msgReason', 'admin403', lang);
+    // ترجمة أسباب مخصصة
+    const reasonKey = !auth ? 'oldToken' : (!isPresentInChat ? 'notInChat' : 'prefixReason');
+    const reasonText = serverI18n.t(reasonKey, 'admin403', lang);
 
     return res.status(403).send(`
       <!DOCTYPE html>
-      <html lang="ar" dir="rtl">
+      <html lang="${lang}" dir="${dir}">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>غير مصرح بالدخول | لوحة التحكم</title>
+        <title>${esc(title)}</title>
         <link rel="stylesheet" href="/icons/framework7-icons.css">
         <link rel="stylesheet" href="/css/fonts.css">
         <style>
-          * { margin:0; padding:0; box-sizing:border-box; font-family:"Noto Sans Arabic","SF Arabic",Arial,sans-serif; }
+          * { margin:0; padding:0; box-sizing:border-box; font-family:${latinFont}; }
           body { min-height:100vh; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color:#fff; padding:20px; text-align:center; }
           .card { max-width:440px; width:100%; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:24px; padding:36px 24px; backdrop-filter:blur(10px); box-shadow:0 25px 50px -12px rgba(0,0,0,0.5); }
           .icon { width:74px; height:74px; border-radius:50%; background:rgba(239,68,68,0.15); border:1.5px solid rgba(239,68,68,0.35); color:#ef4444; display:flex; align-items:center; justify-content:center; margin:0 auto 20px; font-size:36px; }
@@ -532,14 +547,15 @@ app.get(['/admin', '/admin.html'], async (req, res) => {
           p { font-size:13.5px; color:#94a3b8; line-height:1.8; margin-bottom:26px; }
           .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; background:linear-gradient(135deg, #6366f1, #4f46e5); color:#fff; text-decoration:none; padding:12px 28px; border-radius:14px; font-weight:800; font-size:14px; box-shadow:0 4px 14px rgba(99,102,241,0.4); transition:transform 0.15s; }
           .btn:hover { transform:translateY(-2px); }
+          .btn .f7-icons { ${iconTransform} }
         </style>
       </head>
       <body>
         <div class="card">
           <div class="icon"><i class="f7-icons">lock_shield_fill</i></div>
-          <h2>رابط الإدارة غير متاح أو منتهي الصلاحية</h2>
-          <p>${reasonText}<br>يرجى التوجه إلى الدردشة والضغط على زر <b>«لوحة التحكم الإدارية»</b> لتوليد رابط وصول آمن ومباشر.</p>
-          <a href="/" class="btn"><i class="f7-icons">arrow_left</i> العودة إلى الدردشة</a>
+          <h2>${esc(heading)}</h2>
+          <p>${reasonText}<br>${esc(msgReason)}</p>
+          <a href="/" class="btn"><i class="f7-icons">arrow_left</i> ${esc(backBtn)}</a>
         </div>
       </body>
       </html>
@@ -1407,25 +1423,34 @@ async function accessBlockReasons(req) {
 function renderAccessBlockedHtml(reasons, req) {
   const browserBlocked = reasons.includes('browser');
   const vpnBlocked = reasons.includes('vpn');
-  const siteName = ACCESS_SETTINGS.site_name || 'الدردشة';
+  const lang = (req && req.detectedLang) || 'ar';
+  const isRTL = lang === 'ar';
+  const dir = isRTL ? 'rtl' : 'ltr';
+  const latinFont = isRTL
+    ? '"Noto Sans Arabic","SF Arabic",Arial,sans-serif'
+    : '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
+  const iconTransform = "";
+  const bSiteName = serverI18n.t('siteName', 'blocked', lang);
+  const siteName = ACCESS_SETTINGS.site_name || bSiteName;
   let icon = 'lock_shield_fill';
-  let title = 'تعذر الوصول إلى الدردشة';
+  let title = serverI18n.t('titlePrefix', 'blocked', lang);
   if (vpnBlocked) icon = 'network_alt';
   if (browserBlocked) icon = 'globe';
   const lines = [];
-  if (vpnBlocked) lines.push('تم رصد اتصال عبر <b>برنامج VPN</b> أو <b>بروكسي</b>. الإدارة فعّلت منع هذه الأنواع من الاتصال حفاظاً على أمان الدردشة. يرجى إيقاف VPN/البروكسي ثم إعادة المحاولة.');
-  if (browserBlocked) lines.push('المتصفح الذي تستخدمه <b>غير مسموح</b> في هذه الدردشة حالياً. يُرجى استخدام أحد المتصفحات المسموحة (مثل كروم، فايرفوكس، سفاري، إيدج).');
+  if (vpnBlocked) lines.push(serverI18n.t('vpn', 'blocked', lang));
+  if (browserBlocked) lines.push(serverI18n.t('browser', 'blocked', lang));
   const body = lines.join('<br><br>');
+  const retry = serverI18n.t('retry', 'blocked', lang);
   return `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="${lang}" dir="${dir}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
-<title>${title} | ${esc(siteName)}</title>
+<title>${esc(title)} | ${esc(siteName)}</title>
 <link rel="stylesheet" href="/icons/framework7-icons.css">
 <style>
-* { margin:0; padding:0; box-sizing:border-box; font-family:"Noto Sans Arabic","SF Arabic",Arial,sans-serif; }
+* { margin:0; padding:0; box-sizing:border-box; font-family:${latinFont}; }
 body { min-height:100vh; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color:#fff; padding:20px; text-align:center; }
 .card { max-width:460px; width:100%; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:24px; padding:36px 24px; backdrop-filter:blur(10px); box-shadow:0 25px 50px -12px rgba(0,0,0,0.5); }
 .icon { width:78px; height:78px; border-radius:50%; background:rgba(239,68,68,0.15); border:1.5px solid rgba(239,68,68,0.35); color:#ef4444; display:flex; align-items:center; justify-content:center; margin:0 auto 20px; font-size:38px; }
@@ -1433,14 +1458,15 @@ h2 { font-size:19px; font-weight:900; margin-bottom:14px; color:#f8fafc; }
 p { font-size:13.5px; color:#cbd5e1; line-height:2; margin-bottom:24px; }
 .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; background:linear-gradient(135deg, #6366f1, #4f46e5); color:#fff; text-decoration:none; padding:12px 26px; border-radius:14px; font-weight:800; font-size:14px; box-shadow:0 4px 14px rgba(99,102,241,0.4); cursor:pointer; border:0; }
 .btn:hover { transform:translateY(-2px); }
+.btn .f7-icons { ${iconTransform} }
 </style>
 </head>
 <body>
   <div class="card">
     <div class="icon"><i class="f7-icons">${icon}</i></div>
-    <h2>${title}</h2>
+    <h2>${esc(title)}</h2>
     <p>${body}</p>
-    <button class="btn" onclick="location.reload()"><i class="f7-icons">arrow_clockwise</i> إعادة المحاولة</button>
+    <button class="btn" onclick="location.reload()"><i class="f7-icons">arrow_clockwise</i> ${esc(retry)}</button>
   </div>
 </body>
 </html>`;
