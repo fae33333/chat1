@@ -1,5 +1,5 @@
 {
-  "name": "nujum-chat",
+  "name": "arab-chat",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
@@ -8,7 +8,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "شات نجوم العرب - دردشة صوتية وكتابية مع لوحة تحكم",
+  "description": "شات دردشة الاردن - دردشة صوتية وكتابية مع لوحة تحكم",
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "clean-css": "^5.3.3",
