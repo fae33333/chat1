@@ -6045,6 +6045,81 @@ function fillTemplate(tpl, ctx) {
 }
 
 // =====================================================
+//  تفريد صفحات المسارات — غرف مطابقة + روابط مرتبطة
+// =====================================================
+// تطبيع النص العربي للمطابقة: إزالة التشكيل، توحيد الهمزات والتاء المربوطة،
+// وحذف الكلمات العامة (شات/دردشة/غرفة) حتى لا تُحسب مطابقة.
+function seoNormalizeAr(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[\u064B-\u0652\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[ىي]/g, 'ي')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// خطة غرف المسار: الغرف التي يطابق اسمها/وصفها كلمات المسار تتصدر القائمة،
+// وبقية الغرف تُدوَّر بدوران ثابت لبصمة المسار حتى تختلف بداية القائمة من صفحة لأخرى.
+function buildSlugRoomPlan(slug, siteName, rooms) {
+  const list = Array.isArray(rooms) ? rooms.slice() : [];
+  const fillers = new Set(['شات', 'دردشه', 'غرفه', 'غرف', 'صفحه', 'مجاني', 'مجانيه', 'عربي', 'العرب', 'الاول', 'الاولي']);
+  const terms = new Set();
+  const addTerms = txt => {
+    seoNormalizeAr(txt)
+      .split(/[^a-z0-9\u0600-\u06FF]+/)
+      .filter(w => w && w.length >= 2 && !fillers.has(w))
+      .forEach(w => terms.add(w));
+  };
+  addTerms(String(slug || '').replace(/[-_.]+/g, ' '));
+  addTerms(siteName);
+  const scoreRoom = r => {
+    const name = seoNormalizeAr(r.name);
+    const desc = seoNormalizeAr(r.description);
+    let sc = 0;
+    for (const t of terms) {
+      if (name === t) sc += 10;
+      else if (name.includes(t)) sc += 6;
+      else if (desc.includes(t)) sc += 2;
+    }
+    return sc;
+  };
+  const scored = list.map(r => ({ r, sc: scoreRoom(r) }));
+  const matched = scored.filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc).map(x => x.r);
+  const rest = scored.filter(x => x.sc <= 0).map(x => x.r);
+  const rot = rest.length ? slugSeed(String(slug || '')) % rest.length : 0;
+  return { matched, others: rest.slice(rot).concat(rest.slice(0, rot)) };
+}
+
+// روابط «غرف ودردشات ذات صلة»: صفحات المسارات النشطة الأخرى، بترتيب دوراني
+// ثابت لكل صفحة حتى لا تتطابق قائمة الروابط بين المسارين (إشارات داخلية قوية
+// لجوجل لزحف وفهم بنية الموقع دون تكرار حرفي).
+async function buildRelatedSeoLinks(slug, cap = 8) {
+  try {
+    const rows = await q.all(`SELECT slug, title, site_name, h1 FROM seo_pages WHERE active=1 AND slug<>? ORDER BY id ASC`, String(slug || ''));
+    const items = (rows || []).map(r => ({
+      slug: String(r.slug || ''),
+      text: String(r.site_name || r.title || r.slug || '').trim() || String(r.slug || '')
+    })).filter(x => x.slug);
+    if (!items.length) return [];
+    const seed = slugSeed('rel|' + String(slug || ''));
+    const rot = seed % items.length;
+    const rotated = items.slice(rot).concat(items.slice(0, rot));
+    // نضيف دوراناً ثانياً بخطوة ثابتة للمسار لنزيد اختلاف الترتيب بين الصفحات
+    const step = 1 + (seed % 3);
+    const picked = [];
+    const used = new Set();
+    for (let i = 0; picked.length < Math.min(cap, items.length) && used.size < rotated.length; i++) {
+      const idx = (i * step) % rotated.length;
+      if (used.has(idx)) continue;
+      used.add(idx); picked.push(rotated[idx]);
+    }
+    return picked;
+  } catch (e) { return []; }
+}
+
+// =====================================================
 //  مجمّعات صياغة العنوان/الوصف/الكلمات — تمنع تكرار النص بين الجولات
 // =====================================================
 // لكل نمط عدة صيغ للعنوان والوصف ومجموعات كلمات مفتاحية مختلفة؛
@@ -7074,8 +7149,9 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
 
   const fullImageUrl = image.startsWith('http://') || image.startsWith('https://') ? image : `${proto}://${host}${image.startsWith('/') ? image : '/' + image}`;
 
-  // محتوى نصي فريد لكل مسار: عنوان H1 + فقرة تعريفية + أسئلة شائعة.
-  // يُبنى من بصمة المسار إن لم تكن الإدارة قد كتبته يدوياً، فيختلف من مسار لآخر.
+  // محتوى نصي فريد لكل مسار: عنوان H1 + فقرات تعريفية + مميزات + غرف الصفحة
+  // + أسئلة شائعة خاصة + روابط غرف ودردشات ذات صلة. يُبنى من بصمة المسار إن
+  // لم تكن الإدارة قد كتبته يدوياً، فيختلف محتواه وبنيته من مسار لآخر.
   let pageH1 = (seo && String(seo.h1 || '').trim()) || '';
   let pageIntro = (seo && String(seo.intro || '').trim()) || '';
   let pageFaq = [];
@@ -7083,14 +7159,83 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
     const pkg = buildAutoSeoPackage(isCustomSlug ? slug : 'home', siteName);
     if (!pageH1) pageH1 = pkg.h1;
     if (!pageIntro) pageIntro = pkg.intro;
-    pageFaq = Array.isArray(pkg.faq) ? pkg.faq : [];
+    pageFaq = Array.isArray(pkg.faq) ? pkg.faq.slice() : [];
   } catch (e) { }
+
+  // غرف الصفحة: المطابقة لكلمات المسار تتصدر، والبقية بدوران ثابت للمسار.
+  let ROOMS_ALL = [];
+  try {
+    ROOMS_ALL = await q.all(`SELECT id, name, description, image, type, max_users, status, locked FROM rooms ORDER BY sort, id`) || [];
+  } catch (e) { ROOMS_ALL = []; }
+  const roomPlan = isCustomSlug ? buildSlugRoomPlan(slug, siteName, ROOMS_ALL) : { matched: [], others: ROOMS_ALL.slice() };
+  const featuredRoom = roomPlan.matched.length ? roomPlan.matched[0] : null;
+  const topicName = seo && String(seo.site_name || '').trim() ? String(seo.site_name).trim() : siteName;
+
+  // روابط «غرف ودردشات ذات صلة» — ربط داخلي متبادل مختلف الترتيب من صفحة لأخرى.
+  const relatedLinks = isCustomSlug ? await buildRelatedSeoLinks(slug, 8) : [];
+
+  // فقرات إضافية خاصة بموضوع الصفحة (الدولة/الاهتمام) — تختلف صياغتها وترتيبها
+  // بحسب بصمة المسار فلا تتطابق الفقرات بين الصفحات.
+  const extraParasSeed = slugSeed('paras|' + String(isCustomSlug ? slug : 'home'));
+  const extraParas = [];
+  if (isCustomSlug) {
+    const p1 = featuredRoom
+      ? `تُعد ${topicName} مدخلك المباشر إلى غرفة «${String(featuredRoom.name).trim()}» حيث تجتمع الدردشة الكتابية والصوتية في مكان واحد مع أعضاء يتواجدون يومياً.`
+      : `تُعد ${topicName} مدخلك السريع إلى غرف الدردشة العربية حيث تجتمع الكتابة والصوت في مكان واحد، مع أعضاء من مختلف الدول العربية يتواصلون على مدار اليوم.`;
+    const p2 = `كل ما تحتاجه هو المتصفح: افتح الصفحة وادخل باسمك مباشرة دون أي تسجيل، ويمكنك إنشاء حساب مجاني إذا أردت حفظ اسمك وصورتك ورصيدك في زياراتك القادمة.`;
+    const p3 = `من داخل ${topicName} يمكنك الانتقال بلمسة واحدة إلى بقية غرف المنصة: ${pickMany(relatedLinks.map(l => l.text), extraParasSeed, 3).join('، ') || 'غرف الدردشة الأخرى'} وغيرها.`;
+    const ordered = extraParasSeed % 2 === 0 ? [p1, p2, p3] : [p1, p3, p2];
+    extraParas.push(...ordered);
+  }
+
+  // أسئلة شائعة إضافية خاصة بالصفحة نفسها (تذكر اسمها وغرفتها وصفحاتها الشقيقة)
+  if (isCustomSlug) {
+    if (featuredRoom) {
+      pageFaq.push({
+        q: `كيف أدخل غرفة ${String(featuredRoom.name).trim()} من ${topicName}؟`,
+        a: `افتح صفحة ${topicName} وستجد غرفة ${String(featuredRoom.name).trim()} في مقدمة قائمة الغرف، اضغط عليها لتدخل مباشرة بالكتابة أو بالصوت دون أي تسجيل.`
+      });
+    }
+    pageFaq.push({
+      q: `هل ${topicName} مفتوح طوال الوقت؟`,
+      a: `نعم، ${topicName} يعمل على مدار الساعة طوال أيام الأسبوع، وتتواجد فيه أعضاء يومياً للدردشة الكتابية والصوتية في أجواء محترمة يشرف عليها فريق متابعة دائم.`
+    });
+    if (relatedLinks.length >= 2) {
+      pageFaq.push({
+        q: `هل توجد دردشات وغرف مشابهة لـ${topicName}؟`,
+        a: `نعم، ترتبط صفحة ${topicName} بغرف ودردشات أخرى في المنصة مثل ${relatedLinks.slice(0, 3).map(l => l.text).join('، ')}، ويمكنك الانتقال بينها من الروابط في أسفل المحتوى أو من قائمة الغرف داخل الدردشة.`
+      });
+    }
+  }
+
+  // قائمة مميزات الصفحة — 5 نقاط تُنتقى بدوران بصمة المسار من جمل المحتوى
+  const featSeed = slugSeed('feat|' + String(isCustomSlug ? slug : 'home'));
+  let featureItems = [];
+  try {
+    const vId = 'top_rank';
+    const sentPool = SEO_SENTENCE_POOL[vId] || [];
+    featureItems = pickMany(sentPool, featSeed, 5).map(t => fillTemplate(t, { site: siteName, base: topicName, region: topicName, slug }));
+  } catch (e) { featureItems = []; }
+
+  // قائمة غرف الصفحة داخل المحتوى الفريد (اسم + وصف) — مجموعة وترتيب مختلفان لكل مسار
+  const planRooms = roomPlan.matched.concat(roomPlan.others);
+  const miniRooms = planRooms.slice(0, 6)
+    .map(r => `«${String(r.name || '').trim()}»${String(r.description || '').trim() ? ' — ' + String(r.description).trim() : ''}`);
+
+  const relatedHtml = relatedLinks.length
+    ? `<h2>غرف ودردشات ذات صلة</h2>\n  <ul>\n    ${relatedLinks.map(l => `<li><a href="/${esc(l.slug)}">${esc(l.text)}</a></li>`).join('\n    ')}\n  </ul>`
+    : '';
 
   const seoBody = `
 <div class="seo-only" id="seoLandingContent">
   <h1>${esc(pageH1 || title)}</h1>
   <p>${esc(pageIntro || desc)}</p>
+  ${extraParas.map(p => `<p>${esc(p)}</p>`).join('\n  ')}
+  ${featuredRoom ? `<h2>غرفة ${esc(String(featuredRoom.name).trim())} — الدخول المباشر</h2><p>${esc(`غرفة ${String(featuredRoom.name).trim()} متاحة الآن للدخول من صفحة ${topicName}، دردشة كتابية وصوتية معاً بدون تسجيل وبدون أي رسوم.`)}</p>` : ''}
+  ${miniRooms.length ? `<h2>غرف الدردشة المتوفرة في ${esc(topicName)}</h2><ul>\n    ${miniRooms.map(m => `<li>${esc(m)}</li>`).join('\n    ')}\n  </ul>` : ''}
+  ${featureItems.length ? `<h2>أبرز ما يميز ${esc(topicName)}</h2><ul>\n    ${featureItems.map(f => `<li>${esc(f)}</li>`).join('\n    ')}\n  </ul>` : ''}
   ${pageFaq.length ? `<h2>الأسئلة الشائعة حول ${esc(siteName)}</h2>` + pageFaq.map(f => `<h3>${esc(f.q)}</h3><p>${esc(f.a)}</p>`).join('\n  ') : ''}
+  ${relatedHtml}
 </div>`;
 
   const faqSchema = pageFaq.length ? `
@@ -7103,6 +7248,19 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
     "name": f.q,
     "acceptedAnswer": { "@type": "Answer", "text": f.a }
   })))}
+}
+</script>` : '';
+
+  // مسار تنقل (Breadcrumb) يوضح لجوجل موقع الصفحة داخل بنية الموقع
+  const breadcrumbSchema = isCustomSlug ? `
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "الرئيسية", "item": ${JSON.stringify(`${proto}://${host}/`)} },
+    { "@type": "ListItem", "position": 2, "name": ${JSON.stringify(String(pageH1 || title))}, "item": ${JSON.stringify(pageUrl)} }
+  ]
 }
 </script>` : '';
 
@@ -7148,6 +7306,7 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
 }
 </script>
 ${faqSchema}
+${breadcrumbSchema}
 <script>window.SEO_PAGE_CONFIG = ${JSON.stringify({ slug, title, description: desc, keywords, logo_image: image, site_name: siteName, favicon, page_url: pageUrl, h1: pageH1 })};</script>
   `.trim();
 
@@ -7156,8 +7315,11 @@ ${faqSchema}
   indexHtml = indexHtml.replace('</head>', cloakBootstrapTag(true) + '</head>');
   // عرض الغرف مسبقاً من الخادم داخل #roomsList: يجعل نص الغرف (عنصر LCP) ظاهراً
   // من أول رسم للصفحة دون انتظار تحميل/تنفيذ app.js — يقلّل LCP بشكل كبير.
+  // في مسارات الأرشفة تتصدر الغرفة المطابقة لكلمات المسار القائمة وتُعرض مجموعة
+  // بدوران ثابت للمسار (بدل القائمة المتطابقة في كل الصفحات) — app.js يعيد
+  // رسم القائمة كاملة عند وصول بيانات الغرف فلا يتأثر المستخدم.
   try {
-    const rooms = await q.all(`SELECT id, name, description, image, type, max_users, status, locked FROM rooms ORDER BY sort, id`);
+    const rooms = isCustomSlug ? planRooms.slice(0, 10) : planRooms;
     if (rooms && rooms.length) {
       const thumb = (src, px) => {
         const s = String(src || '');
