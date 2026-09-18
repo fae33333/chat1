@@ -590,6 +590,12 @@ db.serialize(() => {
   db.run(`ALTER TABLE seo_pages ADD COLUMN intro TEXT DEFAULT ''`, () => { });
   db.run(`ALTER TABLE seo_pages ADD COLUMN updated_at INTEGER DEFAULT 0`, () => { });
 
+  // غرف SEO المخفية: غرفة تُنشأ تلقائياً لكل مسار أرشفة باسم «غرفة <اسم المسار>»،
+  // مخفية عن قائمة الغرف للمستخدمين (hidden=1) لكنها مرئية لمحركات البحث داخل
+  // صفحة المسار نفسها. seo_slug يربط الغرفة بمسارها مباشرة.
+  db.run(`ALTER TABLE rooms ADD COLUMN hidden INTEGER DEFAULT 0`, () => { });
+  db.run(`ALTER TABLE rooms ADD COLUMN seo_slug TEXT DEFAULT ''`, () => { });
+
   // ---------- باقات شحن الذهب ----------
   db.run(`CREATE TABLE IF NOT EXISTS gold_packages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -542,7 +542,11 @@ const ADMIN_I18N_EN = {
   "لا توجد رمزيات في هذا القسم": "No avatars in this category",
   "هل تريد حذف هذه الرمزية؟": "Do you want to delete this avatar?",
   "تم رفع وحفظ الرمزية بنجاح ✓": "Avatar uploaded and saved successfully ✓",
-  "مرفوعاتي": "My Uploads"
+  "مرفوعاتي": "My Uploads",
+  "إصلاح تلقائي شامل (تفريد العناوين + الغرف المخفية)": "One-Click Auto-Fix (Deduplicate Titles + Hidden Rooms)",
+  "يعيد توليد عناوين/أوصاف المسارات المتضاربة تلقائياً وينشئ غرفة SEO مخفية لكل مسار": "Regenerates duplicate titles/descriptions and creates a hidden SEO room per path",
+  "جاري الفحص والإصلاح...": "Scanning and fixing...",
+  "غرفة SEO مخفية (لمحركات البحث)": "Hidden SEO room (for search engines)"
 };
 
 const ADMIN_I18N_ES = {
@@ -1019,7 +1023,11 @@ const ADMIN_I18N_ES = {
   "لا توجد رمزيات في هذا القسم": "No hay avatares en esta categoría",
   "هل تريد حذف هذه الرمزية؟": "¿Deseas eliminar este avatar?",
   "تم رفع وحفظ الرمزية بنجاح ✓": "Avatar subido y guardado con éxito ✓",
-  "مرفوعاتي": "Mis Subidas"
+  "مرفوعاتي": "Mis Subidas",
+  "إصلاح تلقائي شامل (تفريد العناوين + الغرف المخفية)": "Arreglo Automático Total (Títulos Únicos + Salas Ocultas)",
+  "يعيد توليد عناوين/أوصاف المسارات المتضاربة تلقائياً وينشئ غرفة SEO مخفية لكل مسار": "Regenera automáticamente títulos/descripciones duplicados y crea una sala SEO oculta por ruta",
+  "جاري الفحص والإصلاح...": "Escaneando y reparando...",
+  "غرفة SEO مخفية (لمحركات البحث)": "Sala SEO oculta (para motores de búsqueda)"
 };
 
 const ADMIN_I18N_TR = {
@@ -1494,7 +1502,11 @@ const ADMIN_I18N_TR = {
   "لا توجد رمزيات في هذا القسم": "Bu kategoride avatar yok",
   "هل تريد حذف هذه الرمزية؟": "Bu avatarı silmek istiyor musunuz?",
   "تم رفع وحفظ الرمزية بنجاح ✓": "Avatar başarıyla yüklendi ve kaydedildi ✓",
-  "مرفوعاتي": "Yüklemelerim"
+  "مرفوعاتي": "Yüklemelerim",
+  "إصلاح تلقائي شامل (تفريد العناوين + الغرف المخفية)": "Tek Tıkla Otomatik Düzeltme (Benzersiz Başlıklar + Gizli Odalar)",
+  "يعيد توليد عناوين/أوصاف المسارات المتضاربة تلقائياً وينشئ غرفة SEO مخفية لكل مسار": "Çakışan başlık/açıklamaları otomatik yeniler ve her yol için gizli SEO odası oluşturur",
+  "جاري الفحص والإصلاح...": "Taranıyor ve düzeltiliyor...",
+  "غرفة SEO مخفية (لمحركات البحث)": "Gizli SEO odası (arama motorları için)"
 };
 
 const ADMIN_I18N_DICTS = { en: ADMIN_I18N_EN, es: ADMIN_I18N_ES, tr: ADMIN_I18N_TR };
@@ -3821,6 +3833,7 @@ const PAGES = {
                 <span class="chip" style="color:${r.status === 'open' ? '#059669' : '#dc2626'}">${r.status === 'open' ? '● مفتوحة' : '● مغلقة'}</span>
                 ${r.password ? '<span class="chip" style="color:#d946a6">🔒 برقم سري</span>' : ''}
                 ${r.audience === 'registered' ? '<span class="chip" style="color:#0ea5e9">👤 للأعضاء المسجلين فقط</span>' : ''}
+                ${r.hidden ? '<span class="chip" style="background:#ede9fe;color:#6d28d9">🤖 غرفة SEO مخفية (لمحركات البحث)</span>' : ''}
               </div>
             </div>
           </div>
@@ -5378,6 +5391,9 @@ const PAGES = {
           if (res && res.h1 && !$('#seoPageH1').value.trim()) $('#seoPageH1').value = res.h1;
           if (res && res.intro && !$('#seoPageIntro').value.trim()) $('#seoPageIntro').value = res.intro;
           toast('تم حفظ مسار الأرشفة بنجاح ✓ — بمحتوى وأيقونة فريدة');
+          if (res && res.seo_room && res.seo_room.created) {
+            setTimeout(() => toast(`تم إنشاء غرفة SEO مخفية باسم «${res.seo_room.name}» 🤖 — مرئية لمحركات البحث فقط`), 900);
+          }
           $('#seoFormContainer').style.display = 'none';
           renderPages();
           renderSeoDuplicates();
@@ -6183,12 +6199,31 @@ async function renderSeoDuplicates() {
         d.duplicateGroups.slice(0, 8).map(g => `<div style="font-size:12px;color:#475569;margin-bottom:4px">\u2022 <b>${esc(g.label)}</b> مشترك بين: ${g.slugs.map(x => '<span class="chip" dir="ltr">/' + esc(x) + '</span>').join(' ')}</div>`).join('')
         : '<div style="color:#166534;font-size:12px;font-weight:800">\u2705 لا يوجد أي تكرار بين المسارات</div>'}
         ${d.missingContent && d.missingContent.length ? `<div style="color:#b45309;font-size:12px;font-weight:800;margin-top:8px">ينقصها محتوى فريد: ${d.missingContent.map(x => '<span class="chip" dir="ltr">/' + esc(x) + '</span>').join(' ')}</div>` : ''}
+        <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:11px;align-items:center">
+          <button class="btn btn-purple btn-sm" id="seoFixBtn" type="button"><i class="f7-icons">wand_stars</i> إصلاح تلقائي شامل (تفريد العناوين + الغرف المخفية)</button>
+          <span style="font-size:11px;color:#64748b">يعيد توليد عناوين/أوصاف المسارات المتضاربة تلقائياً وينشئ غرفة SEO مخفية لكل مسار</span>
+        </div>
         <div style="margin-top:9px;font-size:11.5px;color:#64748b">
           خريطة الموقع: <a href="/sitemap.xml" target="_blank" style="color:#2563eb;font-weight:800">/sitemap.xml</a> &middot;
           ملف الروبوتات: <a href="/robots.txt" target="_blank" style="color:#2563eb;font-weight:800">/robots.txt</a>
           <span style="color:#94a3b8"> (يُحدَّثان تلقائياً مع كل مسار جديد)</span>
         </div>
       </div>`;
+    const fixBtn = document.getElementById('seoFixBtn');
+    if (fixBtn) fixBtn.onclick = async () => {
+      if (!confirm('تشغيل الإصلاح الشامل؟\n\n• إعادة توليد عناوين وأوصاف المسارات المتضاربة (حتى نهاية العنوان المشتركة)\n• إنشاء غرفة SEO مخفية لكل مسار بلا غرفة\n• تحديث خريطة الموقع')) return;
+      fixBtn.disabled = true; fixBtn.innerHTML = '<i class="f7-icons">arrow2_circlepath</i> جاري الفحص والإصلاح...';
+      try {
+        const r = await api('/api/admin/seo-fix-duplicates', 'POST', { mode: 'all' });
+        const fixedN = (r.fixed || []).length, roomsN = (r.rooms_created || []).length;
+        toast(`تم الإصلاح الشامل ✓ — عناوين مُعاد توليدها: ${fixedN} • غرف مخفية مُنشأة: ${roomsN}`);
+        if (roomsN) {
+          const names = (r.rooms_created || []).slice(0, 4).map(x => '«' + x.name + '»').join('، ');
+          setTimeout(() => toast(`غرف SEO مخفية جديدة: ${names}${roomsN > 4 ? ' وغيرها' : ''} 🤖`), 1200);
+        }
+      } catch (e) { toast(e.error || 'تعذر تنفيذ الإصلاح', false); }
+      renderSeoDuplicates();
+    };
   } catch (e) { box.innerHTML = ''; }
 }
 

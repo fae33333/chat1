@@ -2183,7 +2183,8 @@ app.post('/api/logout', (req, res) => {
 //  API - الشات (غرف، مستخدمون، هدايا، ترقية...)
 // =====================================================
 app.get('/api/rooms', async (req, res) => {
-  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience FROM rooms ORDER BY sort,id`);
+  // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً
+  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience FROM rooms WHERE hidden=0 ORDER BY sort,id`);
   const counts = {};
   Object.entries(roomUsers).forEach(([rid, set]) => counts[rid] = set.size);
   res.json(rooms.map(r => ({
@@ -5950,19 +5951,29 @@ app.post('/api/admin/seo-pages', requireSuperAdmin, async (req, res) => {
   intro = String(intro || '').trim().slice(0, 1200);
   active = active === 0 || active === '0' || active === false ? 0 : 1;
 
-  // توليد تلقائي: يمنع إنشاء مسارات «طبق أصل» عند الإضافة السريعة.
-  // أي حقل فارغ يُملأ بحزمة فريدة مشتقّة من بصمة المسار نفسه.
+  // توليد تلقائي ذكي: يمنع إنشاء مسارات «طبق أصل» عند الإضافة السريعة، ويفحص
+  // أولاً كل المسارات المحفوظة (عناوين/أوصاف/نهايات مشتركة) ثم يعيد الصياغة
+  // حتى يخرج بعنوان ووصف لا يطابقان أي مسار آخر — أي حقل فارغ يُملأ تلقائياً.
   const settingsNow = await getSettings();
   const needsAuto = auto_fill === true || auto_fill === 1 || auto_fill === '1' || !title;
+  let seoRoomInfo = null;
   if (needsAuto) {
     const brandName = site_name || settingsNow.site_name || '';
-    const pkg = buildAutoSeoPackage(slug, site_name || seoSlugSiteName(slug, brandName));
-    if (!title) title = pkg.title;
-    if (!description) description = pkg.description;
-    if (!keywords) keywords = pkg.keywords;
-    if (!site_name) site_name = pkg.site_name;
-    if (!h1) h1 = pkg.h1;
-    if (!intro) intro = pkg.intro;
+    const preset = buildAutoSeoPackage(slug, site_name || seoSlugSiteName(slug, brandName));
+    // فحص التفرد مقابل كل المسارات المرفوعة، مع تمرير ما كتبه المدير إن وُجد
+    const uniq = await ensureUniqueSeoPackage(slug, site_name || seoSlugSiteName(slug, brandName), id || null, null, {
+      title: title || preset.title,
+      description: description || preset.description,
+      keywords: keywords || preset.keywords,
+      h1: h1 || preset.h1,
+      intro: intro || preset.intro
+    });
+    if (!title) title = uniq.title;
+    if (!description) description = uniq.description;
+    if (!keywords) keywords = uniq.keywords;
+    if (!site_name) site_name = preset.site_name || uniq.site_name;
+    if (!h1) h1 = uniq.h1;
+    if (!intro) intro = uniq.intro;
   }
   if (!title) return res.status(400).json({ error: 'اكتب عنوان الصفحة لمحركات البحث' });
   // أيقونة تلقائية لكل مسار: فريدة افتراضياً (ما لم تُعطَّل من الإعدادات)
@@ -5979,15 +5990,23 @@ app.post('/api/admin/seo-pages', requireSuperAdmin, async (req, res) => {
   }
 
   if (id) {
+    const before = await q.get(`SELECT slug FROM seo_pages WHERE id=?`, +id);
     await q.run(`UPDATE seo_pages SET slug=?, title=?, description=?, keywords=?, logo_image=?, site_name=?, favicon=?, h1=?, intro=?, active=?, updated_at=strftime('%s','now') WHERE id=?`,
       slug, title, description, keywords, logo_image, site_name, favicon, h1, intro, active, +id);
+    // عند تغيير اسم المسار نحدّث رابط غرفة SEO التابعة له
+    if (before && before.slug && before.slug !== slug) {
+      try { await q.run(`UPDATE rooms SET seo_slug=? WHERE seo_slug=?`, slug, before.slug); } catch (e) { }
+    }
   } else {
     const exists = await q.get(`SELECT id FROM seo_pages WHERE slug=?`, slug);
     if (exists) return res.status(400).json({ error: 'اسم هذا المسار موجود مسبقاً' });
     await q.run(`INSERT INTO seo_pages (slug, title, description, keywords, logo_image, site_name, favicon, h1, intro, active, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,strftime('%s','now'))`,
       slug, title, description, keywords, logo_image, site_name, favicon, h1, intro, active);
   }
-  res.json({ ok: true, favicon, h1, intro });
+  // غرفة SEO المخفية: تُنشأ تلقائياً باسم المسار إن لم تكن موجودة (مرئية لمحركات البحث فقط)
+  seoRoomInfo = await ensureSeoRoom(slug, site_name);
+  io.emit('sync');
+  res.json({ ok: true, favicon, h1, intro, seo_room: seoRoomInfo ? { created: !!seoRoomInfo.created, name: seoRoomInfo.name } : null });
 });
 
 app.delete('/api/admin/seo-pages/:id', requireSuperAdmin, async (req, res) => {
@@ -6045,6 +6064,102 @@ function fillTemplate(tpl, ctx) {
 }
 
 // =====================================================
+//  تفريد العناوين والأوصاف — فحص المسارات المحفوظة قبل القبول
+// =====================================================
+// تطبيع للمقارنة: حروف فقط بدون تشكيل/همزات/علامات ترقيم.
+function normSeoText(v) {
+  return String(v || '')
+    .toLowerCase()
+    .replace(/[\u064B-\u0652\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[ىي]/g, 'ي')
+    .replace(/[^\w\u0600-\u06FF]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+// «نهاية العنوان» النص بعد آخر فاصل (| أو — أو :) — اشتراك النهاية بين صفحات
+// يعني قوالب عناوين متشابهة، وهذا ما يُضعف تفرد الصفحات في جوجل.
+function seoTitleTail(t) {
+  const parts = String(t || '').split(/[|—:]/);
+  return parts.length > 1 ? normSeoText(parts[parts.length - 1]) : '';
+}
+// بصمة كل المسارات المحفوظة: عناوين كاملة + نهايات + أوصاف (بادئة 60 حرف)
+async function loadSeoFingerprint(excludeId = null, excludeSlug = null) {
+  let rows = [];
+  try {
+    rows = await q.all(`SELECT id, slug, title, description FROM seo_pages`) || [];
+  } catch (e) { rows = []; }
+  const titles = new Set(), tails = new Set(), descs = new Set();
+  for (const r of rows) {
+    if (excludeId && +r.id === +excludeId) continue;
+    if (excludeSlug && String(r.slug) === String(excludeSlug)) continue;
+    const t = normSeoText(r.title);
+    if (t) titles.add(t);
+    const tail = seoTitleTail(r.title);
+    if (tail.length >= 8) tails.add(tail);
+    const d = normSeoText(r.description);
+    if (d) descs.add(d.slice(0, 60));
+  }
+  return { titles, tails, descs };
+}
+// هل تتقاطع حزمة SEO مع مسار محفوظ مسبقاً؟ (عنوان مطابق / نهاية عنوان مشتركة / وصف متشابه)
+function seoPackageCollides(pkg, fp) {
+  if (!fp) return false;
+  const t = normSeoText(pkg && pkg.title);
+  if (t && fp.titles.has(t)) return true;
+  const tail = seoTitleTail(pkg && pkg.title);
+  if (tail.length >= 8 && fp.tails.has(tail)) return true;
+  const d = normSeoText(pkg && pkg.description).slice(0, 60);
+  if (d && fp.descs.has(d)) return true;
+  return false;
+}
+// قوالب «عنوان قوي» بصياغة مزدوجة الاسم (مثل: شات الجزائر | دردشة الجزائر صوتية وكتابية بدون تسجيل)
+// تُستعمل كصياغات إضافية عند فشل القوائم العامة في إنتاج عنوان فريد.
+const SEO_STRONG_TITLES = [
+  '{base} | دردشة {base} صوتية وكتابية بدون تسجيل',
+  '{site} — شات {base} مباشر مجاناً على الجوال والحاسوب',
+  'دردشة {base} | شات {base} عربي بدون اشتراك أو تحميل',
+  '{site} | تعارف ودردشة {base} صوتية بدون تسجيل',
+  '{base}: أقوى دردشة {base} صوتية وكتابية بدون اشتراك',
+  '{site} | غرف دردشة {base} مفتوحة 24 ساعة مجاناً',
+  'شات {base} — دردشة {base} كتابية وصوتية فورية بدون حساب',
+  '{site}: أفضل شات {base} للجوال بجودة صوت عالية',
+  '{base} | ملتقى أهل {base} للدردشة الصوتية والكتابية',
+  '{site} — دردشة {base} المجانية بدون تسجيل دخول'
+];
+// يعيد حزمة SEO مضمونة التفرد: يفحص المسارات المحفوظة في قاعدة البيانات
+// ويعيد التوليد بصيغ مختلفة حتى يخرج بعنوان ووصف لا يطابقان أي مسار آخر.
+async function ensureUniqueSeoPackage(slug, siteNameHint, excludeId = null, excludeSlug = null, presetPkg = null) {
+  const fp = await loadSeoFingerprint(excludeId, excludeSlug);
+  // 1) إن وُجدت حزمة جاهزة (من التوليد الذكي/الإدخال اليدوي) ولم تتصادم نمررها كما هي
+  if (presetPkg && !seoPackageCollides(presetPkg, fp)) return { ...presetPkg, unique: true, attempts: 0 };
+  // 2) محاولات توليد متعددة بصيغ مختلفة حتى الخروج بحزمة غير متطابقة
+  let last = presetPkg || null;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const nonce = crypto.randomBytes(8).toString('hex') + ':' + Date.now() + ':' + attempt;
+    const pkg = buildAutoSeoPackage(slug, siteNameHint, nonce);
+    last = pkg;
+    if (!seoPackageCollides(pkg, fp)) return { ...pkg, unique: true, attempts: attempt + 1 };
+  }
+  // 3) صياغة قوية مضمونة: قالب مزدوج الاسم عند أشد الحالات ازدحاماً
+  const baseSeed = slugSeed('strong|' + String(slug || ''));
+  const base = String(siteNameHint || slugToSiteName(slug) || slug).replace(/^((شات|دردشة|شبكة)\s+)+/i, '').trim() || slugToSiteName(slug);
+  const site = String(siteNameHint || ('شات ' + base)).trim();
+  for (let extra = 0; extra < SEO_STRONG_TITLES.length; extra++) {
+    const tpl = SEO_STRONG_TITLES[(baseSeed + extra) % SEO_STRONG_TITLES.length];
+    const title = fillTemplate(tpl, { site, base, region: base, slug });
+    const introPkg = buildAutoSeoPackage(slug, siteNameHint, crypto.randomBytes(6).toString('hex'));
+    const pkg = { ...introPkg, title };
+    if (!seoPackageCollides(pkg, fp)) return { ...pkg, unique: true, attempts: 40 + extra + 1 };
+  }
+  // 4) كل الصيغ مستهلكة (عدد مسارات هائل): نضيف لاحقة المسار نفسه للعنوان
+  const fallback = last || buildAutoSeoPackage(slug, siteNameHint);
+  fallback.title = `${fallback.title} — ${String(slug).toUpperCase()}`;
+  return { ...fallback, unique: false, attempts: 40 + SEO_STRONG_TITLES.length };
+}
+
+// =====================================================
 //  تفريد صفحات المسارات — غرف مطابقة + روابط مرتبطة
 // =====================================================
 // تطبيع النص العربي للمطابقة: إزالة التشكيل، توحيد الهمزات والتاء المربوطة،
@@ -6062,8 +6177,11 @@ function seoNormalizeAr(s) {
 
 // خطة غرف المسار: الغرف التي يطابق اسمها/وصفها كلمات المسار تتصدر القائمة،
 // وبقية الغرف تُدوَّر بدوران ثابت لبصمة المسار حتى تختلف بداية القائمة من صفحة لأخرى.
-function buildSlugRoomPlan(slug, siteName, rooms) {
-  const list = Array.isArray(rooms) ? rooms.slice() : [];
+function buildSlugRoomPlan(slug, siteName, rooms, { includeHidden = false } = {}) {
+  // غرف المسارات الأخرى المخفية تُستبعد (لكل صفحة غرفتها الخاصة فقط)، والغرف
+  // المخفية لا تظهر أبداً في القوائم العامة إلا لمسارها هي.
+  const list = (Array.isArray(rooms) ? rooms.slice() : [])
+    .filter(r => !r.hidden || (includeHidden && String(r.seo_slug || '') === String(slug || '')));
   const fillers = new Set(['شات', 'دردشه', 'غرفه', 'غرف', 'صفحه', 'مجاني', 'مجانيه', 'عربي', 'العرب', 'الاول', 'الاولي']);
   const terms = new Set();
   const addTerms = txt => {
@@ -6075,6 +6193,8 @@ function buildSlugRoomPlan(slug, siteName, rooms) {
   addTerms(String(slug || '').replace(/[-_.]+/g, ' '));
   addTerms(siteName);
   const scoreRoom = r => {
+    // الغرفة المرتبطة بالمسار مباشرة (seo_slug) تتصدر مهما كان اسمها
+    if (r.seo_slug && String(r.seo_slug) === String(slug || '')) return 100;
     const name = seoNormalizeAr(r.name);
     const desc = seoNormalizeAr(r.description);
     let sc = 0;
@@ -6104,19 +6224,53 @@ async function buildRelatedSeoLinks(slug, cap = 8) {
     })).filter(x => x.slug);
     if (!items.length) return [];
     const seed = slugSeed('rel|' + String(slug || ''));
-    const rot = seed % items.length;
-    const rotated = items.slice(rot).concat(items.slice(0, rot));
-    // نضيف دوراناً ثانياً بخطوة ثابتة للمسار لنزيد اختلاف الترتيب بين الصفحات
-    const step = 1 + (seed % 3);
-    const picked = [];
-    const used = new Set();
-    for (let i = 0; picked.length < Math.min(cap, items.length) && used.size < rotated.length; i++) {
-      const idx = (i * step) % rotated.length;
-      if (used.has(idx)) continue;
-      used.add(idx); picked.push(rotated[idx]);
+    // خلط حتمي (Fisher-Yates ببذرة ثابتة للمسار): ترتيب مختلف تماماً لكل صفحة
+    // مع ضمان انتهاء الحلقة دائماً بغض النظر عن طول القائمة.
+    const arr = items.slice();
+    let st = (seed % 2147483646) + 1;
+    const rnd = () => (st = (st * 48271) % 2147483647) / 2147483647;
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
     }
-    return picked;
+    return arr.slice(0, Math.max(0, Math.min(cap, arr.length)));
   } catch (e) { return []; }
+}
+
+// =====================================================
+//  غرفة SEO المخفية — تُنشأ تلقائياً مع كل مسار أرشفة
+// =====================================================
+// غرفة «وهمية» باسم المسار: مخفية عن قائمة الغرف أمام المستخدمين، لكنها تظهر
+// لمحركات البحث داخل صفحة المسار (القائمة المُرسلة مسبقاً + المحتوى الفريد)
+// فتربط الصفحة بغرفة تحمل اسمها وتقوّي صلتها بموضوعها.
+// اسم الغرفة للدمج في النصوص: بدون بادئة «غرفة» (نضيفها نحن حسب السياق)
+function seoRoomDisplay(name) {
+  return String(name || '').trim().replace(/^((غرفة|غرفه)\s+)+/, '').trim() || String(name || '').trim();
+}
+function seoRoomBaseName(slug, siteName) {
+  let name = String(siteName || '').trim() || slugToSiteName(slug);
+  // نزيل بادئات «شات/دردشة/شبكة» ليبقى جوهر الاسم (الجزائر، مصر، فله...)
+  name = name.replace(/^((شات|دردشة|شبكة)\s+)+/i, '').trim();
+  return name || String(siteName || slug || '').trim();
+}
+async function ensureSeoRoom(slug, siteName) {
+  const clean = String(slug || '').trim().toLowerCase();
+  if (!clean) return null;
+  try {
+    const existing = await q.get(`SELECT id, name FROM rooms WHERE seo_slug=? LIMIT 1`, clean);
+    if (existing) return { room: existing, created: false, name: existing.name };
+    const base = seoRoomBaseName(clean, siteName);
+    let roomName = `غرفة ${base}`;
+    // تفادي تطابق الاسم مع غرفة حقيقية موجودة
+    const nameTaken = await q.get(`SELECT id FROM rooms WHERE name=?`, roomName);
+    if (nameTaken) roomName = `غرفة ${base} | ${clean}`;
+    const desc = `غرفة ${base} — دردشة ${base} صوتية وكتابية مباشرة بدون تسجيل`;
+    const out = await q.run(
+      `INSERT INTO rooms (name,description,type,max_users,status,locked,welcome,audience,sort,hidden,seo_slug) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      roomName, desc, 'voice', 1000, 'open', 0, `أهلاً وسهلاً بكم في غرفة ${base} ★`, 'all', 9999, 1, clean
+    );
+    return { room: { id: out.lastID, name: roomName }, created: true, name: roomName };
+  } catch (e) { return null; }
 }
 
 // =====================================================
@@ -6486,7 +6640,7 @@ function generateSmartSeoPackages(inputName, customTopic, slug, currentSiteName,
     target = target.replace(/chat(\d+)/i, '\u0634\u0627\u062a $1');
   }
 
-  let baseName = target.replace(/^(\u0634\u0627\u062a|\u062f\u0631\u062f\u0634\u0629)\s+/i, '').trim() || target;
+  let baseName = target.replace(/^((\u0634\u0627\u062a|\u062f\u0631\u062f\u0634\u0629|\u0634\u0628\u0643\u0629)\s+)+/i, '').trim() || target;
   if (!baseName) baseName = '\u0627\u0644\u0639\u0631\u0628';
 
   let siteName = target.startsWith('\u0634\u0627\u062a') || target.startsWith('\u062f\u0631\u062f\u0634\u0629') ? target : `\u0634\u0627\u062a ${target}`;
@@ -6648,6 +6802,21 @@ app.post('/api/admin/seo-ai-generate', requireSuperAdmin, async (req, res) => {
   const settings = await getSettings();
   // نتيجة جديدة مضمونة في كل ضغطة «توليد» (لا تكرار مع التوليدات السابقة)
   const result = generateFreshSeo(name, customTopic, slug, settings.site_name);
+  // فحص المسارات المحفوظة: الحزمة المختارة تلقائياً يجب ألا يطابق عنوانها/وصفها
+  // أو يشترك بنهايته مع أي مسار آخر محفوظ — وإلا يُعاد توليدها فريدة.
+  const cleanSlug = String(slug || '').trim().toLowerCase();
+  if (result.data) {
+    const uniq = await ensureUniqueSeoPackage(cleanSlug, name || result.data.site_name, null, cleanSlug, result.data);
+    result.data = uniq;
+    const fpNow = await loadSeoFingerprint(null, cleanSlug);
+    if (Array.isArray(result.variations)) {
+      for (const v of result.variations) {
+        if (!v) continue;
+        if (uniq && v.id === uniq.variation) { v.title = uniq.title; v.description = uniq.description; }
+        v.collides = seoPackageCollides(v, fpNow);
+      }
+    }
+  }
   res.json({ ok: true, data: result.data, auto: result.auto, variations: result.variations });
 });
 
@@ -6657,14 +6826,17 @@ app.post('/api/admin/seo-auto-package', requireSuperAdmin, async (req, res) => {
   const clean = String(slug || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
   if (!clean) return res.status(400).json({ error: 'اكتب اسم المسار أولاً (مثال: chat1)' });
   const settings = await getSettings();
-  // ضغطة المدير على «توليد» تُنتج صياغة جديدة غير مكرَّرة في كل مرة
+  // ضغطة المدير على «توليد» تُنتج صياغة جديدة غير مكرَّرة في كل مرة، مع فحص
+  // المسارات المحفوظة: العنوان/الوصف يجب ألا يطابقا أو يشتركا بنهاية أي مسار آخر
   const fresh = generateFreshSeo(site_name || slugToSiteName(clean), '', clean, '');
-  const chosenPkg = fresh.data || fresh.variations[0];
+  const chosen0 = fresh.data || fresh.variations[0];
+  const chosenPkg = await ensureUniqueSeoPackage(clean, site_name || slugToSiteName(clean), null, clean, chosen0);
   const pkg = {
     slug: clean, title: chosenPkg.title, description: chosenPkg.description,
     keywords: chosenPkg.keywords, site_name: chosenPkg.site_name,
     h1: chosenPkg.h1 || '', intro: chosenPkg.intro || '',
-    faq: chosenPkg.faq || [], variation: chosenPkg.id || ''
+    faq: chosenPkg.faq || [], variation: chosen0.id || '',
+    unique: !!chosenPkg.unique
   };
   // أيقونة تلقائية: من رابط إن أُعطي، وإلا أيقونة فريدة مولّدة من بصمة المسار
   let fav = '';
@@ -6692,13 +6864,16 @@ app.post('/api/admin/seo-favicon/auto', requireSuperAdmin, async (req, res) => {
 });
 
 // ---- فحص التكرار بين المسارات (Duplicate Content Checker) ----
+// يكشف: التطابق الحرفي، واشتراك «نهاية العنوان» (بعد | أو —)، وتشابه بداية الوصف
 app.get('/api/admin/seo-duplicates', requireSuperAdmin, async (req, res) => {
   const rows = await q.all(`SELECT id, slug, title, description, keywords, h1, intro FROM seo_pages ORDER BY id ASC`);
   const norm = v => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const normAr = v => normSeoText(v);
+  const tail = t => { const p = String(t || '').split(/[|—:]/); return p.length > 1 ? normAr(p[p.length - 1]) : ''; };
   const groups = [];
-  const addGroup = (field, label, items) => {
+  const addGroup = (field, label, items, kind = 'exact') => {
     if (items && items.length > 1) {
-      groups.push({ field, label, value: items[0].value, count: items.length, slugs: items.map(x => x.slug) });
+      groups.push({ field, label, value: items[0].value, count: items.length, slugs: items.map(x => x.slug), kind });
     }
   };
   for (const field of ['title', 'description', 'keywords', 'h1']) {
@@ -6712,15 +6887,92 @@ app.get('/api/admin/seo-duplicates', requireSuperAdmin, async (req, res) => {
     const labels = { title: 'العنوان', description: 'الوصف', keywords: 'الكلمات المفتاحية', h1: 'عنوان H1' };
     for (const items of map.values()) addGroup(field, labels[field] || field, items);
   }
+  // نهايات العناوين المشتركة: قالب واحد مكرر عبر عدة صفحات (مثل «| أفضل شات عربي...»)
+  const tailMap = new Map();
+  for (const r of rows) {
+    const val = tail(r.title);
+    if (!val || val.length < 8) continue;
+    if (!tailMap.has(val)) tailMap.set(val, []);
+    tailMap.get(val).push({ slug: r.slug, value: val });
+  }
+  for (const items of tailMap.values()) addGroup('title', 'نهاية عنوان مشتركة', items, 'tail');
+  // بدايات الأوصاف المتشابهة (أول 60 حرف بعد التطبيع)
+  const descMap = new Map();
+  for (const r of rows) {
+    const val = normAr(r.description).slice(0, 60);
+    if (!val) continue;
+    if (!descMap.has(val)) descMap.set(val, []);
+    descMap.get(val).push({ slug: r.slug, value: val });
+  }
+  for (const items of descMap.values()) addGroup('description', 'وصف متشابه (نفس البداية)', items, 'prefix');
   // مسارات بلا محتوى فريد
   const missing = rows.filter(r => !norm(r.h1) || !norm(r.intro)).map(r => r.slug);
+  const fixableSlugs = [...new Set(groups.filter(g => ['title', 'description'].includes(g.field)).flatMap(g => g.slugs))];
   res.json({
     ok: true,
     total: rows.length,
     duplicateGroups: groups,
     missingContent: missing,
+    fixableSlugs,
     score: rows.length ? Math.max(0, 100 - groups.length * 12 - missing.length * 6) : 100
   });
+});
+
+// ---- الإصلاح الشامل التلقائي للتفريد ----
+// يفحص كل المسارات المرفوعة: أي مسار عنوانه/وصفه مطابق لغيره أو يشترك بنهاية
+// عنوانه أو بداية وصفه يُعاد توليده فريداً تلقائياً، ويُنشأ لكل مسار بلا غرفة
+// مخفية غرفة SEO باسمه. يعيد قائمة ما تم إصلاحه.
+app.post('/api/admin/seo-fix-duplicates', requireSuperAdmin, async (req, res) => {
+  const onlyMode = (req.body || {}).mode === 'duplicated'; // افتراضياً: الكل
+  const rows = await q.all(`SELECT id, slug, title, description, keywords, h1, intro, site_name FROM seo_pages ORDER BY id ASC`);
+  const norm = v => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const normAr = v => normSeoText(v);
+  const tailOf = t => { const p = String(t || '').split(/[|—:]/); return p.length > 1 ? normAr(p[p.length - 1]) : ''; };
+
+  // كشف المسارات المتضاربة مسبقاً (مقارنة كل صفحة بكل الصفحات الأخرى)
+  const conflicted = new Set();
+  for (const field of ['title', 'description']) {
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length; j++) {
+        const a = rows[i], b = rows[j];
+        if (field === 'title') {
+          const ta = norm(a.title), tb = norm(b.title);
+          const fa = tailOf(a.title), fb = tailOf(b.title);
+          if ((ta && ta === tb) || (fa && fa.length >= 8 && fa === fb)) { conflicted.add(a.slug); conflicted.add(b.slug); }
+        } else {
+          const da = normAr(a.description).slice(0, 60), db = normAr(b.description).slice(0, 60);
+          if (da && da === db) { conflicted.add(a.slug); conflicted.add(b.slug); }
+        }
+      }
+    }
+  }
+  const targets = onlyMode ? rows.filter(r => conflicted.has(r.slug)) : rows;
+  const fixed = [];
+  const settings = await getSettings();
+  for (const r of targets) {
+    const hint = r.site_name || seoSlugSiteName(r.slug, settings.site_name || '');
+    // استثني هذه الصفحة نفسها من بصمة المقارنة، وأدخل نصها الحالي كمرشح:
+    // إن كان غير متضارب يبقى كما كتبه المدير، وإن كان متضارباً يُستبدل بفريد.
+    const uniq = await ensureUniqueSeoPackage(r.slug, hint, r.id, null, {
+      title: r.title, description: r.description, keywords: r.keywords, h1: r.h1, intro: r.intro
+    });
+    const titleChanged = norm(uniq.title) !== norm(r.title);
+    const descChanged = normAr(uniq.description).slice(0, 60) !== normAr(r.description).slice(0, 60);
+    if (titleChanged || descChanged) {
+      await q.run(`UPDATE seo_pages SET title=?, description=?, updated_at=strftime('%s','now') WHERE id=?`,
+        uniq.title.slice(0, 150), uniq.description.slice(0, 500), r.id);
+      fixed.push({ slug: r.slug, title: uniq.title, description: uniq.description });
+    }
+  }
+  // إنشاء غرف SEO المخفية الناقصة (لكل مسار بلا غرفة)
+  const roomsCreated = [];
+  const allPages = await q.all(`SELECT slug, site_name FROM seo_pages WHERE active=1`);
+  for (const p of allPages) {
+    const info = await ensureSeoRoom(p.slug, p.site_name);
+    if (info && info.created) roomsCreated.push({ slug: p.slug, name: info.name });
+  }
+  io.emit('sync');
+  res.json({ ok: true, fixed, rooms_created: roomsCreated, checked: targets.length, conflicted: [...conflicted] });
 });
 
 // ---- إعدادات واختبار العقل العصبي للذكاء الاصطناعي (AI Settings & Live Test) ----
@@ -7165,9 +7417,13 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   // غرف الصفحة: المطابقة لكلمات المسار تتصدر، والبقية بدوران ثابت للمسار.
   let ROOMS_ALL = [];
   try {
-    ROOMS_ALL = await q.all(`SELECT id, name, description, image, type, max_users, status, locked FROM rooms ORDER BY sort, id`) || [];
+    ROOMS_ALL = await q.all(`SELECT id, name, description, image, type, max_users, status, locked, hidden, seo_slug FROM rooms ORDER BY sort, id`) || [];
   } catch (e) { ROOMS_ALL = []; }
-  const roomPlan = isCustomSlug ? buildSlugRoomPlan(slug, siteName, ROOMS_ALL) : { matched: [], others: ROOMS_ALL.slice() };
+  // صفحة المسار: تشمل غرفتها المخفية الخاصة (مرئية لمحركات البحث فقط) في المقدمة،
+  // والصفحة الرئيسية تستبعد كل الغرف المخفية نهائياً.
+  const roomPlan = isCustomSlug
+    ? buildSlugRoomPlan(slug, siteName, ROOMS_ALL, { includeHidden: true })
+    : { matched: [], others: ROOMS_ALL.filter(r => !r.hidden) };
   const featuredRoom = roomPlan.matched.length ? roomPlan.matched[0] : null;
   const topicName = seo && String(seo.site_name || '').trim() ? String(seo.site_name).trim() : siteName;
 
@@ -7180,7 +7436,7 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   const extraParas = [];
   if (isCustomSlug) {
     const p1 = featuredRoom
-      ? `تُعد ${topicName} مدخلك المباشر إلى غرفة «${String(featuredRoom.name).trim()}» حيث تجتمع الدردشة الكتابية والصوتية في مكان واحد مع أعضاء يتواجدون يومياً.`
+      ? `تُعد ${topicName} مدخلك المباشر إلى غرفة «${seoRoomDisplay(featuredRoom.name)}» حيث تجتمع الدردشة الكتابية والصوتية في مكان واحد مع أعضاء يتواجدون يومياً.`
       : `تُعد ${topicName} مدخلك السريع إلى غرف الدردشة العربية حيث تجتمع الكتابة والصوت في مكان واحد، مع أعضاء من مختلف الدول العربية يتواصلون على مدار اليوم.`;
     const p2 = `كل ما تحتاجه هو المتصفح: افتح الصفحة وادخل باسمك مباشرة دون أي تسجيل، ويمكنك إنشاء حساب مجاني إذا أردت حفظ اسمك وصورتك ورصيدك في زياراتك القادمة.`;
     const p3 = `من داخل ${topicName} يمكنك الانتقال بلمسة واحدة إلى بقية غرف المنصة: ${pickMany(relatedLinks.map(l => l.text), extraParasSeed, 3).join('، ') || 'غرف الدردشة الأخرى'} وغيرها.`;
@@ -7192,8 +7448,8 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   if (isCustomSlug) {
     if (featuredRoom) {
       pageFaq.push({
-        q: `كيف أدخل غرفة ${String(featuredRoom.name).trim()} من ${topicName}؟`,
-        a: `افتح صفحة ${topicName} وستجد غرفة ${String(featuredRoom.name).trim()} في مقدمة قائمة الغرف، اضغط عليها لتدخل مباشرة بالكتابة أو بالصوت دون أي تسجيل.`
+        q: `كيف أدخل غرفة ${seoRoomDisplay(featuredRoom.name)} من ${topicName}؟`,
+        a: `افتح صفحة ${topicName} وستجد غرفة ${seoRoomDisplay(featuredRoom.name)} في مقدمة قائمة الغرف، اضغط عليها لتدخل مباشرة بالكتابة أو بالصوت دون أي تسجيل.`
       });
     }
     pageFaq.push({
@@ -7231,7 +7487,7 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   <h1>${esc(pageH1 || title)}</h1>
   <p>${esc(pageIntro || desc)}</p>
   ${extraParas.map(p => `<p>${esc(p)}</p>`).join('\n  ')}
-  ${featuredRoom ? `<h2>غرفة ${esc(String(featuredRoom.name).trim())} — الدخول المباشر</h2><p>${esc(`غرفة ${String(featuredRoom.name).trim()} متاحة الآن للدخول من صفحة ${topicName}، دردشة كتابية وصوتية معاً بدون تسجيل وبدون أي رسوم.`)}</p>` : ''}
+  ${featuredRoom ? `<h2>غرفة ${esc(seoRoomDisplay(featuredRoom.name))} — الدخول المباشر</h2><p>${esc(`غرفة ${seoRoomDisplay(featuredRoom.name)} متاحة الآن للدخول من صفحة ${topicName}، دردشة كتابية وصوتية معاً بدون تسجيل وبدون أي رسوم.`)}</p>` : ''}
   ${miniRooms.length ? `<h2>غرف الدردشة المتوفرة في ${esc(topicName)}</h2><ul>\n    ${miniRooms.map(m => `<li>${esc(m)}</li>`).join('\n    ')}\n  </ul>` : ''}
   ${featureItems.length ? `<h2>أبرز ما يميز ${esc(topicName)}</h2><ul>\n    ${featureItems.map(f => `<li>${esc(f)}</li>`).join('\n    ')}\n  </ul>` : ''}
   ${pageFaq.length ? `<h2>الأسئلة الشائعة حول ${esc(siteName)}</h2>` + pageFaq.map(f => `<h3>${esc(f.q)}</h3><p>${esc(f.a)}</p>`).join('\n  ') : ''}
