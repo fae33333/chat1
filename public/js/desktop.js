@@ -323,6 +323,16 @@
     if (!more) return;
     more.onclick = (e) => {
       e.stopPropagation();
+      const wipe = $('#dropWipeWelcome');
+      if (canModerateRank()) {
+        if (!wipe && window.__wipeWipeClone) {
+          const parent = $('#dropHideWelcome').parentElement;
+          if (parent) { const inserted = window.__wipeWipeClone.cloneNode(true); inserted.style.display = ''; inserted.hidden = false; parent.appendChild(inserted); }
+        } else if (wipe) { wipe.style.display = ''; wipe.hidden = false; }
+        if (wipe) window.__wipeWipeClone = wipe.cloneNode(true);
+      } else {
+        if (wipe) { window.__wipeWipeClone = wipe.cloneNode(true); wipe.style.display = 'none'; wipe.hidden = true; }
+      }
       // نفس قالب الهاتف على الكمبيوتر: قائمة الغرفة مع زرّي «حذف العام»
       g(() => { $('#roomDropBg').style.display = 'block'; $('#roomDrop').classList.toggle('open'); });
     };
