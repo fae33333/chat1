@@ -4287,6 +4287,23 @@ app.post('/api/admin/upload/bot-avatar', requireSuperAdmin, (req, res) => {
   });
 });
 
+// ---- قائمة صور الروبوتات المرفوعة سابقاً — لمعرض «الصور الافتراضية» في نموذج التوليد ----
+app.get('/api/admin/bot-avatars', requireSuperAdmin, (req, res) => {
+  try {
+    const dir = path.join(__dirname, 'public', 'uploads', 'bots');
+    if (!fs.existsSync(dir)) return res.json([]);
+    const files = fs.readdirSync(dir)
+      .filter(f => /\.(jpe?g|png|webp|gif)$/i.test(f))
+      .map(f => {
+        let mtime = 0;
+        try { mtime = fs.statSync(path.join(dir, f)).mtimeMs; } catch (e) { }
+        return { path: '/uploads/bots/' + f, mtime };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+    res.json(files);
+  } catch (e) { res.json([]); }
+});
+
 // ---- روبوتات افتراضية تظهر كمستخدمين داخل الغرف ----
 // ---------- توليد «زائر عادي» كخيار مستقل في نموذج التوليد ----------
 // زائر بلا أي شارة روبوت: اسم عربي طبيعي + رقم وصورة من مكتبة الرمزيات،

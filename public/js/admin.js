@@ -397,6 +397,16 @@ const ADMIN_I18N_EN = {
   "لا توجد رسائل روبوت بعد": "No bot messages yet",
   "لا توجد Mensajes روبوت بعد": "No bot messages yet",
   "رفع صورة الروبوت": "Upload Bot Avatar",
+  "الصور الافتراضية": "Default Images",
+  "اختر صورة الروبوت من المكتبة أو من الصور التي رفعتها": "Pick the bot image from the library or your uploads",
+  "الافتراضية": "Default",
+  "الطبيعة": "Nature",
+  "اخرى": "Other",
+  "جاري تحميل الصور...": "Loading images...",
+  "لا توجد صور مرفوعة بعد — استخدم زر «رفع صورة الروبوت» ثم عد إلى هنا": "No uploaded images yet — use the \"Upload Bot Avatar\" button then come back here",
+  "تحديد الصورة": "Select Image",
+  "اختر صورة من المعرض أولاً": "Pick an image from the gallery first",
+  "تم تحديد الصورة ✅": "Image selected ✅",
   "اسم الروبوت": "Bot Name",
   "الغرفة التي يدخل إليها": "Room to Enter",
   "نوع الصلاحية": "Role Type",
@@ -864,6 +874,16 @@ const ADMIN_I18N_ES = {
   "لا توجد رسائل روبوت بعد": "No hay mensajes de bot aún",
   "لا توجد Mensajes روبوت بعد": "No hay mensajes de bot aún",
   "رفع صورة الروبوت": "Subir Avatar del Bot",
+  "الصور الافتراضية": "Imágenes Predeterminadas",
+  "اختر صورة الروبوت من المكتبة أو من الصور التي رفعتها": "Elige la imagen del bot de la biblioteca o de tus subidas",
+  "الافتراضية": "Predeterminadas",
+  "الطبيعة": "Naturaleza",
+  "اخرى": "Otros",
+  "جاري تحميل الصور...": "Cargando imágenes...",
+  "لا توجد صور مرفوعة بعد — استخدم زر «رفع صورة الروبوت» ثم عد إلى هنا": "Aún no hay imágenes subidas — usa el botón «Subir Avatar del Bot» y vuelve aquí",
+  "تحديد الصورة": "Seleccionar Imagen",
+  "اختر صورة من المعرض أولاً": "Elige primero una imagen de la galería",
+  "تم تحديد الصورة ✅": "Imagen seleccionada ✅",
   "اسم الروبوت": "Nombre del Bot",
   "الغرفة التي يدخل إليها": "Sala a la que Entra",
   "نوع الصلاحية": "Tipo de Rol",
@@ -1329,6 +1349,16 @@ const ADMIN_I18N_TR = {
   "لا توجد رسائل روبوت بعد": "Henüz bot mesajı yok",
   "لا توجد Mensajes روبوت بعد": "Henüz bot mesajı yok",
   "رفع صورة الروبوت": "Bot Avatarı Yükle",
+  "الصور الافتراضية": "Varsayılan Resimler",
+  "اختر صورة الروبوت من المكتبة أو من الصور التي رفعتها": "Bot resmini kütüphaneden veya yükledikleriniz arasından seçin",
+  "الافتراضية": "Varsayılan",
+  "الطبيعة": "Doğa",
+  "اخرى": "Diğer",
+  "جاري تحميل الصور...": "Resimler yükleniyor...",
+  "لا توجد صور مرفوعة بعد — استخدم زر «رفع صورة الروبوت» ثم عد إلى هنا": "Henüz yüklenmiş resim yok — «Bot Avatarı Yükle» düğmesini kullanın ve buraya geri dönün",
+  "تحديد الصورة": "Resmi Seç",
+  "اختر صورة من المعرض أولاً": "Önce galeriden bir resim seçin",
+  "تم تحديد الصورة ✅": "Resim seçildi ✅",
   "اسم الروبوت": "Bot Adı",
   "الغرفة التي يدخل إليها": "Gireceği Oda",
   "نوع الصلاحية": "Yetki Türü",
@@ -2296,6 +2326,104 @@ async function openTrackingDetail(loginId) {
 
 async function refreshTeamMonitor() {
   try { updateTeamMonitor(await api('/api/admin/monitor')); } catch (e) { }
+}
+
+// ====== معرض «الصور الافتراضية» لاختيار صورة روبوت الغرفة ======
+// قالب يُفتح فوق النموذج: مكتبة الرمزيات (الافتراضية/الطبيعة/اخرى) + صور الروبوتات المرفوعة سابقاً.
+const RBA_FALLBACK = { def: 20, nature: 16, other: 16 };
+let RBA_SEL = '';
+async function openBotAvatarGallery() {
+  const old = document.getElementById('rbaGalleryOv');
+  if (old) old.remove();
+  RBA_SEL = ($('#roomBotAvatarPath') && $('#roomBotAvatarPath').textContent.trim().startsWith('/'))
+    ? $('#roomBotAvatarPath').textContent.trim() : '';
+  const ov = document.createElement('div');
+  ov.className = 'admin-modal-overlay rba-ov';
+  ov.id = 'rbaGalleryOv';
+  ov.innerHTML = `
+    <div class="admin-modal-card rba-card">
+      <div class="admin-modal-header">
+        <div class="admin-modal-title">
+          <div class="seo-ai-icon rba-icon"><i class="f7-icons">photo_on_rectangle</i></div>
+          <div>
+            <h3>الصور الافتراضية</h3>
+            <p>اختر صورة الروبوت من المكتبة أو من الصور التي رفعتها</p>
+          </div>
+        </div>
+        <button class="admin-modal-close" type="button" data-rba-close><i class="f7-icons">xmark</i></button>
+      </div>
+      <div class="rba-tabs">
+        <button class="rba-tab active" type="button" data-rcat="def">الافتراضية</button>
+        <button class="rba-tab" type="button" data-rcat="nature">الطبيعة</button>
+        <button class="rba-tab" type="button" data-rcat="other">اخرى</button>
+        <button class="rba-tab" type="button" data-rcat="bots">مرفوعاتي</button>
+      </div>
+      <div class="rba-body">
+        <div class="rba-grid" id="rbaGrid"><div class="rba-loading"><i class="f7-icons">photo_stack</i> جاري تحميل الصور...</div></div>
+      </div>
+      <div class="rba-foot">
+        <button class="btn btn-gray" type="button" data-rba-close><i class="f7-icons">xmark</i> إلغاء</button>
+        <button class="btn btn-purple" type="button" id="rbaSave"><i class="f7-icons">checkmark</i> تحديد الصورة</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => {
+    if (e.target === ov || (e.target.closest && e.target.closest('[data-rba-close]'))) close();
+  });
+
+  const grid = ov.querySelector('#rbaGrid');
+  const renderCat = async (cat) => {
+    grid.innerHTML = '<div class="rba-loading"><i class="f7-icons">photo_stack</i> جاري تحميل الصور...</div>';
+    let items = [];
+    try {
+      if (cat === 'bots') {
+        items = (await api('/api/admin/bot-avatars')).map(x => x.path || x);
+      } else {
+        const rows = await api('/api/avatars?category=' + cat);
+        items = (rows || []).map(x => x.path || x);
+        if (!items.length) {
+          const n = RBA_FALLBACK[cat] || 16;
+          for (let i = 1; i <= n; i++) items.push(`/avatars/${cat}/${String(i).padStart(2, '0')}.jpg`);
+        }
+      }
+    } catch (e) {
+      if (cat === 'bots') items = [];
+      else {
+        const n = RBA_FALLBACK[cat] || 16;
+        for (let i = 1; i <= n; i++) items.push(`/avatars/${cat}/${String(i).padStart(2, '0')}.jpg`);
+      }
+    }
+    if (!items.length) {
+      grid.innerHTML = `<div class="rba-empty"><i class="f7-icons">photo_on_rectangle</i>
+        لا توجد صور مرفوعة بعد — استخدم زر «رفع صورة الروبوت» ثم عد إلى هنا</div>`;
+      return;
+    }
+    grid.innerHTML = items.map(v =>
+      `<div class="rba-cell${RBA_SEL === v ? ' sel' : ''}" data-v="${esc(v)}"><img src="${esc(v)}" alt="" loading="lazy"></div>`
+    ).join('');
+    grid.querySelectorAll('.rba-cell').forEach(c => c.onclick = () => {
+      RBA_SEL = c.dataset.v;
+      grid.querySelectorAll('.rba-cell').forEach(x => x.classList.toggle('sel', x === c));
+    });
+  };
+
+  ov.querySelectorAll('.rba-tab').forEach(tab => tab.onclick = () => {
+    ov.querySelectorAll('.rba-tab').forEach(x => x.classList.toggle('active', x === tab));
+    renderCat(tab.dataset.rcat);
+  });
+  renderCat('def');
+
+  const saveBtn = ov.querySelector('#rbaSave');
+  saveBtn.onclick = () => {
+    if (!RBA_SEL) return toast('اختر صورة من المعرض أولاً', false);
+    const pathEl = $('#roomBotAvatarPath'), prevEl = $('#roomBotPreview');
+    if (pathEl) pathEl.textContent = RBA_SEL;
+    if (prevEl) prevEl.innerHTML = `<img src="${esc(RBA_SEL)}" alt="">`;
+    close();
+    toast('تم تحديد الصورة ✅');
+  };
 }
 
 async function renderRoomBots() {
@@ -3908,7 +4036,10 @@ const PAGES = {
         <div class="room-bot-form-head">
           <div class="room-bot-preview" id="roomBotPreview">${bot.avatar ? `<img src="${esc(bot.avatar)}" alt="">` : '<i class="f7-icons">person_crop_circle_fill</i>'}</div>
           <div style="flex:1;min-width:0">
-            <button class="btn btn-purple" id="roomBotUpload"><i class="f7-icons">photo_fill</i> رفع صورة الروبوت</button>
+            <div class="room-bot-upload-row">
+              <button class="btn btn-purple" id="roomBotUpload"><i class="f7-icons">photo_fill</i> رفع صورة الروبوت</button>
+              <button class="btn btn-gray" id="roomBotGalleryBtn" type="button"><i class="f7-icons">photo_on_rectangle</i> الصور الافتراضية</button>
+            </div>
             <input id="roomBotFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
             <div class="room-bot-path" id="roomBotAvatarPath">${esc(bot.avatar || 'لم تُرفع صورة بعد')}</div>
           </div>
@@ -4020,6 +4151,8 @@ const PAGES = {
           toast('تم رفع الصورة');
         } catch (e) { toast(e.error || 'تعذر رفع الصورة', false); }
       };
+      const galleryBtn = $('#roomBotGalleryBtn');
+      if (galleryBtn) galleryBtn.onclick = () => openBotAvatarGallery();
       $('#roomBotSave').onclick = async () => {
         try {
           const avatarText = $('#roomBotAvatarPath').textContent.trim();
