@@ -11059,13 +11059,26 @@ $('#btnRoomMore').onclick = (e) => {
   e.stopPropagation();
   const wipe = $('#dropWipeWelcome');
   if (canModerateRank()) {
-    if (wipe) { wipe.style.display = ''; wipe.hidden = false; }
+    if (!wipe && window.__wipeWipeClone) {
+      const parent = $('#dropHideWelcome').parentElement;
+      if (parent) parent.appendChild(window.__wipeWipeClone.cloneNode(true));
+    } else if (wipe && wipe.style.display === 'none') {
+      wipe.style.display = '';
+      wipe.hidden = false;
+    }
+    if (wipe) window.__wipeWipeClone = wipe.cloneNode(true);
   } else {
-    if (wipe) { wipe.style.display = 'none'; wipe.hidden = true; }
+    if (wipe) {
+      window.__wipeWipeClone = wipe.cloneNode(true);
+      wipe.style.display = 'none';
+      wipe.hidden = true;
+    }
   }
   $('#roomDropBg').style.display = 'block';
   $('#roomDrop').classList.toggle('open');
 };
+// حفظ نسخة من زر «حذف العام للجميع» لإعادة إدراجها عند إعادة الصلاحية
+if ($('#dropWipeWelcome')) window.__wipeWipeClone = $('#dropWipeWelcome').cloneNode(true);
 // «حذف العام لدي فقط»: تختفي الرسالة منه هو فقط (تُحفظ في حسابه)
 $('#dropHideWelcome').onclick = async (e) => {
   e.stopPropagation();
@@ -11086,7 +11099,7 @@ $('#dropWipeWelcome').onclick = async (e) => {
   try {
     await api(`/api/admin/rooms/${CUR_ROOM.id}/wipe-welcome`, 'POST');
     $$('#msgArea .room-welcome').forEach(el => el.remove());
-    toast('تم حذف «العام» لجميع المستخدمين ✅');
+    toast('تم حذف «العام» من الغرفة بالكامل 🧹 بواسطة ' + ((ME && ME.username) || 'السوبر أدمن') + ' ✅');
   } catch (err) { toast((err && err.error) || 'تعذر حذف «العام» للجميع', false); }
 };
 // (حدث welcome_cleared يُربط داخل connectSocket مع بقية أحداث السوكيت)
