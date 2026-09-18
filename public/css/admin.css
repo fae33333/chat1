@@ -1111,3 +1111,21 @@ html[dir="ltr"] .sb-item .chev {
   font-size:12.5px; color:#8b93a3; background:#f8fafc; border:1px dashed #e2e8f0;
   border-radius:10px; padding:9px 12px; line-height:1.7;
 }
+
+/* ===== دعم اللغات LTR (غير العربية) في لوحة التحكم ===== */
+body.lang-ltr { direction: ltr; text-align: left; }
+body.lang-ltr,
+body.lang-ltr button,
+body.lang-ltr input,
+body.lang-ltr textarea,
+body.lang-ltr select {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+               Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji" !important;
+}
+body.lang-ltr .sidebar { right: auto; left: 0; border-right: none; border-left: 1px solid #eef2f7; }
+body.lang-ltr .content { margin-right: 0; margin-left: 260px; }
+body.lang-ltr .admin-mobile-header { direction: ltr; }
+body.lang-ltr .sb-menu i,
+body.lang-ltr .sb-logout i,
+body.lang-ltr .page-head .pg-x i { margin-inline-end: 10px; margin-inline-start: 0; }
+body.lang-ltr .star { margin-inline-end: 4px; margin-inline-start: 0; }

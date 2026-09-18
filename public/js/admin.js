@@ -66,7 +66,7 @@ function renderSkinLive(sel) {
 //  نظام اللغات والترجمة الشامل في لوحة الإدارة (Admin i18n Engine)
 // =====================================================
 let ADMIN_LANG = localStorage.getItem("admin_language") || "ar";
-if (!["ar", "en", "es", "tr"].includes(ADMIN_LANG)) ADMIN_LANG = "ar";
+if (!["ar", "en", "es", "tr", "fr"].includes(ADMIN_LANG)) ADMIN_LANG = "ar";
 
 const ADMIN_I18N_EN = {
   "لوحة التحكم الإدارية": "Admin Control Panel",
@@ -1568,6 +1568,11 @@ function translateDynamicAdminText(text, lang = ADMIN_LANG) {
     return normMatch[1] + dict[normMatch[2]] + normMatch[3];
   }
 
+  // ترجمة كلمة بكلمة لأي نص عربي متبقٍ — لضمان عدم بقاء أي كلمة عربية في لوحة الإدارة
+  if (lang !== "ar" && /[\u0600-\u06FF]/.test(raw) && typeof window.__i18nWordTranslate === "function") {
+    return window.__i18nWordTranslate(raw, lang);
+  }
+
   return text;
 }
 
@@ -1583,6 +1588,49 @@ function shouldSkipAdminTranslation(node) {
   if (el.closest('script, style, .no-translate, [dir=ltr].serp-snippet-card')) return true;
   return false;
 }
+
+// ترجمة تلقائية لكل نص عربي يُسنَد إلى عنصر برمجياً في لوحة الإدارة
+(function autoTranslateAdminTextSetters() {
+  const ADMIN_SKIP_SEL = "script,style,.no-translate,[dir=ltr].serp-snippet-card,.f7-icons,.framework7-icons";
+  const TEXT_PROPS = ["textContent", "innerText"];
+  TEXT_PROPS.forEach(prop => {
+    const desc = Object.getOwnPropertyDescriptor(Element.prototype, prop) ||
+                 Object.getOwnPropertyDescriptor(Node.prototype, prop);
+    if (!desc || !desc.set) return;
+    if (desc.get && desc.get.__adminI18nPatched) return;
+    const originalSet = desc.set;
+    const originalGet = desc.get;
+    function i18nGet() { return originalGet.call(this); }
+    function i18nSet(value) {
+      try {
+        const skip = this.closest && this.closest(ADMIN_SKIP_SEL);
+        if (!skip && ADMIN_LANG !== "ar" && typeof value === "string" && /[\u0600-\u06FF]/.test(value)) {
+          value = translateDynamicAdminText(value, ADMIN_LANG);
+        }
+      } catch (e) {}
+      return originalSet.call(this, value);
+    }
+    i18nGet.__adminI18nPatched = true;
+    i18nSet.__adminI18nPatched = true;
+    Object.defineProperty(Element.prototype, prop, {
+      configurable: true,
+      enumerable: desc.enumerable,
+      get: i18nGet,
+      set: i18nSet
+    });
+  });
+
+  const ATTRS_TO_TRANSLATE = new Set(["placeholder", "title", "aria-label"]);
+  const origSetAttr = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function (name, value) {
+    try {
+      if (ADMIN_LANG !== "ar" && typeof value === "string" && ATTRS_TO_TRANSLATE.has(String(name).toLowerCase()) && /[\u0600-\u06FF]/.test(value)) {
+        value = translateDynamicAdminText(value, ADMIN_LANG);
+      }
+    } catch (e) {}
+    return origSetAttr.call(this, name, value);
+  };
+})();
 
 function translateAdminTextNode(node) {
   if (!node || node.nodeType !== 3 || shouldSkipAdminTranslation(node)) return;
@@ -1630,14 +1678,14 @@ function initAdminLanguageObserver() {
 }
 
 function setAdminLanguage(lang, persist = false) {
-  ADMIN_LANG = ["ar", "en", "es", "tr"].includes(lang) ? lang : "ar";
+  ADMIN_LANG = ["ar", "en", "es", "tr", "fr"].includes(lang) ? lang : "ar";
   if (persist) {
     localStorage.setItem("admin_language", ADMIN_LANG);
   }
   document.documentElement.lang = ADMIN_LANG;
   document.documentElement.dir = (ADMIN_LANG === "ar") ? "rtl" : "ltr";
 
-  document.body.classList.remove("lang-en", "lang-es", "lang-tr", "lang-ltr");
+  document.body.classList.remove("lang-en", "lang-es", "lang-tr", "lang-fr", "lang-ltr");
   if (ADMIN_LANG !== "ar") {
     document.body.classList.add("lang-" + ADMIN_LANG, "lang-ltr");
   }
@@ -1647,7 +1695,8 @@ function setAdminLanguage(lang, persist = false) {
     ar: "لوحة التحكم الإدارية",
     en: "Admin Control Panel",
     es: "Panel de Control de Administración",
-    tr: "Yönetim Kontrol Paneli"
+    tr: "Yönetim Kontrol Paneli",
+    fr: "Panneau de Contrôle Admin"
   };
   document.title = titles[ADMIN_LANG] || titles.ar;
 
@@ -6144,7 +6193,7 @@ function enterPanel(user) {
     SETTINGS = s;
     if (SETTINGS.wave_enabled === undefined) SETTINGS.wave_enabled = '1';
     const explicitSaved = localStorage.getItem("admin_language");
-    if (!explicitSaved && s.admin_language && ["ar", "en", "es", "tr"].includes(s.admin_language)) {
+    if (!explicitSaved && s.admin_language && ["ar", "en", "es", "tr", "fr"].includes(s.admin_language)) {
       setAdminLanguage(s.admin_language, false);
     } else {
       setAdminLanguage(ADMIN_LANG, false);

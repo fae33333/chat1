@@ -127,7 +127,7 @@ let IGNORED_USERS = new Set();
 //  ترجمة واجهة الشات (العربية / English / Español / Türkçe)
 // =====================================================
 let APP_LANG = localStorage.getItem("chat_language") || "ar";
-if (!["ar", "en", "es", "tr"].includes(APP_LANG)) APP_LANG = "ar";
+if (!["ar", "en", "es", "tr", "fr"].includes(APP_LANG)) APP_LANG = "ar";
 
 const I18N_EN = {
   "الهدية من:": "Gift from:", "أرسلت إلى:": "Sent to:", "العدد والكمية:": "Quantity:", "التاريخ والوقت:": "Date & Time:",
@@ -1227,6 +1227,12 @@ function translateDynamicText(text, lang = APP_LANG) {
   if (text.endsWith(" حسب عنوان IP")) return translateDynamicText(text.slice(0, -" حسب عنوان IP".length), lang) + (lang === "es" ? " por IP" : (lang === "tr" ? " (IP)" : " by IP"));
   if (text.endsWith(" من الغرفة")) return translateDynamicText(text.slice(0, -" من الغرفة".length), lang) + (lang === "es" ? " de la sala" : (lang === "tr" ? " (odadan)" : " from the room"));
 
+  // ترجمة كلمة بكلمة لأي نص عربي لم تُترجم بعبارة محددة —
+  // يضمن عدم بقاء أي كلمة عربية في الواجهة عند اختيار لغة أخرى.
+  if (lang !== "ar" && /[\u0600-\u06FF]/.test(text) && typeof window.__i18nWordTranslate === "function") {
+    return window.__i18nWordTranslate(text, lang);
+  }
+
   return text;
 }
 
@@ -1234,6 +1240,50 @@ function shouldSkipTranslation(node) {
   const el = node.nodeType === 1 ? node : node.parentElement;
   return !el || !!el.closest("script,style," + I18N_SKIP_SELECTOR);
 }
+
+// ترجمة تلقائية لأي نص عربي يُسنَد إلى .textContent أو .innerText في أي عنصر —
+// يضمن ترجمة كل النصوص المُنشأة ديناميكياً برمجياً دون الحاجة لتعديل كل موضع.
+(function autoTranslateTextContentSetters() {
+  const TEXT_PROPS = ["textContent", "innerText"];
+  TEXT_PROPS.forEach(prop => {
+    const desc = Object.getOwnPropertyDescriptor(Element.prototype, prop) ||
+                 Object.getOwnPropertyDescriptor(Node.prototype, prop);
+    if (!desc || !desc.set) return;
+    if (desc.get && desc.get.__i18nPatched) return;
+    const originalSet = desc.set;
+    const originalGet = desc.get;
+    function i18nGet() { return originalGet.call(this); }
+    function i18nSet(value) {
+      try {
+        const skip = this.closest && this.closest("script,style," + I18N_SKIP_SELECTOR);
+        if (!skip && APP_LANG !== "ar" && typeof value === "string" && /[\u0600-\u06FF]/.test(value)) {
+          value = translateDynamicText(value, APP_LANG);
+        }
+      } catch (e) {}
+      return originalSet.call(this, value);
+    }
+    i18nGet.__i18nPatched = true;
+    i18nSet.__i18nPatched = true;
+    Object.defineProperty(Element.prototype, prop, {
+      configurable: true,
+      enumerable: desc.enumerable,
+      get: i18nGet,
+      set: i18nSet
+    });
+  });
+
+  // ترجمة تلقائية لسمات placeholder/title/aria-label عند تعيينها من الجافاسكربت
+  const ATTRS_TO_TRANSLATE = new Set(["placeholder", "title", "aria-label"]);
+  const origSetAttr = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function (name, value) {
+    try {
+      if (APP_LANG !== "ar" && typeof value === "string" && ATTRS_TO_TRANSLATE.has(String(name).toLowerCase()) && /[\u0600-\u06FF]/.test(value)) {
+        value = translateDynamicText(value, APP_LANG);
+      }
+    } catch (e) {}
+    return origSetAttr.call(this, name, value);
+  };
+})();
 
 function translateTextNode(node) {
   if (!node || node.nodeType !== 3 || shouldSkipTranslation(node)) return;
@@ -1271,23 +1321,23 @@ function applyLanguage(root = document.body) {
 
 let LANGUAGE_OBSERVER = null;
 function setLanguage(language, save = true) {
-  APP_LANG = ["en", "es", "tr"].includes(language) ? language : "ar";
+  APP_LANG = ["en", "es", "tr", "fr"].includes(language) ? language : "ar";
   if (save) localStorage.setItem("chat_language", APP_LANG);
   document.documentElement.lang = APP_LANG;
   document.documentElement.dir = APP_LANG === "ar" ? "rtl" : "ltr";
 
-  document.body.classList.remove("lang-en", "lang-es", "lang-tr", "lang-ltr");
+  document.body.classList.remove("lang-en", "lang-es", "lang-tr", "lang-fr", "lang-ltr");
   if (APP_LANG !== "ar") {
     document.body.classList.add("lang-" + APP_LANG, "lang-ltr");
   }
 
   $$(".language-option").forEach(b => b.classList.toggle("active", b.dataset.language === APP_LANG));
 
-  const langNames = { ar: "العربية", en: "English", es: "Español", tr: "Türkçe" };
+  const langNames = { ar: "العربية", en: "English", es: "Español", tr: "Türkçe", fr: "Français" };
   const currentLanguage = $("#currentLanguageLabel");
   if (currentLanguage) currentLanguage.textContent = langNames[APP_LANG] || "العربية";
 
-  const defaultTitles = { ar: "الدردشة المباشرة", en: "Live Chat", es: "Chat en Vivo", tr: "Canlı Sohbet" };
+  const defaultTitles = { ar: "الدردشة المباشرة", en: "Live Chat", es: "Chat en Vivo", tr: "Canlı Sohbet", fr: "Chat en Direct" };
   const customTitle = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.title) || SETTINGS.seo_title || SETTINGS.site_name || defaultTitles[APP_LANG];
   document.title = customTitle;
 
@@ -1963,7 +2013,7 @@ function parseClientSettings(res) {
   try {
     SETTINGS = parseClientSettings(await api('/api/public-settings'));
     const userExplicitLang = localStorage.getItem("chat_language");
-    if (!userExplicitLang && SETTINGS.default_language && ["ar", "en", "es", "tr"].includes(SETTINGS.default_language)) {
+    if (!userExplicitLang && SETTINGS.default_language && ["ar", "en", "es", "tr", "fr"].includes(SETTINGS.default_language)) {
       setLanguage(SETTINGS.default_language, false);
     }
   } catch (e) { }
@@ -2133,7 +2183,7 @@ function showConnectionOverlay(status, loading = true) {
   if (!ME || !CHAT_TOKEN) return;
   const overlay = $('#connectionOverlay');
   const statusText = status || (navigator.onLine ? 'جارٍ إعادة الاتصال...' : 'بانتظار عودة اتصال الإنترنت...');
-  $('#connectionStatus').textContent = APP_LANG === 'en' ? translateDynamicText(statusText) : statusText;
+  $('#connectionStatus').textContent = translateDynamicText(statusText, APP_LANG);
   $('#connectionLoading').classList.toggle('stopped', !loading);
   overlay.classList.remove('hidden');
   overlay.setAttribute('aria-hidden', 'false');
@@ -2469,7 +2519,7 @@ function connectSocket() {
       // اللغة «الافتراضية» تُطبّق فقط على من لم يختر لغته بنفسه (حتى لا تُلغى
       // اختيارات المستخدمين مع كل حفظ إعدادات غير متعلق باللغة). أما التغيير
       // الصريح للغة من لوحة الإدارة فيصل عبر حدث language_changed ويفرض على الجميع.
-      if (!localStorage.getItem('chat_language') && SETTINGS.default_language && ["ar", "en", "es", "tr"].includes(SETTINGS.default_language)) {
+      if (!localStorage.getItem('chat_language') && SETTINGS.default_language && ["ar", "en", "es", "tr", "fr"].includes(SETTINGS.default_language)) {
         setLanguage(SETTINGS.default_language, false);
       }
       applySettings();
@@ -2496,7 +2546,7 @@ function connectSocket() {
   // لدى كل مستخدم (حتى من اختار لغته بنفسه سابقاً)، وتُطبَّق مباشرة دون إعادة تحميل.
   // مع ذلك يبقى لكل مستخدم حرية تغيير لغته لاحقاً من داخل الدردشة (force_default).
   SOCKET.on('language_changed', data => {
-    if (data && data.default_language && ["ar", "en", "es", "tr"].includes(data.default_language)) {
+    if (data && data.default_language && ["ar", "en", "es", "tr", "fr"].includes(data.default_language)) {
       SETTINGS.default_language = data.default_language;
       // حفظ إجباري كي يبقى التغيير سارياً حتى بعد إعادة تحميل/دخول المستخدم
       setLanguage(data.default_language, true);

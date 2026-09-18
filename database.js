@@ -1,7 +1,13 @@
 // =====================================================
 //  قاعدة بيانات SQLite3 - شات نجوم العرب
 // =====================================================
-const sqlite3 = require('sqlite3').verbose();
+let sqlite3;
+try {
+  sqlite3 = require('sqlite3').verbose();
+} catch (nativeErr) {
+  // fallback to better-sqlite3-backed shim when native build isn't available
+  sqlite3 = require('./lib/sqlite3-shim').verbose();
+}
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
