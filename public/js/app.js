@@ -4407,14 +4407,15 @@ function startBotMsgEdit(el, m) {
     if (!text) return toast('اكتب نص رسالة الروبوت', false);
     saveBtn.disabled = true;
     try {
+      const _editExtra = parseExtra(m);
       await api('/api/admin/bots', 'POST', {
-        id: +m.bot_id,
+        id: +(m.bot_id || _editExtra.bot_id || 0),
         text,
         color: colorInp.value,
         size: +sizeInp.value || 16,
-        room_id: +m.bot_room_id || 0,
-        interval_min: +m.bot_interval || 5,
-        active: m.bot_active === 0 ? 0 : 1
+        room_id: +(m.bot_room_id || _editExtra.bot_room_id || 0),
+        interval_min: +(m.bot_interval || _editExtra.bot_interval || 5),
+        active: (m.bot_active === 0 || _editExtra.bot_active === 0) ? 0 : 1
       });
       const txt = el.querySelector('.robot-system-text');
       if (txt) {
@@ -4518,11 +4519,13 @@ function renderMsg(m) {
       if (nameEl) nameEl.onclick = openSenderSheet;
     }
   } else if (m.type === 'bot') {   // رسالة النظام الآلية مع لون وحجم لوحة الإدارة
-    const botSize = Math.min(40, Math.max(12, +m.size || 16));
-    const botColor = /^#[0-9a-fA-F]{6}$/.test(String(m.color || '')) ? m.color : '#660033';
+    const botExtra = parseExtra(m);
+    const botSize = Math.min(40, Math.max(12, +(m.size || botExtra.size) || 16));
+    const botColor = /^#[0-9a-fA-F]{6}$/.test(String(m.color || botExtra.color || '')) ? (m.color || botExtra.color) : '#660033';
+    const botId = +(m.bot_id || botExtra.bot_id || 0);
     el.className = 'robot-system-message';
     // للإدارة (أدمن/سوبر أدمن/سوبر ماستر): زرّا تعديل وحذف على رسالة الروبوت نفسها
-    const botActions = (isAdmRank() && m.bot_id) ? `
+    const botActions = (canModerateRank() && botId) ? `
       <div class="robot-msg-actions">
         <button type="button" class="robot-msg-act" data-rmact="edit" title="تعديل رسالة الروبوت"><i class="f7-icons">pencil</i> تعديل</button>
         <button type="button" class="robot-msg-act danger" data-rmact="del" title="حذف رسالة الروبوت"><i class="f7-icons">trash</i> حذف</button>
@@ -4542,7 +4545,7 @@ function renderMsg(m) {
       ev.stopPropagation();
       if (!confirm('حذف رسالة الروبوت هذه نهائياً؟\nلن تُعرض مجدداً في الدردشة.')) return;
       try {
-        await api('/api/admin/bots/' + m.bot_id + '/del', 'POST');
+        const _be = parseExtra(m); await api('/api/admin/bots/' + (m.bot_id || _be.bot_id || 0) + '/del', 'POST');
         el.remove();
         toast('تم حذف رسالة الروبوت 🗑️');
       } catch (err) { toast((err && err.error) || 'تعذر حذف الرسالة', false); }
