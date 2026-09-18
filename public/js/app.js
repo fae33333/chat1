@@ -11061,12 +11061,18 @@ $('#btnRoomMore').onclick = (e) => {
   if (canModerateRank()) {
     if (!wipe && window.__wipeWipeClone) {
       const parent = $('#dropHideWelcome').parentElement;
-      if (parent) parent.appendChild(window.__wipeWipeClone.cloneNode(true));
-    } else if (wipe && wipe.style.display === 'none') {
+      if (parent) {
+        const inserted = window.__wipeWipeClone.cloneNode(true);
+        inserted.style.display = '';
+        inserted.hidden = false;
+        parent.appendChild(inserted);
+      }
+    } else if (wipe) {
       wipe.style.display = '';
       wipe.hidden = false;
     }
-    if (wipe) window.__wipeWipeClone = wipe.cloneNode(true);
+    const current = $('#dropWipeWelcome');
+    if (current) window.__wipeWipeClone = current.cloneNode(true);
   } else {
     if (wipe) {
       window.__wipeWipeClone = wipe.cloneNode(true);
