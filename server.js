@@ -4718,9 +4718,11 @@ app.post('/api/rooms/:id/hide-welcome', requireUser, async (req, res) => {
     ON CONFLICT(user_id,room_id) DO UPDATE SET hidden_text=excluded.hidden_text`, req.authUid, room.id, text);
   res.json({ ok: true });
 });
-// 2) للإدارة (أدمن/سوبر أدمن/سوبر ماستر): تفريغ الرسالة من الغرفة فتختفي عند الجميع.
-app.post('/api/admin/rooms/:id/wipe-welcome', requireAdmin, async (req, res) => {
-  const room = await q.get(`SELECT id FROM rooms WHERE id=?`, +req.params.id);
+// 2) للإدارة (أدمن/سوبر أدمن/سوبر ماستر/أدمن غرفة): تفريغ الرسالة من الغرفة فتختفي عند الجميع.
+// تُستخدم requireModerator (رمز الدردشة) كي يعمل الزر من داخل الدردشة نفسها،
+// ويُقيَّد أدمن الغرفة بغرفته هو فقط بينما الإدارة العامة تحذف من أي غرفة.
+app.post('/api/admin/rooms/:room_id/wipe-welcome', requireModerator, async (req, res) => {
+  const room = await q.get(`SELECT id FROM rooms WHERE id=?`, +req.params.room_id);
   if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
   await q.run(`UPDATE rooms SET welcome='' WHERE id=?`, room.id);
   io.to('room_' + room.id).emit('welcome_cleared', { roomId: room.id });

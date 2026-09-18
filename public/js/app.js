@@ -11070,17 +11070,18 @@ function leaveRoom() {
   $('#roomsVeil').style.display = 'none';
 }
 $('#btnRoomUsers').onclick = () => setUsersPanel(!$('#usersPanel').classList.contains('open'));
-// زر النقاط: قائمة خيارات الغرفة
+// زر النقاط: قائمة خيارات الغرفة — نفس القالب على الهاتف والكمبيوتر
 function closeRoomDrop() { $('#roomDrop').classList.remove('open'); $('#roomDropBg').style.display = 'none'; }
 $('#btnRoomMore').onclick = (e) => {
   e.stopPropagation();
-  // «حذف العام للجميع» يظهر للإدارة فقط (أدمن/سوبر أدمن/سوبر ماستر)
+  // «حذف العام للجميع» يظهر للمشرفين فقط: سوبر أدمن / أدمن / أدمن غرفة / سوبر ماستر.
+  // من دون هذه الصلاحية يبقى «حذف العام لدي فقط» وحده ظاهراً.
   const wipe = $('#dropWipeWelcome');
-  if (wipe) wipe.style.display = isAdmRank() ? '' : 'none';
+  if (wipe) wipe.style.display = canModerateRank() ? '' : 'none';
   $('#roomDropBg').style.display = 'block';
   $('#roomDrop').classList.toggle('open');
 };
-// «حذف العام» للمستخدم العادي: تختفي الرسالة منه هو فقط (تُحفظ في حسابه)
+// «حذف العام لدي فقط»: تختفي الرسالة منه هو فقط (تُحفظ في حسابه)
 $('#dropHideWelcome').onclick = async (e) => {
   e.stopPropagation();
   closeRoomDrop();
@@ -11091,7 +11092,7 @@ $('#dropHideWelcome').onclick = async (e) => {
     toast('تم حذف «العام» لديك فقط — يبقى ظاهراً لبقية المستخدمين');
   } catch (err) { toast((err && err.error) || 'تعذر حذف «العام»', false); }
 };
-// «حذف العام للجميع» للإدارة: تفريغ الرسالة من الغرفة فتختفي عند الجميع
+// «حذف العام للجميع» للمشرفين: تفريغ الرسالة من الغرفة فتختفي عند الجميع
 $('#dropWipeWelcome').onclick = async (e) => {
   e.stopPropagation();
   closeRoomDrop();
