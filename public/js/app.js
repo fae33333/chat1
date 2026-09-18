@@ -10675,8 +10675,9 @@ function onLoggedIn() {
   armDesktopNotifyAsk();   // طلب إذن إشعارات سطح المكتب عند أول نقرة
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو
   // أيقونة القائمة في التنقل السفلي تصبح صورة العضو (استبدال كامل لتجنب التداخل)
+  // شارة بيضاء صغيرة بأيقونة خطوط التنازلية — inline styles كما طلب التصميم
   const bm = $('#bnMenu');
-  bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar, '', frameOf(ME))}<em><i class="f7-icons">circle_grid3x3_fill</i></em></span><span>القائمة</span>`;
+  bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar, '', frameOf(ME))}<span style="color: rgb(110, 110, 115); justify-content: center; align-items: center; width: 15px; height: 15px; display: flex; position: absolute; bottom: -3.5px; right: -1.5px; background: rgb(255, 255, 255); border-width: 0px; border-style: none; border-color: currentcolor; border-image: none; border-radius: 50%;"><i aria-hidden="true" class="f7-icons" style="font-size: 10.5px;">line_horizontal_3_decrease_circle_fill</i></span></span><span>القائمة</span>`;
 }
 let _sockTried = false;
 function connectSocketRetry() {
