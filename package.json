@@ -1,0 +1,28 @@
+{
+  "name": "nujum-chat",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "شات نجوم العرب - دردشة صوتية وكتابية مع لوحة تحكم",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "clean-css": "^5.3.3",
+    "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "jimp": "^1.6.1",
+    "multer": "^2.2.0",
+    "nodemailer": "^9.0.5",
+    "sharp": "^0.35.4",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "sqlite3": "^6.0.1",
+    "terser": "^5.51.2"
+  }
+}
