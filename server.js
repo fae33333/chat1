@@ -4725,7 +4725,8 @@ app.post('/api/admin/rooms/:room_id/wipe-welcome', requireModerator, async (req,
   const room = await q.get(`SELECT id FROM rooms WHERE id=?`, +req.params.room_id);
   if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
   await q.run(`UPDATE rooms SET welcome='' WHERE id=?`, room.id);
-  io.to('room_' + room.id).emit('welcome_cleared', { roomId: room.id });
+  const modName = (req.moderator && req.moderator.username) || 'الإدارة';
+  io.to('room_' + room.id).emit('welcome_cleared', { roomId: room.id, by: modName });
   io.emit('sync');
   res.json({ ok: true });
 });

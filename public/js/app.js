@@ -2509,6 +2509,21 @@ function connectSocket() {
   SOCKET.on('welcome_cleared', d => {
     if (CUR_ROOM && d && +d.roomId === +CUR_ROOM.id) {
       $$('#msgArea .room-welcome').forEach(el => el.remove());
+      // إذا جاء اسم المشرف في الحدث، نعرض قالب الحذف للجميع في شاشة الجميع
+      if (d.by) {
+        const msgArea = $('#msgArea');
+        if (msgArea) {
+          msgArea.innerHTML = `<div class="system-event leave">
+  <div class="system-event-head skin_f2">
+    <i class="icon f7-icons skin_color system-event-icon">broom_fill</i>
+    <span>رسالة النظام</span>
+  </div>
+  <div class="font_msg system-event-body">
+    <div class="u-msg system-event-message">تم حذف العام من قبل ${esc(d.by)}</div>
+  </div>
+</div>`;
+        }
+      }
     }
   });
   SOCKET.on('membership_changed', ({ plan }) => { if (ME) { ME.membership = plan; MYBADGE = badgeOf(ME); } });
@@ -11104,7 +11119,19 @@ $('#dropWipeWelcome').onclick = async (e) => {
   if (!confirm('حذف «العام» نهائياً من هذه الغرفة لجميع المستخدمين؟')) return;
   try {
     await api(`/api/admin/rooms/${CUR_ROOM.id}/wipe-welcome`, 'POST');
-    $$('#msgArea .room-welcome').forEach(el => el.remove());
+    // مسح كل محتوى العام وإدراج قالب الحذف مع أيقونة المكنسة
+    const msgArea = $('#msgArea');
+    if (msgArea) {
+      msgArea.innerHTML = `<div class="system-event leave">
+  <div class="system-event-head skin_f2">
+    <i class="icon f7-icons skin_color system-event-icon">broom_fill</i>
+    <span>رسالة النظام</span>
+  </div>
+  <div class="font_msg system-event-body">
+    <div class="u-msg system-event-message">تم حذف العام من قبل ${(ME && ME.username) || 'السوبر أدمن'}</div>
+  </div>
+</div>`;
+    }
     toast('تم حذف «العام» من الغرفة بالكامل 🧹 بواسطة ' + ((ME && ME.username) || 'السوبر أدمن') + ' ✅');
   } catch (err) { toast((err && err.error) || 'تعذر حذف «العام» للجميع', false); }
 };
