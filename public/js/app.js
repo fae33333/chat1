@@ -4518,38 +4518,18 @@ function renderMsg(m) {
       if (avaEl) avaEl.onclick = openSenderSheet;
       if (nameEl) nameEl.onclick = openSenderSheet;
     }
-  } else if (m.type === 'bot') {   // رسالة النظام الآلية مع لون وحجم لوحة الإدارة
-    const botExtra = parseExtra(m);
-    const botSize = Math.min(40, Math.max(12, +(m.size || botExtra.size) || 16));
-    const botColor = /^#[0-9a-fA-F]{6}$/.test(String(m.color || botExtra.color || '')) ? (m.color || botExtra.color) : '#660033';
-    const botId = +(m.bot_id || botExtra.bot_id || 0);
+  } else if (m.type === 'bot') {   // رسالة النظام الآلية — بدون أزرار تعديل/حذف أبداً
+    const botSize = Math.min(40, Math.max(12, +(m.size || 16)));
+    const botColor = /^#[0-9a-fA-F]{6}$/.test(String(m.color || '')) ? m.color : '#660033';
     el.className = 'robot-system-message';
-    // للإدارة (أدمن/سوبر أدمن/سوبر ماستر): زرّا تعديل وحذف على رسالة الروبوت نفسها
-    const botActions = (canModerateRank() && botId) ? `
-      <div class="robot-msg-actions">
-        <button type="button" class="robot-msg-act" data-rmact="edit" title="تعديل رسالة الروبوت"><i class="f7-icons">pencil</i> تعديل</button>
-        <button type="button" class="robot-msg-act danger" data-rmact="del" title="حذف رسالة الروبوت"><i class="f7-icons">trash</i> حذف</button>
-      </div>` : '';
     el.innerHTML = `
-      <div class="robot-system-head">${botActions}
+      <div class="robot-system-head">
         <img src="/img/robot-message.svg" width="20" height="20" alt="">
         <div class="robot-system-title">رسالة النظام</div>
       </div>
       <div class="font_msg robot-system-body">
         <div class="u-msg robot-system-text" style="font-size:${botSize}px;color:${botColor}">${linkifyEscaped(esc(m.text))}</div>
       </div>`;
-    const editBtn = el.querySelector('[data-rmact="edit"]');
-    if (editBtn) editBtn.onclick = (ev) => { ev.stopPropagation(); startBotMsgEdit(el, m); };
-    const delBtn = el.querySelector('[data-rmact="del"]');
-    if (delBtn) delBtn.onclick = async (ev) => {
-      ev.stopPropagation();
-      if (!confirm('حذف رسالة الروبوت هذه نهائياً؟\nلن تُعرض مجدداً في الدردشة.')) return;
-      try {
-        const _be = parseExtra(m); await api('/api/admin/bots/' + (m.bot_id || _be.bot_id || 0) + '/del', 'POST');
-        el.remove();
-        toast('تم حذف رسالة الروبوت 🗑️');
-      } catch (err) { toast((err && err.error) || 'تعذر حذف الرسالة', false); }
-    };
   } else if (m.type === 'welcome') {
     el.className = 'room-welcome supervision-welcome';
     el.innerHTML = `
@@ -11077,10 +11057,12 @@ $('#btnRoomUsers').onclick = () => setUsersPanel(!$('#usersPanel').classList.con
 function closeRoomDrop() { $('#roomDrop').classList.remove('open'); $('#roomDropBg').style.display = 'none'; }
 $('#btnRoomMore').onclick = (e) => {
   e.stopPropagation();
-  // «حذف العام للجميع» يظهر للمشرفين فقط: سوبر أدمن / أدمن / أدمن غرفة / سوبر ماستر.
-  // من دون هذه الصلاحية يبقى «حذف العام لدي فقط» وحده ظاهراً.
   const wipe = $('#dropWipeWelcome');
-  if (wipe) wipe.style.display = canModerateRank() ? '' : 'none';
+  if (canModerateRank()) {
+    if (wipe) { wipe.style.display = ''; wipe.hidden = false; }
+  } else {
+    if (wipe) { wipe.style.display = 'none'; wipe.hidden = true; }
+  }
   $('#roomDropBg').style.display = 'block';
   $('#roomDrop').classList.toggle('open');
 };

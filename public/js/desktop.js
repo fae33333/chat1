@@ -323,11 +323,7 @@
     if (!more) return;
     more.onclick = (e) => {
       e.stopPropagation();
-      if (mq.matches) {
-        buildQuickExtras();
-        g(() => { closeRoomDrop(); openOv('quickOv'); });
-        return;
-      }
+      // نفس قالب الهاتف على الكمبيوتر: قائمة الغرفة مع زرّي «حذف العام»
       g(() => { $('#roomDropBg').style.display = 'block'; $('#roomDrop').classList.toggle('open'); });
     };
   }
