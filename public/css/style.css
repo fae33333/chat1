@@ -6700,8 +6700,8 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
 }
 .pmvc-controls {
   position:absolute; z-index:7; bottom:0; right:0; left:0;
-  display:flex; align-items:flex-end; justify-content:center; gap:26px;
-  padding:0 18px calc(env(safe-area-inset-bottom, 0px) + 30px);
+  display:flex; align-items:flex-end; justify-content:center; gap:18px;
+  padding:0 14px calc(env(safe-area-inset-bottom, 0px) + 30px);
   background:linear-gradient(0deg, rgba(3,5,12,.78), rgba(3,5,12,0));
 }
 .pmvc-btn {
@@ -6722,6 +6722,91 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
 }
 .pmvc-btn-end:active { transform:scale(.92); }
 .pmvc-btn-end small { color:#fff; }
+/* زر القلب أثناء التبديل: دوران يوحي بالمعالجة */
+.pmvc-btn.busy { pointer-events:none; opacity:.75; }
+.pmvc-btn.busy i { animation:pmvcSpin .8s linear infinite; }
+@keyframes pmvcSpin { to { transform:rotate(360deg); } }
+
+/* ===== PRO: مؤشر الشبكة الحي (أعمدة + RTT) ===== */
+.pmvc-net {
+  position:absolute; z-index:6;
+  top:calc(env(safe-area-inset-top, 0px) + 58px); inset-inline-start:14px;
+  display:flex; align-items:center; gap:7px;
+  background:rgba(8,10,22,.62); backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:999px; padding:5px 11px;
+  direction:ltr;
+  transition:opacity .22s ease, visibility 0s;
+}
+.pm-video-call-overlay.pmvc-ui-hidden .pmvc-net { opacity:0; visibility:hidden; transition:opacity .22s ease, visibility 0s linear .22s; }
+.pmvc-bars { display:flex; align-items:flex-end; gap:2px; height:13px; }
+.pmvc-bar { width:3.5px; border-radius:2px; background:rgba(255,255,255,.22); }
+.pmvc-bar:nth-child(1) { height:5px; }
+.pmvc-bar:nth-child(2) { height:8px; }
+.pmvc-bar:nth-child(3) { height:11px; }
+.pmvc-bar:nth-child(4) { height:13px; }
+.pmvc-net.s4 .pmvc-bar.on { background:#34d399; box-shadow:0 0 6px rgba(52,211,153,.7); }
+.pmvc-net.s3 .pmvc-bar.on { background:#a3e635; }
+.pmvc-net.s2 .pmvc-bar.on { background:#fbbf24; }
+.pmvc-net.s1 .pmvc-bar.on { background:#f87171; animation:pmvcBarBlink 1s ease-in-out infinite; }
+@keyframes pmvcBarBlink { 50% { opacity:.45; } }
+.pmvc-rtt { font-size:10px; font-weight:800; color:#c7d2fe; min-width:34px; text-align:left; font-variant-numeric:tabular-nums; }
+
+/* ===== PRO: تلميح تغيّر الجودة ===== */
+.pmvc-nethint {
+  position:absolute; z-index:8; bottom:calc(env(safe-area-inset-bottom, 0px) + 118px);
+  left:50%; transform:translateX(-50%) translateY(8px);
+  max-width:86%; text-align:center;
+  font-size:11.5px; font-weight:800; color:#e0e7ff;
+  background:rgba(10,13,28,.82); backdrop-filter:blur(10px);
+  border:1px solid rgba(129,140,248,.35); border-radius:999px;
+  padding:8px 16px; box-shadow:0 8px 26px rgba(0,0,0,.5);
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .25s ease, transform .25s ease, visibility 0s linear .25s;
+}
+.pmvc-nethint.show { opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); transition:opacity .25s ease, transform .25s ease; }
+
+/* ===== PRO: طبقة إعادة الاتصال التلقائي ===== */
+.pmvc-reconnect {
+  position:absolute; inset:0; z-index:9;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+  background:rgba(4,6,14,.55); backdrop-filter:blur(3px);
+  color:#e8ecf8; text-align:center; padding:20px;
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .3s ease, visibility 0s linear .3s;
+}
+.pmvc-reconnect.show { opacity:1; visibility:visible; transition:opacity .3s ease; }
+.pmvc-reconnect b { font-size:15px; font-weight:900; }
+.pmvc-reconnect small { font-size:12px; font-weight:700; color:#9fb0d8; }
+.pmvc-spinner {
+  width:46px; height:46px; border-radius:50%;
+  border:3.5px solid rgba(255,255,255,.18); border-top-color:#818cf8;
+  animation:pmvcSpin .8s linear infinite;
+  box-shadow:0 0 24px rgba(129,140,248,.35);
+}
+
+/* ===== PRO: حلقات نابضة حول الصورة أثناء الاتصال + نقاط متحركة ===== */
+.pmvc-no-remote-rings { position:absolute; width:170px; height:170px; pointer-events:none; }
+.pmvc-no-remote-rings i {
+  position:absolute; inset:0; border-radius:50%;
+  border:2px solid rgba(129,140,248,.5);
+  animation:pmvcRing 2.2s ease-out infinite;
+}
+.pmvc-no-remote-rings i:nth-child(2) { animation-delay:.7s; }
+.pmvc-no-remote-rings i:nth-child(3) { animation-delay:1.4s; }
+@keyframes pmvcRing {
+  0% { transform:scale(.55); opacity:0; }
+  25% { opacity:.9; }
+  100% { transform:scale(1.15); opacity:0; }
+}
+.pmvc-connect-dots { display:flex; gap:6px; justify-content:center; }
+.pmvc-connect-dots i {
+  width:7px; height:7px; border-radius:50%; background:#818cf8;
+  animation:pmvcDot 1.2s ease-in-out infinite;
+}
+.pmvc-connect-dots i:nth-child(2) { animation-delay:.2s; }
+.pmvc-connect-dots i:nth-child(3) { animation-delay:.4s; }
+@keyframes pmvcDot { 0%, 100% { transform:translateY(0); opacity:.5; } 50% { transform:translateY(-5px); opacity:1; } }
 
 /* مؤشر «يتحدث الآن»: توهج نابض حول صورة المتكلم (يظهر أثناء الكلام ويختفي عند الصمت) */
 .lb-host-chip.is-speaking .lb-host-photo,
@@ -7134,6 +7219,18 @@ body.lang-ltr .r-head,
 body.lang-ltr .bottomnav,
 body.lang-ltr .c-input { direction: ltr; }
 /* لا نقلب أيقونة العودة — تبقى في مكانها كما في العربية، يتغير النص فقط */
+body.lang-ltr .ci-circle,
+body.lang-ltr .ci-plain,
+body.lang-ltr .ci-ava,
+body.lang-ltr .btn-enter { order: 0; }
+body.lang-ltr .bn-item span,
+body.lang-ltr .c-room-name,
+body.lang-ltr .room-name,
+body.lang-ltr .pm-peer,
+body.lang-ltr .m-text,
+body.lang-ltr .pm-tx { direction: ltr; text-align: left; }
+body.lang-ltr .r-logo { padding-inline-start: 0; }
+تغير النص فقط */
 body.lang-ltr .ci-circle,
 body.lang-ltr .ci-plain,
 body.lang-ltr .ci-ava,

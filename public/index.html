@@ -777,16 +777,18 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     </div>
   </div>
 
-  <!-- ============ مكالمة فيديو خاصة — شاشة كاملة بأسلوب سناب شات ============ -->
+  <!-- ============ مكالمة فيديو خاصة PRO — شاشة سينمائية + مؤشرات شبكة حية ============ -->
   <div class="overlay full pm-video-call-overlay" id="pmVideoCallOv">
     <div class="pmvc-stage">
-      <video id="pmVideoRemote" class="pmvc-video-main" autoplay playsinline muted title="انقر للتبديل" tabindex="0"></video>
+      <video id="pmVideoRemote" class="pmvc-video-main" autoplay playsinline muted disablepictureinpicture title="انقر للتبديل" tabindex="0"></video>
       <div class="pmvc-no-remote" id="pmVideoNoRemote">
+        <span class="pmvc-no-remote-rings" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="pmvc-no-remote-ava" id="pmVideoNoRemoteAva"></span>
         <b id="pmVideoNoRemoteName">-</b>
         <span id="pmVideoNoRemoteStatus">جاري الاتصال...</span>
+        <span class="pmvc-connect-dots" aria-hidden="true"><i></i><i></i><i></i></span>
       </div>
-      <video id="pmVideoLocal" class="pmvc-video-pip" autoplay playsinline muted title="انقر لتكبير صورك" tabindex="0"></video>
+      <video id="pmVideoLocal" class="pmvc-video-pip" autoplay playsinline muted disablepictureinpicture title="انقر لتكبير صورك" tabindex="0"></video>
       <!-- إشعار إيقاف/فتح كاميرا الطرف الآخر -->
       <div class="pmvc-camoff" id="pmRemoteCamOff" style="display:none">
         <span class="pmvc-camoff-ico"><i class="f7-icons">videocam_slash_fill</i></span>
@@ -795,13 +797,29 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <div class="pmvc-top">
         <button class="pmvc-min" id="pmVideoMinBtn" type="button" title="تصغير" aria-label="تصغير"><i class="f7-icons">chevron_down</i></button>
         <span class="pmvc-name" id="pmVideoCallName">-</span>
-        <span class="pmvc-quality" id="pmVideoQuality" style="display:none" title="جودة الفيديو ثابتة على 360p">الجودة: -</span>
+        <span class="pmvc-quality" id="pmVideoQuality" style="display:none" title="جودة الفيديو التكيفية">HD</span>
         <span class="pmvc-timer" id="pmVideoCallTimer" style="display:none">00:00</span>
       </div>
+      <!-- مؤشر الشبكة الحي: أعمدة الإشارة + زمن الاستجابة -->
+      <div class="pmvc-net s4" id="pmVideoNet" style="display:none" title="جودة الشبكة">
+        <span class="pmvc-bars" aria-hidden="true"><i class="pmvc-bar"></i><i class="pmvc-bar"></i><i class="pmvc-bar"></i><i class="pmvc-bar"></i></span>
+        <span class="pmvc-rtt"></span>
+      </div>
+      <!-- تلميح تغيّر الجودة (يظهر لثوانٍ فقط) -->
+      <div class="pmvc-nethint" id="pmVideoNetHint"></div>
       <div class="pmvc-statusline"><span id="pmVideoCallStatus">جاري الاتصال...</span></div>
+      <!-- طبقة إعادة الاتصال التلقائي -->
+      <div class="pmvc-reconnect" id="pmVideoReconnect" aria-hidden="true">
+        <span class="pmvc-spinner"></span>
+        <b id="pmVideoReconnectText">إعادة الاتصال تلقائياً...</b>
+        <small>نحافظ على مكالمتك — لا تغلق الشاشة</small>
+      </div>
       <div class="pmvc-controls">
         <button class="pmvc-btn" id="pmVideoMuteBtn" type="button" title="كتم/إلغاء كتم الميكروفون" aria-label="كتم">
           <i class="f7-icons" id="pmVideoMuteIcon">mic_fill</i><small>كتم</small>
+        </button>
+        <button class="pmvc-btn" id="pmVideoFlipBtn" type="button" title="قلب الكاميرا (أمامية/خلفية)" aria-label="قلب الكاميرا">
+          <i class="f7-icons">camera_rotate_fill</i><small>قلب</small>
         </button>
         <button class="pmvc-btn pmvc-btn-end" id="pmVideoEndBtn" type="button" title="إنهاء المكالمة" aria-label="إنهاء">
           <i class="f7-icons">phone_down_fill</i><small>إنهاء</small>

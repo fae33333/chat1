@@ -665,6 +665,13 @@ const defaultSettings = {
   register_gold: '10',
   call_cost: '2',
   video_call_cost: '5',
+  // سيرفر TURN لمكالمات الفيديو/الصوت (يُضبط من لوحة الإدارة) — بدونه يعمل
+  // الاتصال على STUN فقط وقد يفشل بين شبكات NAT الصارمة (خصوصاً الجوال).
+  turn_enabled: '0',
+  turn_host: '',
+  turn_port: '3478',
+  turn_user: '',
+  turn_pass: '',
   royal_entry_cost: '50',
   // حد قيمة الهدية (بالذهب) الذي تُعرض فوقه الهدية تلقائياً بالمشهد الملكي (لنمط auto فقط).
   royal_gift_threshold: '100',

@@ -7298,6 +7298,32 @@ function encodeObfuscatedPayload(data) {
   return Buffer.from(out, 'binary').toString('base64');
 }
 
+// إعدادات WebRTC للمكالمات الخاصة (STUN + TURN من لوحة الإدارة) — للمسجلين فقط.
+// TURN ضروري لنجاح الاتصال بين شبكات NAT الصارمة (خصوصاً شبكات الجوال).
+app.get('/api/rtc-config', requireUser, async (req, res) => {
+  try {
+    const s = await getSettings();
+    const iceServers = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' }
+    ];
+    if (String(s.turn_enabled) === '1' && s.turn_host && s.turn_user && s.turn_pass) {
+      const host = String(s.turn_host).trim().replace(/^turns?:\/\//i, '').split('/')[0];
+      const port = Math.max(1, Math.min(65535, parseInt(s.turn_port) || 3478));
+      if (host) {
+        iceServers.push(
+          { urls: `turn:${host}:${port}?transport=udp`, username: String(s.turn_user), credential: String(s.turn_pass) },
+          { urls: `turn:${host}:${port}?transport=tcp`, username: String(s.turn_user), credential: String(s.turn_pass) }
+        );
+      }
+    }
+    res.json({ iceServers });
+  } catch (e) {
+    res.json({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  }
+});
+
 // إعدادات عامة للواجهة (مشفرة ومحمية بالكامل بدون تسريب مفاتيح الإدارة)
 app.get('/api/public-settings', async (req, res) => {
   const s = await getSettings();

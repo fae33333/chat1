@@ -3166,6 +3166,23 @@ const PAGES = {
           <input type="number" id="maxLiveSpeakers" class="inp" min="1" max="10" value="${SETTINGS.max_live_speakers || 4}" style="max-width:140px">
         </div>
       </div>
+      <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border:1px solid #a7f3d0;border-radius:14px;padding:14px 16px;margin-top:14px">
+        <div style="display:flex;align-items:center;gap:9px;font-size:14px;font-weight:900;color:#065f46">
+          <i class="f7-icons" style="color:#10b981;font-size:18px">antenna_radiowaves_left_and_right</i> سيرفر TURN لمكالمات الفيديو/الصوت 📹
+        </div>
+        <div style="font-size:12px;color:#047857;font-weight:700;margin-top:5px">بدون TURN قد يفشل الاتصال بين شبكات الجوال وNAT الصارمة (يرن ولا يصل صوت/صورة). فعّله ببيانات سيرفر coturn خاص أو خدمة (Twilio / Xirsys / Metered) لضمان نجاح كل المكالمات.</div>
+        <div class="fgroup" style="margin-top:10px;display:flex;align-items:center;gap:10px">
+          <label style="font-size:13px;font-weight:800;color:#065f46;display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="turnEnabled" ${String(SETTINGS.turn_enabled) === '1' ? 'checked' : ''} style="width:18px;height:18px;accent-color:#10b981"> تفعيل TURN
+          </label>
+        </div>
+        <div class="fgroup" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px">
+          <input type="text" id="turnHost" class="inp" placeholder="مثال: turn.example.com" value="${esc(SETTINGS.turn_host || '')}" style="direction:ltr">
+          <input type="number" id="turnPort" class="inp" placeholder="المنفذ 3478" value="${esc(SETTINGS.turn_port || '3478')}" style="direction:ltr">
+          <input type="text" id="turnUser" class="inp" placeholder="اسم المستخدم" value="${esc(SETTINGS.turn_user || '')}" style="direction:ltr">
+          <input type="text" id="turnPass" class="inp" placeholder="كلمة المرور" value="${esc(SETTINGS.turn_pass || '')}" style="direction:ltr">
+        </div>
+      </div>
       ${membershipAccessCard('rectangle_and_pencil_and_ellipsis', '#8b5cf6', 'النشر في الحائط', 'wall_allowed_memberships', 'إنشاء منشور نصي أو صورة أو فيديو أو فيديو YouTube.')}
       ${membershipAccessCard('circle_grid_hex_fill', '#0ea5e9', 'النشر في الحالة', 'status_allowed_memberships', 'نشر حالات النص والصورة والفيديو والصوت.')}
       <div class="btn-row" style="justify-content:flex-start"><button class="btn btn-purple" id="saveFeatureAccess"><i class="f7-icons">square_arrow_down_fill</i> حفظ صلاحيات العضويات</button></div>`,
@@ -3188,6 +3205,20 @@ const PAGES = {
           msInput.value = v;
           body.max_live_speakers = String(v);
           SETTINGS.max_live_speakers = String(v);
+        }
+        // إعدادات TURN لمكالمات الفيديو/الصوت
+        const tOn = $('#turnEnabled'), tH = $('#turnHost'), tP = $('#turnPort'), tU = $('#turnUser'), tPw = $('#turnPass');
+        if (tOn) {
+          body.turn_enabled = tOn.checked ? '1' : '0';
+          body.turn_host = (tH ? tH.value : '').trim();
+          body.turn_port = String(Math.max(1, Math.min(65535, parseInt(tP ? tP.value : '') || 3478)));
+          body.turn_user = (tU ? tU.value : '').trim();
+          body.turn_pass = (tPw ? tPw.value : '').trim();
+          SETTINGS.turn_enabled = body.turn_enabled;
+          SETTINGS.turn_host = body.turn_host;
+          SETTINGS.turn_port = body.turn_port;
+          SETTINGS.turn_user = body.turn_user;
+          SETTINGS.turn_pass = body.turn_pass;
         }
         await api('/api/admin/settings', 'POST', body);
         toast('تم حفظ صلاحيات العضويات بنجاح');

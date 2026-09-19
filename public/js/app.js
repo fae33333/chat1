@@ -64,16 +64,56 @@ let HIDDEN_ENTRY_PENDING = null;
 // =====================================================
 //  البث المباشر (فيديو/صوت) — حالة العميل + WebRTC
 // =====================================================
-// ⚠️ مهم: STUN وحده لا يكفي لعبور NAT في كثير من الشبكات الحقيقية (خصوصاً شبكات الجوال أو NAT المتماثل).
-// بدون سيرفر TURN (relay) ستنجح مرحلة تبادل offer/answer/candidates لكن الصوت لن يصل فعلياً بين بعض المستخدمين.
-// استبدل بيانات TURN التالية ببيانات حقيقية (من خدمة مثل Twilio NTS / Xirsys / Cloudflare Calls أو سيرفر coturn خاص بك):
+// خوادم STUN احترافية متعددة (Google + Cloudflare + Twilio) — إن تعطل أحدها
+// يستخدم المتصفح البقية تلقائياً، فينخفض زمن الاتصال وترتفع نسبة نجاحه.
+// سيرفر TURN يُضبط من لوحة الإدارة (صفحة صلاحيات العضويات ← قسم TURN) ويُجلب
+// عبر /api/rtc-config — بدونه قد يفشل الاتصال بين شبكات NAT الصارمة (خصوصاً الجوال).
+const RTC_STUN_URLS = [
+  'stun:stun.l.google.com:19302',
+  'stun:stun1.l.google.com:19302',
+  'stun:stun2.l.google.com:19302',
+  'stun:stun.cloudflare.com:3478',
+  'stun:global.stun.twilio.com:3478'
+];
 const RTC_ICE_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    // { urls: 'turn:YOUR_TURN_HOST:3478', username: 'YOUR_TURN_USER', credential: 'YOUR_TURN_PASSWORD' },
-    // { urls: 'turns:YOUR_TURN_HOST:5349', username: 'YOUR_TURN_USER', credential: 'YOUR_TURN_PASSWORD' },
-  ]
+  iceServers: RTC_STUN_URLS.map(u => ({ urls: u })),
+  iceCandidatePoolSize: 10,
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require'
 };
+// كاش إعدادات RTC من الخادم (STUN + TURN) — يُحدَّث كل 10 دقائق أو عند بدء مكالمة
+let RTC_SERVER_ICE = null;
+let RTC_SERVER_ICE_AT = 0;
+async function fetchServerIceServers(force = false) {
+  const now = Date.now();
+  if (!force && RTC_SERVER_ICE && (now - RTC_SERVER_ICE_AT) < 10 * 60 * 1000) return RTC_SERVER_ICE;
+  try {
+    const r = await api('/api/rtc-config');
+    if (r && Array.isArray(r.iceServers) && r.iceServers.length) {
+      RTC_SERVER_ICE = r.iceServers;
+      RTC_SERVER_ICE_AT = now;
+      return RTC_SERVER_ICE;
+    }
+  } catch (e) { /* يعمل على STUN الافتراضية عند أي خلل */ }
+  return null;
+}
+// إعداد اتصال المكالمات الخاصة 1-to-1 — يدمج TURN القادم من الخادم مع STUN الافتراضية
+function rtcPrivateCallConfig() {
+  const servers = RTC_STUN_URLS.map(u => ({ urls: u }));
+  if (Array.isArray(RTC_SERVER_ICE)) {
+    for (const s of RTC_SERVER_ICE) {
+      if (!s || !s.urls) continue;
+      const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+      if (urls.some(u => String(u).startsWith('turn'))) servers.push(s);
+    }
+  }
+  return {
+    iceServers: servers,
+    iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require'
+  };
+}
 let ROOM_BCAST = {};        // roomId -> {mode, hosts:[{id,username,avatar,badge},...], viewers} آخر حالة معروفة للبث بكل غرفة
 let BCAST = null;           // الحالة الحية للبث الجاري (فيديو أو صوت) في الغرفة الحالية، أو null
 let BCAST_SIGNAL_QUEUE = []; // إشارات وصلت قبل تهيئة BCAST (سباق زمني عند الدخول لغرفة فيها بث نشط) — تُطبَّق فور التهيئة
@@ -7086,6 +7126,94 @@ function beginPrivateCallFlow(callType) {
   openOv('callConfirmOv');
 }
 
+// =====================================================
+//  PRO MEDIA ENGINE — التقاط احترافي + تحسين SDP + ترميز ذكي
+// =====================================================
+// قيود الصوت الاحترافية: إلغاء صدى + عزل ضجيج + تحكم تلقائي بالكسب +
+// جودة 48kHz أحادية (أخف وأوضح للمكالمات) وزمن استجابة منخفض.
+function proAudioConstraints() {
+  return {
+    echoCancellation: { ideal: true },
+    noiseSuppression: { ideal: true },
+    autoGainControl: { ideal: true },
+    sampleRate: { ideal: 48000 },
+    channelCount: { ideal: 1 },
+    latency: { ideal: 0.01 }
+  };
+}
+// سلّم دقة الالتقاط: نبدأ بـ HD 720p ثم نهبط تلقائياً إن رفض الجهاز/المتصفح.
+// (الجودة المُرسلة فعلياً يتحكم بها محرك الجودة التكيفي لحظة بلحظة)
+const PRO_CAPTURE_LADDER = [
+  { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
+  { width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 30, max: 30 } },
+  { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 30, max: 30 } },
+  { width: { ideal: 480 }, height: { ideal: 270 }, frameRate: { ideal: 24, max: 30 } }
+];
+async function acquireProCallMedia(isVideo) {
+  const audio = proAudioConstraints();
+  if (!isVideo) return navigator.mediaDevices.getUserMedia({ audio, video: false });
+  let lastErr = null;
+  for (const v of PRO_CAPTURE_LADDER) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio,
+        video: { ...v, facingMode: (PM_CALL && PM_CALL.facingMode) || 'user' }
+      });
+      try {
+        stream.getVideoTracks().forEach(t => { try { t.contentHint = 'motion'; } catch (e) {} });
+        stream.getAudioTracks().forEach(t => { try { t.contentHint = 'speech'; } catch (e) {} });
+      } catch (e) {}
+      return stream;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('camera_unavailable');
+}
+// تحسين SDP: تفعيل إصلاح فقد الحزم في Opus (FEC) + تقليل البت ريت عند الصمت (DTX)
+// + رفع البت ريت الابتدائي للفيديو لبداية صافية فورية دون ضبابية أولى.
+function enhanceProSdp(sdp, isVideo) {
+  try {
+    let out = String(sdp || '');
+    if (out.includes('useinbandfec=0')) out = out.replace(/useinbandfec=0/g, 'useinbandfec=1');
+    else if (/a=fmtp:(\d+)[^\r\n]*opus/i.test(out) && !/useinbandfec/i.test(out)) {
+      out = out.replace(/(a=fmtp:\d+[^\r\n]*opus[^\r\n]*)/gi, '$1;usedtx=1;useinbandfec=1');
+    }
+    if (isVideo && !/x-google-start-bitrate/i.test(out)) {
+      out = out.replace(/(a=fmtp:\d+[^\r\n]*)/gi, (m) => {
+        if (/opus/i.test(m) || /red\/|ulpfec|telephone-event/i.test(m)) return m;
+        return m + ';x-google-start-bitrate=1500;x-google-min-bitrate=150;x-google-max-bitrate=2600';
+      });
+    }
+    return out;
+  } catch (e) { return sdp; }
+}
+// ترتيب الترميز الاحترافي: VP8 أولاً (أفضل مرونة ضد الفقد + دعم شامل) ثم H264
+// (تسريع عتادي ممتاز على الآيفون) — مع إبقاء البقية كاحتياط. الصوت: Opus أولاً.
+function applyProCodecPreferences(pc, isVideo) {
+  try {
+    if (!pc || typeof RTCRtpSender === 'undefined' || !RTCRtpSender.getCapabilities) return;
+    const setFor = (kind, order) => {
+      const caps = RTCRtpSender.getCapabilities(kind);
+      if (!caps || !caps.codecs || !caps.codecs.length) return;
+      const wanted = [];
+      for (const name of order) {
+        caps.codecs.forEach(c => {
+          if (String(c.mimeType || '').toLowerCase() === name.toLowerCase() && !wanted.includes(c)) wanted.push(c);
+        });
+      }
+      caps.codecs.forEach(c => { if (!wanted.includes(c)) wanted.push(c); });
+      try {
+        pc.getTransceivers().forEach(tr => {
+          if (tr.sender && tr.sender.track && tr.sender.track.kind === kind && typeof tr.setCodecPreferences === 'function') {
+            try { tr.setCodecPreferences(wanted); } catch (e) {}
+          }
+        });
+      } catch (e) {}
+    };
+    setFor('audio', ['audio/opus', 'audio/red', 'audio/PCMU', 'audio/PCMA']);
+    if (isVideo) setFor('video', ['video/VP8', 'video/H264', 'video/VP9', 'video/AV1', 'video/red', 'video/ulpfec']);
+  } catch (e) {}
+}
+
 async function executePrivateCall(callType = 'audio') {
   if (!PM_WITH) return;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -7094,17 +7222,10 @@ async function executePrivateCall(callType = 'audio') {
   const isVideo = callType === 'video';
   // داخل لمسة المستخدم: تهيئة سياق الصوت مبكراً لمكالمات الفيديو (سياسات التشغيل التلقائي)
   if (isVideo) { try { ensureRemoteAudioCtx(); } catch (e) {} }
+  // جلب TURN من الخادم (إن كان مضبوطاً) قبل إنشاء الاتصال — يرفع نسبة نجاح الربط
+  if (isVideo) { try { await fetchServerIceServers(); } catch (e) {} }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: isVideo ? {
-        // جودة ثابتة 360p (640×360) للطرفين في مكالمة الفيديو الخاصة.
-        width: { ideal: 640, max: 640 },
-        height: { ideal: 360, max: 360 },
-        frameRate: { ideal: 25, max: 30 },
-        facingMode: 'user'
-      } : false
-    });
+    const stream = await acquireProCallMedia(isVideo);
     PM_CALL = {
       peerId: +PM_WITH.id,
       peerName: PM_WITH.username,
@@ -7121,7 +7242,11 @@ async function executePrivateCall(callType = 'audio') {
       camOff: false,
       localEnlarged: false,
       controlsHidden: false,
-      pipPos: null
+      pipPos: null,
+      facingMode: 'user',
+      iceRestarts: 0,
+      netScore: 4,
+      lastNetLabel: ''
     };
     if (isVideo) showVideoCallUI('calling');
     else showCallActiveModal();
@@ -7155,7 +7280,11 @@ function handleIncomingPrivateCall(from, type) {
       camOff: false,
       localEnlarged: false,
       controlsHidden: false,
-      pipPos: null
+      pipPos: null,
+      facingMode: 'user',
+      iceRestarts: 0,
+      netScore: 4,
+      lastNetLabel: ''
     };
     showCallIncomingModal();
   playCallRingtone();
@@ -7167,17 +7296,9 @@ async function acceptPrivateCall() {
   const isVideo = PM_CALL.callType === 'video';
   // داخل لمسة المستخدم: تهيئة سياق الصوت مبكراً لمكالمات الفيديو (سياسات التشغيل التلقائي)
   if (isVideo) { try { ensureRemoteAudioCtx(); } catch (e) {} }
+  if (isVideo) { try { await fetchServerIceServers(); } catch (e) {} }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: isVideo ? {
-        // جودة ثابتة 360p (640×360) للطرفين في مكالمة الفيديو الخاصة.
-        width: { ideal: 640, max: 640 },
-        height: { ideal: 360, max: 360 },
-        frameRate: { ideal: 25, max: 30 },
-        facingMode: 'user'
-      } : false
-    });
+    const stream = await acquireProCallMedia(isVideo);
     PM_CALL.localStream = stream;
     PM_CALL.state = 'connected';
     closeCallIncomingModal();
@@ -7208,16 +7329,63 @@ async function handlePrivateCallAccepted(from, type) {
 
 async function setupPrivateCallPeerConnection(isOffer) {
   if (!PM_CALL) return;
-  const pc = new RTCPeerConnection(RTC_ICE_CONFIG);
+  const isVideo = PM_CALL.callType === 'video';
+  // إغلاق أي اتصال سابق قبل إنشاء الجديد (يمنع تسرب الاتصالات عند إعادة التفاوض)
+  try { if (PM_CALL.pc && PM_CALL.pc.signalingState !== 'closed') PM_CALL.pc.close(); } catch (e) {}
+  const pc = new RTCPeerConnection(rtcPrivateCallConfig());
   PM_CALL.pc = pc;
+  PM_CALL._pendingCandidates = [];
+  PM_CALL._remoteDescSet = false;
+  PM_CALL._iceFailedAt = 0;
+  PM_CALL._restartTimer = null;
 
   if (PM_CALL.localStream) {
     PM_CALL.localStream.getTracks().forEach(track => pc.addTrack(track, PM_CALL.localStream));
   }
+  // ترتيب الترميز الاحترافي + ضبط أولويات المُرسلات
+  applyProCodecPreferences(pc, isVideo);
+  try {
+    pc.getSenders().forEach(sender => {
+      if (!sender || !sender.track) return;
+      try {
+        if (sender.track.kind === 'audio') {
+          const params = sender.getParameters ? sender.getParameters() : null;
+          if (params && sender.setParameters) {
+            params.encodings = (params.encodings && params.encodings.length) ? params.encodings : [{}];
+            params.encodings[0].priority = 'high';
+            try { params.encodings[0].networkPriority = 'high'; } catch (e) {}
+            params.encodings[0].maxBitrate = 64000;
+            sender.setParameters(params).catch(() => {});
+          }
+        } else if (sender.track.kind === 'video') {
+          const params = sender.getParameters ? sender.getParameters() : null;
+          if (params && sender.setParameters) {
+            params.encodings = (params.encodings && params.encodings.length) ? params.encodings : [{}];
+            params.encodings[0].priority = 'high';
+            try { params.encodings[0].networkPriority = 'high'; } catch (e) {}
+            // بداية HD 720p فورية — ثم يتولى المحرك التكيفي الضبط لحظة بلحظة
+            params.encodings[0].maxBitrate = 1700000;
+            params.encodings[0].maxFramerate = 30;
+            try { params.encodings[0].scalabilityMode = 'L1T2'; } catch (e) {}
+            params.degradationPreference = 'balanced';
+            sender.setParameters(params).catch(() => {});
+          }
+        }
+      } catch (e) {}
+    });
+  } catch (e) {}
 
   pc.ontrack = event => {
     const remoteStream = event.streams && event.streams[0];
     if (!remoteStream) return;
+    // مخزن اهتزاز (Jitter Buffer) متوازن: يمنع التقطيع دون تأخير محسوس
+    try {
+      const recv = event.receiver;
+      if (recv) {
+        if ('jitterBufferTarget' in recv) { try { recv.jitterBufferTarget = 250; } catch (e) {} }
+        if ('playoutDelayHint' in recv) { try { recv.playoutDelayHint = 0.25; } catch (e) {} }
+      }
+    } catch (e) {}
     if (PM_CALL && PM_CALL.callType === 'video') {
       // مكالمة فيديو: صوت الطرف الآخر عبر سلسلة التكبير (أعلى وأوضح)
       setupRemoteAudioChain(remoteStream);
@@ -7234,9 +7402,16 @@ async function setupPrivateCallPeerConnection(isOffer) {
     if (PM_CALL && PM_CALL.callType === 'video' && PM_CALL.remoteStream !== remoteStream) {
       PM_CALL.remoteStream = remoteStream;
       const rv = $('#pmVideoRemote');
-      if (rv) { rv.srcObject = remoteStream; rv.play().catch(() => {}); }
+      if (rv) {
+        rv.srcObject = remoteStream;
+        const tryPlay = () => { try { const p = rv.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {} };
+        tryPlay();
+        // بعض المتصفحات تعلق أول play — إعادة محاولة ذكية عند جاهزية أول إطار
+        rv.oncanplay = tryPlay;
+      }
       const noRemote = $('#pmVideoNoRemote');
       if (noRemote) noRemote.style.display = 'none';
+      try { hideVideoReconnectOverlay(); } catch (e) {}
     }
     if (PM_CALL && !CALL_RECORDER && PM_CALL.isCaller) {
       startCallRecording(PM_CALL.localStream, remoteStream, PM_CALL.callType || 'audio');
@@ -7244,19 +7419,74 @@ async function setupPrivateCallPeerConnection(isOffer) {
   };
 
   pc.onicecandidate = event => {
-    if (event.candidate && PM_CALL) {
-      SOCKET.emit('call:signal', { toId: PM_CALL.peerId, data: { candidate: event.candidate } });
-    }
+    if (!PM_CALL) return;
+    // مرشح null = نهاية الجمع — نرسله ليُعلم الطرف الآخر باكتمال المرشحين
+    SOCKET.emit('call:signal', { toId: PM_CALL.peerId, data: { candidate: event.candidate || null } });
   };
 
-  pc.oniceconnectionstatechange = () => {
-    if (!PM_CALL) return;
-    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+  const scheduleIceRestart = (why) => {
+    if (!PM_CALL || PM_CALL.pc !== pc) return;
+    if (PM_CALL._restartTimer) return;
+    const restarts = PM_CALL.iceRestarts || 0;
+    if (restarts >= 5) {
+      // بعد 5 محاولات: نُبقي المكالمة ونعرض ضعف الشبكة بدل قطعها
+      if (isVideo) { try { showVideoReconnectOverlay('ضعف شديد في الشبكة — جاري المحاولة...'); } catch (e) {} }
+      return;
+    }
+    const delay = why === 'failed' ? 800 : 3500;
+    if (isVideo) { try { showVideoReconnectOverlay('إعادة الاتصال تلقائياً...'); } catch (e) {} }
+    PM_CALL._restartTimer = setTimeout(async () => {
+      PM_CALL._restartTimer = null;
+      if (!PM_CALL || PM_CALL.pc !== pc) return;
+      if (pc.connectionState === 'connected') { try { hideVideoReconnectOverlay(); } catch (e) {} return; }
+      try {
+        PM_CALL.iceRestarts = (PM_CALL.iceRestarts || 0) + 1;
+        if (PM_CALL.isCaller) {
+          pc.restartIce();
+          const offer = await pc.createOffer({ iceRestart: true, offerToReceiveAudio: true, offerToReceiveVideo: isVideo });
+          offer.sdp = enhanceProSdp(offer.sdp, isVideo);
+          await pc.setLocalDescription(offer);
+          SOCKET.emit('call:signal', { toId: PM_CALL.peerId, data: { sdp: pc.localDescription } });
+        }
+        // غير المتصل ينتظر offer إعادة التشغيل من المتصل — يبقى المؤقت يعيد المحاولة
+        else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+          scheduleIceRestart(pc.iceConnectionState);
+        }
+      } catch (e) { scheduleIceRestart('failed'); }
+    }, delay);
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (!PM_CALL || PM_CALL.pc !== pc) return;
+    const st = pc.connectionState;
+    if (st === 'connected') {
+      PM_CALL.iceRestarts = 0;
+      if (PM_CALL._restartTimer) { clearTimeout(PM_CALL._restartTimer); PM_CALL._restartTimer = null; }
+      try { hideVideoReconnectOverlay(); } catch (e) {}
       startCallTimer();
-      if (PM_CALL.callType === 'video') startVideoQualityMonitor(); // جودة تكيفية حسب الإنترنت
-    } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+      if (isVideo) startVideoQualityMonitor();
+    } else if (st === 'connecting') {
+      if (isVideo && PM_CALL.state === 'connected') { try { showVideoReconnectOverlay('جاري تحسين الاتصال...'); } catch (e) {} }
+    } else if (st === 'disconnected') {
+      scheduleIceRestart('disconnected');
+    } else if (st === 'failed') {
+      scheduleIceRestart('failed');
+    }
+  };
+  pc.oniceconnectionstatechange = () => {
+    if (!PM_CALL || PM_CALL.pc !== pc) return;
+    const ist = pc.iceConnectionState;
+    if (ist === 'connected' || ist === 'completed') {
+      if (PM_CALL._restartTimer) { clearTimeout(PM_CALL._restartTimer); PM_CALL._restartTimer = null; }
+      try { hideVideoReconnectOverlay(); } catch (e) {}
+      startCallTimer();
+      if (isVideo) startVideoQualityMonitor();
+      // إنزال مؤقت إعادة التشغيل عند الاستقرار
+      PM_CALL.iceRestarts = 0;
+    } else if (ist === 'disconnected' || ist === 'failed') {
       const status = $('#pmCallStatus');
-      if (status && PM_CALL.state === 'connected') status.textContent = 'ضعف في الاتصال...';
+      if (status && PM_CALL.state === 'connected' && !isVideo) status.textContent = 'ضعف في الاتصال... جاري إعادة المحاولة';
+      scheduleIceRestart(ist);
     }
   };
 
@@ -7264,8 +7494,9 @@ async function setupPrivateCallPeerConnection(isOffer) {
     try {
       const wantVideo = PM_CALL.callType === 'video';
       const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: wantVideo });
+      offer.sdp = enhanceProSdp(offer.sdp, wantVideo);
       await pc.setLocalDescription(offer);
-      SOCKET.emit('call:signal', { toId: PM_CALL.peerId, data: { sdp: offer } });
+      SOCKET.emit('call:signal', { toId: PM_CALL.peerId, data: { sdp: pc.localDescription } });
     } catch (e) {
       console.error('Create offer error:', e);
     }
@@ -7294,6 +7525,9 @@ function showVideoCallUI(stage) {
   updateVideoCallLayout();
   const camOffPill = $('#pmRemoteCamOff');
   if (camOffPill) camOffPill.style.display = 'none';
+  try { hideVideoReconnectOverlay(); } catch (e) {}
+  // إظهار مؤشرات الجودة الاحترافية فور فتح الشاشة (تتحدث مع أول نبضة مراقبة)
+  try { setVideoQualityBadge(); } catch (e) {}
   const localV = $('#pmVideoLocal');
   if (localV && PM_CALL.localStream) {
     localV.srcObject = PM_CALL.localStream;
@@ -7371,6 +7605,63 @@ function toggleVideoCallCam() {
   toast(PM_CALL.camOff ? 'تم إيقاف الكاميرا' : 'تم تشغيل الكاميرا');
   // إبلاغ الطرف الآخر بحالة الكاميرا (إشعار فوري لديه)
   if (SOCKET) SOCKET.emit('call:cam_state', { toId: PM_CALL.peerId, on: !PM_CALL.camOff });
+}
+
+// قلب الكاميرا (أمامية ⇄ خلفية) أثناء المكالمة — بلا قطع الاتصال
+let VIDEO_FLIP_BUSY = false;
+async function flipVideoCallCamera() {
+  if (!PM_CALL || PM_CALL.callType !== 'video' || !PM_CALL.localStream || VIDEO_FLIP_BUSY) return;
+  const oldTrack = PM_CALL.localStream.getVideoTracks()[0];
+  if (!oldTrack) return toast('لا توجد كاميرا للقلب', false);
+  VIDEO_FLIP_BUSY = true;
+  const btn = $('#pmVideoFlipBtn');
+  if (btn) btn.classList.add('busy');
+  try {
+    const nextFacing = (PM_CALL.facingMode === 'environment') ? 'user' : 'environment';
+    const lv = (typeof proVideoLevel === 'function') ? proVideoLevel() : { w: 1280, h: 720, fps: 30 };
+    let newTrack = null;
+    // المحاولة 1: قلب مباشر على نفس المسار (أسرع — بلا وميض)
+    try {
+      await oldTrack.applyConstraints({ facingMode: { exact: nextFacing } });
+      newTrack = oldTrack;
+    } catch (e) { newTrack = null; }
+    // المحاولة 2: مسار جديد واستبداله في الاتصال (replaceTrack — بلا إعادة تفاوض)
+    if (!newTrack) {
+      const ns = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: lv.w }, height: { ideal: lv.h },
+          frameRate: { ideal: lv.fps, max: 30 },
+          facingMode: { ideal: nextFacing }
+        },
+        audio: false
+      });
+      newTrack = ns.getVideoTracks()[0];
+      if (!newTrack) throw new Error('no_track');
+      try { newTrack.contentHint = 'motion'; } catch (e) {}
+      try {
+        const sender = PM_CALL.pc ? PM_CALL.pc.getSenders().find(s => s.track && s.track.kind === 'video') : null;
+        if (sender && sender.replaceTrack) await sender.replaceTrack(newTrack);
+      } catch (e) {}
+      try { PM_CALL.localStream.removeTrack(oldTrack); } catch (e) {}
+      try { oldTrack.stop(); } catch (e) {}
+      try { PM_CALL.localStream.addTrack(newTrack); } catch (e) {}
+      try {
+        const localV = $('#pmVideoLocal');
+        if (localV) { localV.srcObject = PM_CALL.localStream; localV.play().catch(() => {}); }
+      } catch (e) {}
+    }
+    PM_CALL.facingMode = nextFacing;
+    try {
+      const localV = $('#pmVideoLocal');
+      // الكاميرا الخلفية تُعرض طبيعية، الأمامية معكوسة (مرآة)
+      if (localV) localV.style.transform = nextFacing === 'environment' ? 'none' : 'scaleX(-1)';
+    } catch (e) {}
+    toast(nextFacing === 'environment' ? '📷 الكاميرا الخلفية' : '🤳 الكاميرا الأمامية');
+  } catch (e) {
+    toast('تعذر قلب الكاميرا على هذا الجهاز', false);
+  }
+  VIDEO_FLIP_BUSY = false;
+  if (btn) btn.classList.remove('busy');
 }
 
 // ===== رفع مستوى صوت الطرف الآخر (سماعة الأذن الداخلية + السبيكر الخارجي) =====
@@ -7464,66 +7755,298 @@ document.addEventListener('pointerdown', () => {
   try { bcastLevelCtx(); } catch (e) {} // استيقاظ سياق تحليل الأصوات (سياسات التشغيل التلقائي)
 }, { capture: true, passive: true });
 
-// ===== جودة الفيديو الثابتة 360p — للمكالمات الخاصة فقط =====
-// بناءً على طلب الإدارة: تُثبَّت جودة فيديو المكالمة الخاصة على 360p (640×360)
-// للطرفين بشكل ثابت، دون أي تكيف صاعد أو هابط مع حالة الشبكة.
-const VIDEO_FIXED_QUALITY = { w: 640, h: 360, fps: 25, maxBitrate: 700000, label: '360p' };
+// =====================================================
+//  PRO ADAPTIVE VIDEO ENGINE — جودة تكيفية HD للطرفين
+//  يبدأ بـ 720p HD صافية، ويراقب الشبكة لحظة بلحظة (RTT/فقد/تجمد):
+//  • شبكة ممتازة → يصعد حتى 1080p FHD
+//  • ضعف مفاجئ → يهبط بسلاسة لمستوى أنسب (بلا تقطيع ولا تجمد)
+//  • يعمل عند الطرفين معاً، فكل طرف يضبط إرساله حسب ما يراه من شبكته
+// =====================================================
+const PRO_VIDEO_LADDER = [
+  { id: '1080p', w: 1920, h: 1080, fps: 30, br: 2600000, label: '1080p FHD', short: 'FHD' },
+  { id: '720p',  w: 1280, h: 720,  fps: 30, br: 1700000, label: '720p HD',  short: 'HD' },
+  { id: '540p',  w: 960,  h: 540,  fps: 30, br: 1100000, label: '540p',     short: '540p' },
+  { id: '480p',  w: 854,  h: 480,  fps: 30, br: 850000,  label: '480p',     short: '480p' },
+  { id: '360p',  w: 640,  h: 360,  fps: 25, br: 550000,  label: '360p',     short: '360p' },
+  { id: '270p',  w: 480,  h: 270,  fps: 24, br: 320000,  label: '270p',     short: '270p' },
+  { id: '180p',  w: 320,  h: 180,  fps: 20, br: 160000,  label: '180p',     short: '180p' }
+];
+const PRO_Q_START_IDX = 1; // البداية دائماً HD 720p صافية
 let VIDEO_QA_TIMER = null;
+let PRO_Q = null;
 
-function setVideoQualityBadge() {
-  const el = $('#pmVideoQuality');
-  if (!el) return;
-  el.textContent = 'الجودة: 360p (ثابتة)';
-  el.style.display = '';
-}
-
-function applyFixedVideoQuality() {
-  if (!PM_CALL) return;
-  // 1) تثبيت التقاط الكاميرا المحلية على 640×360 (الحد الأقصى يساوي الحد المطلوب).
-  if (PM_CALL.localStream) {
-    PM_CALL.localStream.getVideoTracks().forEach(track => {
-      try {
-        if (typeof track.applyConstraints === 'function') {
-          track.applyConstraints({
-            width: { ideal: VIDEO_FIXED_QUALITY.w, max: VIDEO_FIXED_QUALITY.w },
-            height: { ideal: VIDEO_FIXED_QUALITY.h, max: VIDEO_FIXED_QUALITY.h },
-            frameRate: { ideal: VIDEO_FIXED_QUALITY.fps, max: 30 }
-          }).catch(() => {});
-        }
-      } catch (e) {}
-    });
+function proVideoState() {
+  if (!PRO_Q) {
+    PRO_Q = {
+      idx: PRO_Q_START_IDX, good: 0, bad: 0, cooldownUntil: 0,
+      startedAt: Date.now(), tickN: 0,
+      prev: null, lastRttMs: 0, lastLossUp: 0, lastLossDown: 0,
+      lastAvailBw: 0, lastFps: 30, frozenTicks: 0, lastDecoded: 0
+    };
   }
-  // 2) تثبيت سقف الإرسال (البت ريت) ومعدل الإطارات على قيم 360p، مع الحفاظ على
-  //    الدقة أولاً (maintain-resolution) حتى لا يُخفّض المتصفح الدقة تحت الضغط.
+  return PRO_Q;
+}
+function proVideoLevel() { return PRO_VIDEO_LADDER[proVideoState().idx]; }
+
+// تطبيق مستوى الجودة: سقف البت ريت + الإطارات + تحجيم الدقة نسبة للالتقاط.
+// عند المستويات الدنيا نخفّض الالتقاط نفسه أيضاً (توفير بطارية ومعالج).
+async function proVideoApplyLevel(idx, reason) {
+  if (!PM_CALL || PM_CALL.callType !== 'video') return;
+  const q = proVideoState();
+  idx = Math.max(0, Math.min(PRO_VIDEO_LADDER.length - 1, idx));
+  const lv = PRO_VIDEO_LADDER[idx];
+  const changed = idx !== q.idx;
+  q.idx = idx;
   try {
     const sender = PM_CALL.pc && PM_CALL.pc.getSenders
       ? PM_CALL.pc.getSenders().find(s => s.track && s.track.kind === 'video')
       : null;
+    let capH = lv.h;
+    try {
+      const st = sender && sender.track && sender.track.getSettings ? sender.track.getSettings() : {};
+      if (st.height && st.height >= 180) capH = st.height;
+    } catch (e) {}
     if (sender && sender.getParameters && sender.setParameters) {
       const params = sender.getParameters();
       params.encodings = params.encodings && params.encodings.length ? params.encodings : [{}];
-      params.encodings[0].maxBitrate = VIDEO_FIXED_QUALITY.maxBitrate;
-      params.encodings[0].maxFramerate = VIDEO_FIXED_QUALITY.fps;
-      params.degradationPreference = 'maintain-resolution';
-      sender.setParameters(params).catch(() => {});
+      const enc = params.encodings[0];
+      enc.maxBitrate = lv.br;
+      enc.maxFramerate = lv.fps;
+      // تحجيم الدقة نسبة لدقة الالتقاط الفعلية (1 = كاملة، 2 = نصف...)
+      try { enc.scaleResolutionDownBy = Math.max(1, Math.min(4, capH / lv.h)); } catch (e) {}
+      try { enc.priority = 'high'; enc.networkPriority = 'high'; } catch (e) {}
+      // متوازن: يفضّل السلاسة عند الازدحام دون التضحية الكاملة بالدقة
+      params.degradationPreference = 'balanced';
+      await sender.setParameters(params).catch(() => {});
     }
+    // المستويات الدنيا (360p وأقل): خفّض الالتقاط نفسه لتخفيف المعالج والبطارية
+    if (PM_CALL.localStream && idx >= 4) {
+      PM_CALL.localStream.getVideoTracks().forEach(track => {
+        try {
+          if (typeof track.applyConstraints === 'function') {
+            track.applyConstraints({
+              width: { ideal: lv.w }, height: { ideal: lv.h },
+              frameRate: { ideal: lv.fps, max: 30 }
+            }).catch(() => {});
+          }
+        } catch (e) {}
+      });
+    }
+    // مخزن الاهتزاز الديناميكي: ممتاز=150ms (لاق شبه معدوم)، ضعيف=400ms (بلا تقطيع)
+    try {
+      const jb = idx <= 1 ? 150 : (idx <= 3 ? 250 : 400);
+      PM_CALL.pc.getReceivers().forEach(r => {
+        try { if ('jitterBufferTarget' in r) r.jitterBufferTarget = jb; } catch (e) {}
+        try { if ('playoutDelayHint' in r) r.playoutDelayHint = jb / 1000; } catch (e) {}
+      });
+    } catch (e) {}
   } catch (e) {}
   setVideoQualityBadge();
+  if (changed && reason) {
+    try {
+      const pill = $('#pmVideoNetHint');
+      if (pill) {
+        pill.textContent = reason;
+        pill.classList.add('show');
+        clearTimeout(pill._t);
+        pill._t = setTimeout(() => pill.classList.remove('show'), 2500);
+      }
+    } catch (e) {}
+  }
+}
+
+// شارة الجودة + مؤشر الشبكة الاحترافي (أعمدة الإشارة + RTT)
+function setVideoQualityBadge() {
+  const el = $('#pmVideoQuality');
+  const net = $('#pmVideoNet');
+  if (!PM_CALL || PM_CALL.callType !== 'video') {
+    if (el) el.style.display = 'none';
+    if (net) net.style.display = 'none';
+    return;
+  }
+  const q = proVideoState();
+  const lv = PRO_VIDEO_LADDER[q.idx];
+  if (el) {
+    el.style.display = '';
+    el.className = 'pmvc-quality q-' + (q.idx <= 1 ? 'hd' : (q.idx <= 3 ? 'sd' : 'low'));
+    el.textContent = lv.label;
+    el.title = 'جودة الفيديو التكيفية — ' + lv.label;
+  }
+  if (net) {
+    net.style.display = '';
+    const score = PM_CALL.netScore || 4;
+    net.className = 'pmvc-net s' + score;
+    const bars = net.querySelectorAll('.pmvc-bar');
+    bars.forEach((b, i) => b.classList.toggle('on', i < score));
+    const rttEl = net.querySelector('.pmvc-rtt');
+    if (rttEl) rttEl.textContent = q.lastRttMs > 0 ? Math.round(q.lastRttMs) + 'ms' : '';
+  }
+}
+
+// نبضة المراقبة (كل ثانيتين): قراءة إحصائيات WebRTC واتخاذ قرار الصعود/الهبوط
+async function proVideoMonitorTick() {
+  if (!PM_CALL || PM_CALL.callType !== 'video' || !PM_CALL.pc) return;
+  const pc = PM_CALL.pc;
+  if (pc.connectionState !== 'connected' && pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') return;
+  const q = proVideoState();
+  q.tickN++;
+  let stats = null;
+  try { stats = await pc.getStats(); } catch (e) { return; }
+  if (!stats) return;
+  let outV = null, inV = null, pair = null, remoteIn = null;
+  try {
+    stats.forEach(r => {
+      if (r.type === 'outbound-rtp' && !r.isRemote && (r.kind === 'video' || r.mediaType === 'video')) { if (!outV) outV = r; }
+      else if (r.type === 'inbound-rtp' && !r.isRemote && (r.kind === 'video' || r.mediaType === 'video')) { if (!inV) inV = r; }
+      else if (r.type === 'candidate-pair' && (r.nominated || r.state === 'succeeded') && r.writable) { pair = r; }
+      else if (r.type === 'remote-inbound-rtp' && (r.kind === 'video' || r.mediaType === 'video' || !remoteIn)) { remoteIn = r; }
+    });
+    if (!pair) stats.forEach(r => { if (r.type === 'candidate-pair' && r.state === 'succeeded' && !pair) pair = r; });
+  } catch (e) {}
+  const now = Date.now();
+  const P = q.prev || {};
+  const dt = P.ts ? Math.max(0.5, (now - P.ts) / 1000) : 2;
+  // --- الإشارات ---
+  let rttMs = q.lastRttMs;
+  try {
+    if (remoteIn && Number.isFinite(remoteIn.roundTripTime)) rttMs = remoteIn.roundTripTime * 1000;
+    else if (pair && Number.isFinite(pair.currentRoundTripTime)) rttMs = pair.currentRoundTripTime * 1000;
+  } catch (e) {}
+  let lossUp = q.lastLossUp;
+  try {
+    if (remoteIn && Number.isFinite(remoteIn.packetsLost)) {
+      const lost = remoteIn.packetsLost - (P.rLost || 0);
+      const recv = (remoteIn.packetsReceived || 0) - (P.rRecv || 0);
+      if (lost + recv > 20) lossUp = Math.max(0, (lost / (lost + recv)) * 100);
+    }
+  } catch (e) {}
+  let lossDown = q.lastLossDown;
+  try {
+    if (inV && Number.isFinite(inV.packetsLost)) {
+      const lost = inV.packetsLost - (P.iLost || 0);
+      const recv = (inV.packetsReceived || 0) - (P.iRecv || 0);
+      if (lost + recv > 20) lossDown = Math.max(0, (lost / (lost + recv)) * 100);
+    }
+  } catch (e) {}
+  let availBw = 0;
+  try { if (pair && Number.isFinite(pair.availableOutgoingBitrate)) availBw = pair.availableOutgoingBitrate; } catch (e) {}
+  let dropped = 0, pli = 0, nack = 0, freezes = 0, fps = q.lastFps;
+  try {
+    if (outV) {
+      if (Number.isFinite(outV.framesDropped) && Number.isFinite(P.dropped)) dropped = Math.max(0, outV.framesDropped - P.dropped);
+      if (Number.isFinite(outV.pliCount) && Number.isFinite(P.pli)) pli = Math.max(0, outV.pliCount - P.pli);
+      if (Number.isFinite(outV.nackCount) && Number.isFinite(P.nack)) nack = Math.max(0, outV.nackCount - P.nack);
+    }
+    if (inV) {
+      if (Number.isFinite(inV.freezeCount) && Number.isFinite(P.freeze)) freezes = Math.max(0, inV.freezeCount - P.freeze);
+      if (Number.isFinite(inV.framesPerSecond) && inV.framesPerSecond > 0) fps = inV.framesPerSecond;
+    }
+  } catch (e) {}
+  let qlr = '';
+  try { if (outV && outV.qualityLimitationReason) qlr = String(outV.qualityLimitationReason); } catch (e) {}
+  q.lastRttMs = rttMs; q.lastLossUp = lossUp; q.lastLossDown = lossDown; q.lastAvailBw = availBw; q.lastFps = fps;
+  q.prev = {
+    ts: now,
+    rLost: remoteIn ? (remoteIn.packetsLost || 0) : (P.rLost || 0),
+    rRecv: remoteIn ? (remoteIn.packetsReceived || 0) : (P.rRecv || 0),
+    iLost: inV ? (inV.packetsLost || 0) : (P.iLost || 0),
+    iRecv: inV ? (inV.packetsReceived || 0) : (P.iRecv || 0),
+    dropped: outV ? (outV.framesDropped || 0) : (P.dropped || 0),
+    pli: outV ? (outV.pliCount || 0) : (P.pli || 0),
+    nack: outV ? (outV.nackCount || 0) : (P.nack || 0),
+    freeze: inV ? (inV.freezeCount || 0) : (P.freeze || 0)
+  };
+  const cur = PRO_VIDEO_LADDER[q.idx];
+  const next = PRO_VIDEO_LADDER[Math.max(0, q.idx - 1)];
+  const uptimeOk = (now - q.startedAt) > 12000;
+  const cooldownOk = now >= q.cooldownUntil;
+  // --- نقاط الشبكة (1-4 أعمدة) ---
+  let score = 4;
+  if (rttMs > 400 || lossUp > 8 || freezes >= 2) score = 1;
+  else if (rttMs > 280 || lossUp > 4 || lossDown > 6 || freezes >= 1 || qlr === 'bandwidth') score = 2;
+  else if (rttMs > 170 || lossUp > 1.5 || lossDown > 2.5 || dropped > 8) score = 3;
+  PM_CALL.netScore = score;
+  // --- القرار ---
+  const critical = (lossUp > 12) || (rttMs > 750) || (freezes >= 4) || (qlr === 'bandwidth' && lossUp > 6);
+  const bad = critical || (lossUp > 4) || (rttMs > 350) || (freezes >= 2) || (dropped > 25) || (pli > 5)
+    || (qlr === 'bandwidth') || (availBw > 0 && availBw < cur.br * 0.75) || (lossDown > 9);
+  const good = uptimeOk && cooldownOk && (lossUp < 1) && (lossDown < 2) && (rttMs < 175)
+    && (freezes === 0) && (dropped <= 2) && (qlr === 'none' || qlr === '' || !qlr)
+    && (availBw <= 0 || availBw > next.br * 1.25);
+  if (critical && q.idx < PRO_VIDEO_LADDER.length - 1) {
+    q.bad = 0; q.good = 0;
+    q.cooldownUntil = now + 5000;
+    await proVideoApplyLevel(q.idx + 1, '📶 ضعف مفاجئ — خفّضنا الجودة لمنع التقطيع');
+    return;
+  }
+  if (bad) {
+    q.good = 0; q.bad++;
+    if (q.bad >= 2 && cooldownOk && q.idx < PRO_VIDEO_LADDER.length - 1) {
+      q.bad = 0;
+      q.cooldownUntil = now + 6000;
+      await proVideoApplyLevel(q.idx + 1, '📶 الشبكة ضعيفة — جودة أنسب لاستمرار بلا تقطيع');
+      return;
+    }
+  } else {
+    q.bad = 0;
+    if (good) {
+      q.good++;
+      if (q.good >= 4 && q.idx > 0) {
+        q.good = 0;
+        q.cooldownUntil = now + 8000;
+        await proVideoApplyLevel(q.idx - 1, q.idx - 1 <= 1 ? '✨ الشبكة ممتازة — جودة HD صافية' : '⬆️ تحسّنت الشبكة — رفعنا الجودة');
+        return;
+      }
+    } else q.good = 0;
+  }
+  setVideoQualityBadge();
+  // --- حارس التجمد: صورة الطرف الآخر متجمدة منذ 3 نبضات؟ ننعش المشغل ونعرض تنبيهاً ---
+  try {
+    const decoded = inV && Number.isFinite(inV.framesDecoded) ? inV.framesDecoded : -1;
+    if (decoded >= 0) {
+      if (decoded === q.lastDecoded && fps < 3) q.frozenTicks++;
+      else q.frozenTicks = 0;
+      q.lastDecoded = decoded;
+      if (q.frozenTicks >= 3) {
+        q.frozenTicks = 0;
+        const rv = $('#pmVideoRemote');
+        if (rv) { try { rv.play().catch(() => {}); } catch (e) {} }
+        showVideoReconnectOverlay('إشارة الطرف الآخر ضعيفة — بانتظار صورته...');
+        setTimeout(() => { try { hideVideoReconnectOverlay(); } catch (e) {} }, 4000);
+      }
+    }
+  } catch (e) {}
+}
+
+// طبقة «إعادة الاتصال» الاحترافية فوق شاشة الفيديو
+function showVideoReconnectOverlay(text) {
+  const ov = $('#pmVideoReconnect');
+  if (!ov) return;
+  const t = $('#pmVideoReconnectText');
+  if (t && text) t.textContent = text;
+  ov.classList.add('show');
+}
+function hideVideoReconnectOverlay() {
+  const ov = $('#pmVideoReconnect');
+  if (ov) ov.classList.remove('show');
 }
 
 function startVideoQualityMonitor() {
   if (!PM_CALL || PM_CALL.callType !== 'video' || !PM_CALL.pc) return;
-  stopVideoQualityMonitor();
-  applyFixedVideoQuality();
+  if (VIDEO_QA_TIMER) return; // يعمل already — لا نعيد التهيئة (نحافظ على المستوى الحالي)
+  proVideoState();
+  proVideoApplyLevel(PRO_Q.idx, '');
   setVideoQualityBadge();
-  // إعادة تطبيق دورية خفيفة تُبقي القيود مسلّطة على المتصفح (بعض المتصفحات قد
-  // تحاول تخفيف الجودة تلقائياً عند ازدحام الشبكة) — دون تغيير المستوى أبداً.
-  VIDEO_QA_TIMER = setInterval(applyFixedVideoQuality, 3000);
+  VIDEO_QA_TIMER = setInterval(() => { proVideoMonitorTick().catch(() => {}); }, 2000);
 }
 function stopVideoQualityMonitor() {
   if (VIDEO_QA_TIMER) { clearInterval(VIDEO_QA_TIMER); VIDEO_QA_TIMER = null; }
+  PRO_Q = null;
+  try { hideVideoReconnectOverlay(); } catch (e) {}
   const el = $('#pmVideoQuality');
   if (el) { el.style.display = 'none'; el.textContent = 'الجودة: -'; }
+  const net = $('#pmVideoNet');
+  if (net) net.style.display = 'none';
 }
 
 // ===== تفاعل شاشة مكالمة الفيديو =====
@@ -7639,19 +8162,50 @@ $('#pmVideoCamBtn').onclick = toggleVideoCallCam;
 $('#pmVideoMuteBtn').onclick = togglePrivateCallMute;
 $('#pmVideoEndBtn').onclick = () => endPrivateCall(true, 'ended');
 $('#pmVideoMinBtn').onclick = minimizePrivateCall;
+const _pmFlipBtn = $('#pmVideoFlipBtn');
+if (_pmFlipBtn) _pmFlipBtn.onclick = flipVideoCallCamera;
 
 async function handlePrivateCallSignal(fromId, data) {
   if (!PM_CALL || PM_CALL.peerId !== +fromId || !PM_CALL.pc) return;
+  const pc = PM_CALL.pc;
   try {
     if (data.sdp) {
-      await PM_CALL.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-      if (data.sdp.type === 'offer') {
-        const answer = await PM_CALL.pc.createAnswer();
-        await PM_CALL.pc.setLocalDescription(answer);
-        SOCKET.emit('call:signal', { toId: PM_CALL.peerId, data: { sdp: answer } });
+      // نمط التفاوض الآمن: تجاهل العروض المتقاطعة (glare) لصالح المتصل الأصلي
+      if (data.sdp.type === 'offer' && pc.signalingState !== 'stable') {
+        if (!PM_CALL.isCaller) {
+          try { await pc.setLocalDescription({ type: 'rollback' }); } catch (e) {}
+        } else {
+          return; // المتصل يتجاهل العرض المتقاطع — عرضه هو المعتمد
+        }
       }
-    } else if (data.candidate) {
-      await PM_CALL.pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+      await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      PM_CALL._remoteDescSet = true;
+      // تفريغ المرشحين الذين وصلوا مبكراً قبل اكتمال الوصف البعيد
+      if (PM_CALL._pendingCandidates && PM_CALL._pendingCandidates.length) {
+        const queued = PM_CALL._pendingCandidates.splice(0);
+        for (const c of queued) {
+          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {}
+        }
+      }
+      if (data.sdp.type === 'offer') {
+        const isVideo = PM_CALL.callType === 'video';
+        const answer = await pc.createAnswer();
+        answer.sdp = enhanceProSdp(answer.sdp, isVideo);
+        await pc.setLocalDescription(answer);
+        SOCKET.emit('call:signal', { toId: PM_CALL.peerId, data: { sdp: pc.localDescription } });
+      }
+    } else if ('candidate' in data) {
+      if (!data.candidate) {
+        // نهاية مرشحي الطرف الآخر — لا شيء لفعله (اكتمل الجمع لديه)
+        return;
+      }
+      // سباق شائع: مرشح يصل قبل الوصف البعيد — نخزّنه بدل رميه (يرفع نجاح الربط كثيراً)
+      if (!PM_CALL._remoteDescSet || !pc.remoteDescription) {
+        PM_CALL._pendingCandidates = PM_CALL._pendingCandidates || [];
+        if (PM_CALL._pendingCandidates.length < 100) PM_CALL._pendingCandidates.push(data.candidate);
+        return;
+      }
+      await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
     }
   } catch (e) {
     console.error('Call signal error:', e);
