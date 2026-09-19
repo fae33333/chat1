@@ -252,6 +252,7 @@ const I18N_EN = {
   "تم قطع الاتصال": "Connection lost", "جارٍ إعادة الاتصال...": "Reconnecting...", "اتصال": "Connect",
   "قسم الشكاوي": "Complaints", "إرسال الشكوى": "Send complaint", "رسالة النظام": "System message", "إعلان من الإدارة": "Admin announcement", "نظام الهدايا": "Gift system",
   "لا توجد غرف هنا": "No rooms here", "لا يوجد متصلون": "No users online", "لا توجد حالات حديثة بعد": "No recent updates", "تعذر تحميل الحالات": "Could not load statuses",
+  "فرز المستخدمين": "Sort users", "الذكور": "Males", "الإناث": "Females", "تم عرض جميع المستخدمين": "Showing all users", "يتم عرض الذكور فقط": "Showing males only", "يتم عرض الإناث فقط": "Showing females only", "لا يوجد ذكور متصلون الآن": "No males online now", "لا توجد إناث متصلات الآن": "No females online now",
   "لا توجد رسائل من الزوار": "No messages from guests", "لا توجد محادثات مع أعضاء مسجلين": "No conversations with registered members",
   "🛡️ الحماية مفعّلة!": "🛡️ Protection is on!",
   "أنت الآن محمي من الرسائل غير المرغوب فيها. تم إيقاف الرسائل المزعجة من المستخدمين غير المرغوب بهم لتستمتع بتجربة أكثر راحة وهدوء داخل دردشتي.": "You are now protected from unwanted messages. Spam from unwanted users has been blocked so you can enjoy a calmer, more comfortable experience.",
@@ -589,6 +590,7 @@ const I18N_ES = {
   "الدفع عبر البطاقة البنكية / Debit or Credit Card": "Pagar con Tarjeta de Débito/Crédito", "دفع إلكتروني مباشر ومشفر 256-Bit SSL": "Pago seguro cifrado SSL de 256 bits",
   "إشعار من النظام": "Notificación del sistema", "تم تسجيل الخروج": "Sesión cerrada", "تم حفظ الاعدادات ✓": "Ajustes guardados ✓",
   "مغلقة 🔒": "Cerrada 🔒", "لم يتلقَ هدايا بعد": "Sin regalos aún", "أنت متواجد في هذه الغرفة حالياً 📍": "Ya estás en esta sala 📍",
+  "فرز المستخدمين": "Ordenar usuarios", "الذكور": "Hombres", "الإناث": "Mujeres", "تم عرض جميع المستخدمين": "Mostrando todos los usuarios", "يتم عرض الذكور فقط": "Mostrando solo hombres", "يتم عرض الإناث فقط": "Mostrando solo mujeres", "لا يوجد ذكور متصلون الآن": "No hay hombres en línea", "لا توجد إناث متصلات الآن": "No hay mujeres en línea",
   "اختر غرفة أولا": "Elige una sala primero", "اختر هدية أولا": "Elige un regalo primero", "ادمن": "Admin", "ادمن غرفة": "Admin de sala", "سوبر ادمين": "Super admin",
   "رسالة عامة": "Mensaje público", "رسالة": "Mensaje", "اكتب حالتك...": "Escribe tu estado...", "الأسم المستعار": "Nombre de usuario", "اسم المستعار": "Nombre de usuario",
   "الرقم السري": "Contraseña", "العمر": "Edad", "كلمة المرور": "Contraseña", "موضوع الشكوى": "Asunto", "اكتب شكواك هنا...": "Escribe tu queja aquí...",
@@ -918,6 +920,7 @@ const I18N_TR = {
   "الدفع عبر البطاقة البنكية / Debit or Credit Card": "Banka / Kredi Kartı ile Öde", "دفع إلكتروني مباشر ومشفر 256-Bit SSL": "Güvenli 256-Bit SSL doğrudan ödeme",
   "إشعار من النظام": "Sistem Bildirimi", "تم تسجيل الخروج": "Çıkış yapıldı", "تم حفظ الاعدادات ✓": "Ayarlar kaydedildi ✓",
   "مغلقة 🔒": "Kapalı 🔒", "لم يتلقَ هدايا بعد": "Henüz hediye yok", "أنت متواجد في هذه الغرفة حالياً 📍": "Zaten bu odadasınız 📍",
+  "فرز المستخدمين": "Kullanıcıları sırala", "الذكور": "Erkekler", "الإناث": "Kadınlar", "تم عرض جميع المستخدمين": "Tüm kullanıcılar gösteriliyor", "يتم عرض الذكور فقط": "Sadece erkekler gösteriliyor", "يتم عرض الإناث فقط": "Sadece kadınlar gösteriliyor", "لا يوجد ذكور متصلون الآن": "Şu anda çevrimiçi erkek yok", "لا توجد إناث متصلات الآن": "Şu anda çevrimiçi kadın yok",
   "اختر غرفة أولا": "Önce bir oda seçin", "اختر هدية أولا": "Önce bir hediye seçin", "ادمن": "Admin", "ادمن غرفة": "Oda admini", "سوبر ادمين": "Süper admin",
   "رسالة عامة": "Genel mesaj", "رسالة": "Mesaj", "اكتب حالتك...": "Durumunuzu yazın...", "الأسم المستعار": "Kullanıcı adı", "اسم المستعار": "Kullanıcı adı",
   "الرقم السري": "Şifre", "العمر": "Yaş", "كلمة المرور": "Şifre", "موضوع الشكوى": "Konu", "اكتب شكواك هنا...": "Şikayetinizi buraya yazın...",
@@ -5315,11 +5318,79 @@ function syncRoomUserBroadcastFlags(roomId) {
   ROOM_USERS.forEach(user => { user.live_broadcast_host = hostIds.has(+user.id) ? 1 : 0; });
   renderUsers();
 }
+// =====================================================
+//  فرز قائمة المستخدمين: الجميع / الذكور / الإناث
+//  «الجميع» يعيد الترتيب الافتراضي كما كان تماماً (الرتبة ثم الاسم أبجدياً)،
+//  و«الذكور» أو «الإناث» يعرض أصحاب هذا النوع فقط من المتصلين بالغرفة.
+// =====================================================
+let USERS_SORT = 'all';                       // all | boy | girl
+const USERS_SORT_KEYS = ['all', 'boy', 'girl'];
+const USERS_SORT_LABELS = { all: 'الجميع', boy: 'الذكور', girl: 'الإناث' };
+// نص الحالة الفارغة لكل فرز (يظهر داخل قائمة المستخدمين)
+const USERS_SORT_EMPTY = { all: 'لا يوجد متصلون', boy: 'لا يوجد ذكور متصلون الآن', girl: 'لا توجد إناث متصلات الآن' };
+function usersSortMatches(user) {
+  if (USERS_SORT === 'all') return true;
+  return String((user && user.gender) || 'secret') === USERS_SORT;
+}
+// مزامنة زر الفرز وقائمة خياراته مع الفرز الحالي
+function syncUsersSortMenu() {
+  const drop = $('#usersSortDrop'), btn = $('#usersSortBtn');
+  if (!drop || !btn) return;
+  const open = drop.classList.contains('open');
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  btn.classList.toggle('active', USERS_SORT !== 'all');
+  btn.title = USERS_SORT === 'all' ? 'فرز المستخدمين' : `فرز المستخدمين — ${USERS_SORT_LABELS[USERS_SORT]}`;
+  $$('.usort-item', drop).forEach(item => {
+    const on = item.dataset.usersSort === USERS_SORT;
+    item.classList.toggle('active', on);
+    item.setAttribute('aria-checked', on ? 'true' : 'false');
+    const icon = item.querySelector('i');
+    if (icon) icon.textContent = on ? 'checkmark' : 'chevron_right';
+  });
+}
+function closeUsersSortMenu() {
+  const drop = $('#usersSortDrop');
+  if (drop) drop.classList.remove('open');
+  syncUsersSortMenu();
+}
+function setUsersSort(value) {
+  const next = USERS_SORT_KEYS.includes(value) ? value : 'all';
+  const changed = next !== USERS_SORT;
+  USERS_SORT = next;
+  closeUsersSortMenu();
+  renderUsers();
+  if (changed) toast(next === 'all' ? 'تم عرض جميع المستخدمين' : `يتم عرض ${USERS_SORT_LABELS[next]} فقط`);
+}
+function initUsersSortMenu() {
+  const btn = $('#usersSortBtn'), drop = $('#usersSortDrop');
+  if (!btn || !drop) return;
+  btn.onclick = () => {
+    drop.classList.toggle('open');
+    syncUsersSortMenu();
+  };
+  $$('.usort-item', drop).forEach(item => item.onclick = () => setUsersSort(item.dataset.usersSort));
+  // إغلاق القائمة عند الضغط خارجها أو بزر Escape
+  document.addEventListener('click', e => {
+    if (!drop.classList.contains('open')) return;
+    if (e.target && e.target.closest && e.target.closest('#usersSortWrap')) return;
+    closeUsersSortMenu();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && drop.classList.contains('open')) closeUsersSortMenu();
+  });
+  // إخفاء القائمة عند إغلاق لوحة المتصلين
+  const panel = $('#usersPanel');
+  if (panel) new MutationObserver(() => {
+    if (!panel.classList.contains('open') && drop.classList.contains('open')) closeUsersSortMenu();
+  }).observe(panel, { attributes: true, attributeFilter: ['class'] });
+  syncUsersSortMenu();
+}
 function renderUsers() {
   const q = ($('#userSearch').value || '').trim();
   const hostIds = liveBroadcastHostIds();
   $('#onlineCount').textContent = ROOM_USERS.length;
-  const list = ROOM_USERS.filter(u => !q || u.username.includes(q))
+  const list = ROOM_USERS.filter(usersSortMatches)
+    .filter(u => !q || u.username.includes(q))
     .sort((a, b) => rankWeight(b) - rankWeight(a) || String(a.username).localeCompare(String(b.username), 'ar'));
   $('#usersList').innerHTML = list.length ? list.map(u => {
     const ignored = IGNORED_USERS.has(+u.id);
@@ -5332,7 +5403,7 @@ function renderUsers() {
       ${u.muted ? '<i class="f7-icons muted-user-mark">mic_slash_fill</i>' : ''}
       <img class="ugender" src="/badges/${GENDER_IMG[u.gender] || 'secret.png'}" alt="">
     </div>`;
-  }).join('') : '<div class="pv-empty"><div>لا يوجد متصلون</div></div>';
+  }).join('') : `<div class="pv-empty"><div>${USERS_SORT_EMPTY[USERS_SORT] || USERS_SORT_EMPTY.all}</div></div>`;
   $$('#usersList .users-row').forEach(r => r.onclick = () => openUserSheet(+r.dataset.id));
 }
 
@@ -11925,6 +11996,8 @@ function setUsersPanel(open) {
   $('#roomsVeil').style.display = open ? 'block' : 'none';
 }
 $('#usersPanelX').onclick = () => setUsersPanel(false);
+// زر فرز المستخدمين (الجميع / الذكور / الإناث) داخل لوحة المتصلين
+initUsersSortMenu();
 // ===== الزر العائم لقائمة المتصلين (بأسلوب 123flashchat) =====
 // نقرة: تعرض قائمة المتصلين (وتخفي قائمة الغرف إن كانت مفتوحة)، ونقرة أخرى تخفيها.
 function toggleUsersPanel() {
