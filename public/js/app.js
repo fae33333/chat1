@@ -6172,13 +6172,6 @@ function renderVisitorProfile(u, d) {
             </div>
           </div>
         </div>
-        ${u.registered ? `<div class="vp-like-bar" id="vpLikeBar">
-          <button class="vp-like${d.liked ? ' liked' : ''}" id="vpLikeBtn" type="button">
-            <span class="vp-like-ic"><i class="f7-icons">heart_fill</i></span>
-            <span class="vp-like-label">${d.liked ? 'أعجبني' : 'إعجاب'}</span>
-          </button>
-          <span class="vp-like-count" id="vpLikeCount"><b>${d.likes || 0}</b> إعجاب على هذا الملف</span>
-        </div>` : ''}
         <div class="profile-tabs-shell">
           <div class="vp-tabs profile-tabs">
             <button class="vp-tab" data-vtab="gifts">الهدايا</button>
@@ -6193,17 +6186,19 @@ function renderVisitorProfile(u, d) {
           <button class="va" id="vaChat"><span class="va-ic"><i class="f7-icons">chat_bubble_fill</i></span><span class="va-label">دردشة</span></button>
         </div>
         <div class="vp-info profile-info-panel" id="vpInfo">
+          ${u.registered ? `<div class="vp-like-bar" id="vpLikeBar">
+            <button class="vp-like${d.liked ? ' liked' : ''}" id="vpLikeBtn" type="button">
+              <span class="vp-like-ic"><i class="f7-icons">heart_fill</i></span>
+              <span class="vp-like-label">${d.liked ? 'أعجبني' : 'إعجاب'}</span>
+            </button>
+            <span class="vp-like-count" id="vpLikeCount"><b>${d.likes || 0}</b> إعجاب</span>
+            <span class="vp-member-chip">مسجّل منذ <b>${esc(memberDaysText(d.member_days != null ? d.member_days : memberDaysOf(u)))}</b></span>
+          </div>` : ''}
           <p class="vp-bio">${u.bio ? esc(u.bio) : 'لا يوجد نبذة'}</p>
           <div class="profile-stat-stack">
             <div class="profile-stat-row"><span>العمر</span><b>${u.age || 0} سنة</b></div>
             <div class="profile-stat-row"><span>النوع</span><b>${GENDER_NAMES[u.gender] || 'مجهول'}</b></div>
           </div>
-          ${u.registered ? `<div class="vp-member-card">
-            <div class="vp-member-ic"><i class="f7-icons">calendar_badge_plus</i></div>
-            <span class="vp-member-label">مسجّل منذ</span>
-            <b class="vp-member-period">${esc(memberDaysText(d.member_days != null ? d.member_days : memberDaysOf(u)))}</b>
-            <span class="vp-member-date"><i class="f7-icons">calendar</i><span dir="ltr">${formatDateAr(u.created_at)}</span></span>
-          </div>` : ''}
           ${u.bio_audio ? `<div class="profile-voice-block">
               <div class="profile-voice-title"><i class="f7-icons">waveform</i><span>نبذة صوتية</span></div>
               ${profileAudioReadonlyHtml(u.bio_audio, u.bio_audio_duration)}
@@ -6259,7 +6254,7 @@ function renderVisitorProfile(u, d) {
       const label = likeBtn.querySelector('.vp-like-label');
       if (label) label.textContent = likeState ? 'أعجبني' : 'إعجاب';
       const cnt = $('#vpLikeCount');
-      if (cnt) cnt.innerHTML = `<b>${likeCount}</b> إعجاب على هذا الملف`;
+      if (cnt) cnt.innerHTML = `<b>${likeCount}</b> إعجاب`;
     };
     const burstHearts = () => {
       const burst = document.createElement('div');
@@ -6630,7 +6625,7 @@ function renderProfileForm(u, d) {
   // ===== التفاصيل في قالب منبثق: النقر على بطاقة إحصائية يفتح تفاصيلها فقط =====
   // (القالب يعرض نحو 4 عناصر ثم يصبح الباقي بالتمرير)
   PF_STATS = {
-    memberDays, createdAt: u.created_at, likes: +d.likes || 0, viewsTotal,
+    memberDays, createdAt: u.created_at, likes: +d.likes || 0, viewsTotal: totalOpens,
     viewers: viewersList, likers: likersList
   };
   $$('#pfStatsCard .pf-stat').forEach(btn => {
