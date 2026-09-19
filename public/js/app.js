@@ -3747,7 +3747,7 @@ async function bcastStart(mode) {
       ? await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
       // كاميرا واقعية: دقة 720p بمعدل 30 إطاراً/ث مع كاميرا أمامية ومعالجة صوتية متقدمة
       : await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 } },
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
   } catch (e) { return toast('تعذر الوصول إلى ' + (mode === 'audio' ? 'الميكروفون' : 'الكاميرا') + '، تحقق من الأذونات', false); }
@@ -7220,13 +7220,12 @@ function proAudioConstraints() {
   };
 }
 // سلّم دقة الالتقاط: نبدأ بـ HD 720p ثم نهبط تلقائياً إن رفض الجهاز/المتصفح.
-// سقف صلب: الكاميرا لا تلتقط أبداً فوق 1280×720 (قرار الإدارة).
 // (الجودة المُرسلة فعلياً يتحكم بها محرك الجودة التكيفي لحظة بلحظة)
 const PRO_CAPTURE_LADDER = [
-  { width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 } },
-  { width: { ideal: 960, max: 1280 }, height: { ideal: 540, max: 720 }, frameRate: { ideal: 30, max: 30 } },
-  { width: { ideal: 640, max: 1280 }, height: { ideal: 360, max: 720 }, frameRate: { ideal: 30, max: 30 } },
-  { width: { ideal: 480, max: 1280 }, height: { ideal: 270, max: 720 }, frameRate: { ideal: 24, max: 30 } }
+  { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
+  { width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 30, max: 30 } },
+  { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 30, max: 30 } },
+  { width: { ideal: 480 }, height: { ideal: 270 }, frameRate: { ideal: 24, max: 30 } }
 ];
 // ترجع { stream, hasVideo } — عند غياب الكاميرا (أو تعذر تشغيلها) نسقط إلى
 // صوت فقط لكن المكالمة تبقى «فيديو»: نستقبل فيديو الطرف الآخر ونشاهده.
@@ -7271,7 +7270,7 @@ function enhanceProSdp(sdp, isVideo) {
     if (isVideo && !/x-google-start-bitrate/i.test(out)) {
       out = out.replace(/(a=fmtp:\d+[^\r\n]*)/gi, (m) => {
         if (/opus/i.test(m) || /red\/|ulpfec|telephone-event/i.test(m)) return m;
-        return m + ';x-google-start-bitrate=1500;x-google-min-bitrate=150;x-google-max-bitrate=1700';
+        return m + ';x-google-start-bitrate=1500;x-google-min-bitrate=150;x-google-max-bitrate=2600';
       });
     }
     return out;
@@ -7749,7 +7748,7 @@ async function flipVideoCallCamera() {
     if (!newTrack) {
       const ns = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: lv.w, max: 1280 }, height: { ideal: lv.h, max: 720 },
+          width: { ideal: lv.w }, height: { ideal: lv.h },
           frameRate: { ideal: lv.fps, max: 30 },
           facingMode: { ideal: nextFacing }
         },
@@ -7878,11 +7877,12 @@ document.addEventListener('pointerdown', () => {
 // =====================================================
 //  PRO ADAPTIVE VIDEO ENGINE — جودة تكيفية HD للطرفين
 //  يبدأ بـ 720p HD صافية، ويراقب الشبكة لحظة بلحظة (RTT/فقد/تجمد):
-//  • السقف الأعلى 720p HD دائماً — لا تتجاوزها الجودة أبداً (قرار الإدارة)
+//  • شبكة ممتازة → يصعد حتى 1080p FHD
 //  • ضعف مفاجئ → يهبط بسلاسة لمستوى أنسب (بلا تقطيع ولا تجمد)
 //  • يعمل عند الطرفين معاً، فكل طرف يضبط إرساله حسب ما يراه من شبكته
 // =====================================================
 const PRO_VIDEO_LADDER = [
+  { id: '1080p', w: 1920, h: 1080, fps: 30, br: 2600000, label: '1080p FHD', short: 'FHD' },
   { id: '720p',  w: 1280, h: 720,  fps: 30, br: 1700000, label: '720p HD',  short: 'HD' },
   { id: '540p',  w: 960,  h: 540,  fps: 30, br: 1100000, label: '540p',     short: '540p' },
   { id: '480p',  w: 854,  h: 480,  fps: 30, br: 850000,  label: '480p',     short: '480p' },
@@ -7890,7 +7890,7 @@ const PRO_VIDEO_LADDER = [
   { id: '270p',  w: 480,  h: 270,  fps: 24, br: 320000,  label: '270p',     short: '270p' },
   { id: '180p',  w: 320,  h: 180,  fps: 20, br: 160000,  label: '180p',     short: '180p' }
 ];
-const PRO_Q_START_IDX = 0; // البداية دائماً HD 720p صافية (وهي السقف الأعلى)
+const PRO_Q_START_IDX = 1; // البداية دائماً HD 720p صافية
 let VIDEO_QA_TIMER = null;
 let PRO_Q = null;
 
@@ -7939,7 +7939,7 @@ async function proVideoApplyLevel(idx, reason) {
       await sender.setParameters(params).catch(() => {});
     }
     // المستويات الدنيا (360p وأقل): خفّض الالتقاط نفسه لتخفيف المعالج والبطارية
-    if (PM_CALL.localStream && idx >= 3) {
+    if (PM_CALL.localStream && idx >= 4) {
       PM_CALL.localStream.getVideoTracks().forEach(track => {
         try {
           if (typeof track.applyConstraints === 'function') {
@@ -7953,7 +7953,7 @@ async function proVideoApplyLevel(idx, reason) {
     }
     // مخزن الاهتزاز الديناميكي: ممتاز=150ms (لاق شبه معدوم)، ضعيف=400ms (بلا تقطيع)
     try {
-      const jb = idx <= 0 ? 150 : (idx <= 3 ? 250 : 400);
+      const jb = idx <= 1 ? 150 : (idx <= 3 ? 250 : 400);
       PM_CALL.pc.getReceivers().forEach(r => {
         try { if ('jitterBufferTarget' in r) r.jitterBufferTarget = jb; } catch (e) {}
         try { if ('playoutDelayHint' in r) r.playoutDelayHint = jb / 1000; } catch (e) {}
@@ -7987,7 +7987,7 @@ function setVideoQualityBadge() {
   const lv = PRO_VIDEO_LADDER[q.idx];
   if (el) {
     el.style.display = '';
-    el.className = 'pmvc-quality q-' + (q.idx <= 0 ? 'hd' : (q.idx <= 3 ? 'sd' : 'low'));
+    el.className = 'pmvc-quality q-' + (q.idx <= 1 ? 'hd' : (q.idx <= 3 ? 'sd' : 'low'));
     el.textContent = lv.label;
     el.title = 'جودة الفيديو التكيفية — ' + lv.label;
   }
@@ -8113,7 +8113,7 @@ async function proVideoMonitorTick() {
       if (q.good >= 4 && q.idx > 0) {
         q.good = 0;
         q.cooldownUntil = now + 8000;
-        await proVideoApplyLevel(q.idx - 1, q.idx - 1 <= 0 ? '✨ الشبكة ممتازة — جودة HD صافية' : '⬆️ تحسّنت الشبكة — رفعنا الجودة');
+        await proVideoApplyLevel(q.idx - 1, q.idx - 1 <= 1 ? '✨ الشبكة ممتازة — جودة HD صافية' : '⬆️ تحسّنت الشبكة — رفعنا الجودة');
         return;
       }
     } else q.good = 0;
