@@ -7342,30 +7342,50 @@ body.lang-ltr .r-logo { padding-inline-start: 0; }
 }
 
 /* ----- بطاقة «مسجّل منذ» داخل معلومات ملف المستخدم الآخر ----- */
-.profile-stat-row.vp-member-row b { color:#b6254f; }
+/* شارة أنيقة متوسطة العرض: أيقونة دائرية متدرجة + المدة بخط بارز + التاريخ في حبّة */
 .vp-member-card {
-  margin:14px auto 4px;
-  width:min(320px, 100%);
-  display:flex;
-  align-items:center;
-  gap:10px;
-  padding:10px 14px;
-  border-radius:14px;
-  background:linear-gradient(135deg,#fff1f5,#fde8ef);
-  border:1px solid #f3cddb;
-  box-shadow:0 3px 10px rgba(182,37,79,.08);
+  margin:16px auto 6px;
+  width:min(290px, 100%);
+  padding:16px 18px 13px;
+  border-radius:18px;
+  background:linear-gradient(165deg,#ffffff 0%,#fff4f8 55%,#fde9f0 100%);
+  border:1px solid #f4d3e0;
+  box-shadow:0 6px 18px rgba(182,37,79,.10);
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  text-align:center;
+  position:relative;
+  overflow:hidden;
+}
+.vp-member-card::before {
+  content:'';
+  position:absolute; top:0; left:12%; right:12%; height:3px;
+  border-radius:0 0 8px 8px;
+  background:linear-gradient(90deg,#e11d48,#b6254f,#f59e0b);
 }
 .vp-member-ic {
-  width:36px; height:36px; flex-shrink:0;
+  width:46px; height:46px; flex-shrink:0;
   border-radius:50%;
   display:flex; align-items:center; justify-content:center;
-  background:#fff;
-  box-shadow:0 2px 8px rgba(182,37,79,.15);
+  background:linear-gradient(135deg,#e11d48,#b6254f);
+  box-shadow:0 5px 14px rgba(225,29,72,.35), inset 0 0 0 3px rgba(255,255,255,.25);
+  margin:2px 0 4px;
 }
-.vp-member-ic i { color:#b6254f; font-size:19px; }
-.vp-member-txt { display:flex; flex-direction:column; gap:2px; min-width:0; }
-.vp-member-txt b { color:#8c1d3f; font-size:13.5px; font-weight:900; }
-.vp-member-txt span { color:#a06a80; font-size:11.5px; font-weight:700; }
+.vp-member-ic i { color:#fff; font-size:23px; }
+.vp-member-label {
+  color:#b07a90; font-size:11.5px; font-weight:800; letter-spacing:.4px;
+}
+.vp-member-period {
+  color:#8c1d3f; font-size:17px; font-weight:900; line-height:1.35;
+}
+.vp-member-date {
+  margin-top:4px;
+  display:inline-flex; align-items:center; gap:5px;
+  background:#fff; border:1px solid #f1d3e0;
+  color:#9b5f77; border-radius:999px;
+  padding:3px 13px; font-size:11.5px; font-weight:800;
+  box-shadow:0 1px 4px rgba(182,37,79,.08);
+}
+.vp-member-date i { font-size:13px; color:#b6254f; }
 
 /* ----- بطاقة إحصائيات ملفي الشخصي (أيام العضوية / الإعجابات / المشاهدات) ----- */
 .pf-stats-card {
@@ -7389,23 +7409,64 @@ body.lang-ltr .r-logo { padding-inline-start: 0; }
   margin:4px 0 10px;
 }
 .pf-stats-head i { color:#b6254f; font-size:17px; }
+.pf-stats-head em {
+  margin-inline-start:auto;
+  font-style:normal; color:#9aa0b5; font-size:10px; font-weight:700;
+}
 .pf-stats-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+/* بطاقات الإحصائيات: أزرار تُفتح تفاصيلها بالنقر (أكورديون) */
 .pf-stat {
+  position:relative;
   background:linear-gradient(180deg,#fdf5f8,#fbeef3);
   border:1px solid #f1d8e2;
   border-radius:12px;
   padding:10px 4px 8px;
   text-align:center;
   display:flex; flex-direction:column; gap:3px;
+  font-family:inherit;
+  cursor:pointer;
+  transition:transform .15s, box-shadow .15s, background .2s, border-color .2s;
+}
+.pf-stat:hover { border-color:#e6b8ca; box-shadow:0 3px 10px rgba(182,37,79,.12); }
+.pf-stat:active { transform:scale(.96); }
+.pf-stat.open {
+  background:linear-gradient(180deg,#fbdfe9,#f8cfdd);
+  border-color:#dfa4bb;
+  box-shadow:0 4px 12px rgba(182,37,79,.18);
 }
 .pf-stat b { color:#b6254f; font-size:20px; font-weight:900; line-height:1.1; }
 .pf-stat span { color:#7c8296; font-size:10.5px; font-weight:800; }
+.pf-stat.open span { color:#8c1d3f; }
+.pf-stat-arrow {
+  position:absolute; top:5px; inset-inline-end:6px;
+  font-size:10px; color:#c894aa;
+  transition:transform .25s, color .2s;
+}
+.pf-stat.open .pf-stat-arrow { transform:rotate(180deg); color:#b6254f; }
+/* لوحة تفاصيل «يوم عضوية» داخل بطاقة الإحصائيات */
+.pf-stat-detail {
+  margin-top:10px;
+  padding:9px 12px;
+  border-radius:12px;
+  background:#fdf4f7;
+  border:1px dashed #eec9d8;
+}
+.pf-stat-detail .pf-since { margin-top:0; }
+.pf-stat-detail .pf-since + .pf-since { margin-top:7px; }
 .pf-since {
   margin-top:10px;
   display:flex; align-items:center; gap:6px;
   color:#8a90a0; font-size:11.5px; font-weight:700;
 }
+.pf-since b { color:#8c1d3f; font-weight:900; }
 .pf-since i { color:#b6254f; font-size:14px; }
+/* حركة ظهور لوحات التفاصيل عند الفتح */
+.pf-stat-detail.opening,
+.pf-viewers-card.opening { animation:pfDetailIn .28s ease; }
+@keyframes pfDetailIn {
+  from { opacity:0; transform:translateY(-7px); }
+  to   { opacity:1; transform:none; }
+}
 
 /* ----- بطاقة «من قام بفتح ملفي» و«من أعجب بملفي» ----- */
 .pf-viewers-card {

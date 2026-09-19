@@ -5928,10 +5928,11 @@ function memberDaysText(days) {
   const y = Math.floor(days / 365), m = Math.floor((days % 365) / 30);
   return m ? `${y} سنة و ${m} شهر` : `${y} سنة`;
 }
+// تاريخ نظيف بأرقام لاتينية (بدون محارف RLM التي تنتجها toLocaleDateString العربية)
 function formatDateAr(ts) {
   if (!ts) return '-';
   const dt = new Date(+ts * 1000);
-  try { return dt.toLocaleDateString(APP_LANG === 'en' ? 'en-US' : 'ar-EG'); } catch (e) { return dt.toLocaleDateString(); }
+  return `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`;
 }
 function timeAgoAr(ts) {
   const diff = Math.floor(Date.now() / 1000) - (+ts || 0);
@@ -6116,15 +6117,12 @@ function renderVisitorProfile(u, d) {
           <div class="profile-stat-stack">
             <div class="profile-stat-row"><span>العمر</span><b>${u.age || 0} سنة</b></div>
             <div class="profile-stat-row"><span>النوع</span><b>${GENDER_NAMES[u.gender] || 'مجهول'}</b></div>
-            <div class="profile-stat-row vp-member-row"><span>عضو منذ</span><b>${esc(memberDaysText(d.member_days != null ? d.member_days : memberDaysOf(u)))}</b></div>
-            <div class="profile-stat-row"><span>الإعجابات</span><b id="vpLikeStat">${d.likes || 0} ❤️</b></div>
           </div>
           <div class="vp-member-card">
-            <span class="vp-member-ic"><i class="f7-icons">calendar_badge_plus</i></span>
-            <div class="vp-member-txt">
-              <b>مسجّل منذ ${esc(memberDaysText(d.member_days != null ? d.member_days : memberDaysOf(u)))}</b>
-              <span>تاريخ التسجيل: ${formatDateAr(u.created_at)}</span>
-            </div>
+            <div class="vp-member-ic"><i class="f7-icons">calendar_badge_plus</i></div>
+            <span class="vp-member-label">مسجّل منذ</span>
+            <b class="vp-member-period">${esc(memberDaysText(d.member_days != null ? d.member_days : memberDaysOf(u)))}</b>
+            <span class="vp-member-date"><i class="f7-icons">calendar</i><span dir="ltr">${formatDateAr(u.created_at)}</span></span>
           </div>
           ${u.bio_audio ? `<div class="profile-voice-block">
               <div class="profile-voice-title"><i class="f7-icons">waveform</i><span>نبذة صوتية</span></div>
@@ -6182,8 +6180,6 @@ function renderVisitorProfile(u, d) {
       if (label) label.textContent = likeState ? 'أعجبني' : 'إعجاب';
       const cnt = $('#vpLikeCount');
       if (cnt) cnt.innerHTML = `<b>${likeCount}</b><span>إعجاب على هذا الملف</span>`;
-      const stat = $('#vpLikeStat');
-      if (stat) stat.textContent = likeCount + ' ❤️';
     };
     const burstHearts = () => {
       const burst = document.createElement('div');
@@ -6537,13 +6533,16 @@ function renderProfileForm(u, d) {
     : viewersList.reduce((s, v) => s + (+v.views_count || 1), 0);
   const statsHtml = `
   <div class="pf-stats-card" id="pfStatsCard">
-    <div class="pf-stats-head"><i class="f7-icons">chart_bar_fill</i><span>إحصائيات ملفي الشخصي</span></div>
+    <div class="pf-stats-head"><i class="f7-icons">chart_bar_fill</i><span>إحصائيات ملفي الشخصي</span><em>اضغط على بطاقة لعرض تفاصيلها</em></div>
     <div class="pf-stats-grid">
-      <div class="pf-stat"><b>${memberDays}</b><span>يوم عضوية 🎖️</span></div>
-      <div class="pf-stat"><b id="pfStatLikes">${d.likes || 0}</b><span>إعجاب ❤️</span></div>
-      <div class="pf-stat"><b id="pfStatViews">${totalOpens}</b><span>فتحة للملف 👁️</span></div>
+      <button type="button" class="pf-stat" data-pfstat="days"><i class="f7-icons pf-stat-arrow">chevron_down</i><b>${memberDays}</b><span>يوم عضوية 🎖️</span></button>
+      <button type="button" class="pf-stat" data-pfstat="likes"><i class="f7-icons pf-stat-arrow">chevron_down</i><b id="pfStatLikes">${d.likes || 0}</b><span>إعجاب ❤️</span></button>
+      <button type="button" class="pf-stat" data-pfstat="views"><i class="f7-icons pf-stat-arrow">chevron_down</i><b id="pfStatViews">${totalOpens}</b><span>فتحة للملف 👁️</span></button>
     </div>
-    <div class="pf-since"><i class="f7-icons">calendar</i> عضو منذ ${esc(memberDaysText(memberDays))} — تاريخ التسجيل ${formatDateAr(u.created_at)}</div>
+    <div class="pf-stat-detail" id="pfDaysDetail" style="display:none">
+      <div class="pf-since"><i class="f7-icons">star_fill</i> عضو منذ <b>${esc(memberDaysText(memberDays))}</b></div>
+      <div class="pf-since"><i class="f7-icons">calendar_badge_plus</i> تاريخ التسجيل <b dir="ltr">${formatDateAr(u.created_at)}</b></div>
+    </div>
   </div>`;
   const viewerChip = v => `
     <div class="pf-viewer-chip" data-vid="${+v.viewer_id || 0}" title="فتح ملفك ${+v.views_count || 1} مرة">
@@ -6564,7 +6563,7 @@ function renderProfileForm(u, d) {
       <i class="f7-icons pf-viewer-eye heart">heart_fill</i>
     </div>`;
   const viewersHtml = `
-  <div class="pf-viewers-card" id="pfViewersCard">
+  <div class="pf-viewers-card" id="pfViewersCard" style="display:none">
     <div class="pf-viewers-head">
       <span><i class="f7-icons">eye_fill</i> من قام بفتح ملفي الشخصي</span>
       <b id="pfViewersCount">${viewersList.length}</b>
@@ -6577,7 +6576,7 @@ function renderProfileForm(u, d) {
     ${viewersList.length > 6 ? '<button class="pf-more" id="pfViewersMore" type="button">أظهر المزيد</button>' : ''}
   </div>`;
   const likersHtml = `
-  <div class="pf-viewers-card likers" id="pfLikersCard">
+  <div class="pf-viewers-card likers" id="pfLikersCard" style="display:none">
     <div class="pf-viewers-head">
       <span><i class="f7-icons">heart_fill</i> من أعجب بملفي الشخصي</span>
       <b id="pfLikersCount">${likersList.length}</b>
@@ -6624,6 +6623,27 @@ function renderProfileForm(u, d) {
   };
   bindChipClicks('#pfViewersList');
   bindChipClicks('#pfLikersList');
+
+  // ===== الأكورديون: التفاصيل مخفية، والنقر على بطاقة إحصائية يعرض تفاصيلها فقط =====
+  const STAT_PANELS = { days: '#pfDaysDetail', likes: '#pfLikersCard', views: '#pfViewersCard' };
+  $$('#pfStatsCard .pf-stat').forEach(btn => {
+    btn.onclick = () => {
+      const key = btn.dataset.pfstat;
+      const wasOpen = btn.classList.contains('open');
+      $$('#pfStatsCard .pf-stat').forEach(b => b.classList.toggle('open', b === btn && !wasOpen));
+      Object.entries(STAT_PANELS).forEach(([k, sel]) => {
+        const el = document.querySelector(sel);
+        if (!el) return;
+        const show = !wasOpen && k === key;
+        el.style.display = show ? '' : 'none';
+        if (show) {
+          el.classList.remove('opening');
+          void el.offsetWidth;               // إعادة تشغيل حركة الظهور
+          el.classList.add('opening');
+        }
+      });
+    };
+  });
   // ربط حقول الأعضاء (وفق ما أُعرض بالفعل).
   $('#pfGender').onchange = e => { PF.gender = e.target.value; $('#pfGenderTxt').textContent = GENDER_NAMES[PF.gender]; };
   if (isReg) {
