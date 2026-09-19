@@ -2235,6 +2235,27 @@ body.lang-en .notif-info { direction:ltr; text-align:left; }
 #exitNo { color:var(--main); }
 #exitYes { color:#a3b3d8; }
 
+/* ============= نافذة مدة العقوبة (كتم/طرد/حظر مؤقت) ============= */
+.mod-time-dialog { max-width:340px; width:86%; }
+.mod-time-dialog .dlg-body { text-align:right; }
+.mod-time-target { text-align:center; font-weight:900; color:var(--navy); font-size:13.5px; margin-bottom:10px; }
+.mod-time-chips { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-bottom:12px; }
+.mod-time-chips button {
+  border:1.5px solid #dbe2f1; background:#f4f6fb; color:#3c4763; border-radius:20px;
+  font-size:12px; font-weight:800; padding:7px 12px; cursor:pointer;
+}
+.mod-time-chips button.sel { background:var(--main); border-color:var(--main); color:#fff; }
+.mod-time-chips button.perm.sel { background:#dc2626; border-color:#dc2626; }
+.mod-time-custom, .mod-time-reason { margin-bottom:10px; }
+.mod-time-custom label, .mod-time-reason label { display:block; font-size:11.5px; font-weight:800; color:#565d77; margin-bottom:4px; }
+.mod-time-custom input, .mod-time-reason input {
+  width:100%; box-sizing:border-box; border:1.5px solid #dbe2f1; border-radius:10px;
+  padding:9px 10px; font-size:13px; font-weight:700; color:#1c2333; background:#fbfcff;
+}
+.mod-time-custom input:focus, .mod-time-reason input:focus { outline:none; border-color:var(--main); }
+#modTimeOk { color:#fff; background:var(--main); }
+#modTimeCancel { color:#a3b3d8; }
+
 /* ============= قالب تأكيد الانتقال إلى غرفة أخرى ============= */
 .switch-room-dialog { max-width:330px; }
 .switch-room-dialog .dlg-body { padding:6px 14px 14px; }

@@ -499,6 +499,31 @@ select.inp { cursor:pointer; }
 }
 
 /* =====================================================
+   صفحة ألوان العضويات + نافذة مدة العقوبة
+   ===================================================== */
+.color-row { align-items:center; }
+.color-pick { display:flex; align-items:center; gap:10px; }
+.color-pick input[type=color] {
+  width:46px; height:34px; border:1.5px solid #cbd5e1; border-radius:10px;
+  background:#fff; cursor:pointer; padding:2px;
+}
+.color-preview { font-size:15px; font-weight:900; min-width:90px; text-align:center; }
+.color-hex { font-size:11.5px; color:#64748b; background:#f1f5f9; border-radius:6px; padding:3px 8px; font-style:normal; }
+.mod-time-card { max-width:520px; }
+.mod-time-body { padding:16px 22px; overflow-y:auto; }
+.mod-chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+.mod-chips button {
+  border:1.5px solid #e2e8f0; background:#f8fafc; color:#475569; cursor:pointer;
+  padding:8px 14px; border-radius:999px; font-size:13px; font-weight:800; font-family:inherit;
+  transition:all .15s;
+}
+.mod-chips button:hover { border-color:#a5b4fc; color:#4338ca; background:#eef2ff; }
+.mod-chips button.sel { background:linear-gradient(90deg,#6366f1,#a855f7); color:#fff; border-color:transparent; }
+.mod-chips button.perm.sel { background:linear-gradient(90deg,#ef4444,#dc2626); }
+.mod-lbl { display:block; font-size:12.5px; font-weight:800; color:#475569; margin:10px 0 5px; }
+.mod-time-body .inp { width:100%; box-sizing:border-box; }
+
+/* =====================================================
    معرض «الصور الافتراضية» — اختيار صورة روبوت الغرفة
    ===================================================== */
 .rba-ov { z-index:100000; }

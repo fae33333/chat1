@@ -1098,6 +1098,11 @@ async function getSettings() {
 
 // التكاليف غير السالبة: الصفر قيمة صحيحة تعني أن الميزة مجانية، ولا يجوز
 // أن يحوّله استخدام (القيمة || الافتراضي) إلى سعر افتراضي.
+// لون hex صالح (#rrggbb) وإلا القيمة الافتراضية — لألوان أسماء الرتب والعضويات.
+function validHexColor(value, fallback) {
+  const v = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(v) ? v : fallback;
+}
 function normalizeNonNegativeCost(value, fallback) {
   const raw = String(value ?? '').trim();
   if (!raw) return fallback;
@@ -1590,7 +1595,7 @@ function pubUser(u) {
     bio: String(u.bio || ''),
     bio_audio: String(u.bio_audio || ''),
     bio_audio_duration: +u.bio_audio_duration || 0,
-    muted: u.muted ? 1 : 0,
+    muted: mutedActive(u) ? 1 : 0,
     color: String(u.color || ''),
     is_bot: u.is_bot ? 1 : 0,
     broadcast_banned: u.broadcast_banned ? 1 : 0,
@@ -1626,8 +1631,8 @@ async function requireRoomNotKicked(req, res, next) {
     const roomId = +req.params.id;
     const ip = normalizeIp(req.authIp || user.ip);
     const kick = !user.registered && ip
-      ? await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND ip=? LIMIT 1`, roomId, ip)
-      : await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND user_id=? LIMIT 1`, roomId, req.authUid);
+      ? await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND ip=? AND (expires_at=0 OR expires_at>?) LIMIT 1`, roomId, ip, nowSec())
+      : await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND user_id=? AND (expires_at=0 OR expires_at>?) LIMIT 1`, roomId, req.authUid, nowSec());
     if (kick) return res.status(403).json({
       reason: 'kicked',
       error: 'أنت مطرود من هذه الغرفة' + (kick.reason ? ': ' + kick.reason : '')
@@ -1759,20 +1764,57 @@ function badgeOf(u) {
 // =====================================================
 //  API - المصادقة
 // =====================================================
+// =====================================================
+//  العقوبات المؤقتة (كتم/حظر/طرد بمدة بالدقائق) — تُفك تلقائياً عند انتهاء المدة
+// =====================================================
+const nowSec = () => Math.floor(Date.now() / 1000);
+// مدة العقوبة بالدقائق من جسم الطلب: 0 أو غيابها = دائم. الحد الأقصى سنة كاملة.
+function moderationMinutes(body) {
+  const m = Math.floor(+((body && body.minutes) || 0));
+  if (!Number.isFinite(m) || m <= 0) return 0;
+  return Math.min(m, 525600);
+}
+function moderationExpiry(minutes) {
+  return minutes > 0 ? nowSec() + minutes * 60 : 0;
+}
+// نص عربي للمدة: 5 دقائق، ساعة، 3 ساعات، يوم...
+function formatDurationAr(minutes) {
+  minutes = Math.floor(+minutes || 0);
+  if (minutes <= 0) return 'دائم';
+  const parts = [];
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days) parts.push(days === 1 ? 'يوم' : (days === 2 ? 'يومين' : `${days} أيام`));
+  if (hours) parts.push(hours === 1 ? 'ساعة' : (hours === 2 ? 'ساعتين' : `${hours} ساعات`));
+  if (mins && !days) parts.push(mins === 1 ? 'دقيقة' : (mins === 2 ? 'دقيقتين' : `${mins} دقيقة`));
+  return parts.join(' و ') || 'دقيقة';
+}
+// هل الكتم/الحظر ما زال فعالاً؟ (المنتهي المدة يُعامل كغير موجود حتى قبل مسحه)
+function mutedActive(u) {
+  if (!u || !u.muted) return false;
+  const until = +u.muted_until || 0;
+  return !(until > 0 && until <= nowSec());
+}
+function bannedActive(u) {
+  if (!u || !u.banned) return false;
+  const until = +u.banned_until || 0;
+  return !(until > 0 && until <= nowSec());
+}
 async function guestIpBan(ip) {
   if (!ip) return null;
-  return q.get(`SELECT id,username,ip,device_id,reason FROM bans WHERE ip=? ORDER BY id DESC LIMIT 1`, ip);
+  return q.get(`SELECT id,username,ip,device_id,reason,expires_at FROM bans WHERE ip=? AND (expires_at=0 OR expires_at>?) ORDER BY id DESC LIMIT 1`, ip, nowSec());
 }
 async function deviceBan(deviceId) {
   deviceId = validDeviceId(deviceId);
   if (!deviceId) return null;
-  return q.get(`SELECT id,username,ip,device_id,reason FROM bans WHERE device_id=? ORDER BY id DESC LIMIT 1`, deviceId);
+  return q.get(`SELECT id,username,ip,device_id,reason,expires_at FROM bans WHERE device_id=? AND (expires_at=0 OR expires_at>?) ORDER BY id DESC LIMIT 1`, deviceId, nowSec());
 }
 async function persistentBanForRequest(req, user = null) {
-  if (user && user.banned) {
+  if (user && bannedActive(user)) {
     const accountBan = await q.get(
-      `SELECT id,username,ip,device_id,reason FROM bans WHERE username=? ORDER BY id DESC LIMIT 1`,
-      user.username
+      `SELECT id,username,ip,device_id,reason,expires_at FROM bans WHERE username=? AND (expires_at=0 OR expires_at>?) ORDER BY id DESC LIMIT 1`,
+      user.username, nowSec()
     );
     return accountBan || { username: user.username, reason: 'حظر الحساب بواسطة الإدارة' };
   }
@@ -1794,7 +1836,7 @@ function sendPersistentBan(res, ban) {
 }
 async function guestIpMute(ip) {
   if (!ip) return null;
-  return q.get(`SELECT id FROM ip_mutes WHERE ip=? LIMIT 1`, ip);
+  return q.get(`SELECT id,expires_at FROM ip_mutes WHERE ip=? AND (expires_at=0 OR expires_at>?) LIMIT 1`, ip, nowSec());
 }
 
 // =====================================================
@@ -1925,7 +1967,7 @@ async function finishAuthentication(req, res, user, extraPayload = {}) {
   if (ip) {
     if (!user.registered) {
       const mutedByIp = await guestIpMute(ip);
-      await q.run(`UPDATE users SET ip=?, device_id=?, muted=? WHERE id=?`, ip, deviceId, mutedByIp ? 1 : 0, user.id);
+      await q.run(`UPDATE users SET ip=?, device_id=?, muted=?, muted_until=? WHERE id=?`, ip, deviceId, mutedByIp ? 1 : 0, mutedByIp ? (+mutedByIp.expires_at || 0) : 0, user.id);
     } else {
       await q.run(`UPDATE users SET ip=?, device_id=? WHERE id=?`, ip, deviceId, user.id);
     }
@@ -2037,7 +2079,7 @@ app.post('/api/guest', async (req, res) => {
     const r = await q.run(`INSERT INTO users (username,gender,registered,membership,rank) VALUES (?,?,0,'none','user')`, username, gender || 'secret');
     u = await q.get(`SELECT * FROM users WHERE id=?`, r.lastID);
   }
-  if (u.banned) {
+  if (bannedActive(u)) {
     const userBan = await persistentBanForRequest(req, u);
     return sendPersistentBan(res, userBan);
   }
@@ -4071,6 +4113,9 @@ app.post('/api/admin/settings', requireSuperAdmin, async (req, res) => {
   const liveSettingKeys = new Set([
     'show_smiles', 'show_voice', 'show_image', 'hidden_super', 'wave_enabled',
     'snd_join', 'snd_msg', 'snd_leave', 'snd_join_url', 'snd_msg_url', 'snd_leave_url', 'show_time', 'msg_max',
+    'name_color_supermaster', 'name_color_superadmin', 'name_color_admin', 'name_color_roomadmin',
+    'name_color_vip', 'name_color_premium', 'name_color_plus', 'name_color_mmez',
+    'name_color_registered', 'name_color_guest',
     'snd_pm', 'snd_ntf', 'snd_pm_url', 'snd_ntf_url',
     'public_message_cooldown_seconds', 'public_message_spacing_px',
     'public_message_name_size_px', 'public_message_body_width',
@@ -4659,7 +4704,7 @@ app.get('/api/admin/user-tracking/:id/details', requireSuperAdmin, async (req, r
       id: +user.id, username: user.username, avatar: user.avatar || '', gender: user.gender || 'secret',
       age: +user.age || 0, country: user.country || '', balance: +user.balance || 0,
       membership: user.membership || 'none', rank: user.rank || 'user', registered: user.registered ? 1 : 0,
-      bio: user.bio || '', banned: user.banned ? 1 : 0, muted: user.muted ? 1 : 0,
+      bio: user.bio || '', banned: bannedActive(user) ? 1 : 0, muted: mutedActive(user) ? 1 : 0,
       created_at: +user.created_at || 0, ip: user.ip || '', device_id: user.device_id || ''
     } : null,
     online, currentRooms,
@@ -4690,12 +4735,14 @@ app.post('/api/admin/ip/ban', requireAdmin, async (req, res) => {
   const devices = [...deviceIds];
   const primaryDevice = devices[0] || '';
 
+  const ipBanMinutes = moderationMinutes(req.body);
+  const ipBanExpiresAt = moderationExpiry(ipBanMinutes);
   let ban = await q.get(`SELECT id FROM bans WHERE ip=? LIMIT 1`, ip);
   if (!ban) {
-    const out = await q.run(`INSERT INTO bans (username,ip,device_id,reason) VALUES ('حظر IP',?,?,?)`, ip, primaryDevice, reason);
+    const out = await q.run(`INSERT INTO bans (username,ip,device_id,reason,expires_at) VALUES ('حظر IP',?,?,?,?)`, ip, primaryDevice, reason, ipBanExpiresAt);
     ban = { id: out.lastID };
   } else {
-    await q.run(`UPDATE bans SET device_id=COALESCE(NULLIF(device_id,''),?),reason=? WHERE id=?`, primaryDevice, reason, ban.id);
+    await q.run(`UPDATE bans SET device_id=COALESCE(NULLIF(device_id,''),?),reason=?,expires_at=? WHERE id=?`, primaryDevice, reason, ipBanExpiresAt, ban.id);
   }
   // سجل حظر مستقل لكل جهاز إضافي حتى لا يتهرّب بتغيير الشبكة أو الـ IP.
   for (const deviceId of devices) {
@@ -4703,9 +4750,9 @@ app.post('/api/admin/ip/ban', requireAdmin, async (req, res) => {
     if (!exists) await q.run(`INSERT INTO bans (username,ip,device_id,reason) VALUES ('حظر جهاز',?,?,?)`, ip, deviceId, reason);
   }
 
-  await q.run(`UPDATE users SET banned=1 WHERE registered=0 AND ip=?`, ip);
+  await q.run(`UPDATE users SET banned=1, banned_until=? WHERE registered=0 AND ip=?`, ipBanExpiresAt, ip);
   for (const deviceId of devices) {
-    await q.run(`UPDATE users SET banned=1 WHERE registered=0 AND device_id=?`, deviceId);
+    await q.run(`UPDATE users SET banned=1, banned_until=? WHERE registered=0 AND device_id=?`, ipBanExpiresAt, deviceId);
   }
   for (const [token, auth] of CHAT_TOKENS) {
     const sameIp = normalizeIp(auth.ip) === ip;
@@ -4825,7 +4872,7 @@ app.get('/api/admin/users', requireSuperAdmin, async (req, res) => {
     ? `SELECT * FROM users WHERE username LIKE ? ORDER BY id DESC LIMIT 200`
     : `SELECT * FROM users WHERE username LIKE ? AND rank<>'supermaster' ORDER BY id DESC LIMIT 200`;
   const rows = await q.all(sql, `%${search}%`);
-  res.json(rows.map(u => ({ ...pubUser(u), banned: u.banned, muted: u.muted, ip: u.ip || '', badge: badgeOf(u) })));
+  res.json(rows.map(u => ({ ...pubUser(u), banned: bannedActive(u) ? 1 : 0, muted: mutedActive(u) ? 1 : 0, muted_until: +u.muted_until || 0, banned_until: +u.banned_until || 0, ip: u.ip || '', badge: badgeOf(u) })));
 });
 
 // ---- هدايا حساب معيّن: عرض + حذف (للسوبر ادمن والمالك) ----
@@ -5090,6 +5137,9 @@ app.post('/api/admin/users/:id/ban', requireModerator, async (req, res) => {
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
   if (!allowModerationAction(req, res, target)) return;
   const reason = String(req.body.reason || 'سلوك سيئ داخل الدردشة').slice(0, 150);
+  const banMinutes = moderationMinutes(req.body);
+  const banExpiresAt = banned ? moderationExpiry(banMinutes) : 0;
+  const banDurationText = banned && banMinutes > 0 ? ` (لمدة: ${formatDurationAr(banMinutes)})` : '';
   const byIp = isIpModeratedGuest(target);
   const ip = normalizeIp(target.ip);
   const targetSockets = socketsForModerationTarget(target);
@@ -5099,27 +5149,27 @@ app.post('/api/admin/users/:id/ban', requireModerator, async (req, res) => {
 
   if (byIp) {
     await q.run(
-      `UPDATE users SET banned=? WHERE registered=0 AND (ip=? OR (?<>'' AND device_id=?))`,
-      banned, ip, deviceId, deviceId
+      `UPDATE users SET banned=?, banned_until=? WHERE registered=0 AND (ip=? OR (?<>'' AND device_id=?))`,
+      banned, banExpiresAt, ip, deviceId, deviceId
     );
     if (banned) {
       const exists = await q.get(`SELECT id,device_id FROM bans WHERE ip=? LIMIT 1`, ip);
       if (!exists) {
-        await q.run(`INSERT INTO bans (username,ip,device_id,reason) VALUES (?,?,?,?)`, target.username, ip, deviceId, reason);
+        await q.run(`INSERT INTO bans (username,ip,device_id,reason,expires_at) VALUES (?,?,?,?,?)`, target.username, ip, deviceId, reason, banExpiresAt);
       } else {
-        await q.run(`UPDATE bans SET username=?,device_id=?,reason=? WHERE id=?`, target.username, deviceId, reason, exists.id);
+        await q.run(`UPDATE bans SET username=?,device_id=?,reason=?,expires_at=? WHERE id=?`, target.username, deviceId, reason, banExpiresAt, exists.id);
       }
     } else {
       await q.run(`DELETE FROM bans WHERE ip=? OR (?<>'' AND device_id=?)`, ip, deviceId, deviceId);
     }
   } else {
-    await q.run(`UPDATE users SET banned=? WHERE id=?`, banned, target.id);
+    await q.run(`UPDATE users SET banned=?, banned_until=? WHERE id=?`, banned, banExpiresAt, target.id);
     if (banned) {
       const exists = await q.get(`SELECT id FROM bans WHERE username=? AND (ip='' OR ip IS NULL) LIMIT 1`, target.username);
       if (!exists) {
-        await q.run(`INSERT INTO bans (username,ip,device_id,reason) VALUES (?, '', ?, ?)`, target.username, deviceId, reason);
+        await q.run(`INSERT INTO bans (username,ip,device_id,reason,expires_at) VALUES (?, '', ?, ?, ?)`, target.username, deviceId, reason, banExpiresAt);
       } else {
-        await q.run(`UPDATE bans SET device_id=?,reason=? WHERE id=?`, deviceId, reason, exists.id);
+        await q.run(`UPDATE bans SET device_id=?,reason=?,expires_at=? WHERE id=?`, deviceId, reason, banExpiresAt, exists.id);
       }
     } else {
       await q.run(`DELETE FROM bans WHERE (username=? AND (ip='' OR ip IS NULL)) OR (?<>'' AND device_id=?)`, target.username, deviceId, deviceId);
@@ -5157,7 +5207,9 @@ app.post('/api/admin/users/:id/ban', requireModerator, async (req, res) => {
         banned: true,
         persistent: true,
         text: 'تم حظرك بسبب سلوكك السيئ',
-        reason
+        reason,
+        minutes: banMinutes,
+        expires_at: banExpiresAt
       });
       for (const joinedRoomId of joinedRooms) {
         affectedRoomIds.add(joinedRoomId);
@@ -5195,14 +5247,14 @@ app.post('/api/admin/users/:id/ban', requireModerator, async (req, res) => {
       emitRoomSystemEvent(
         requestedRoomId,
         'ban',
-        `تم حظر ${target.username} بواسطة ${req.moderator.username}`,
-        { target_id: +target.id, moderator: req.moderator.username }
+        `تم حظر ${target.username} بواسطة ${req.moderator.username}${banDurationText}`,
+        { target_id: +target.id, moderator: req.moderator.username, minutes: banMinutes, expires_at: banExpiresAt }
       );
     }
     for (const affectedRoomId of affectedRoomIds) await emitRoomUsers(affectedRoomId);
     if (affectedRoomIds.size) await emitRoomCounts();
   }
-  res.json({ ok: true, banned, by_ip: byIp ? 1 : 0, by_device: deviceId ? 1 : 0 });
+  res.json({ ok: true, banned, by_ip: byIp ? 1 : 0, by_device: deviceId ? 1 : 0, minutes: banMinutes, expires_at: banExpiresAt });
 });
 
 app.post('/api/admin/users/:id/mute', requireModerator, async (req, res) => {
@@ -5213,36 +5265,39 @@ app.post('/api/admin/users/:id/mute', requireModerator, async (req, res) => {
   if (!allowModerationAction(req, res, target)) return;
   const byIp = isIpModeratedGuest(target);
   const ip = normalizeIp(target.ip);
+  const muteMinutes = moderationMinutes(req.body);
+  const muteExpiresAt = muted ? moderationExpiry(muteMinutes) : 0;
+  const muteDurationText = muted && muteMinutes > 0 ? ` (لمدة: ${formatDurationAr(muteMinutes)})` : '';
   let affectedIds;
 
   if (byIp) {
     if (muted) {
-      await q.run(`INSERT INTO ip_mutes (ip,username,reason) VALUES (?,?,?) ON CONFLICT(ip) DO UPDATE SET username=excluded.username,reason=excluded.reason`,
-        ip, target.username, String(req.body.reason || 'كتم من الإدارة').slice(0, 150));
+      await q.run(`INSERT INTO ip_mutes (ip,username,reason,expires_at) VALUES (?,?,?,?) ON CONFLICT(ip) DO UPDATE SET username=excluded.username,reason=excluded.reason,expires_at=excluded.expires_at`,
+        ip, target.username, String(req.body.reason || 'كتم من الإدارة').slice(0, 150), muteExpiresAt);
     } else {
       await q.run(`DELETE FROM ip_mutes WHERE ip=?`, ip);
     }
-    await q.run(`UPDATE users SET muted=? WHERE registered=0 AND ip=?`, muted, ip);
+    await q.run(`UPDATE users SET muted=?, muted_until=? WHERE registered=0 AND ip=?`, muted, muteExpiresAt, ip);
     affectedIds = await userIdsForModerationTarget(target);
   } else {
-    await q.run(`UPDATE users SET muted=? WHERE id=?`, muted, uid);
+    await q.run(`UPDATE users SET muted=?, muted_until=? WHERE id=?`, muted, muteExpiresAt, uid);
     affectedIds = [uid];
   }
   for (const id of affectedIds) await refreshUserEverywhere(id);
   // الكتم يُسكّت ميكروفون المذيع مؤقتاً دون إسقاطه من البث: يبقى داخل البث
   // (وهو صامت) حتى يُفكّ الكتم فيستأنف بثّه فوراً — بدل قطع الصوت وإعادة بنائها من الصفر.
   // الطرف الآخر يُصمت عبر 'mute_changed' (يبطّل تدفّقه المحلي) دون إنهاء البث للجميع.
-  for (const socket of socketsForModerationTarget(target)) socket.emit('mute_changed', { muted });
+  for (const socket of socketsForModerationTarget(target)) socket.emit('mute_changed', { muted, minutes: muteMinutes, expires_at: muteExpiresAt });
   const roomId = +req.body.room_id;
   if (roomId && roomUsers[roomId]) {
     emitRoomSystemEvent(
       roomId,
       'mute',
-      muted ? `تم كتم ${target.username} بواسطة ${req.moderator.username}` : `تم إلغاء كتم ${target.username} بواسطة ${req.moderator.username}`,
-      { muted }
+      muted ? `تم كتم ${target.username} بواسطة ${req.moderator.username}${muteDurationText}` : `تم إلغاء كتم ${target.username} بواسطة ${req.moderator.username}`,
+      { muted, minutes: muteMinutes, expires_at: muteExpiresAt }
     );
   }
-  res.json({ ok: true, muted, by_ip: byIp ? 1 : 0 });
+  res.json({ ok: true, muted, by_ip: byIp ? 1 : 0, minutes: muteMinutes, expires_at: muteExpiresAt });
 });
 
 // الطرد دائم حتى إلغائه من لوحة الإدارة، ويطبّق على IP للزائر.
@@ -5258,12 +5313,18 @@ app.post('/api/admin/users/:id/kick', requireModerator, async (req, res) => {
   if (!roomUsers[roomId] || !affectedIds.some(id => roomUsers[roomId].has(id)))
     return res.status(400).json({ error: 'المستخدم لم يعد موجوداً في الغرفة' });
 
+  const kickMinutes = moderationMinutes(req.body);
+  const kickExpiresAt = moderationExpiry(kickMinutes);
+  const kickReason = String(req.body.reason || 'طرد من الغرفة').slice(0, 150);
   const exists = byIp
     ? await q.get(`SELECT id FROM room_kicks WHERE room_id=? AND ip=? LIMIT 1`, roomId, ip)
     : await q.get(`SELECT id FROM room_kicks WHERE room_id=? AND user_id=? LIMIT 1`, roomId, uid);
   if (!exists) {
-    await q.run(`INSERT INTO room_kicks (room_id,user_id,username,ip,reason,kicked_by) VALUES (?,?,?,?,?,?)`,
-      roomId, byIp ? 0 : uid, target.username, byIp ? ip : '', String(req.body.reason || 'طرد من الغرفة').slice(0, 150), req.moderator.username);
+    await q.run(`INSERT INTO room_kicks (room_id,user_id,username,ip,reason,kicked_by,expires_at) VALUES (?,?,?,?,?,?,?)`,
+      roomId, byIp ? 0 : uid, target.username, byIp ? ip : '', kickReason, req.moderator.username, kickExpiresAt);
+  } else {
+    // إعادة الطرد تُحدّث المدة والسبب بدل تجاهلها
+    await q.run(`UPDATE room_kicks SET reason=?,kicked_by=?,expires_at=? WHERE id=?`, kickReason, req.moderator.username, kickExpiresAt, exists.id);
   }
 
   for (const socket of socketsForModerationTarget(target)) {
@@ -5282,13 +5343,57 @@ app.post('/api/admin/users/:id/kick', requireModerator, async (req, res) => {
   emitRoomSystemEvent(
     roomId,
     'kick',
-    `تم طرد ${target.username} بواسطة ${req.moderator.username}`,
-    { target_id: +target.id, moderator: req.moderator.username }
+    `تم طرد ${target.username} بواسطة ${req.moderator.username}` + (kickMinutes > 0 ? ` (لمدة: ${formatDurationAr(kickMinutes)})` : ''),
+    { target_id: +target.id, moderator: req.moderator.username, minutes: kickMinutes, expires_at: kickExpiresAt }
   );
   await emitRoomUsers(roomId);
   await emitRoomCounts();
-  res.json({ ok: true, by_ip: byIp ? 1 : 0 });
+  res.json({ ok: true, by_ip: byIp ? 1 : 0, minutes: kickMinutes, expires_at: kickExpiresAt });
 });
+
+// =====================================================
+//  منظّف العقوبات المؤقتة: يفك تلقائياً كل كتم/حظر/طرد انتهت مدته
+// =====================================================
+async function sweepExpiredModeration() {
+  try {
+    const now = nowSec();
+    const notified = new Set();
+    const notifyUnmuted = async (uid) => {
+      uid = +uid;
+      if (!uid || notified.has(uid)) return;
+      notified.add(uid);
+      await refreshUserEverywhere(uid);
+      io.to('user_' + uid).emit('mute_changed', { muted: 0, expired: 1 });
+      io.to('user_' + uid).emit('mod_expired', { type: 'mute', text: 'انتهت مدة الكتم — تم فك الكتم عنك تلقائياً ✅' });
+    };
+    // 1) كتم IP المنتهي (الزوار): حذف السجل + فك صفوف الزوار المرتبطة
+    const expiredIpMutes = await q.all(`SELECT id,ip FROM ip_mutes WHERE expires_at>0 AND expires_at<=?`, now);
+    for (const m of expiredIpMutes) {
+      const guestIds = await q.all(`SELECT id FROM users WHERE registered=0 AND muted=1 AND ip=?`, m.ip);
+      await q.run(`DELETE FROM ip_mutes WHERE id=?`, m.id);
+      await q.run(`UPDATE users SET muted=0, muted_until=0 WHERE registered=0 AND ip=?`, m.ip);
+      for (const g of guestIds) await notifyUnmuted(g.id);
+    }
+    // 2) كتم الحسابات المنتهي (يشمل أي زائر متبقٍّ)
+    const expiredMutes = await q.all(`SELECT id FROM users WHERE muted=1 AND muted_until>0 AND muted_until<=?`, now);
+    if (expiredMutes.length) {
+      await q.run(`UPDATE users SET muted=0, muted_until=0 WHERE muted=1 AND muted_until>0 AND muted_until<=?`, now);
+      for (const u of expiredMutes) await notifyUnmuted(u.id);
+    }
+    // 3) الحظر المنتهي: حذف السجلات + فك صفوف المستخدمين المرتبطة
+    const expiredBans = await q.all(`SELECT id,username,ip FROM bans WHERE expires_at>0 AND expires_at<=?`, now);
+    for (const b of expiredBans) {
+      await q.run(`DELETE FROM bans WHERE id=?`, b.id);
+      if (b.ip) await q.run(`UPDATE users SET banned=0, banned_until=0 WHERE registered=0 AND ip=?`, b.ip);
+      else if (b.username) await q.run(`UPDATE users SET banned=0, banned_until=0 WHERE username=?`, b.username);
+    }
+    await q.run(`UPDATE users SET banned=0, banned_until=0 WHERE banned=1 AND banned_until>0 AND banned_until<=?`, now);
+    // 4) الطرد المنتهي من الغرف
+    await q.run(`DELETE FROM room_kicks WHERE expires_at>0 AND expires_at<=?`, now);
+  } catch (e) { console.error('[sweepExpiredModeration]', e && e.message); }
+}
+setInterval(sweepExpiredModeration, 30000).unref();
+sweepExpiredModeration().catch(() => { });
 
 // ---- الحسابات الإدارية ----
 app.get('/api/admin/admins', requireSuperAdmin, async (req, res) => {
@@ -5330,6 +5435,26 @@ app.get('/api/admin/kicks', requireAdmin, async (req, res) => {
 });
 app.delete('/api/admin/kicks/:id', requireAdmin, async (req, res) => {
   await q.run(`DELETE FROM room_kicks WHERE id=?`, +req.params.id);
+  res.json({ ok: true });
+});
+
+// ---- قائمة المكتومين (حسابات + عناوين IP) مع المدة المتبقية ----
+app.get('/api/admin/mutes', requireAdmin, async (req, res) => {
+  const users = await q.all(`SELECT id,username,registered,ip,muted_until FROM users WHERE muted=1 ORDER BY id DESC LIMIT 200`);
+  const ips = await q.all(`SELECT * FROM ip_mutes ORDER BY id DESC LIMIT 200`);
+  res.json({ users, ips, now: nowSec() });
+});
+app.delete('/api/admin/mutes/ip/:id', requireAdmin, async (req, res) => {
+  const m = await q.get(`SELECT * FROM ip_mutes WHERE id=?`, +req.params.id);
+  if (m) {
+    await q.run(`DELETE FROM ip_mutes WHERE id=?`, m.id);
+    const guests = await q.all(`SELECT id FROM users WHERE registered=0 AND muted=1 AND ip=?`, m.ip);
+    await q.run(`UPDATE users SET muted=0, muted_until=0 WHERE registered=0 AND ip=?`, m.ip);
+    for (const g of guests) {
+      await refreshUserEverywhere(g.id);
+      io.to('user_' + g.id).emit('mute_changed', { muted: 0 });
+    }
+  }
   res.json({ ok: true });
 });
 
@@ -7370,6 +7495,17 @@ app.get('/api/public-settings', async (req, res) => {
     call_cost: Math.max(1, parseInt(s.call_cost) || 2),
     video_call_cost: normalizeNonNegativeCost(s.video_call_cost, 5),
     video_call_allowed_memberships: s.video_call_allowed_memberships !== undefined ? s.video_call_allowed_memberships : 'mmez,plus,premium,vip',
+    // ألوان أسماء الرتب والعضويات — تُدار من لوحة الإدارة (صفحة ألوان العضويات)
+    name_color_supermaster: validHexColor(s.name_color_supermaster, '#000000'),
+    name_color_superadmin: validHexColor(s.name_color_superadmin, '#000000'),
+    name_color_admin: validHexColor(s.name_color_admin, '#000000'),
+    name_color_roomadmin: validHexColor(s.name_color_roomadmin, '#e03131'),
+    name_color_vip: validHexColor(s.name_color_vip, '#1479f2'),
+    name_color_premium: validHexColor(s.name_color_premium, '#38b6ff'),
+    name_color_plus: validHexColor(s.name_color_plus, '#2e9e44'),
+    name_color_mmez: validHexColor(s.name_color_mmez, '#e91e8c'),
+    name_color_registered: validHexColor(s.name_color_registered, '#795548'),
+    name_color_guest: validHexColor(s.name_color_guest, '#000000'),
     register_gold: Math.max(0, parseInt(s.register_gold) !== undefined ? +s.register_gold : 10),
     favicon_url: s.favicon_url || '',
     seo_title: s.seo_title || '',
@@ -7859,11 +7995,11 @@ function broadcastPublicState(roomId) {
 }
 // صلاحية الصعود للبث تُدار حسب العضوية من لوحة الإدارة؛ الشخص المكتوم مستمع فقط.
 async function canStartVideoBroadcast(user) {
-  if (!user || user.muted || user.broadcast_banned) return false;
+  if (!user || mutedActive(user) || user.broadcast_banned) return false;
   return canUseMembershipFeature(user.id, 'broadcast_allowed_memberships');
 }
 async function canStartAudioBroadcast(user) {
-  if (!user || user.muted || user.broadcast_banned) return false;
+  if (!user || mutedActive(user) || user.broadcast_banned) return false;
   return canUseMembershipFeature(user.id, 'broadcast_allowed_memberships');
 }
 function endBroadcast(roomId, reason = 'ended') {
@@ -8517,8 +8653,8 @@ io.on('connection', async (socket) => {
     const room = await q.get(`SELECT * FROM rooms WHERE id=?`, roomId);
     if (!room) return done({ ok: false, reason: 'missing', text: 'الغرفة غير موجودة' });
     const kick = !me.registered && clientIp
-      ? await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND ip=? LIMIT 1`, +roomId, clientIp)
-      : await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND user_id=? LIMIT 1`, +roomId, uid);
+      ? await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND ip=? AND (expires_at=0 OR expires_at>?) LIMIT 1`, +roomId, clientIp, nowSec())
+      : await q.get(`SELECT id,reason FROM room_kicks WHERE room_id=? AND user_id=? AND (expires_at=0 OR expires_at>?) LIMIT 1`, +roomId, uid, nowSec());
     if (kick) return done({
       ok: false,
       reason: 'kicked',
@@ -8634,7 +8770,7 @@ io.on('connection', async (socket) => {
     const allowed = mode === 'video' ? await canStartVideoBroadcast(me) : await canStartAudioBroadcast(me);
     if (!allowed) return ack({
       ok: false,
-      text: me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (me.muted ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع')
+      text: me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (mutedActive(me) ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع')
     });
     let b = roomBroadcast[roomId];
     if (b && b.hosts.has(uid)) return ack({ ok: false, text: 'أنت تبث بالفعل في هذه الغرفة' });
@@ -8688,7 +8824,7 @@ io.on('connection', async (socket) => {
     if (b.hosts.has(uid)) return ack({ ok: false, text: 'أنت أحد المذيعين بالفعل' });
     if (b.speakPending.has(uid)) return ack({ ok: true, pending: true });
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
-    if (!await canStartAudioBroadcast(me)) return ack({ ok: false, text: me.muted ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع' });
+    if (!await canStartAudioBroadcast(me)) return ack({ ok: false, text: mutedActive(me) ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع' });
     b.speakPending.set(uid, { username: me.username, avatar: me.avatar || '' });
     io.to('user_' + b.primaryHostId).emit('bcast:speak_request', {
       roomId, user: { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me) }
@@ -8920,7 +9056,7 @@ io.on('connection', async (socket) => {
     roomId = +roomId;
     if (!socket.data.joinedRooms.has(roomId)) return socket.emit('err', 'يجب دخول الغرفة قبل الكتابة');
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
-    if (me.muted) return socket.emit('err', 'أنت مكتوم ولا يمكنك الكتابة');
+    if (mutedActive(me)) return socket.emit('err', 'أنت مكتوم ولا يمكنك الكتابة');
     const hiddenAdmin = socket.data.hiddenRooms.has(roomId) && (me.rank === 'superadmin' || me.rank === 'admin' || me.rank === 'supermaster');
     const rawText = String(text || '').trim();
     const textLength = Array.from(rawText).length;
@@ -8996,7 +9132,7 @@ io.on('connection', async (socket) => {
     const messageUser = hiddenAdmin
       ? { ...freshPub, hidden_admin: 1 }
       : { ...freshPub, live_broadcast_host: liveBroadcastHost ? 1 : 0 };
-    const extra = JSON.stringify({ badge: effectiveBadge, gender: me.gender, rank: effectiveRank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: me.muted ? 1 : 0, reply: rp, color: col, media: cleanMedia, live_broadcast_host: liveBroadcastHost ? 1 : 0, verified: VERIFIED_SET.has(me.username) ? 1 : 0, verified_expired: VERIFIED_SET.has(me.username) ? expiredNow(VERIFIED_EXPIRES.get(me.username)) : 0, royal_expired: ROYAL_MAP.has(me.username) ? expiredNow(ROYAL_EXPIRES.get(me.username)) : 0, hidden_admin: hiddenAdmin ? 1 : 0, broadcast_banned: me.broadcast_banned ? 1 : 0 });
+    const extra = JSON.stringify({ badge: effectiveBadge, gender: me.gender, rank: effectiveRank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: mutedActive(me) ? 1 : 0, reply: rp, color: col, media: cleanMedia, live_broadcast_host: liveBroadcastHost ? 1 : 0, verified: VERIFIED_SET.has(me.username) ? 1 : 0, verified_expired: VERIFIED_SET.has(me.username) ? expiredNow(VERIFIED_EXPIRES.get(me.username)) : 0, royal_expired: ROYAL_MAP.has(me.username) ? expiredNow(ROYAL_EXPIRES.get(me.username)) : 0, hidden_admin: hiddenAdmin ? 1 : 0, broadcast_banned: me.broadcast_banned ? 1 : 0 });
     const ins = await q.run(`INSERT INTO messages (room_id,user_id,username,text,type,extra) VALUES (?,?,?,?,'msg',?)`, roomId, uid, me.username, text, extra);
     const msg = {
       id: ins.lastID, room_id: roomId, text, type: 'msg', hidden_admin: hiddenAdmin ? 1 : 0,

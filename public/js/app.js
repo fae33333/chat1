@@ -53,7 +53,7 @@ function refreshSocketHandshakeKey(socket) {
   return key;
 }
 
-let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, public_message_spacing_px: 4, public_message_name_size_px: 14, public_message_body_width: 'fit', msg_badge_superadmin_size: 24, msg_badge_admin_size: 24, msg_badge_roomadmin_size: 24, msg_badge_mmez_size: 24, msg_badge_vip_size: 24, msg_badge_premium_size: 24, msg_badge_plus_size: 24, msg_badge_register_size: 24, msg_badge_guest_size: 24, msg_badge_hidden_admin_size: 28, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wave_enabled: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_call_allowed_memberships: 'mmez,plus,premium,vip', video_call_cost: 5, video_call_allowed_memberships: 'mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip' };
+let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, public_message_spacing_px: 4, public_message_name_size_px: 14, public_message_body_width: 'fit', msg_badge_superadmin_size: 24, msg_badge_admin_size: 24, msg_badge_roomadmin_size: 24, msg_badge_mmez_size: 24, msg_badge_vip_size: 24, msg_badge_premium_size: 24, msg_badge_plus_size: 24, msg_badge_register_size: 24, msg_badge_guest_size: 24, msg_badge_hidden_admin_size: 28, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wave_enabled: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_call_allowed_memberships: 'mmez,plus,premium,vip', video_call_cost: 5, video_call_allowed_memberships: 'mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', name_color_supermaster: '#000000', name_color_superadmin: '#000000', name_color_admin: '#000000', name_color_roomadmin: '#e03131', name_color_vip: '#1479f2', name_color_premium: '#38b6ff', name_color_plus: '#2e9e44', name_color_mmez: '#e91e8c', name_color_registered: '#795548', name_color_guest: '#000000' };
 let PREFS = { snd_all: 1, snd_msg: 1, snd_join: 1, snd_leave: 1, show_time: 1, pm_recv: 1, dsk_ntf: 1 };
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
@@ -1945,16 +1945,23 @@ function rankWeight(u) {
   if (u.registered) return 2;
   return 1;   // زائر
 }
+// لون اسم المستخدم حسب رتبته/عضويته — تُدار القيم من لوحة الإدارة (صفحة ألوان العضويات)
+function nameColorOf(key, fallback) {
+  const v = String((typeof SETTINGS !== 'undefined' && SETTINGS['name_color_' + key]) || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(v) ? v : fallback;
+}
 function userColor(u) {
-  if (!u) return '#000000';
-  if (u.rank === 'supermaster' || u.rank === 'superadmin' || u.rank === 'admin') return '#000000';   // أسود عريض
-  if (u.rank === 'roomadmin') return '#e03131';                          // أحمر
-  if (u.membership === 'mmez') return '#e91e8c';                         // زهري
-  if (u.membership === 'vip') return '#1479f2';                          // أزرق
-  if (u.membership === 'plus') return '#2e9e44';                         // أخضر
-  if (u.membership === 'premium') return '#38b6ff';                      // أزرق فاتح
-  if (u.registered) return '#795548';                                    // بني (مسجل)
-  return '#000000';                                                      // زائر أسود رقيق
+  if (!u) return nameColorOf('guest', '#000000');
+  if (u.rank === 'supermaster') return nameColorOf('supermaster', '#000000');
+  if (u.rank === 'superadmin') return nameColorOf('superadmin', '#000000');
+  if (u.rank === 'admin') return nameColorOf('admin', '#000000');
+  if (u.rank === 'roomadmin') return nameColorOf('roomadmin', '#e03131');
+  if (u.membership === 'mmez') return nameColorOf('mmez', '#e91e8c');
+  if (u.membership === 'vip') return nameColorOf('vip', '#1479f2');
+  if (u.membership === 'plus') return nameColorOf('plus', '#2e9e44');
+  if (u.membership === 'premium') return nameColorOf('premium', '#38b6ff');
+  if (u.registered) return nameColorOf('registered', '#795548');
+  return nameColorOf('guest', '#000000');
 }
 function userWeight(u) {
   if (u && (u.rank === 'supermaster' || u.rank === 'superadmin' || u.rank === 'admin')) return 900;  // عريض
@@ -2538,6 +2545,13 @@ function connectSocket() {
     if (!changes || typeof changes !== 'object') return;
     try {
       Object.assign(SETTINGS, changes);
+      // تغيّرت ألوان الأسماء من اللوحة؟ أعد رسم القوائم والرسائل فوراً.
+      if (Object.keys(changes).some(k => String(k).indexOf('name_color_') === 0)) {
+        try {
+          if (CUR_ROOM) renderUsers();
+          if (typeof renderMessages === 'function') renderMessages();
+        } catch (e2) { }
+      }
       for (const soundKey of ['snd_join', 'snd_msg', 'snd_leave']) {
         if (changes[soundKey] === undefined) continue;
         // تغيير الإدارة ينعكس فوراً على المفتاح المحلي الظاهر للمستخدم أيضاً.
@@ -2734,6 +2748,10 @@ function connectSocket() {
     }
     bcastRenderBar();
     toast(muted ? 'قامت الإدارة بكتمك — تم كتم ميكروفونك إجبارياً 🚫' : 'قامت الإدارة بإلغاء كتمك — عاد ميكروفونك للعمل 🎙️', !muted);
+  });
+  // انتهت مدة عقوبة مؤقتة وفُكّت تلقائياً من الخادم
+  SOCKET.on('mod_expired', (d) => {
+    toast((d && d.text) || 'انتهت مدة العقوبة وتم فكّها تلقائياً ✅', true);
   });
   SOCKET.on('kicked', ({ roomId, text }) => {
     if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
@@ -5609,42 +5627,97 @@ $('#usBcastUnban').onclick = async () => {
   } catch (e) { toast('تعذر تنفيذ الإجراء', false); }
 };
 
+// ---------- نافذة مدة العقوبة: كل إجراء (كتم/طرد/حظر) بمدة مستقلة تُفك تلقائياً ----------
+let MOD_TIME_STATE = null; // { action:'mute'|'kick'|'ban', target }
+function modTimeDurationText(minutes) {
+  minutes = Math.floor(+minutes || 0);
+  if (minutes <= 0) return 'دائم';
+  const parts = [];
+  const days = Math.floor(minutes / 1440), hours = Math.floor((minutes % 1440) / 60), mins = minutes % 60;
+  if (days) parts.push(days === 1 ? 'يوم' : (days === 2 ? 'يومين' : `${days} أيام`));
+  if (hours) parts.push(hours === 1 ? 'ساعة' : (hours === 2 ? 'ساعتين' : `${hours} ساعات`));
+  if (mins && !days) parts.push(mins === 1 ? 'دقيقة' : (mins === 2 ? 'دقيقتين' : `${mins} دقيقة`));
+  return parts.join(' و ') || 'دقيقة';
+}
+function openModTime(action, target) {
+  MOD_TIME_STATE = { action, target: { id: target.id, username: target.username } };
+  $('#modTimeTitle').textContent = action === 'mute' ? '🔇 مدة الكتم' : action === 'kick' ? '👢 مدة الطرد' : '🚫 مدة الحظر';
+  $('#modTimeTarget').textContent = 'العضو: ' + target.username;
+  $('#modTimeCustom').value = '';
+  $('#modTimeReason').value = '';
+  $$('#modTimeChips button').forEach(b => b.classList.remove('sel'));
+  openOv('modTimeOv');
+}
+$('#modTimeChips').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  $$('#modTimeChips button').forEach(x => x.classList.remove('sel'));
+  b.classList.add('sel');
+  $('#modTimeCustom').value = '';
+});
+$('#modTimeCustom').addEventListener('input', () => {
+  if ($('#modTimeCustom').value) $$('#modTimeChips button').forEach(x => x.classList.remove('sel'));
+});
+$('#modTimeOk').onclick = async () => {
+  const st = MOD_TIME_STATE;
+  MOD_TIME_STATE = null;
+  if (!st) return closeOv('modTimeOv');
+  const custom = Math.floor(+$('#modTimeCustom').value || 0);
+  const sel = $('#modTimeChips button.sel');
+  const minutes = custom > 0 ? Math.min(custom, 525600) : (sel ? (+sel.dataset.min || 0) : 0);
+  const reason = $('#modTimeReason').value.trim().slice(0, 150);
+  const durText = minutes > 0 ? ` (لمدة: ${modTimeDurationText(minutes)})` : ' (دائم)';
+  closeOv('modTimeOv');
+  const roomId = CUR_ROOM ? CUR_ROOM.id : 0;
+  try {
+    if (st.action === 'mute') {
+      const body = { muted: true, room_id: roomId, minutes };
+      if (reason) body.reason = reason;
+      const d = await api(`/api/admin/users/${st.target.id}/mute`, 'POST', body);
+      const roomUser = ROOM_USERS.find(u => u.id === st.target.id);
+      if (roomUser) roomUser.muted = 1;
+      toast(`تم كتم ${st.target.username}${durText}` + (d.by_ip ? ' حسب عنوان IP' : ''));
+    } else if (st.action === 'kick') {
+      const body = { room_id: roomId, minutes };
+      if (reason) body.reason = reason;
+      const d = await api(`/api/admin/users/${st.target.id}/kick`, 'POST', body);
+      toast(`تم طرد ${st.target.username} من الغرفة${durText}` + (d.by_ip ? ' حسب عنوان IP' : ''));
+    } else {
+      const body = { banned: true, room_id: roomId, minutes, reason: reason || 'سلوك سيئ داخل الدردشة' };
+      const d = await api(`/api/admin/users/${st.target.id}/ban`, 'POST', body);
+      toast(`تم حظر ${st.target.username}${durText}` + (d.by_device ? ' على الحساب والجهاز' : (d.by_ip ? ' حسب عنوان IP' : '')));
+    }
+  } catch (e) { toast(e.error || 'تعذر تنفيذ الإجراء', false); }
+};
 $('#usMute').onclick = async () => {
   if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية الكتم', false);
   const button = $('#usMute');
   const target = CUR_TARGET;
-  const nextMuted = !target.muted;
-  button.disabled = true;
   closeOv('userSheet');
-  try {
-    const d = await api(`/api/admin/users/${target.id}/mute`, 'POST', { muted: nextMuted, room_id: CUR_ROOM ? CUR_ROOM.id : 0 });
-    target.muted = d.muted ? 1 : 0;
-    const roomUser = ROOM_USERS.find(u => u.id === target.id);
-    if (roomUser) roomUser.muted = target.muted;
-    toast((target.muted ? `تم كتم ${target.username}` : `تم إلغاء كتم ${target.username}`) + (d.by_ip ? ' حسب عنوان IP' : ''));
-  } catch (e) { toast(e.error || 'تعذر تغيير حالة الكتم', false); }
-  finally { button.disabled = false; }
+  // فك الكتم مباشرة، والكتم الجديد يمر بنافذة اختيار المدة
+  if (target.muted) {
+    button.disabled = true;
+    try {
+      const d = await api(`/api/admin/users/${target.id}/mute`, 'POST', { muted: false, room_id: CUR_ROOM ? CUR_ROOM.id : 0 });
+      target.muted = d.muted ? 1 : 0;
+      const roomUser = ROOM_USERS.find(u => u.id === target.id);
+      if (roomUser) roomUser.muted = target.muted;
+      toast(`تم إلغاء كتم ${target.username}`);
+    } catch (e) { toast(e.error || 'تعذر إلغاء الكتم', false); }
+    finally { button.disabled = false; }
+    return;
+  }
+  openModTime('mute', target);
 };
 $('#usKick').onclick = async () => {
   if (!CUR_TARGET || !CUR_ROOM || !canModerateRank()) return toast('لا تملك صلاحية الطرد', false);
-  const target = CUR_TARGET;
-  const button = $('#usKick');
-  button.disabled = true;
   closeOv('userSheet');
-  try {
-    const d = await api(`/api/admin/users/${target.id}/kick`, 'POST', { room_id: CUR_ROOM.id });
-    toast('تم طرد ' + target.username + ' من الغرفة' + (d.by_ip ? ' حسب عنوان IP' : ''));
-  } catch (e) { toast(e.error || 'تعذر طرد المستخدم', false); }
-  finally { button.disabled = false; }
+  openModTime('kick', CUR_TARGET);
 };
 $('#usBan').onclick = async () => {
   if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية الحظر', false);
-  const target = CUR_TARGET;
   closeOv('userSheet');
-  try {
-    const d = await api(`/api/admin/users/${target.id}/ban`, 'POST', { banned: true, reason: 'سلوك سيئ داخل الدردشة', room_id: CUR_ROOM ? CUR_ROOM.id : 0 });
-    toast('تم حظر ' + target.username + (d.by_device ? ' على الحساب والجهاز' : (d.by_ip ? ' حسب عنوان IP' : '')));
-  } catch (e) { toast(e.error || 'لا تملك صلاحية الحظر', false); }
+  openModTime('ban', CUR_TARGET);
 };
 // ---------- كشف النكات: كل الأسماء الداخلة من نفس عنوان IP ----------
 function aliasTimeText(unixSeconds) {

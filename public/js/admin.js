@@ -1750,6 +1750,7 @@ const MENU = [
     { id: 'general', icon: 'wrench_fill', label: 'ضبط الاعدادات', superAdminOnly: true },
     { id: 'featureAccess', icon: 'person_badge_key_fill', label: 'صلاحيات العضويات', superAdminOnly: true },
     { id: 'msgSettings', icon: 'chat_bubble_fill', label: 'اعدادات الرسائل', superAdminOnly: true },
+    { id: 'memberColors', icon: 'paintbrush_pointed_fill', label: 'ألوان العضويات والرتب', superAdminOnly: true },
     { id: 'logo', icon: 'paintbrush_fill', label: 'وضع الشعار', superAdminOnly: true },
     { id: 'skin', icon: 'paintbrush_fill', label: 'وضع الجلد', superAdminOnly: true },
     { id: 'fontsize', icon: 'textformat_size', label: 'تحديد حجم الخط', superAdminOnly: true },
@@ -1772,7 +1773,8 @@ const MENU = [
     { id: 'userComplaints', icon: 'exclamationmark_triangle_fill', label: 'شكاوى المستخدمين', superAdminOnly: true },
     { id: 'admins', icon: 'rosette', label: 'الحسابات الادارية', superAdminOnly: true },
     { id: 'kicks', icon: 'square_arrow_right_fill', label: 'قائمة المطرودين' },
-    { id: 'bans', icon: 'slash_circle_fill', label: 'قائمة الحظر' }]},
+    { id: 'bans', icon: 'slash_circle_fill', label: 'قائمة الحظر' },
+    { id: 'mutes', icon: 'mic_slash_fill', label: 'قائمة المكتومين' }]},
   { icon: 'gear_alt_fill', color: '#94a3b8', label: 'نظام الادارة', subs: [
     { id: 'broadcast', icon: 'bolt_badge_a_fill', label: 'ارسال اعلان للجميع' },
     { id: 'words', icon: 'search', label: 'فلترة الكلمات' },
@@ -2361,26 +2363,34 @@ async function openTrackingDetail(loginId) {
   if (banUserBtn) {
     banUserBtn.onclick = async () => {
       const willBan = !U.banned;
-      const msg = willBan
-        ? `حظر «${L.username}» نهائيّاً؟\nسيُفصل فوراً من الدردشة ولن يعود من نفس الحساب/الجهاز حتى فك الحظر.`
-        : `فك الحظر عن «${L.username}»؟`;
-      if (!confirm(msg)) return;
-      try {
-        await api(`/api/admin/users/${U.id}/ban`, 'POST', { banned: willBan ? 1 : 0, reason: 'حظر من صفحة تتبع المستخدمين' });
-        toast(willBan ? 'تم حظر المستخدم وفصله فوراً 🚫' : 'تم فك الحظر عن المستخدم');
-        closeTrackingDetail();
-      } catch (e) { toast(e.error || 'تعذر تنفيذ الحظر', false); }
+      if (!willBan) {
+        if (!confirm(`فك الحظر عن «${L.username}»؟`)) return;
+        try {
+          await api(`/api/admin/users/${U.id}/ban`, 'POST', { banned: 0, reason: 'فك حظر من صفحة تتبع المستخدمين' });
+          toast('تم فك الحظر عن المستخدم');
+          closeTrackingDetail();
+        } catch (e) { toast(e.error || 'تعذر فك الحظر', false); }
+        return;
+      }
+      openAdminModTime('ban', async (minutes, reason) => {
+        try {
+          await api(`/api/admin/users/${U.id}/ban`, 'POST', { banned: 1, minutes, reason: reason || 'حظر من صفحة تتبع المستخدمين' });
+          toast(`تم حظر المستخدم وفصله فوراً${admDurSuffix(minutes)} 🚫`);
+          closeTrackingDetail();
+        } catch (e) { toast(e.error || 'تعذر تنفيذ الحظر', false); }
+      });
     };
   }
   const banIpBtn = body.querySelector('[data-act="ban-ip"]');
   if (banIpBtn) {
     banIpBtn.onclick = async () => {
-      if (!confirm(`حظر نهائي لكل من يستخدم عنوان IP ${L.ip} وأجهزتهم؟\nسيتم فصل جميع اتصالاتهم فوراً.`)) return;
-      try {
-        const result = await api('/api/admin/ip/ban', 'POST', { ip: L.ip, reason: 'حظر من صفحة تتبع المستخدمين' });
-        toast('تم حظر عنوان IP' + (result && result.devices ? ` و${result.devices} جهاز مرتبط به` : '') + ' وفصل جميع اتصالاتهم 🚫');
-        closeTrackingDetail();
-      } catch (e) { toast(e.error || 'تعذر حظر عنوان IP', false); }
+      openAdminModTime('ban', async (minutes, reason) => {
+        try {
+          const result = await api('/api/admin/ip/ban', 'POST', { ip: L.ip, minutes, reason: reason || 'حظر من صفحة تتبع المستخدمين' });
+          toast(`تم حظر عنوان IP${admDurSuffix(minutes)}` + (result && result.devices ? ` و${result.devices} جهاز مرتبط به` : '') + ' وفصل جميع اتصالاتهم 🚫');
+          closeTrackingDetail();
+        } catch (e) { toast(e.error || 'تعذر حظر عنوان IP', false); }
+      });
     };
   }
 }
@@ -2671,6 +2681,43 @@ function bindRoyalAdminForm() {
   if (cancelBtn) cancelBtn.onclick = () => { raSetEdit(null); gifInp.value = ''; sndInp.value = ''; toast('أُلغي التعديل'); };
   note();
 }
+// ---------- ألوان العضويات والرتب: الحقول الافتراضية ----------
+const MEMBER_COLOR_FIELDS = [
+  { key: 'supermaster', label: 'سوبر ماستر 👑', ic: 'crown_fill', icon: '#7c3aed', def: '#000000' },
+  { key: 'superadmin', label: 'سوبر أدمن 🛡️', ic: 'shield_fill', icon: '#dc2626', def: '#000000' },
+  { key: 'admin', label: 'أدمن 👮', ic: 'person_badge_shield_checkmark_fill', icon: '#f59e0b', def: '#000000' },
+  { key: 'roomadmin', label: 'أدمن غرفة 🏠', ic: 'house_fill', icon: '#e03131', def: '#e03131' },
+  { key: 'vip', label: 'عضوية VIP 💎', ic: 'diamond_fill', icon: '#1479f2', def: '#1479f2' },
+  { key: 'premium', label: 'عضوية بريميوم ⭐', ic: 'star_fill', icon: '#38b6ff', def: '#38b6ff' },
+  { key: 'plus', label: 'عضوية بلس ➕', ic: 'plus_circle_fill', icon: '#2e9e44', def: '#2e9e44' },
+  { key: 'mmez', label: 'عضوية مميز ✨', ic: 'sparkles', icon: '#e91e8c', def: '#e91e8c' },
+  { key: 'registered', label: 'عضو مسجل 👤', ic: 'person_fill', icon: '#795548', def: '#795548' },
+  { key: 'guest', label: 'زائر عادي 🚶', ic: 'person_crop_circle', icon: '#64748b', def: '#000000' }
+];
+function validAdminHex(v, fb) {
+  v = String(v || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(v) ? v : fb;
+}
+// نص عربي لمدة متبقية بالثواني
+function adminDurationText(sec) {
+  sec = Math.max(0, Math.floor(+sec || 0));
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60), ss = sec % 60;
+  const parts = [];
+  if (d) parts.push(d === 1 ? 'يوم' : d === 2 ? 'يومين' : `${d} أيام`);
+  if (h) parts.push(h === 1 ? 'ساعة' : h === 2 ? 'ساعتين' : `${h} ساعات`);
+  if (m && !d) parts.push(m === 1 ? 'دقيقة' : m === 2 ? 'دقيقتين' : `${m} دقيقة`);
+  if (!parts.length) parts.push(ss <= 1 ? 'ثانية' : ss === 2 ? 'ثانيتين' : `${ss} ثوانٍ`);
+  return parts.join(' و ');
+}
+// شارة المدة المتبقية للعقوبة: دائم / متبقٍ X
+function remainingChip(expiresAt, now) {
+  expiresAt = +expiresAt || 0;
+  if (!expiresAt) return '<span class="chip" style="background:#fee2e2;color:#dc2626;font-weight:800">⏳ دائم</span>';
+  const left = expiresAt - (now || Math.floor(Date.now() / 1000));
+  if (left <= 0) return '<span class="chip">انتهى — يُفك تلقائياً خلال لحظات</span>';
+  return `<span class="chip" style="background:#dcfce7;color:#166534;font-weight:800">⏳ متبقٍ: ${esc(adminDurationText(left))}</span>`;
+}
+
 const PAGES = {
 
   // ====== إدارة باقات الذهب ======
@@ -4653,8 +4700,8 @@ const PAGES = {
                   <img src="/badges/${u.badge}" alt="" style="width:18px;height:18px">
                   <span class="chip">رصيد: ${u.balance}</span>
                   ${u.ip ? `<span class="chip" dir="ltr">IP: ${esc(u.ip)}</span>` : ''}
-                  ${u.banned ? '<span class="chip" style="color:#dc2626">محظور</span>' : ''}
-                  ${u.muted ? '<span class="chip" style="color:#d97706">مكتوم</span>' : ''}
+                  ${u.banned ? `<span class="chip" style="color:#dc2626">محظور</span>${remainingChip(u.banned_until)}` : ''}
+                  ${u.muted ? `<span class="chip" style="color:#d97706">مكتوم</span>${remainingChip(u.muted_until)}` : ''}
                 </div>
               </div>
             </div>
@@ -4803,23 +4850,80 @@ const PAGES = {
   },
 
   // ====== قائمة المطرودين من الغرف ======
+  // ====== ألوان أسماء العضويات والرتب ======
+  memberColors: {
+    build: () => {
+      const rows = MEMBER_COLOR_FIELDS.map(f => {
+        const cur = validAdminHex(SETTINGS['name_color_' + f.key], f.def);
+        return `
+        <div class="row color-row">
+          <span class="lbl"><i class="f7-icons mi" style="color:${f.icon}">${f.ic}</i> لون اسم: ${f.label}</span>
+          <span class="color-pick">
+            <input type="color" data-key="name_color_${f.key}" value="${esc(cur)}" title="اختر اللون">
+            <b class="color-preview" data-preview="${f.key}" style="color:${esc(cur)}">اسم تجريبي</b>
+            <code class="color-hex" dir="ltr">${esc(cur)}</code>
+          </span>
+        </div>`;
+      }).join('');
+      return `
+      <div class="page-title"><i class="f7-icons mi" style="color:#ec4899">paintbrush_pointed_fill</i> ألوان أسماء العضويات والرتب</div>
+      <div class="info-box" style="background:#fdf2f8;border-color:#f9a8d4;color:#831843;margin-bottom:16px">
+        🎨 اختر لون اسم كل رتبة وعضوية — يُطبَّق <b>فوراً</b> في الدردشة (قائمة المتصلين والرسائل) دون تحديث الصفحة.
+      </div>
+      ${rows}
+      <div class="btn-row" style="margin-top:18px">
+        <button class="btn btn-purple" id="mcSave"><i class="f7-icons">checkmark_circle_fill</i> حفظ الألوان</button>
+        <button class="btn btn-gray" id="mcReset"><i class="f7-icons">arrow_counterclockwise</i> استعادة الافتراضية</button>
+      </div>`;
+    },
+    bind: () => {
+      // معاينة حية أثناء اختيار اللون
+      $$('input[type=color][data-key^="name_color_"]').forEach(inp => {
+        inp.oninput = () => {
+          const key = inp.dataset.key.replace('name_color_', '');
+          const pv = document.querySelector(`[data-preview="${key}"]`);
+          if (pv) pv.style.color = inp.value;
+          const hex = inp.closest('.color-pick') ? inp.closest('.color-pick').querySelector('.color-hex') : null;
+          if (hex) hex.textContent = inp.value;
+        };
+      });
+      $('#mcSave').onclick = async () => {
+        await saveSwitches();
+        toast('تم حفظ ألوان العضويات وتطبيقها فوراً في الدردشة 🎨');
+      };
+      $('#mcReset').onclick = async () => {
+        if (!confirm('استعادة كل ألوان الأسماء الافتراضية؟')) return;
+        const body = {};
+        MEMBER_COLOR_FIELDS.forEach(f => {
+          body['name_color_' + f.key] = f.def;
+          SETTINGS['name_color_' + f.key] = f.def;
+        });
+        await api('/api/admin/settings', 'POST', body);
+        toast('تمت استعادة الألوان الافتراضية');
+        loadPage('memberColors');
+      };
+    }
+  },
+
   kicks: {
     build: () => `
       <div class="page-title"><i class="f7-icons mi" style="color:#f97316">square_arrow_right_fill</i> قائمة المطرودين من الغرف</div>
       <div class="info-box" style="background:#fff7ed;border-color:#fed7aa;color:#9a3412;margin-bottom:16px">
-        يبقى الطرد فعالاً ويمنع إعادة دخول الغرفة حتى تضغط «فك الطرد» من هذه الصفحة.
+        ⏳ الطرد المؤقت يُفك <b>تلقائياً</b> عند انتهاء مدته، والدائم يبقى حتى تضغط «فك الطرد».
       </div>
       <div id="kicksList"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري تحميل المطرودين...</div></div>`,
     bind: async () => {
       const list = await api('/api/admin/kicks');
+      const now = Math.floor(Date.now() / 1000);
       $('#kicksList').innerHTML = list.length ? list.map(k => `
         <div class="list-card word-card">
           <span class="word-name" style="display:flex;flex-direction:column;align-items:flex-start;gap:5px">
             <span><i class="f7-icons" style="color:#f97316">square_arrow_right_fill</i> ${esc(k.username || 'زائر')}</span>
-            <span style="display:flex;gap:6px;flex-wrap:wrap">
+            <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
               <span class="chip">الغرفة: ${esc(k.room_name)}</span>
               ${k.ip ? `<span class="chip" dir="ltr">IP: ${esc(k.ip)}</span>` : `<span class="chip">User ID: ${k.user_id}</span>`}
               <span class="chip">${esc(k.reason || 'بدون سبب')}</span>
+              ${remainingChip(k.expires_at, now)}
             </span>
           </span>
           <button class="btn btn-green btn-sm" onclick="unkick(${k.id})"><i class="f7-icons">arrow_uturn_left</i> فك الطرد</button>
@@ -4832,23 +4936,67 @@ const PAGES = {
     build: () => `
       <div class="page-title"><i class="f7-icons mi" style="color:#dc2626">slash_circle_fill</i> قائمة الحظر</div>
       <div class="info-box" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;margin-bottom:16px">
-        حظر الزائر مرتبط بعنوان IP الحقيقي ويبقى فعالاً حتى إزالته من هنا.
+        ⏳ الحظر المؤقت يُفك <b>تلقائياً</b> عند انتهاء مدته، والدائم يبقى حتى إزالته من هنا. حظر الزائر مرتبط بعنوان IP الحقيقي.
       </div>
       <div id="bansList"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري التحميل...</div></div>`,
     bind: async () => {
       const list = await api('/api/admin/bans');
+      const now = Math.floor(Date.now() / 1000);
       $('#bansList').innerHTML = list.length ? list.map(b => `
         <div class="list-card word-card">
           <span class="word-name" style="display:flex;flex-direction:column;align-items:flex-start;gap:5px">
             <span><i class="f7-icons">nosign</i> ${esc(b.username || 'زائر')}</span>
-            <span style="display:flex;gap:6px;flex-wrap:wrap">
+            <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
               ${b.ip ? `<span class="chip" dir="ltr">IP: ${esc(b.ip)}</span>` : '<span class="chip">حظر حساب</span>'}
               ${b.device_id ? '<span class="chip" style="color:#7c3aed">🔒 حظر جهاز دائم عند تغيير IP</span>' : ''}
               <span class="chip">${esc(b.reason || 'بدون سبب')}</span>
+              ${remainingChip(b.expires_at, now)}
             </span>
           </span>
           <button class="btn btn-green btn-sm" onclick="unban(${b.id})"><i class="f7-icons">arrow_uturn_left</i> فك الحظر</button>
         </div>`).join('') : '<div class="empty">✅ قائمة الحظر فارغة</div>';
+    }
+  },
+
+  // ====== قائمة المكتومين ======
+  mutes: {
+    build: () => `
+      <div class="page-title"><i class="f7-icons mi" style="color:#d97706">mic_slash_fill</i> قائمة المكتومين</div>
+      <div class="info-box" style="background:#fffbeb;border-color:#fde68a;color:#92400e;margin-bottom:16px">
+        ⏳ الكتم المؤقت يُفك <b>تلقائياً</b> عند انتهاء مدته ويُبلَّغ صاحبه، والدائم يبقى حتى «إلغاء الكتم».
+      </div>
+      <div class="section-title" style="margin-top:6px"><i class="f7-icons mi" style="color:#d97706">person_fill</i> كتم الحسابات</div>
+      <div id="mutesUsersList"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري التحميل...</div></div>
+      <div class="section-title" style="margin-top:22px"><i class="f7-icons mi" style="color:#0ea5e9">globe</i> كتم عناوين IP (الزوار)</div>
+      <div id="mutesIpsList"><div class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري التحميل...</div></div>`,
+    bind: async () => {
+      const data = await api('/api/admin/mutes');
+      const now = data.now || Math.floor(Date.now() / 1000);
+      const users = data.users || [], ips = data.ips || [];
+      $('#mutesUsersList').innerHTML = users.length ? users.map(u => `
+        <div class="list-card word-card">
+          <span class="word-name" style="display:flex;flex-direction:column;align-items:flex-start;gap:5px">
+            <span><i class="f7-icons" style="color:#d97706">mic_slash_fill</i> ${esc(u.username || 'زائر')}</span>
+            <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <span class="chip">User ID: ${u.id}</span>
+              ${u.registered ? '<span class="chip">مسجل</span>' : `<span class="chip" dir="ltr">IP: ${esc(u.ip || '-')}</span>`}
+              ${remainingChip(u.muted_until, now)}
+            </span>
+          </span>
+          <button class="btn btn-green btn-sm" onclick="unmuteAdm(${u.id})"><i class="f7-icons">mic_fill</i> إلغاء الكتم</button>
+        </div>`).join('') : '<div class="empty">✅ لا يوجد كتم حسابات</div>';
+      $('#mutesIpsList').innerHTML = ips.length ? ips.map(m => `
+        <div class="list-card word-card">
+          <span class="word-name" style="display:flex;flex-direction:column;align-items:flex-start;gap:5px">
+            <span><i class="f7-icons" style="color:#0ea5e9">globe</i> <span dir="ltr">${esc(m.ip)}</span></span>
+            <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <span class="chip">${esc(m.username || 'زائر')}</span>
+              <span class="chip">${esc(m.reason || 'بدون سبب')}</span>
+              ${remainingChip(m.expires_at, now)}
+            </span>
+          </span>
+          <button class="btn btn-green btn-sm" onclick="unmuteIpAdm(${m.id})"><i class="f7-icons">mic_fill</i> إلغاء الكتم</button>
+        </div>`).join('') : '<div class="empty">✅ لا يوجد كتم IP</div>';
     }
   },
 
@@ -5957,16 +6105,116 @@ window.editUser = async (id) => {
   bindUserForm(u);
   window.scrollTo(0, 0);
 };
+// ---------- نافذة مدة العقوبة (كتم/حظر مؤقت) في لوحة الإدارة ----------
+let ADM_MOD_ESC = null;
+function closeAdminModTime() {
+  const ov = document.getElementById('adminModTimeOverlay');
+  if (ov) ov.remove();
+  if (ADM_MOD_ESC) { document.removeEventListener('keydown', ADM_MOD_ESC); ADM_MOD_ESC = null; }
+}
+function openAdminModTime(action, onPick) {
+  closeAdminModTime();
+  const ov = document.createElement('div');
+  ov.className = 'admin-modal-overlay';
+  ov.id = 'adminModTimeOverlay';
+  const isMute = action === 'mute';
+  ov.innerHTML = `
+    <div class="admin-modal-card mod-time-card">
+      <div class="admin-modal-header">
+        <div class="admin-modal-title">
+          <div class="seo-ai-icon" style="background:${isMute ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#dc2626,#991b1b)'}"><i class="f7-icons">${isMute ? 'mic_slash_fill' : 'slash_circle_fill'}</i></div>
+          <div><h3>${isMute ? '🔇 مدة الكتم' : '🚫 مدة الحظر'}</h3><p>اختر مدة العقوبة — تُفك تلقائياً عند انتهائها</p></div>
+        </div>
+        <button class="admin-modal-close" type="button" data-close><i class="f7-icons">xmark</i></button>
+      </div>
+      <div class="mod-time-body">
+        <div class="mod-chips">
+          <button type="button" data-min="5">5 دقائق</button>
+          <button type="button" data-min="15">15 دقيقة</button>
+          <button type="button" data-min="30">30 دقيقة</button>
+          <button type="button" data-min="60">ساعة</button>
+          <button type="button" data-min="180">3 ساعات</button>
+          <button type="button" data-min="360">6 ساعات</button>
+          <button type="button" data-min="720">12 ساعة</button>
+          <button type="button" data-min="1440">يوم</button>
+          <button type="button" data-min="0" class="perm">دائم</button>
+        </div>
+        <label class="mod-lbl">أو مدة مخصصة (بالدقائق):</label>
+        <input type="number" class="inp" id="admModCustom" min="1" max="525600" placeholder="مثال: 45">
+        <label class="mod-lbl">السبب (اختياري):</label>
+        <input type="text" class="inp" id="admModReason" maxlength="150" placeholder="سبب العقوبة…">
+      </div>
+      <div class="rba-foot">
+        <button class="btn btn-gray" type="button" data-close>إلغاء</button>
+        <button class="btn ${isMute ? 'btn-purple' : 'btn-red'}" type="button" id="admModOk">تأكيد ${isMute ? 'الكتم' : 'الحظر'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov || (e.target.closest && e.target.closest('[data-close]'))) closeAdminModTime(); });
+  ADM_MOD_ESC = (e) => { if (e.key === 'Escape') closeAdminModTime(); };
+  document.addEventListener('keydown', ADM_MOD_ESC);
+  ov.querySelectorAll('.mod-chips button').forEach(b => b.onclick = () => {
+    ov.querySelectorAll('.mod-chips button').forEach(x => x.classList.remove('sel'));
+    b.classList.add('sel');
+    ov.querySelector('#admModCustom').value = '';
+  });
+  ov.querySelector('#admModCustom').oninput = (e) => {
+    if (e.target.value) ov.querySelectorAll('.mod-chips button').forEach(x => x.classList.remove('sel'));
+  };
+  ov.querySelector('#admModOk').onclick = () => {
+    const custom = Math.floor(+ov.querySelector('#admModCustom').value || 0);
+    const sel = ov.querySelector('.mod-chips button.sel');
+    const minutes = custom > 0 ? Math.min(custom, 525600) : (sel ? (+sel.dataset.min || 0) : 0);
+    const reason = ov.querySelector('#admModReason').value.trim().slice(0, 150);
+    closeAdminModTime();
+    onPick(minutes, reason);
+  };
+}
+function admDurSuffix(minutes) {
+  return minutes > 0 ? ` (لمدة: ${adminDurationText(minutes * 60)})` : ' (دائم)';
+}
 window.banUser = async (id, b) => {
-  await api(`/api/admin/users/${id}/ban`, 'POST', { banned: !!b, reason: 'حظر من لوحة التحكم' });
-  toast(b ? 'تم حظر المستخدم' : 'تم فك الحظر');
-  if (window._renderUsers) window._renderUsers($('#searchUser') ? $('#searchUser').value : '');
+  if (!b) {
+    await api(`/api/admin/users/${id}/ban`, 'POST', { banned: 0, reason: 'فك حظر من لوحة التحكم' });
+    toast('تم فك الحظر');
+    if (window._renderUsers) window._renderUsers($('#searchUser') ? $('#searchUser').value : '');
+    return;
+  }
+  openAdminModTime('ban', async (minutes, reason) => {
+    try {
+      await api(`/api/admin/users/${id}/ban`, 'POST', { banned: 1, minutes, reason: reason || 'حظر من لوحة التحكم' });
+      toast('تم حظر المستخدم' + admDurSuffix(minutes));
+      if (window._renderUsers) window._renderUsers($('#searchUser') ? $('#searchUser').value : '');
+    } catch (e) { toast(e.error || 'تعذر حظر المستخدم', false); }
+  });
 };
 window.muteUser = async (id, m) => {
-  await api(`/api/admin/users/${id}/mute`, 'POST', { muted: !!m });
-  toast(m ? 'تم كتم المستخدم' : 'تم إلغاء كتم المستخدم');
-  // أعد تحميل القائمة مباشرة حتى يتحول الزر بين «كتم» و«إلغاء الكتم» دون تحديث الصفحة.
-  if (window._renderUsers) await window._renderUsers($('#searchUser') ? $('#searchUser').value : '');
+  if (!m) {
+    await api(`/api/admin/users/${id}/mute`, 'POST', { muted: 0 });
+    toast('تم إلغاء كتم المستخدم');
+    if (window._renderUsers) await window._renderUsers($('#searchUser') ? $('#searchUser').value : '');
+    return;
+  }
+  openAdminModTime('mute', async (minutes, reason) => {
+    try {
+      const body = { muted: 1, minutes };
+      if (reason) body.reason = reason;
+      await api(`/api/admin/users/${id}/mute`, 'POST', body);
+      toast('تم كتم المستخدم' + admDurSuffix(minutes));
+      // أعد تحميل القائمة مباشرة حتى يتحول الزر بين «كتم» و«إلغاء الكتم» دون تحديث الصفحة.
+      if (window._renderUsers) await window._renderUsers($('#searchUser') ? $('#searchUser').value : '');
+    } catch (e) { toast(e.error || 'تعذر كتم المستخدم', false); }
+  });
+};
+window.unmuteAdm = async (id) => {
+  await api(`/api/admin/users/${id}/mute`, 'POST', { muted: 0 });
+  toast('تم إلغاء الكتم');
+  loadPage('mutes');
+};
+window.unmuteIpAdm = async (id) => {
+  await api('/api/admin/mutes/ip/' + id, 'DELETE');
+  toast('تم إلغاء كتم عنوان IP');
+  loadPage('mutes');
 };
 window.deleteUser = async (id, name) => {
   if (!confirm(`هل أنت متأكد من حذف المستخدم "${name}" نهائياً من قاعدة البيانات؟`)) return;
@@ -6104,7 +6352,7 @@ function bindSoundUploads() {
   });
 }
 
-const ADMIN_ALLOWED_PAGES = new Set(['roomAdd', 'userAdd', 'kicks', 'bans', 'broadcast', 'words', 'verified']);
+const ADMIN_ALLOWED_PAGES = new Set(['roomAdd', 'userAdd', 'kicks', 'bans', 'mutes', 'broadcast', 'words', 'verified']);
 
 let CURRENT_PAGE_ID = 'memberships';
 

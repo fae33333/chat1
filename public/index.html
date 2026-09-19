@@ -1319,6 +1319,39 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </div>
 
   <!-- تأكيد الخروج من الغرفة -->
+  <!-- نافذة مدة العقوبة: كتم / طرد / حظر مؤقت -->
+  <div class="overlay center" id="modTimeOv">
+    <div class="dialog mod-time-dialog">
+      <div class="dlg-title" id="modTimeTitle">مدة الكتم</div>
+      <div class="dlg-body">
+        <div class="mod-time-target" id="modTimeTarget"></div>
+        <div class="mod-time-chips" id="modTimeChips">
+          <button type="button" data-min="5">5 دقائق</button>
+          <button type="button" data-min="15">15 دقيقة</button>
+          <button type="button" data-min="30">30 دقيقة</button>
+          <button type="button" data-min="60">ساعة</button>
+          <button type="button" data-min="180">3 ساعات</button>
+          <button type="button" data-min="360">6 ساعات</button>
+          <button type="button" data-min="720">12 ساعة</button>
+          <button type="button" data-min="1440">يوم</button>
+          <button type="button" data-min="0" class="perm">دائم</button>
+        </div>
+        <div class="mod-time-custom">
+          <label>أو مدة مخصصة (بالدقائق):</label>
+          <input type="number" id="modTimeCustom" min="1" max="525600" inputmode="numeric" placeholder="مثال: 45">
+        </div>
+        <div class="mod-time-reason">
+          <label>السبب (اختياري):</label>
+          <input type="text" id="modTimeReason" maxlength="150" placeholder="سبب العقوبة…">
+        </div>
+      </div>
+      <div class="dlg-btns">
+        <button id="modTimeCancel" data-close="modTimeOv">إلغاء</button>
+        <button id="modTimeOk">تأكيد</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay center" id="exitOv">
     <div class="dialog">
       <div class="dlg-title">الخروج</div>

@@ -63,6 +63,9 @@ db.serialize(() => {
   db.run(`ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 1`, () => { });
   // البريد الوحيد: لا يمكن استخدام بريد مستخدم لحساب آخر (يُتجاهل البريد الفارغ للمسجلين القدامى)
   db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email) WHERE email <> ''`, () => { });
+  // الكتم/الحظر المؤقت: لحظة انتهاء العقوبة (unix seconds) — 0 تعني دائم.
+  db.run(`ALTER TABLE users ADD COLUMN muted_until INTEGER DEFAULT 0`, () => { });
+  db.run(`ALTER TABLE users ADD COLUMN banned_until INTEGER DEFAULT 0`, () => { });
 
   // ---------- رموز التحقق من البريد (Gmail) ----------
   db.run(`CREATE TABLE IF NOT EXISTS email_verifications (
@@ -392,9 +395,11 @@ db.serialize(() => {
     ip TEXT DEFAULT '',
     device_id TEXT DEFAULT '',
     reason TEXT DEFAULT '',
+    expires_at INTEGER DEFAULT 0,
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
   db.run(`ALTER TABLE bans ADD COLUMN device_id TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE bans ADD COLUMN expires_at INTEGER DEFAULT 0`, () => { });
   db.run(`CREATE INDEX IF NOT EXISTS idx_bans_device_id ON bans (device_id)`);
 
   // ---------- سجل دخول الحسابات (لكشف النكات: كل الأسماء من نفس الـ IP) ----------
@@ -425,8 +430,10 @@ db.serialize(() => {
     ip TEXT UNIQUE NOT NULL,
     username TEXT DEFAULT '',
     reason TEXT DEFAULT '',
+    expires_at INTEGER DEFAULT 0,
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+  db.run(`ALTER TABLE ip_mutes ADD COLUMN expires_at INTEGER DEFAULT 0`, () => { });
 
   // ---------- المطرودون من الغرف (يبقى الطرد حتى إلغائه من لوحة الإدارة) ----------
   db.run(`CREATE TABLE IF NOT EXISTS room_kicks (
@@ -437,8 +444,10 @@ db.serialize(() => {
     ip TEXT DEFAULT '',
     reason TEXT DEFAULT '',
     kicked_by TEXT DEFAULT '',
+    expires_at INTEGER DEFAULT 0,
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+  db.run(`ALTER TABLE room_kicks ADD COLUMN expires_at INTEGER DEFAULT 0`, () => { });
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_kicks_room_ip ON room_kicks (room_id, ip)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_kicks_room_user ON room_kicks (room_id, user_id)`);
   // ---------- إخفاء «العام» (رسالة الترحيب) لمستخدم واحد ----------
@@ -672,6 +681,17 @@ const defaultSettings = {
   turn_port: '3478',
   turn_user: '',
   turn_pass: '',
+  // ألوان أسماء الرتب والعضويات — تُدار من لوحة الإدارة (صفحة ألوان العضويات).
+  name_color_supermaster: '#000000',
+  name_color_superadmin: '#000000',
+  name_color_admin: '#000000',
+  name_color_roomadmin: '#e03131',
+  name_color_vip: '#1479f2',
+  name_color_premium: '#38b6ff',
+  name_color_plus: '#2e9e44',
+  name_color_mmez: '#e91e8c',
+  name_color_registered: '#795548',
+  name_color_guest: '#000000',
   royal_entry_cost: '50',
   // حد قيمة الهدية (بالذهب) الذي تُعرض فوقه الهدية تلقائياً بالمشهد الملكي (لنمط auto فقط).
   royal_gift_threshold: '100',
