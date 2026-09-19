@@ -1537,7 +1537,9 @@ if (sessionConflictReloadBtn) sessionConflictReloadBtn.onclick = () => { REFRESH
 const SILENT_LOADING_PATTERNS = [
   '/api/statuses', '/api/private', '/api/notifications', '/api/wall',
   '/api/my-avatars', '/api/avatars', '/api/profile', '/api/user/',
-  '/api/public-settings', '/api/gifts', '/api/emojis', '/api/rooms'
+  '/api/public-settings', '/api/gifts', '/api/emojis', '/api/rooms',
+  // حفظ تسجيل المكالمة (فيديو/صوت) يتم بالسر — بلا أي مؤشر للمستخدم
+  '/api/chat/save-call-recording'
 ];
 function isSilentLoading(url) {
   const u = String(url || '');
