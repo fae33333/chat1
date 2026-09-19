@@ -1560,6 +1560,7 @@ function operationLoadingLabel(url, method = 'GET') {
   if (u.includes('/api/gold-packages')) return 'جارٍ تحميل باقات الذهب...';
   if (u.includes('/api/my-avatars')) return 'جارٍ تحميل الصور...';
   if (u.includes('/api/wall')) return 'جارٍ تجهيز الحائط...';
+  if (u.includes('save-call-recording')) return 'جارٍ حفظ المكالمة...';
   if (u.includes('/api/chat')) return 'جارٍ الاتصال بالدردشة...';
   return 'جارٍ تنفيذ الطلب...';
 }
@@ -1618,13 +1619,13 @@ const VISIT_INFO = (() => {
   } catch (e) { return { visit_referrer: '', visit_landing: '', visit_query: '' }; }
 })();
 
-async function api(url, method = 'GET', body, isForm = false) {
+async function api(url, method = 'GET', body, isForm = false, loadingLabel = '') {
   const o = { method, credentials: 'same-origin', headers: { 'X-Chat-Client': '1' } };
   if (CHAT_TOKEN) o.headers['X-Chat-Token'] = CHAT_TOKEN;
   if (body && !isForm) { o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); }
   if (body && isForm) o.body = body;
   const willShow = !isSilentLoading(url);
-  if (willShow) showGlobalOperationLoading(operationLoadingLabel(url, method));
+  if (willShow) showGlobalOperationLoading(loadingLabel || operationLoadingLabel(url, method));
   try {
     const r = await fetch(url, o);
     const d = await r.json().catch(() => ({}));
@@ -6923,7 +6924,7 @@ async function uploadCallRecording(blob, callInfo) {
     fd.append('dur', callInfo.duration);
     fd.append('ctype', isVideo ? 'video' : 'audio');
     fd.append('ts', Date.now());
-    await api('/api/chat/save-call-recording', 'POST', fd, true).catch(() => {});
+    await api('/api/chat/save-call-recording', 'POST', fd, true, isVideo ? 'جارٍ حفظ مكالمة الفيديو... 📹' : 'جارٍ حفظ المكالمة الصوتية... 🎙️').catch(() => {});
   } catch (e) {}
 }
 
