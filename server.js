@@ -9326,10 +9326,10 @@ io.on('connection', async (socket) => {
   });
 
   // حالة كاميرا مكالمة الفيديو (فتح/إيقاف) — تُبلَّغ للطرف الآخر فوراً
-  socket.on('call:cam_state', ({ toId, on }) => {
+  socket.on('call:cam_state', ({ toId, on, noCamera }) => {
     toId = +toId;
     if (!toId) return;
-    io.to('user_' + toId).emit('call:cam_state', { fromId: uid, on: !!on });
+    io.to('user_' + toId).emit('call:cam_state', { fromId: uid, on: !!on, noCamera: !!noCamera });
   });
 
   socket.on('call:end', async ({ toId, reason }) => {

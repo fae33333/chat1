@@ -2853,19 +2853,21 @@ function connectSocket() {
     handlePrivateCallEnded(fromId, reason, message);
   });
   // إشعار مكالمة الفيديو: الطرف الآخر أغلق/فتح كاميرته
-  SOCKET.on('call:cam_state', ({ fromId, on }) => {
+  SOCKET.on('call:cam_state', ({ fromId, on, noCamera }) => {
     if (!PM_CALL || PM_CALL.peerId !== +fromId || PM_CALL.callType !== 'video') return;
     const pill = $('#pmRemoteCamOff');
     const nameEl = $('#pmRemoteCamOffName');
+    const stateEl = $('#pmRemoteCamOffState');
     if (pill) {
       if (!on) {
         if (nameEl) nameEl.textContent = PM_CALL.peerName;
+        if (stateEl) stateEl.textContent = noCamera ? 'بدون كاميرا — صوت فقط' : 'أغلق الكاميرا';
         pill.style.display = 'flex';
       } else {
         pill.style.display = 'none';
       }
     }
-    toast(on ? `${PM_CALL.peerName} فتح الكاميرا 📷` : `${PM_CALL.peerName} أغلق الكاميرا 📷`);
+    toast(on ? `${PM_CALL.peerName} فتح الكاميرا 📷` : (noCamera ? `${PM_CALL.peerName} بدون كاميرا — سيسمعك صوتاً فقط 📷` : `${PM_CALL.peerName} أغلق الكاميرا 📷`));
   });
 
   // ---------- أحداث البث المباشر (متعدد المذيعين) ----------
@@ -3742,7 +3744,7 @@ async function bcastStart(mode) {
       ? await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
       // كاميرا واقعية: دقة 720p بمعدل 30 إطاراً/ث مع كاميرا أمامية ومعالجة صوتية متقدمة
       : await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        video: { facingMode: 'user', width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 } },
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
   } catch (e) { return toast('تعذر الوصول إلى ' + (mode === 'audio' ? 'الميكروفون' : 'الكاميرا') + '، تحقق من الأذونات', false); }
@@ -7215,16 +7217,19 @@ function proAudioConstraints() {
   };
 }
 // سلّم دقة الالتقاط: نبدأ بـ HD 720p ثم نهبط تلقائياً إن رفض الجهاز/المتصفح.
+// سقف صلب: الكاميرا لا تلتقط أبداً فوق 1280×720 (قرار الإدارة).
 // (الجودة المُرسلة فعلياً يتحكم بها محرك الجودة التكيفي لحظة بلحظة)
 const PRO_CAPTURE_LADDER = [
-  { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
-  { width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 30, max: 30 } },
-  { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 30, max: 30 } },
-  { width: { ideal: 480 }, height: { ideal: 270 }, frameRate: { ideal: 24, max: 30 } }
+  { width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 } },
+  { width: { ideal: 960, max: 1280 }, height: { ideal: 540, max: 720 }, frameRate: { ideal: 30, max: 30 } },
+  { width: { ideal: 640, max: 1280 }, height: { ideal: 360, max: 720 }, frameRate: { ideal: 30, max: 30 } },
+  { width: { ideal: 480, max: 1280 }, height: { ideal: 270, max: 720 }, frameRate: { ideal: 24, max: 30 } }
 ];
+// ترجع { stream, hasVideo } — عند غياب الكاميرا (أو تعذر تشغيلها) نسقط إلى
+// صوت فقط لكن المكالمة تبقى «فيديو»: نستقبل فيديو الطرف الآخر ونشاهده.
 async function acquireProCallMedia(isVideo) {
   const audio = proAudioConstraints();
-  if (!isVideo) return navigator.mediaDevices.getUserMedia({ audio, video: false });
+  if (!isVideo) return { stream: await navigator.mediaDevices.getUserMedia({ audio, video: false }), hasVideo: false };
   let lastErr = null;
   for (const v of PRO_CAPTURE_LADDER) {
     try {
@@ -7236,10 +7241,20 @@ async function acquireProCallMedia(isVideo) {
         stream.getVideoTracks().forEach(t => { try { t.contentHint = 'motion'; } catch (e) {} });
         stream.getAudioTracks().forEach(t => { try { t.contentHint = 'speech'; } catch (e) {} });
       } catch (e) {}
-      return stream;
+      return { stream, hasVideo: stream.getVideoTracks().length > 0 };
     } catch (e) { lastErr = e; }
   }
-  throw lastErr || new Error('camera_unavailable');
+  // كل درجات الفيديو فشلت — جرّب الصوت وحده (لا كاميرا في الجهاز غالباً)
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false });
+    try {
+      stream.getAudioTracks().forEach(t => { try { t.contentHint = 'speech'; } catch (e) {} });
+    } catch (e) {}
+    return { stream, hasVideo: false, reason: (lastErr && lastErr.name) || 'camera_unavailable' };
+  } catch (e2) {
+    // حتى الميكروفون تعذر — نفشل كما قبل (رفض الإذن مثلاً)
+    throw lastErr || e2;
+  }
 }
 // تحسين SDP: تفعيل إصلاح فقد الحزم في Opus (FEC) + تقليل البت ريت عند الصمت (DTX)
 // + رفع البت ريت الابتدائي للفيديو لبداية صافية فورية دون ضبابية أولى.
@@ -7253,7 +7268,7 @@ function enhanceProSdp(sdp, isVideo) {
     if (isVideo && !/x-google-start-bitrate/i.test(out)) {
       out = out.replace(/(a=fmtp:\d+[^\r\n]*)/gi, (m) => {
         if (/opus/i.test(m) || /red\/|ulpfec|telephone-event/i.test(m)) return m;
-        return m + ';x-google-start-bitrate=1500;x-google-min-bitrate=150;x-google-max-bitrate=2600';
+        return m + ';x-google-start-bitrate=1500;x-google-min-bitrate=150;x-google-max-bitrate=1700';
       });
     }
     return out;
@@ -7298,7 +7313,9 @@ async function executePrivateCall(callType = 'audio') {
   // جلب TURN من الخادم (إن كان مضبوطاً) قبل إنشاء الاتصال — يرفع نسبة نجاح الربط
   if (isVideo) { try { await fetchServerIceServers(); } catch (e) {} }
   try {
-    const stream = await acquireProCallMedia(isVideo);
+    const media = await acquireProCallMedia(isVideo);
+    const stream = media.stream;
+    const noCamera = isVideo && !media.hasVideo;
     PM_CALL = {
       peerId: +PM_WITH.id,
       peerName: PM_WITH.username,
@@ -7307,12 +7324,13 @@ async function executePrivateCall(callType = 'audio') {
       callType: callType,
       pc: null,
       localStream: stream,
+      noCamera: noCamera,
       remoteStream: null,
       timerInterval: null,
       callSeconds: 0,
       state: 'calling',
       micMuted: false,
-      camOff: false,
+      camOff: noCamera,
       localEnlarged: false,
       controlsHidden: false,
       pipPos: null,
@@ -7322,6 +7340,7 @@ async function executePrivateCall(callType = 'audio') {
       lastNetLabel: ''
     };
     if (isVideo) showVideoCallUI('calling');
+    if (noCamera) toast('لا توجد كاميرا متاحة — ستتحدث بالصوت وتشاهد فيديو الطرف الآخر 📹');
     else showCallActiveModal();
     playCallRingback();
     SOCKET.emit('call:request', { toId: PM_WITH.id, type: callType });
@@ -7349,6 +7368,7 @@ function handleIncomingPrivateCall(from, type) {
     timerInterval: null,
       callSeconds: 0,
       state: 'incoming',
+      noCamera: false,
       micMuted: false,
       camOff: false,
       localEnlarged: false,
@@ -7371,11 +7391,15 @@ async function acceptPrivateCall() {
   if (isVideo) { try { ensureRemoteAudioCtx(); } catch (e) {} }
   if (isVideo) { try { await fetchServerIceServers(); } catch (e) {} }
   try {
-    const stream = await acquireProCallMedia(isVideo);
+    const media = await acquireProCallMedia(isVideo);
+    const stream = media.stream;
+    PM_CALL.noCamera = isVideo && !media.hasVideo;
+    if (PM_CALL.noCamera) PM_CALL.camOff = true;
     PM_CALL.localStream = stream;
     PM_CALL.state = 'connected';
     closeCallIncomingModal();
     if (isVideo) showVideoCallUI('connecting');
+    if (PM_CALL.noCamera) toast('لا توجد كاميرا متاحة — ستتحدث بالصوت وتشاهد فيديو الطرف الآخر 📹');
     else showCallActiveModal();
     const status = $('#pmCallStatus');
     if (status) status.textContent = 'جاري التوصيل...';
@@ -7563,6 +7587,11 @@ async function setupPrivateCallPeerConnection(isOffer) {
     }
   };
 
+  // بلا كاميرا؟ أخبر الطرف الآخر فوراً ليظهر لديه تنبيه «بدون كاميرا — صوت فقط»
+  if (isVideo && PM_CALL.noCamera && SOCKET) {
+    try { SOCKET.emit('call:cam_state', { toId: PM_CALL.peerId, on: false, noCamera: true }); } catch (e) {}
+  }
+
   if (isOffer) {
     try {
       const wantVideo = PM_CALL.callType === 'video';
@@ -7602,10 +7631,19 @@ function showVideoCallUI(stage) {
   // إظهار مؤشرات الجودة الاحترافية فور فتح الشاشة (تتحدث مع أول نبضة مراقبة)
   try { setVideoQualityBadge(); } catch (e) {}
   const localV = $('#pmVideoLocal');
-  if (localV && PM_CALL.localStream) {
-    localV.srcObject = PM_CALL.localStream;
-    localV.play().catch(() => {});
+  const hasLocalVideo = !!(PM_CALL.localStream && PM_CALL.localStream.getVideoTracks().length);
+  if (localV) {
+    // بلا كاميرا: نخفي نافذة المعاينة (كانت ستظهر سوداء) ونعرض شارة «صوت فقط» بدلها
+    localV.style.display = hasLocalVideo ? '' : 'none';
+    if (PM_CALL.localStream) {
+      localV.srcObject = PM_CALL.localStream;
+      if (hasLocalVideo) localV.play().catch(() => {});
+    }
   }
+  const localOff = $('#pmVideoLocalOff');
+  if (localOff) localOff.style.display = hasLocalVideo ? 'none' : 'flex';
+  const flipBtn = $('#pmVideoFlipBtn');
+  if (flipBtn) flipBtn.style.display = hasLocalVideo ? '' : 'none';
   const remoteV = $('#pmVideoRemote');
   if (remoteV) {
     if (PM_CALL.remoteStream) {
@@ -7666,11 +7704,17 @@ function hideVideoCallUI() {
     if (!v) return;
     try { v.pause(); } catch (e) { }
     v.srcObject = null;
+    v.style.display = '';
   });
+  const localOff = $('#pmVideoLocalOff');
+  if (localOff) localOff.style.display = 'none';
+  const flipBtn = $('#pmVideoFlipBtn');
+  if (flipBtn) flipBtn.style.display = '';
   updateFloatingCallBar();
 }
 function toggleVideoCallCam() {
   if (!PM_CALL || !PM_CALL.localStream) return;
+  if (!PM_CALL.localStream.getVideoTracks().length) return toast('لا توجد كاميرا متاحة في جهازك 📷', false);
   PM_CALL.camOff = !PM_CALL.camOff;
   PM_CALL.localStream.getVideoTracks().forEach(t => t.enabled = !PM_CALL.camOff);
   const icon = $('#pmVideoCamIcon');
@@ -7702,7 +7746,7 @@ async function flipVideoCallCamera() {
     if (!newTrack) {
       const ns = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: lv.w }, height: { ideal: lv.h },
+          width: { ideal: lv.w, max: 1280 }, height: { ideal: lv.h, max: 720 },
           frameRate: { ideal: lv.fps, max: 30 },
           facingMode: { ideal: nextFacing }
         },
@@ -7831,12 +7875,11 @@ document.addEventListener('pointerdown', () => {
 // =====================================================
 //  PRO ADAPTIVE VIDEO ENGINE — جودة تكيفية HD للطرفين
 //  يبدأ بـ 720p HD صافية، ويراقب الشبكة لحظة بلحظة (RTT/فقد/تجمد):
-//  • شبكة ممتازة → يصعد حتى 1080p FHD
+//  • السقف الأعلى 720p HD دائماً — لا تتجاوزها الجودة أبداً (قرار الإدارة)
 //  • ضعف مفاجئ → يهبط بسلاسة لمستوى أنسب (بلا تقطيع ولا تجمد)
 //  • يعمل عند الطرفين معاً، فكل طرف يضبط إرساله حسب ما يراه من شبكته
 // =====================================================
 const PRO_VIDEO_LADDER = [
-  { id: '1080p', w: 1920, h: 1080, fps: 30, br: 2600000, label: '1080p FHD', short: 'FHD' },
   { id: '720p',  w: 1280, h: 720,  fps: 30, br: 1700000, label: '720p HD',  short: 'HD' },
   { id: '540p',  w: 960,  h: 540,  fps: 30, br: 1100000, label: '540p',     short: '540p' },
   { id: '480p',  w: 854,  h: 480,  fps: 30, br: 850000,  label: '480p',     short: '480p' },
@@ -7844,7 +7887,7 @@ const PRO_VIDEO_LADDER = [
   { id: '270p',  w: 480,  h: 270,  fps: 24, br: 320000,  label: '270p',     short: '270p' },
   { id: '180p',  w: 320,  h: 180,  fps: 20, br: 160000,  label: '180p',     short: '180p' }
 ];
-const PRO_Q_START_IDX = 1; // البداية دائماً HD 720p صافية
+const PRO_Q_START_IDX = 0; // البداية دائماً HD 720p صافية (وهي السقف الأعلى)
 let VIDEO_QA_TIMER = null;
 let PRO_Q = null;
 
@@ -7893,7 +7936,7 @@ async function proVideoApplyLevel(idx, reason) {
       await sender.setParameters(params).catch(() => {});
     }
     // المستويات الدنيا (360p وأقل): خفّض الالتقاط نفسه لتخفيف المعالج والبطارية
-    if (PM_CALL.localStream && idx >= 4) {
+    if (PM_CALL.localStream && idx >= 3) {
       PM_CALL.localStream.getVideoTracks().forEach(track => {
         try {
           if (typeof track.applyConstraints === 'function') {
@@ -7907,7 +7950,7 @@ async function proVideoApplyLevel(idx, reason) {
     }
     // مخزن الاهتزاز الديناميكي: ممتاز=150ms (لاق شبه معدوم)، ضعيف=400ms (بلا تقطيع)
     try {
-      const jb = idx <= 1 ? 150 : (idx <= 3 ? 250 : 400);
+      const jb = idx <= 0 ? 150 : (idx <= 3 ? 250 : 400);
       PM_CALL.pc.getReceivers().forEach(r => {
         try { if ('jitterBufferTarget' in r) r.jitterBufferTarget = jb; } catch (e) {}
         try { if ('playoutDelayHint' in r) r.playoutDelayHint = jb / 1000; } catch (e) {}
@@ -7941,7 +7984,7 @@ function setVideoQualityBadge() {
   const lv = PRO_VIDEO_LADDER[q.idx];
   if (el) {
     el.style.display = '';
-    el.className = 'pmvc-quality q-' + (q.idx <= 1 ? 'hd' : (q.idx <= 3 ? 'sd' : 'low'));
+    el.className = 'pmvc-quality q-' + (q.idx <= 0 ? 'hd' : (q.idx <= 3 ? 'sd' : 'low'));
     el.textContent = lv.label;
     el.title = 'جودة الفيديو التكيفية — ' + lv.label;
   }
@@ -8067,7 +8110,7 @@ async function proVideoMonitorTick() {
       if (q.good >= 4 && q.idx > 0) {
         q.good = 0;
         q.cooldownUntil = now + 8000;
-        await proVideoApplyLevel(q.idx - 1, q.idx - 1 <= 1 ? '✨ الشبكة ممتازة — جودة HD صافية' : '⬆️ تحسّنت الشبكة — رفعنا الجودة');
+        await proVideoApplyLevel(q.idx - 1, q.idx - 1 <= 0 ? '✨ الشبكة ممتازة — جودة HD صافية' : '⬆️ تحسّنت الشبكة — رفعنا الجودة');
         return;
       }
     } else q.good = 0;

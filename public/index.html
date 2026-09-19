@@ -792,7 +792,12 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <!-- إشعار إيقاف/فتح كاميرا الطرف الآخر -->
       <div class="pmvc-camoff" id="pmRemoteCamOff" style="display:none">
         <span class="pmvc-camoff-ico"><i class="f7-icons">videocam_slash_fill</i></span>
-        <span><b id="pmRemoteCamOffName">-</b> أغلق الكاميرا</span>
+        <span><b id="pmRemoteCamOffName">-</b> <span id="pmRemoteCamOffState">أغلق الكاميرا</span></span>
+      </div>
+      <!-- شارة: أنا بلا كاميرا في هذه المكالمة (صوت فقط + مشاهدة الطرف الآخر) -->
+      <div class="pmvc-localoff" id="pmVideoLocalOff" style="display:none">
+        <span class="pmvc-camoff-ico"><i class="f7-icons">videocam_slash_fill</i></span>
+        <span>أنت بدون كاميرا — صوت فقط</span>
       </div>
       <div class="pmvc-top">
         <button class="pmvc-min" id="pmVideoMinBtn" type="button" title="تصغير" aria-label="تصغير"><i class="f7-icons">chevron_down</i></button>

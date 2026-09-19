@@ -6665,6 +6665,19 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
 /* بطاقة الانتظار قبل وصول الفيديو: لا تعترض النقر على الصورة الكبيرة */
 .pmvc-no-remote { pointer-events:none; }
 
+/* شارة: أنا بلا كاميرا في مكالمة الفيديو (صوت فقط) — أسفل الشاشة فوق الأزرار */
+.pmvc-localoff {
+  position:absolute; z-index:8; bottom:108px; left:50%; transform:translateX(-50%);
+  display:flex; align-items:center; gap:9px;
+  background:rgba(10,12,24,.78); backdrop-filter:blur(8px);
+  border:1px solid rgba(251,191,36,.35);
+  border-radius:999px; padding:8px 16px;
+  color:#fde68a; font-size:12.5px; font-weight:800;
+  box-shadow:0 8px 26px rgba(0,0,0,.45);
+  animation:pmvcCamOffIn .25s ease;
+  pointer-events:none;
+  white-space:nowrap;
+}
 /* إشعار: الطرف الآخر أغلق/فتح الكاميرا */
 .pmvc-camoff {
   position:absolute; z-index:8; top:64px; left:50%; transform:translateX(-50%);
