@@ -242,6 +242,34 @@ db.serialize(() => {
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_status_views_status ON status_views (status_id, viewed_at)`);
 
+  // ---------- إعجابات الملفات الشخصية ----------
+  // أي عضو يمكنه وضع إعجاب ❤️ على ملف شخصي آخر (إعجاب واحد لكل عضو، ويمكن سحبه).
+  db.run(`CREATE TABLE IF NOT EXISTS profile_likes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,           -- صاحب الملف الشخصي الذي وصله الإعجاب
+    user_id INTEGER NOT NULL,              -- العضو الذي وضع الإعجاب
+    username TEXT DEFAULT '',
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(profile_id, user_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_profile_likes_profile ON profile_likes (profile_id, created_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_profile_likes_user ON profile_likes (user_id)`);
+
+  // ---------- سجل مشاهدات الملفات الشخصية ----------
+  // كل من يفتح ملفاً شخصياً لغيره يُسجَّل هنا (صف واحد لكل زائر مع عدد مرات الفتح
+  // وآخر لحظة فتح) — يشاهدها صاحب الملف فقط بقائمة منسّقة داخل ملفه الشخصي.
+  db.run(`CREATE TABLE IF NOT EXISTS profile_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,           -- صاحب الملف الذي فُتح
+    viewer_id INTEGER NOT NULL,            -- من قام بالفتح
+    username TEXT DEFAULT '',
+    views_count INTEGER DEFAULT 1,         -- كم مرة فتح هذا الشخص الملف
+    viewed_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(profile_id, viewer_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_profile_views_profile ON profile_views (profile_id, viewed_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_profile_views_viewer ON profile_views (viewer_id)`);
+
   // ---------- الهدايا ----------
   db.run(`CREATE TABLE IF NOT EXISTS gifts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

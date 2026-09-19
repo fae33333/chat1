@@ -2726,6 +2726,18 @@ function connectSocket() {
       if (CURRENT_STATUS && CURRENT_STATUS.id === s.id) $('#statusViewCount').textContent = s.view_count;
     }
   });
+  // ===== شخص فتح ملفي الشخصي: أشاهده فوراً (تنبيه + تحديث قائمة المشاهدين) =====
+  SOCKET.on('profile_viewed', (v) => {
+    if (!ME || !v) return;
+    if (+v.viewerId === +ME.id) return;
+    toast(`👀 ${v.viewerName || 'عضو'} قام بفتح ملفك الشخصي`);
+    addLiveProfileViewer(v);
+  });
+  // ===== شخص أعجب بملفي: إشعار notify يصل أيضاً — هنا نحدّث العدّاد إن كان ملفي مفتوحاً =====
+  SOCKET.on('profile_liked', (l) => {
+    if (!ME || !l) return;
+    bumpMyProfileLikes(+l.byId || 0, l.byName || '');
+  });
   // مُنع هذا المستخدم من الصعود إلى البث — إن كان يبث الآن نوقفه فوراً.
   SOCKET.on('broadcast_banned', ({ user_id }) => {
     if (!ME || +ME.id !== +user_id) return;
@@ -5897,9 +5909,104 @@ const COUNTRIES = ['الأردن', 'السعودية', 'مصر', 'العراق',
 const CCODE = { jo: 'الأردن', sa: 'السعودية', eg: 'مصر', iq: 'العراق', ps: 'فلسطين' };
 const GENDER_NAMES = { boy: 'ذكر', girl: 'أنثى', secret: 'مجهول' };
 let PF = { gender: 'boy', age: 25, country: 'الأردن' };
+
+// ---------- أدوات عرض مدة العضوية والوقت (بالأيام) ----------
+// عدد الأيام منذ التسجيل (احتياط من تاريخ الحساب نفسه إن لم يرسله الخادم)
+function memberDaysOf(u) {
+  if (!u || !u.created_at) return 0;
+  return Math.max(0, Math.floor((Date.now() / 1000 - (+u.created_at)) / 86400));
+}
+// نص جميل لمدة العضوية: يوم/شهر/سنة
+function memberDaysText(days) {
+  days = Math.max(0, +days || 0);
+  if (days < 1) return 'اليوم 🎉';
+  if (days < 30) return `${days} يوم`;
+  if (days < 365) {
+    const m = Math.floor(days / 30), r = days % 30;
+    return r ? `${m} شهر و ${r} يوم` : `${m} شهر`;
+  }
+  const y = Math.floor(days / 365), m = Math.floor((days % 365) / 30);
+  return m ? `${y} سنة و ${m} شهر` : `${y} سنة`;
+}
+function formatDateAr(ts) {
+  if (!ts) return '-';
+  const dt = new Date(+ts * 1000);
+  try { return dt.toLocaleDateString(APP_LANG === 'en' ? 'en-US' : 'ar-EG'); } catch (e) { return dt.toLocaleDateString(); }
+}
+function timeAgoAr(ts) {
+  const diff = Math.floor(Date.now() / 1000) - (+ts || 0);
+  if (diff < 0) return 'الآن';
+  if (diff < 60) return 'الآن';
+  if (diff < 3600) return `قبل ${Math.floor(diff / 60)} دقيقة`;
+  if (diff < 86400) return `قبل ${Math.floor(diff / 3600)} ساعة`;
+  if (diff < 86400 * 2) return 'أمس';
+  if (diff < 86400 * 30) return `قبل ${Math.floor(diff / 86400)} يوم`;
+  return formatDateAr(ts);
+}
+
+// ===== تحديث حي لقائمة «من فتح ملفي» عند وصول حدث profile_viewed =====
+// تعمل فقط حين يكون ملفي الشخصي مفتوحاً (توجد القائمة في الصفحة).
+function addLiveProfileViewer(v) {
+  try {
+    const list = document.querySelector('#pfViewersList');
+    const statViews = document.querySelector('#pfStatViews');
+    if (statViews) statViews.textContent = (+statViews.textContent || 0) + 1;
+    if (!list) return;
+    const vid = +v.viewerId || 0;
+    if (!vid) return;
+    const empty = list.querySelector('.pf-viewers-empty');
+    if (empty) empty.remove();
+    const old = list.querySelector(`.pf-viewer-chip[data-vid="${vid}"]`);
+    if (old) old.remove();
+    const chip = document.createElement('div');
+    chip.className = 'pf-viewer-chip fresh';
+    chip.dataset.vid = String(vid);
+    const cnt = +v.viewsCount || 1;
+    chip.innerHTML = `
+      <div class="pf-viewer-ava"><img src="/avatars/default.png" alt=""></div>
+      <div class="pf-viewer-txt">
+        <b>${esc(v.viewerName || 'عضو')}</b>
+        <span>الآن • فتحها ${cnt} مرة</span>
+      </div>
+      <i class="f7-icons pf-viewer-eye">eye_fill</i>`;
+    chip.onclick = () => { if (ME && vid !== +ME.id) openProfile(vid); };
+    list.prepend(chip);
+    setTimeout(() => chip.classList.remove('fresh'), 2500);
+    const cntEl = document.querySelector('#pfViewersCount');
+    if (cntEl && !old) cntEl.textContent = (+cntEl.textContent || 0) + 1;
+  } catch (e) { }
+}
+// تحديث حي لعدّاد الإعجابات في ملفي عند وصول profile_liked
+function bumpMyProfileLikes(byId, byName) {
+  try {
+    const likes = document.querySelector('#pfStatLikes');
+    if (likes) likes.textContent = (+likes.textContent || 0) + 1;
+    const list = document.querySelector('#pfLikersList');
+    if (!list) return;
+    const empty = list.querySelector('.pf-viewers-empty');
+    if (empty) empty.remove();
+    const chip = document.createElement('div');
+    chip.className = 'pf-viewer-chip liker fresh';
+    chip.dataset.vid = String(byId || 0);
+    chip.innerHTML = `
+      <div class="pf-viewer-ava"><img src="/avatars/default.png" alt=""></div>
+      <div class="pf-viewer-txt">
+        <b>${esc(byName || 'عضو')}</b>
+        <span>الآن</span>
+      </div>
+      <i class="f7-icons pf-viewer-eye heart">heart_fill</i>`;
+    chip.onclick = () => { if (byId && ME && +byId !== +ME.id) openProfile(+byId); };
+    list.prepend(chip);
+    setTimeout(() => chip.classList.remove('fresh'), 2500);
+    const cntEl = document.querySelector('#pfLikersCount');
+    if (cntEl) cntEl.textContent = (+cntEl.textContent || 0) + 1;
+  } catch (e) { }
+}
+
 async function openProfile(uid) {
   try {
-    const d = await api('/api/user/' + uid);
+    // ?view=1 → فتح فعلي للملف الشخصي: يُسجَّل في سجل المشاهدين لصاحب الملف
+    const d = await api('/api/user/' + uid + '?view=1');
     const u = d.user;
     const isMe = ME && uid === ME.id;
     $('#profTitleTab').textContent = isMe ? (APP_LANG === 'es' ? 'Mi cuenta' : (APP_LANG === 'tr' ? 'Hesabım' : (APP_LANG === 'en' ? 'My account' : 'حسابي'))) : u.username;
@@ -5916,7 +6023,7 @@ async function openProfile(uid) {
       document.querySelector('.prof-hero').style.display = '';
       const adminBtn = $('#pfAdminBtn');
       if (adminBtn) adminBtn.style.display = isAdmRank() ? 'inline-flex' : 'none';
-      renderProfileForm(u); $('#profGifts').style.display = 'none'; $('#profGiftsSub').style.display = 'none';
+      renderProfileForm(u, d); $('#profGifts').style.display = 'none'; $('#profGiftsSub').style.display = 'none';
     } else {
       document.querySelector('.prof-hero').style.display = 'none';   // ملف الزائر بواجهة مختلفة
       const adminBtn = $('#pfAdminBtn');
@@ -5987,6 +6094,16 @@ function renderVisitorProfile(u, d) {
             <button class="vp-tab active" data-vtab="info">المعلومات الشخصية</button>
           </div>
         </div>
+        <div class="vp-like-bar" id="vpLikeBar">
+          <button class="vp-like${d.liked ? ' liked' : ''}" id="vpLikeBtn" type="button">
+            <span class="vp-like-ic"><i class="f7-icons">heart_fill</i></span>
+            <span class="vp-like-label">${d.liked ? 'أعجبني' : 'إعجاب'}</span>
+          </button>
+          <div class="vp-like-count" id="vpLikeCount">
+            <b>${d.likes || 0}</b>
+            <span>إعجاب على هذا الملف</span>
+          </div>
+        </div>
         <div class="vp-acts profile-actions" id="vpActs">
           <button class="va" id="vaIgnore"><span class="va-ic"><i class="f7-icons">exclamationmark_circle_fill</i></span><span class="va-label">تجاهل</span></button>
           ${ME && ME.registered ? `<button class="va" id="vaReport"><span class="va-ic"><i class="f7-icons">exclamationmark_triangle_fill</i></span><span class="va-label">الإبلاغ</span></button>` : ''}
@@ -5999,6 +6116,15 @@ function renderVisitorProfile(u, d) {
           <div class="profile-stat-stack">
             <div class="profile-stat-row"><span>العمر</span><b>${u.age || 0} سنة</b></div>
             <div class="profile-stat-row"><span>النوع</span><b>${GENDER_NAMES[u.gender] || 'مجهول'}</b></div>
+            <div class="profile-stat-row vp-member-row"><span>عضو منذ</span><b>${esc(memberDaysText(d.member_days != null ? d.member_days : memberDaysOf(u)))}</b></div>
+            <div class="profile-stat-row"><span>الإعجابات</span><b id="vpLikeStat">${d.likes || 0} ❤️</b></div>
+          </div>
+          <div class="vp-member-card">
+            <span class="vp-member-ic"><i class="f7-icons">calendar_badge_plus</i></span>
+            <div class="vp-member-txt">
+              <b>مسجّل منذ ${esc(memberDaysText(d.member_days != null ? d.member_days : memberDaysOf(u)))}</b>
+              <span>تاريخ التسجيل: ${formatDateAr(u.created_at)}</span>
+            </div>
           </div>
           ${u.bio_audio ? `<div class="profile-voice-block">
               <div class="profile-voice-title"><i class="f7-icons">waveform</i><span>نبذة صوتية</span></div>
@@ -6044,6 +6170,46 @@ function renderVisitorProfile(u, d) {
     $('#vpInfo').style.display = showInfo ? '' : 'none';
     $('#vpGifts').style.display = showInfo ? 'none' : '';
   });
+  // ===== زر الإعجاب بالملف الشخصي: أي شخص يستطيع الإعجاب، ويُحفظ العدد =====
+  const likeBtn = $('#vpLikeBtn');
+  if (likeBtn) {
+    let likeState = !!d.liked;
+    let likeCount = +d.likes || 0;
+    let likeBusy = false;
+    const paintLike = () => {
+      likeBtn.classList.toggle('liked', likeState);
+      const label = likeBtn.querySelector('.vp-like-label');
+      if (label) label.textContent = likeState ? 'أعجبني' : 'إعجاب';
+      const cnt = $('#vpLikeCount');
+      if (cnt) cnt.innerHTML = `<b>${likeCount}</b><span>إعجاب على هذا الملف</span>`;
+      const stat = $('#vpLikeStat');
+      if (stat) stat.textContent = likeCount + ' ❤️';
+    };
+    const burstHearts = () => {
+      const burst = document.createElement('div');
+      burst.className = 'like-burst';
+      burst.innerHTML = '<span>❤</span><span>❤</span><span>❤</span><span>❤</span><span>❤</span><span>❤</span>';
+      likeBtn.appendChild(burst);
+      setTimeout(() => { try { burst.remove(); } catch (e) { } }, 950);
+      likeBtn.classList.remove('pop');
+      void likeBtn.offsetWidth;               // إعادة تشغيل حركة النبض
+      likeBtn.classList.add('pop');
+    };
+    likeBtn.onclick = async () => {
+      if (likeBusy) return;
+      likeBusy = true;
+      try {
+        const r = await api('/api/profile/like/' + u.id, 'POST');
+        likeState = !!r.liked;
+        likeCount = +r.likes || 0;
+        paintLike();
+        if (likeState) { burstHearts(); toast('تم الإعجاب بالملف الشخصي ❤️'); }
+        else toast('تم سحب الإعجاب');
+      } catch (e) { toast(e.error || 'تعذر تسجيل الإعجاب', false); }
+      likeBusy = false;
+    };
+    paintLike();
+  }
   $('#vaChat').onclick = () => { closeOv('profOv'); openPrivateWith(u); };
   $('#vaGift').onclick = () => { closeOv('profOv'); if (!ME.registered) return openOv('needRegOv'); openGifts(u); };
   $('#vaUpgrade').onclick = () => { closeOv('profOv'); openUpgrade(u); };
@@ -6308,7 +6474,8 @@ function showProfileAudioPreview(blob, mime, duration, flag, recBtn) {
 // نموذج تحرير ملفي الشخصي (حسابي) — مثل التصميم
 // الأعضاء المسجلون يرون النوع/العمر/الدولة/البريد/النبذة الصوتية/النبذة.
 // الزوار يعدّلون النوع فقط ولا يظهر بريد ولا نبذة.
-function renderProfileForm(u) {
+function renderProfileForm(u, d) {
+  d = d || {};
   const isReg = !!(u && u.registered) || !!(ME && ME.registered);
   PF = { gender: u.gender || 'boy', age: u.age || 25, country: CCODE[u.country] || u.country || 'الأردن' };
   const opts = (arr, cur) => arr.map(v => `<option ${v === cur ? 'selected' : ''}>${v}</option>`).join('');
@@ -6360,12 +6527,103 @@ function renderProfileForm(u) {
   const bodyHtml = isReg
     ? genderRow + ageRow + countryRow + emailRow + audioRow + bioRow
     : genderRow;
-  $('#profBody').innerHTML = `
+
+  // ===== إحصائيات ملفي: أيام العضوية + الإعجابات + من شاهدوا ملفي =====
+  const memberDays = (typeof d.member_days === 'number') ? d.member_days : memberDaysOf(u);
+  const viewersList = d.viewers || [];
+  const likersList = d.likers || [];
+  const totalOpens = (typeof d.views_total === 'number')
+    ? d.views_total
+    : viewersList.reduce((s, v) => s + (+v.views_count || 1), 0);
+  const statsHtml = `
+  <div class="pf-stats-card" id="pfStatsCard">
+    <div class="pf-stats-head"><i class="f7-icons">chart_bar_fill</i><span>إحصائيات ملفي الشخصي</span></div>
+    <div class="pf-stats-grid">
+      <div class="pf-stat"><b>${memberDays}</b><span>يوم عضوية 🎖️</span></div>
+      <div class="pf-stat"><b id="pfStatLikes">${d.likes || 0}</b><span>إعجاب ❤️</span></div>
+      <div class="pf-stat"><b id="pfStatViews">${totalOpens}</b><span>فتحة للملف 👁️</span></div>
+    </div>
+    <div class="pf-since"><i class="f7-icons">calendar</i> عضو منذ ${esc(memberDaysText(memberDays))} — تاريخ التسجيل ${formatDateAr(u.created_at)}</div>
+  </div>`;
+  const viewerChip = v => `
+    <div class="pf-viewer-chip" data-vid="${+v.viewer_id || 0}" title="فتح ملفك ${+v.views_count || 1} مرة">
+      <div class="pf-viewer-ava">${avatarHtml(v.avatar, '', v.avatar_frame || '')}</div>
+      <div class="pf-viewer-txt">
+        <b>${esc(v.username || 'عضو')}</b>
+        <span>${timeAgoAr(v.viewed_at)} • فتحها ${+v.views_count || 1} مرة</span>
+      </div>
+      <i class="f7-icons pf-viewer-eye">eye_fill</i>
+    </div>`;
+  const likerChip = l => `
+    <div class="pf-viewer-chip liker" data-vid="${+l.user_id || 0}" title="أعجب بملفك">
+      <div class="pf-viewer-ava">${avatarHtml(l.avatar, '', l.avatar_frame || '')}</div>
+      <div class="pf-viewer-txt">
+        <b>${esc(l.username || 'عضو')}</b>
+        <span>${timeAgoAr(l.created_at)}</span>
+      </div>
+      <i class="f7-icons pf-viewer-eye heart">heart_fill</i>
+    </div>`;
+  const viewersHtml = `
+  <div class="pf-viewers-card" id="pfViewersCard">
+    <div class="pf-viewers-head">
+      <span><i class="f7-icons">eye_fill</i> من قام بفتح ملفي الشخصي</span>
+      <b id="pfViewersCount">${viewersList.length}</b>
+    </div>
+    <div class="pf-viewers-list" id="pfViewersList">
+      ${viewersList.length
+      ? viewersList.slice(0, 6).map(viewerChip).join('')
+      : '<div class="pf-viewers-empty">لم يفتح أحد ملفك الشخصي بعد — سيظهرون هنا فور فتحه 👀</div>'}
+    </div>
+    ${viewersList.length > 6 ? '<button class="pf-more" id="pfViewersMore" type="button">أظهر المزيد</button>' : ''}
+  </div>`;
+  const likersHtml = `
+  <div class="pf-viewers-card likers" id="pfLikersCard">
+    <div class="pf-viewers-head">
+      <span><i class="f7-icons">heart_fill</i> من أعجب بملفي الشخصي</span>
+      <b id="pfLikersCount">${likersList.length}</b>
+    </div>
+    <div class="pf-viewers-list" id="pfLikersList">
+      ${likersList.length
+      ? likersList.slice(0, 6).map(likerChip).join('')
+      : '<div class="pf-viewers-empty">لم يضع أحد إعجاباً على ملفك بعد ❤️</div>'}
+    </div>
+    ${likersList.length > 6 ? '<button class="pf-more" id="pfLikersMore" type="button">أظهر المزيد</button>' : ''}
+  </div>`;
+
+  $('#profBody').innerHTML = statsHtml + viewersHtml + likersHtml + `
   <div class="pf-card">${bodyHtml}</div>
   <div class="pf-btns">
     <button class="btn-cancel" id="pfCancel">الغاء</button>
     <button class="btn-send" id="pfSave">تنفيذ وحفظ</button>
   </div>`;
+
+  // ربط قائمة المشاهدين والمعجبين: المزيد + فتح ملف الشخص عند النقر
+  const bindChipClicks = rootSel => {
+    $$(rootSel + ' .pf-viewer-chip').forEach(chip => {
+      chip.onclick = () => {
+        const vid = +chip.dataset.vid;
+        if (vid && (!ME || vid !== +ME.id)) openProfile(vid);
+      };
+    });
+  };
+  let shownViewers = 6;
+  const viewersMore = $('#pfViewersMore');
+  if (viewersMore) viewersMore.onclick = () => {
+    shownViewers += 6;
+    $('#pfViewersList').innerHTML = viewersList.slice(0, shownViewers).map(viewerChip).join('');
+    bindChipClicks('#pfViewersList');
+    if (shownViewers >= viewersList.length) viewersMore.style.display = 'none';
+  };
+  let shownLikers = 6;
+  const likersMore = $('#pfLikersMore');
+  if (likersMore) likersMore.onclick = () => {
+    shownLikers += 6;
+    $('#pfLikersList').innerHTML = likersList.slice(0, shownLikers).map(likerChip).join('');
+    bindChipClicks('#pfLikersList');
+    if (shownLikers >= likersList.length) likersMore.style.display = 'none';
+  };
+  bindChipClicks('#pfViewersList');
+  bindChipClicks('#pfLikersList');
   // ربط حقول الأعضاء (وفق ما أُعرض بالفعل).
   $('#pfGender').onchange = e => { PF.gender = e.target.value; $('#pfGenderTxt').textContent = GENDER_NAMES[PF.gender]; };
   if (isReg) {

@@ -1603,7 +1603,8 @@ function pubUser(u) {
     verified_expired: VERIFIED_SET.has(u.username) ? expiredNow(VERIFIED_EXPIRES.get(u.username)) : 0,
     royal: ROYAL_MAP.has(u.username) ? 1 : 0,
     royal_animal: ROYAL_MAP.get(u.username) || '',
-    royal_expired: ROYAL_MAP.has(u.username) ? expiredNow(ROYAL_EXPIRES.get(u.username)) : 0
+    royal_expired: ROYAL_MAP.has(u.username) ? expiredNow(ROYAL_EXPIRES.get(u.username)) : 0,
+    created_at: +u.created_at || 0        // تاريخ التسجيل — يُعرض «عضو منذ X يوم» في الملف الشخصي
   };
 }
 function requireUser(req, res, next) {
@@ -2331,11 +2332,114 @@ app.get('/api/rooms/:id/users', requireUser, requireRoomNotKicked, async (req, r
 app.get('/api/user/:id', requireUser, async (req, res) => {
   const u = await q.get(`SELECT * FROM users WHERE id=?`, req.params.id);
   if (!u) return res.status(404).json({ error: 'غير موجود' });
+  const viewerId = +req.authUid;
+  const isSelf = viewerId === +u.id;
+  // ===== تسجيل مشاهدة الملف الشخصي =====
+  // كل من يفتح ملف شخص آخر يُسجَّل في profile_views (صف واحد لكل زائر:
+  // عدد مرات الفتح + آخر لحظة فتح)، ويشاهد صاحب الملف القائمة في ملفه.
+  // يُسجَّل فقط عند الطلب الصريح (?view=1) من فتح الملف الشخصي — لا عند
+  // جلب بيانات المستخدم لأغراض أخرى (ورقة الإجراءات، تحديث الخاص...).
+  const wantsView = String(req.query.view || '') === '1';
+  if (!isSelf && wantsView) {
+    const viewer = await q.get(`SELECT username FROM users WHERE id=?`, viewerId);
+    const viewerName = String((viewer && viewer.username) || '');
+    await q.run(`
+      INSERT INTO profile_views (profile_id, viewer_id, username, views_count, viewed_at)
+      VALUES (?,?,?,1,strftime('%s','now'))
+      ON CONFLICT(profile_id, viewer_id)
+      DO UPDATE SET views_count = views_count + 1, viewed_at = strftime('%s','now'), username = excluded.username`,
+      u.id, viewerId, viewerName);
+    // إشعار فوري لصاحب الملف (إن كان متصلاً) أن فلاناً فتح ملفه الشخصي
+    const fresh = await q.get(`SELECT username, views_count FROM profile_views WHERE profile_id=? AND viewer_id=?`, u.id, viewerId);
+    io.to('user_' + u.id).emit('profile_viewed', {
+      viewerId,
+      viewerName: viewerName,
+      viewsCount: +(fresh && fresh.views_count) || 1
+    });
+  }
   const gifts = await q.all(`SELECT * FROM gifts_log WHERE to_id=? ORDER BY id DESC LIMIT 30`, u.id);
   const pub = pubUser(u);
   // البريد الإلكتروني يظهر في ملف المستخدم نفسه فقط (لتعبئة حقل التحرير)، ولا يصل لأي مستخدم آخر.
   if (req.authUid === +u.id) pub.email = String(u.email || '');
-  res.json({ user: pub, badge: badgeOf(u), gifts });
+  // ===== الإعجابات وعدد أيام العضوية =====
+  const likesRow = await q.get(`SELECT COUNT(*) c FROM profile_likes WHERE profile_id=?`, u.id);
+  const myLike = isSelf ? null : await q.get(`SELECT id FROM profile_likes WHERE profile_id=? AND user_id=?`, u.id, viewerId);
+  const memberDays = u.created_at ? Math.max(0, Math.floor((Math.floor(Date.now() / 1000) - (+u.created_at)) / 86400)) : 0;
+  // ===== لصاحب الملف فقط: من فتح ملفي ومن أعجب به =====
+  let viewers, likers, viewsTotal;
+  if (isSelf) {
+    const vcRow = await q.get(`SELECT COUNT(*) c, COALESCE(SUM(views_count),0) t FROM profile_views WHERE profile_id=?`, u.id);
+    viewsTotal = +(vcRow && vcRow.t) || 0;
+    const vRows = await q.all(`
+      SELECT pv.viewer_id, pv.username, pv.views_count, pv.viewed_at,
+             u2.avatar, u2.avatar_frame, u2.registered, u2.membership, u2.rank
+      FROM profile_views pv LEFT JOIN users u2 ON u2.id = pv.viewer_id
+      WHERE pv.profile_id=? ORDER BY pv.viewed_at DESC LIMIT 200`, u.id);
+    viewers = vRows.map(r => ({
+      viewer_id: +r.viewer_id, username: String(r.username || ''), views_count: +r.views_count || 1,
+      viewed_at: +r.viewed_at || 0, avatar: String(r.avatar || ''), avatar_frame: String(r.avatar_frame || ''),
+      registered: r.registered ? 1 : 0
+    }));
+    const lRows = await q.all(`
+      SELECT pl.user_id, pl.username, pl.created_at, u3.avatar, u3.avatar_frame, u3.registered
+      FROM profile_likes pl LEFT JOIN users u3 ON u3.id = pl.user_id
+      WHERE pl.profile_id=? ORDER BY pl.created_at DESC LIMIT 200`, u.id);
+    likers = lRows.map(r => ({
+      user_id: +r.user_id, username: String(r.username || ''), created_at: +r.created_at || 0,
+      avatar: String(r.avatar || ''), avatar_frame: String(r.avatar_frame || ''), registered: r.registered ? 1 : 0
+    }));
+  }
+  res.json({
+    user: pub, badge: badgeOf(u), gifts,
+    likes: +(likesRow && likesRow.c) || 0,
+    liked: myLike ? 1 : 0,
+    member_days: memberDays,
+    viewers, likers,
+    views_total: viewsTotal
+  });
+});
+
+// ===== الإعجاب بالملف الشخصي (وضع/سحب) =====
+// أي عضو يستطيع وضع إعجاب ❤️ على ملف شخصي آخر؛ يُسجَّل الإعجاب ويصل
+// لصاحب الملف إشعار فوري، والعدد ظاهر لكل من يفتح الملف.
+app.post('/api/profile/like/:id', requireUser, async (req, res) => {
+  const targetId = +req.params.id;
+  if (!targetId) return res.status(400).json({ error: 'المستخدم غير صالح' });
+  if (targetId === +req.authUid) return res.status(400).json({ error: 'لا يمكنك الإعجاب بملفك الشخصي' });
+  const limit = checkRateLimit('plike:' + req.authUid, 20, 60000);
+  if (!limit.ok) return res.status(429).json({ error: 'تمارس الإعجاب بسرعة كبيرة، مهلاً قليلاً' });
+  const target = await q.get(`SELECT id,username FROM users WHERE id=?`, targetId);
+  if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  const me = await q.get(`SELECT username FROM users WHERE id=?`, req.authUid);
+  const myName = String((me && me.username) || '');
+  const existing = await q.get(`SELECT id FROM profile_likes WHERE profile_id=? AND user_id=?`, targetId, req.authUid);
+  let liked;
+  if (existing) {
+    await q.run(`DELETE FROM profile_likes WHERE profile_id=? AND user_id=?`, targetId, req.authUid);
+    liked = 0;
+  } else {
+    await q.run(`INSERT OR IGNORE INTO profile_likes (profile_id,user_id,username) VALUES (?,?,?)`, targetId, req.authUid, myName);
+    liked = 1;
+    // إشعار صاحب الملف: «أعجب فلان بملفك الشخصي»
+    const notification = await createUserNotification(targetId, `${myName} أعجب بملفك الشخصي ❤️`, 'heart_fill');
+    io.to('user_' + targetId).emit('notify', notification);
+    io.to('user_' + targetId).emit('profile_liked', { byId: +req.authUid, byName: myName });
+  }
+  const row = await q.get(`SELECT COUNT(*) c FROM profile_likes WHERE profile_id=?`, targetId);
+  res.json({ ok: true, liked, likes: +(row && row.c) || 0 });
+});
+
+// قائمة من أعجبوا بملف شخصي معين (أسماء وصور فقط — متاحة للجميع مثل عدد الإعجابات).
+app.get('/api/profile/likers/:id', requireUser, async (req, res) => {
+  const targetId = +req.params.id;
+  const rows = await q.all(`
+    SELECT pl.user_id, pl.username, pl.created_at, u.avatar, u.avatar_frame, u.registered
+    FROM profile_likes pl LEFT JOIN users u ON u.id = pl.user_id
+    WHERE pl.profile_id=? ORDER BY pl.created_at DESC LIMIT 200`, targetId);
+  res.json(rows.map(r => ({
+    user_id: +r.user_id, username: String(r.username || ''), created_at: +r.created_at || 0,
+    avatar: String(r.avatar || ''), avatar_frame: String(r.avatar_frame || ''), registered: r.registered ? 1 : 0
+  })));
 });
 
 async function usersIgnoreEachOther(firstId, secondId) {
@@ -7326,7 +7430,7 @@ app.delete('/api/admin/room-admins/:id', requireSuperAdmin, async (req, res) => 
 // =====================================================
 const ALL_BACKUP_TABLES = [
   'settings', 'users', 'rooms', 'room_bots', 'bots', 'messages', 'private_messages',
-  'user_ignores', 'statuses', 'status_views', 'gifts', 'custom_emojis', 'gifts_log',
+  'user_ignores', 'statuses', 'status_views', 'profile_likes', 'profile_views', 'gifts', 'custom_emojis', 'gifts_log',
   'service_requests', 'wall_posts', 'wall_comments', 'wall_reactions', 'banned_words',
   'bans', 'ip_mutes', 'room_kicks', 'verified', 'royal_users', 'notifications', 'notification_reads', 'notification_hides',
   'complaints', 'call_recordings', 'seo_pages', 'gold_packages', 'payment_transactions', 'room_admins'
