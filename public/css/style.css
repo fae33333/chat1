@@ -7269,39 +7269,39 @@ body.lang-ltr .r-logo { padding-inline-start: 0; }
    إعجابات الملفات الشخصية + مدة العضوية + سجل المشاهدين
    ===================================================== */
 
-/* ----- شريط الإعجاب داخل ملف المستخدم الآخر ----- */
+/* ----- شريط الإعجاب داخل ملف المستخدم الآخر: زر + العدد بجانب بعض، مختصر بالأعلى ----- */
 .vp-like-bar {
   flex-shrink:0;
   display:flex;
   align-items:center;
   justify-content:center;
-  gap:12px;
-  padding:10px 14px 2px;
+  gap:10px;
+  padding:9px 14px 0;
 }
 .vp-like {
   position:relative;
   display:inline-flex;
   align-items:center;
-  gap:8px;
+  gap:6px;
   border:1.5px solid #e6c2cd;
   background:linear-gradient(180deg,#fff, #fff5f8);
   color:#b6254f;
   border-radius:999px;
-  padding:8px 20px 8px 14px;
+  padding:6px 16px;
   font-family:inherit;
-  font-size:14px;
+  font-size:13px;
   font-weight:900;
   cursor:pointer;
-  box-shadow:0 4px 12px rgba(182,37,79,.12);
+  box-shadow:0 3px 10px rgba(182,37,79,.12);
   transition:transform .15s, box-shadow .15s, background .2s, border-color .2s, color .2s;
 }
-.vp-like .vp-like-ic { display:inline-flex; font-size:18px; line-height:1; }
+.vp-like .vp-like-ic { display:inline-flex; font-size:15px; line-height:1; }
 .vp-like:active { transform:scale(.94); }
 .vp-like.liked {
   background:linear-gradient(135deg,#e11d48,#b6254f);
   border-color:#b6254f;
   color:#fff;
-  box-shadow:0 6px 16px rgba(225,29,72,.35);
+  box-shadow:0 4px 12px rgba(225,29,72,.35);
 }
 .vp-like.pop { animation:vpLikePop .45s ease; }
 @keyframes vpLikePop {
@@ -7310,14 +7310,17 @@ body.lang-ltr .r-logo { padding-inline-start: 0; }
   70% { transform:scale(.96); }
   100% { transform:scale(1); }
 }
+/* العدد مسجّل بجانب الزر مباشرة في سطر واحد */
 .vp-like-count {
-  display:flex;
-  flex-direction:column;
-  align-items:flex-start;
-  line-height:1.25;
+  display:inline-flex;
+  align-items:baseline;
+  gap:5px;
+  color:#8a90a0;
+  font-size:11.5px;
+  font-weight:800;
+  white-space:nowrap;
 }
-.vp-like-count b { color:#b6254f; font-size:16px; font-weight:900; }
-.vp-like-count span { color:#8a90a0; font-size:11px; font-weight:700; }
+.vp-like-count b { color:#b6254f; font-size:15px; font-weight:900; }
 /* قلوب متطايرة عند الضغط على الإعجاب */
 .like-burst { position:absolute; inset:0; pointer-events:none; overflow:visible; }
 .like-burst span {
@@ -7443,58 +7446,61 @@ body.lang-ltr .r-logo { padding-inline-start: 0; }
   transition:transform .25s, color .2s;
 }
 .pf-stat.open .pf-stat-arrow { transform:rotate(180deg); color:#b6254f; }
-/* لوحة تفاصيل «يوم عضوية» داخل بطاقة الإحصائيات */
-.pf-stat-detail {
-  margin-top:10px;
-  padding:9px 12px;
-  border-radius:12px;
-  background:#fdf4f7;
-  border:1px dashed #eec9d8;
+/* ----- القالب المنبثق لتفاصيل الإحصائيات: يعرض ~4 عناصر ثم يمرّر ----- */
+.pf-pop-overlay { z-index:60; background:rgba(10,14,30,.5); backdrop-filter:blur(2px); }
+.pf-pop-card {
+  width:min(400px, 92vw);
+  background:#fff;
+  border-radius:18px;
+  border:1px solid #eceef6;
+  box-shadow:0 24px 70px rgba(10,15,40,.35);
+  padding:14px 14px 16px;
+  animation:pfPopIn .22s ease;
+  max-height:86vh;
+  display:flex; flex-direction:column;
 }
-.pf-stat-detail .pf-since { margin-top:0; }
-.pf-stat-detail .pf-since + .pf-since { margin-top:7px; }
-.pf-since {
-  margin-top:10px;
-  display:flex; align-items:center; gap:6px;
-  color:#8a90a0; font-size:11.5px; font-weight:700;
-}
-.pf-since b { color:#8c1d3f; font-weight:900; }
-.pf-since i { color:#b6254f; font-size:14px; }
-/* حركة ظهور لوحات التفاصيل عند الفتح */
-.pf-stat-detail.opening,
-.pf-viewers-card.opening { animation:pfDetailIn .28s ease; }
-@keyframes pfDetailIn {
-  from { opacity:0; transform:translateY(-7px); }
+@keyframes pfPopIn {
+  from { opacity:0; transform:scale(.92) translateY(10px); }
   to   { opacity:1; transform:none; }
 }
-
-/* ----- بطاقة «من قام بفتح ملفي» و«من أعجب بملفي» ----- */
-.pf-viewers-card {
-  background:#fff;
-  margin:0 12px 12px;
-  border-radius:16px;
-  border:1px solid var(--skin-border, #e5e7f0);
-  box-shadow:0 4px 14px rgba(15,23,42,.05);
-  padding:12px 14px;
+.pf-pop-head {
+  display:flex; align-items:center; gap:9px;
+  padding-bottom:11px; margin-bottom:11px;
+  border-bottom:1px solid #f0f1f7;
+  flex-shrink:0;
 }
-.pf-viewers-head {
+.pf-pop-ic {
+  width:34px; height:34px; flex-shrink:0;
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg,#fde3ec,#fbd0e0);
+}
+.pf-pop-ic i { color:#b6254f; font-size:17px; }
+.pf-pop-head b {
+  flex:1; min-width:0;
+  color:#111827; font-size:14.5px; font-weight:900;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.pf-pop-x { color:#b6254f; font-size:22px; cursor:pointer; flex-shrink:0; line-height:1; }
+.pf-pop-x:active { transform:scale(.9); }
+/* جسم القالب: ارتفاع ~4 بطاقات ثم تمرير داخلي */
+.pf-pop-body {
+  overflow-y:auto;
+  max-height:270px;
+  box-sizing:border-box;
+  padding:2px;
+  scrollbar-width:thin;
+}
+.pf-pop-info { display:flex; flex-direction:column; gap:8px; }
+.pf-pop-row {
   display:flex; align-items:center; justify-content:space-between;
-  margin-bottom:10px;
+  background:#fdf4f7; border:1px dashed #eec9d8;
+  border-radius:12px; padding:11px 14px;
 }
-.pf-viewers-head span {
-  display:inline-flex; align-items:center; gap:7px;
-  color:#111827; font-size:14px; font-weight:900;
-}
-.pf-viewers-head span i { color:#1479f2; font-size:17px; }
-.pf-viewers-card.likers .pf-viewers-head span i { color:#e11d48; }
-.pf-viewers-head b {
-  min-width:24px; height:24px; padding:0 8px;
-  border-radius:999px;
-  background:#eef2ff; color:#1479f2;
-  display:inline-flex; align-items:center; justify-content:center;
-  font-size:12px; font-weight:900;
-}
-.pf-viewers-card.likers .pf-viewers-head b { background:#fde8ef; color:#e11d48; }
+.pf-pop-row span { color:#8a90a0; font-size:12.5px; font-weight:800; }
+.pf-pop-row b { color:#8c1d3f; font-size:13.5px; font-weight:900; }
+
+/* ----- قائمة المشاهدين/المعجبين (داخل القالب المنبثق) ----- */
 .pf-viewers-list { display:flex; flex-direction:column; gap:7px; }
 .pf-viewers-empty {
   color:#9aa0b5; font-size:12.5px; font-weight:700;
@@ -7548,17 +7554,68 @@ body.lang-ltr .r-logo { padding-inline-start: 0; }
 .pf-viewer-txt span { color:#8a90a0; font-size:11px; font-weight:700; }
 .pf-viewer-eye { color:#1479f2; font-size:16px; flex-shrink:0; opacity:.85; }
 .pf-viewer-eye.heart { color:#e11d48; }
-.pf-more {
-  margin-top:10px; width:100%;
-  border:1px dashed #cfd4e0; background:#fbfbfe;
-  color:#5b6272; border-radius:10px;
-  padding:8px; font-family:inherit; font-size:12px; font-weight:800;
-  cursor:pointer; transition:background .15s;
+
+/* ===== رؤوس القوالب الثابتة: الرأس يبقى في الأعلى والباقي يُمرَّر ===== */
+
+/* --- ملف الشخص الآخر: شريط العنوان (إغلاق + الاسم) ثابت، والمحتوى يمرّر داخله --- */
+.profpage.visitor { overflow:hidden; }
+.profpage.visitor #profBody {
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
 }
-.pf-more:hover { background:#f1f3fa; }
+.profpage.visitor .user-info-container {
+  flex:1;
+  min-height:0;
+  height:auto;
+  display:flex;
+  flex-direction:column;
+}
+.profpage.visitor .visitor-profile-card {
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+.profile-navbar {
+  flex-shrink:0;
+  position:sticky;
+  top:0;
+  z-index:8;
+  box-shadow:0 1px 0 #edf0f6;
+}
+.profile-content {
+  flex:1;
+  min-height:0;
+  overflow-y:auto;
+  scrollbar-width:none;
+}
+.profile-content::-webkit-scrollbar { display:none; }
+.profile-content > * { flex-shrink:0; }
+/* panels تمر داخل صفحة المحتوى نفسها (لا تمرير مزدوج) */
+.profile-content .profile-info-panel,
+.profile-content .profile-gifts-panel {
+  flex:none;
+  min-height:auto;
+  overflow:visible;
+}
+
+/* --- أوراق الأسفل (الهدايا/الترقية/الشروط/الخصوصية): رأس الورقة ثابت والباقي يمرّر --- */
+.sheet > .pg-head {
+  position:sticky;
+  top:0;
+  z-index:6;
+  background:#fff;
+  margin:-12px -16px 12px;
+  padding:14px 16px 11px;
+  border-radius:22px 22px 0 0;
+  box-shadow:0 8px 14px -12px rgba(15,23,42,.45);
+}
 
 /* شاشات صغيرة: تصغير أرقام الإحصائيات قليلاً */
 @media (max-width: 380px) {
   .pf-stat b { font-size:17px; }
-  .vp-like { padding:7px 14px 7px 10px; font-size:13px; }
+  .vp-like { padding:5px 12px; font-size:12px; }
+  .vp-like-count { font-size:10.5px; }
 }

@@ -998,9 +998,23 @@
         transform: translateY(-1px)
     }
 
+    /* رأس القالب ثابت على الكمبيوتر: يلصق بأعلى الصفحة الداخلية والباقي يُمرَّر */
     .overlay .pg-head.bar {
         position: sticky;
-        width: auto
+        top: 0;
+        width: auto;
+        z-index: 30;
+        background: #fff;
+        border-radius: 16px 16px 0 0
+    }
+
+    /* رؤوس أوراق الأسفل (الهدايا/الترقية/الشروط/الخصوصية) ثابتة بزوايا مطابقة للكمبيوتر */
+    .sheet > .pg-head {
+        border-radius: 18px 18px 0 0
+    }
+
+    #giftOv .sheet > .pg-head {
+        border-radius: 16px 16px 0 0
     }
 
     #notifOv,#privOv,#wallOv {

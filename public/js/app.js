@@ -1753,6 +1753,8 @@ function closeOv(id) {
     try { stopProfileAudioStream(); } catch (e) { }
     CUR_PROFILE_USER = null;
   }
+  // إغلاق قالب تفاصيل الإحصائيات المنبثق يطفئ تمييز بطاقة الإحصاء
+  if (id === 'pfPopOv' && typeof closePfStatPopupState === 'function') closePfStatPopupState();
   // الخروج من المحادثة الخاصة: لم نعد داخلها، فأي رسالة جديدة من الشخص نفسه
   // يجب أن تُظهر الإشعار من جديد وتزيد العداد.
   if (id === 'pmOv') PM_WITH = null;
@@ -5945,36 +5947,112 @@ function timeAgoAr(ts) {
   return formatDateAr(ts);
 }
 
+// ===== القالب المنبثق لتفاصيل «إحصائيات ملفي الشخصي» =====
+// النقر على بطاقة (يوم عضوية / إعجاب / فتحة للملف) يفتح قالباً منبثقاً
+// يعرض نحو 4 عناصر ثم يصبح الباقي بالتمرير.
+let PF_STATS = null;      // { memberDays, createdAt, likes, viewsTotal, viewers[], likers[] }
+let PF_POP_KIND = '';     // أي بطاقة مفتوحة الآن في القالب المنبثق
+function pfViewerChipHtml(v) {
+  return `
+    <div class="pf-viewer-chip" data-vid="${+v.viewer_id || 0}" title="فتح ملفك ${+v.views_count || 1} مرة">
+      <div class="pf-viewer-ava">${avatarHtml(v.avatar, '', v.avatar_frame || '')}</div>
+      <div class="pf-viewer-txt">
+        <b>${esc(v.username || 'عضو')}</b>
+        <span>${timeAgoAr(v.viewed_at)} • فتحها ${+v.views_count || 1} مرة</span>
+      </div>
+      <i class="f7-icons pf-viewer-eye">eye_fill</i>
+    </div>`;
+}
+function pfLikerChipHtml(l) {
+  return `
+    <div class="pf-viewer-chip liker" data-vid="${+l.user_id || 0}" title="أعجب بملفك">
+      <div class="pf-viewer-ava">${avatarHtml(l.avatar, '', l.avatar_frame || '')}</div>
+      <div class="pf-viewer-txt">
+        <b>${esc(l.username || 'عضو')}</b>
+        <span>${timeAgoAr(l.created_at)}</span>
+      </div>
+      <i class="f7-icons pf-viewer-eye heart">heart_fill</i>
+    </div>`;
+}
+function openPfStatPopup(kind) {
+  if (!PF_STATS || !$('#pfPopOv')) return;
+  PF_POP_KIND = kind;
+  const icon = $('#pfPopIcon'), title = $('#pfPopTitle'), body = $('#pfPopBody');
+  if (kind === 'days') {
+    icon.innerHTML = '<i class="f7-icons">star_fill</i>';
+    title.textContent = 'مدة عضويتي 🎖️';
+    body.innerHTML = `
+      <div class="pf-pop-info">
+        <div class="pf-pop-row"><span>عضو منذ</span><b>${esc(memberDaysText(PF_STATS.memberDays))}</b></div>
+        <div class="pf-pop-row"><span>عدد الأيام</span><b>${+PF_STATS.memberDays || 0} يوم</b></div>
+        <div class="pf-pop-row"><span>تاريخ التسجيل</span><b dir="ltr">${formatDateAr(PF_STATS.createdAt)}</b></div>
+      </div>`;
+  } else if (kind === 'likes') {
+    icon.innerHTML = '<i class="f7-icons">heart_fill</i>';
+    title.textContent = `من أعجب بملفي ❤️ (${PF_STATS.likers.length})`;
+    body.innerHTML = PF_STATS.likers.length
+      ? `<div class="pf-viewers-list" id="pfPopList">${PF_STATS.likers.map(pfLikerChipHtml).join('')}</div>`
+      : '<div class="pf-viewers-empty">لم يضع أحد إعجاباً على ملفك بعد ❤️</div>';
+  } else {
+    icon.innerHTML = '<i class="f7-icons">eye_fill</i>';
+    title.textContent = `من قام بفتح ملفي 👁️ (${PF_STATS.viewers.length})`;
+    body.innerHTML = PF_STATS.viewers.length
+      ? `<div class="pf-viewers-list" id="pfPopList">${PF_STATS.viewers.map(pfViewerChipHtml).join('')}</div>`
+      : '<div class="pf-viewers-empty">لم يفتح أحد ملفك الشخصي بعد — سيظهرون هنا فور فتحه 👀</div>';
+  }
+  $$('#pfPopBody .pf-viewer-chip').forEach(chip => {
+    chip.onclick = () => {
+      const vid = +chip.dataset.vid;
+      closeOv('pfPopOv');
+      if (vid && (!ME || vid !== +ME.id)) openProfile(vid);
+    };
+  });
+  $$('#pfStatsCard .pf-stat').forEach(b => b.classList.toggle('open', b.dataset.pfstat === kind));
+  openOv('pfPopOv');
+}
+// إغلاق القالب المنبثق يطفئ تمييز بطاقة الإحصاء
+function closePfStatPopupState() {
+  PF_POP_KIND = '';
+  try { $$('#pfStatsCard .pf-stat').forEach(b => b.classList.remove('open')); } catch (e) { }
+}
+
 // ===== تحديث حي لقائمة «من فتح ملفي» عند وصول حدث profile_viewed =====
-// تعمل فقط حين يكون ملفي الشخصي مفتوحاً (توجد القائمة في الصفحة).
 function addLiveProfileViewer(v) {
   try {
-    const list = document.querySelector('#pfViewersList');
     const statViews = document.querySelector('#pfStatViews');
     if (statViews) statViews.textContent = (+statViews.textContent || 0) + 1;
-    if (!list) return;
+    if (!PF_STATS) return;
     const vid = +v.viewerId || 0;
     if (!vid) return;
-    const empty = list.querySelector('.pf-viewers-empty');
-    if (empty) empty.remove();
-    const old = list.querySelector(`.pf-viewer-chip[data-vid="${vid}"]`);
-    if (old) old.remove();
-    const chip = document.createElement('div');
-    chip.className = 'pf-viewer-chip fresh';
-    chip.dataset.vid = String(vid);
-    const cnt = +v.viewsCount || 1;
-    chip.innerHTML = `
-      <div class="pf-viewer-ava"><img src="/avatars/default.png" alt=""></div>
-      <div class="pf-viewer-txt">
-        <b>${esc(v.viewerName || 'عضو')}</b>
-        <span>الآن • فتحها ${cnt} مرة</span>
-      </div>
-      <i class="f7-icons pf-viewer-eye">eye_fill</i>`;
-    chip.onclick = () => { if (ME && vid !== +ME.id) openProfile(vid); };
-    list.prepend(chip);
-    setTimeout(() => chip.classList.remove('fresh'), 2500);
-    const cntEl = document.querySelector('#pfViewersCount');
-    if (cntEl && !old) cntEl.textContent = (+cntEl.textContent || 0) + 1;
+    const row = {
+      viewer_id: vid, username: v.viewerName || '', views_count: +v.viewsCount || 1,
+      viewed_at: Math.floor(Date.now() / 1000), avatar: '', avatar_frame: ''
+    };
+    const arr = PF_STATS.viewers || (PF_STATS.viewers = []);
+    const oldIdx = arr.findIndex(x => +x.viewer_id === vid);
+    if (oldIdx >= 0) {
+      row.avatar = arr[oldIdx].avatar;
+      row.avatar_frame = arr[oldIdx].avatar_frame;
+      arr.splice(oldIdx, 1);
+    }
+    arr.unshift(row);
+    // إن كان القالب المنبثق مفتوحاً على قائمة المشاهدين حدّثها فوراً
+    if (PF_POP_KIND === 'views' && document.querySelector('#pfPopOv.open')) {
+      const title = document.querySelector('#pfPopTitle');
+      if (title) title.textContent = `من قام بفتح ملفي 👁️ (${arr.length})`;
+      const list = document.querySelector('#pfPopList');
+      if (list) {
+        const oldChip = list.querySelector(`.pf-viewer-chip[data-vid="${vid}"]`);
+        if (oldChip) oldChip.remove();
+        const tmp = document.createElement('div');
+        tmp.innerHTML = pfViewerChipHtml(row).trim();
+        const chip = tmp.firstElementChild;
+        chip.classList.add('fresh');
+        chip.onclick = () => { closeOv('pfPopOv'); if (!ME || vid !== +ME.id) openProfile(vid); };
+        list.prepend(chip);
+        setTimeout(() => chip.classList.remove('fresh'), 2500);
+      } else openPfStatPopup('views');
+    }
   } catch (e) { }
 }
 // تحديث حي لعدّاد الإعجابات في ملفي عند وصول profile_liked
@@ -5982,25 +6060,30 @@ function bumpMyProfileLikes(byId, byName) {
   try {
     const likes = document.querySelector('#pfStatLikes');
     if (likes) likes.textContent = (+likes.textContent || 0) + 1;
-    const list = document.querySelector('#pfLikersList');
-    if (!list) return;
-    const empty = list.querySelector('.pf-viewers-empty');
-    if (empty) empty.remove();
-    const chip = document.createElement('div');
-    chip.className = 'pf-viewer-chip liker fresh';
-    chip.dataset.vid = String(byId || 0);
-    chip.innerHTML = `
-      <div class="pf-viewer-ava"><img src="/avatars/default.png" alt=""></div>
-      <div class="pf-viewer-txt">
-        <b>${esc(byName || 'عضو')}</b>
-        <span>الآن</span>
-      </div>
-      <i class="f7-icons pf-viewer-eye heart">heart_fill</i>`;
-    chip.onclick = () => { if (byId && ME && +byId !== +ME.id) openProfile(+byId); };
-    list.prepend(chip);
-    setTimeout(() => chip.classList.remove('fresh'), 2500);
-    const cntEl = document.querySelector('#pfLikersCount');
-    if (cntEl) cntEl.textContent = (+cntEl.textContent || 0) + 1;
+    if (!PF_STATS) return;
+    const row = {
+      user_id: +byId || 0, username: byName || '', created_at: Math.floor(Date.now() / 1000),
+      avatar: '', avatar_frame: ''
+    };
+    const arr = PF_STATS.likers || (PF_STATS.likers = []);
+    const oldIdx = arr.findIndex(x => +x.user_id === +byId);
+    if (oldIdx >= 0) arr.splice(oldIdx, 1);
+    arr.unshift(row);
+    if (PF_POP_KIND === 'likes' && document.querySelector('#pfPopOv.open')) {
+      const title = document.querySelector('#pfPopTitle');
+      if (title) title.textContent = `من أعجب بملفي ❤️ (${arr.length})`;
+      const list = document.querySelector('#pfPopList');
+      if (list) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = pfLikerChipHtml(row).trim();
+        const chip = tmp.firstElementChild;
+        chip.classList.add('fresh');
+        const vid = +byId || 0;
+        chip.onclick = () => { closeOv('pfPopOv'); if (vid && (!ME || vid !== +ME.id)) openProfile(vid); };
+        list.prepend(chip);
+        setTimeout(() => chip.classList.remove('fresh'), 2500);
+      } else openPfStatPopup('likes');
+    }
   } catch (e) { }
 }
 
@@ -6089,20 +6172,17 @@ function renderVisitorProfile(u, d) {
             </div>
           </div>
         </div>
-        <div class="profile-tabs-shell">
-          <div class="vp-tabs profile-tabs">
-            <button class="vp-tab" data-vtab="gifts">الهدايا</button>
-            <button class="vp-tab active" data-vtab="info">المعلومات الشخصية</button>
-          </div>
-        </div>
-        <div class="vp-like-bar" id="vpLikeBar">
+        ${u.registered ? `<div class="vp-like-bar" id="vpLikeBar">
           <button class="vp-like${d.liked ? ' liked' : ''}" id="vpLikeBtn" type="button">
             <span class="vp-like-ic"><i class="f7-icons">heart_fill</i></span>
             <span class="vp-like-label">${d.liked ? 'أعجبني' : 'إعجاب'}</span>
           </button>
-          <div class="vp-like-count" id="vpLikeCount">
-            <b>${d.likes || 0}</b>
-            <span>إعجاب على هذا الملف</span>
+          <span class="vp-like-count" id="vpLikeCount"><b>${d.likes || 0}</b> إعجاب على هذا الملف</span>
+        </div>` : ''}
+        <div class="profile-tabs-shell">
+          <div class="vp-tabs profile-tabs">
+            <button class="vp-tab" data-vtab="gifts">الهدايا</button>
+            <button class="vp-tab active" data-vtab="info">المعلومات الشخصية</button>
           </div>
         </div>
         <div class="vp-acts profile-actions" id="vpActs">
@@ -6118,12 +6198,12 @@ function renderVisitorProfile(u, d) {
             <div class="profile-stat-row"><span>العمر</span><b>${u.age || 0} سنة</b></div>
             <div class="profile-stat-row"><span>النوع</span><b>${GENDER_NAMES[u.gender] || 'مجهول'}</b></div>
           </div>
-          <div class="vp-member-card">
+          ${u.registered ? `<div class="vp-member-card">
             <div class="vp-member-ic"><i class="f7-icons">calendar_badge_plus</i></div>
             <span class="vp-member-label">مسجّل منذ</span>
             <b class="vp-member-period">${esc(memberDaysText(d.member_days != null ? d.member_days : memberDaysOf(u)))}</b>
             <span class="vp-member-date"><i class="f7-icons">calendar</i><span dir="ltr">${formatDateAr(u.created_at)}</span></span>
-          </div>
+          </div>` : ''}
           ${u.bio_audio ? `<div class="profile-voice-block">
               <div class="profile-voice-title"><i class="f7-icons">waveform</i><span>نبذة صوتية</span></div>
               ${profileAudioReadonlyHtml(u.bio_audio, u.bio_audio_duration)}
@@ -6179,7 +6259,7 @@ function renderVisitorProfile(u, d) {
       const label = likeBtn.querySelector('.vp-like-label');
       if (label) label.textContent = likeState ? 'أعجبني' : 'إعجاب';
       const cnt = $('#vpLikeCount');
-      if (cnt) cnt.innerHTML = `<b>${likeCount}</b><span>إعجاب على هذا الملف</span>`;
+      if (cnt) cnt.innerHTML = `<b>${likeCount}</b> إعجاب على هذا الملف`;
     };
     const burstHearts = () => {
       const burst = document.createElement('div');
@@ -6539,110 +6619,22 @@ function renderProfileForm(u, d) {
       <button type="button" class="pf-stat" data-pfstat="likes"><i class="f7-icons pf-stat-arrow">chevron_down</i><b id="pfStatLikes">${d.likes || 0}</b><span>إعجاب ❤️</span></button>
       <button type="button" class="pf-stat" data-pfstat="views"><i class="f7-icons pf-stat-arrow">chevron_down</i><b id="pfStatViews">${totalOpens}</b><span>فتحة للملف 👁️</span></button>
     </div>
-    <div class="pf-stat-detail" id="pfDaysDetail" style="display:none">
-      <div class="pf-since"><i class="f7-icons">star_fill</i> عضو منذ <b>${esc(memberDaysText(memberDays))}</b></div>
-      <div class="pf-since"><i class="f7-icons">calendar_badge_plus</i> تاريخ التسجيل <b dir="ltr">${formatDateAr(u.created_at)}</b></div>
-    </div>
   </div>`;
-  const viewerChip = v => `
-    <div class="pf-viewer-chip" data-vid="${+v.viewer_id || 0}" title="فتح ملفك ${+v.views_count || 1} مرة">
-      <div class="pf-viewer-ava">${avatarHtml(v.avatar, '', v.avatar_frame || '')}</div>
-      <div class="pf-viewer-txt">
-        <b>${esc(v.username || 'عضو')}</b>
-        <span>${timeAgoAr(v.viewed_at)} • فتحها ${+v.views_count || 1} مرة</span>
-      </div>
-      <i class="f7-icons pf-viewer-eye">eye_fill</i>
-    </div>`;
-  const likerChip = l => `
-    <div class="pf-viewer-chip liker" data-vid="${+l.user_id || 0}" title="أعجب بملفك">
-      <div class="pf-viewer-ava">${avatarHtml(l.avatar, '', l.avatar_frame || '')}</div>
-      <div class="pf-viewer-txt">
-        <b>${esc(l.username || 'عضو')}</b>
-        <span>${timeAgoAr(l.created_at)}</span>
-      </div>
-      <i class="f7-icons pf-viewer-eye heart">heart_fill</i>
-    </div>`;
-  const viewersHtml = `
-  <div class="pf-viewers-card" id="pfViewersCard" style="display:none">
-    <div class="pf-viewers-head">
-      <span><i class="f7-icons">eye_fill</i> من قام بفتح ملفي الشخصي</span>
-      <b id="pfViewersCount">${viewersList.length}</b>
-    </div>
-    <div class="pf-viewers-list" id="pfViewersList">
-      ${viewersList.length
-      ? viewersList.slice(0, 6).map(viewerChip).join('')
-      : '<div class="pf-viewers-empty">لم يفتح أحد ملفك الشخصي بعد — سيظهرون هنا فور فتحه 👀</div>'}
-    </div>
-    ${viewersList.length > 6 ? '<button class="pf-more" id="pfViewersMore" type="button">أظهر المزيد</button>' : ''}
-  </div>`;
-  const likersHtml = `
-  <div class="pf-viewers-card likers" id="pfLikersCard" style="display:none">
-    <div class="pf-viewers-head">
-      <span><i class="f7-icons">heart_fill</i> من أعجب بملفي الشخصي</span>
-      <b id="pfLikersCount">${likersList.length}</b>
-    </div>
-    <div class="pf-viewers-list" id="pfLikersList">
-      ${likersList.length
-      ? likersList.slice(0, 6).map(likerChip).join('')
-      : '<div class="pf-viewers-empty">لم يضع أحد إعجاباً على ملفك بعد ❤️</div>'}
-    </div>
-    ${likersList.length > 6 ? '<button class="pf-more" id="pfLikersMore" type="button">أظهر المزيد</button>' : ''}
-  </div>`;
-
-  $('#profBody').innerHTML = statsHtml + viewersHtml + likersHtml + `
+  $('#profBody').innerHTML = statsHtml + `
   <div class="pf-card">${bodyHtml}</div>
   <div class="pf-btns">
     <button class="btn-cancel" id="pfCancel">الغاء</button>
     <button class="btn-send" id="pfSave">تنفيذ وحفظ</button>
   </div>`;
 
-  // ربط قائمة المشاهدين والمعجبين: المزيد + فتح ملف الشخص عند النقر
-  const bindChipClicks = rootSel => {
-    $$(rootSel + ' .pf-viewer-chip').forEach(chip => {
-      chip.onclick = () => {
-        const vid = +chip.dataset.vid;
-        if (vid && (!ME || vid !== +ME.id)) openProfile(vid);
-      };
-    });
+  // ===== التفاصيل في قالب منبثق: النقر على بطاقة إحصائية يفتح تفاصيلها فقط =====
+  // (القالب يعرض نحو 4 عناصر ثم يصبح الباقي بالتمرير)
+  PF_STATS = {
+    memberDays, createdAt: u.created_at, likes: +d.likes || 0, viewsTotal,
+    viewers: viewersList, likers: likersList
   };
-  let shownViewers = 6;
-  const viewersMore = $('#pfViewersMore');
-  if (viewersMore) viewersMore.onclick = () => {
-    shownViewers += 6;
-    $('#pfViewersList').innerHTML = viewersList.slice(0, shownViewers).map(viewerChip).join('');
-    bindChipClicks('#pfViewersList');
-    if (shownViewers >= viewersList.length) viewersMore.style.display = 'none';
-  };
-  let shownLikers = 6;
-  const likersMore = $('#pfLikersMore');
-  if (likersMore) likersMore.onclick = () => {
-    shownLikers += 6;
-    $('#pfLikersList').innerHTML = likersList.slice(0, shownLikers).map(likerChip).join('');
-    bindChipClicks('#pfLikersList');
-    if (shownLikers >= likersList.length) likersMore.style.display = 'none';
-  };
-  bindChipClicks('#pfViewersList');
-  bindChipClicks('#pfLikersList');
-
-  // ===== الأكورديون: التفاصيل مخفية، والنقر على بطاقة إحصائية يعرض تفاصيلها فقط =====
-  const STAT_PANELS = { days: '#pfDaysDetail', likes: '#pfLikersCard', views: '#pfViewersCard' };
   $$('#pfStatsCard .pf-stat').forEach(btn => {
-    btn.onclick = () => {
-      const key = btn.dataset.pfstat;
-      const wasOpen = btn.classList.contains('open');
-      $$('#pfStatsCard .pf-stat').forEach(b => b.classList.toggle('open', b === btn && !wasOpen));
-      Object.entries(STAT_PANELS).forEach(([k, sel]) => {
-        const el = document.querySelector(sel);
-        if (!el) return;
-        const show = !wasOpen && k === key;
-        el.style.display = show ? '' : 'none';
-        if (show) {
-          el.classList.remove('opening');
-          void el.offsetWidth;               // إعادة تشغيل حركة الظهور
-          el.classList.add('opening');
-        }
-      });
-    };
+    btn.onclick = () => openPfStatPopup(btn.dataset.pfstat);
   });
   // ربط حقول الأعضاء (وفق ما أُعرض بالفعل).
   $('#pfGender').onchange = e => { PF.gender = e.target.value; $('#pfGenderTxt').textContent = GENDER_NAMES[PF.gender]; };

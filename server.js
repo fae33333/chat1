@@ -2408,8 +2408,10 @@ app.post('/api/profile/like/:id', requireUser, async (req, res) => {
   if (targetId === +req.authUid) return res.status(400).json({ error: 'لا يمكنك الإعجاب بملفك الشخصي' });
   const limit = checkRateLimit('plike:' + req.authUid, 20, 60000);
   if (!limit.ok) return res.status(429).json({ error: 'تمارس الإعجاب بسرعة كبيرة، مهلاً قليلاً' });
-  const target = await q.get(`SELECT id,username FROM users WHERE id=?`, targetId);
+  const target = await q.get(`SELECT id,username,registered FROM users WHERE id=?`, targetId);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  // الزائر غير المسجل لا يملك عضوية: لا يظهر له زر إعجاب ولا يمكن إرسال إعجاب لملفه
+  if (!target.registered) return res.status(400).json({ error: 'لا يمكن الإعجاب بملف زائر غير مسجل' });
   const me = await q.get(`SELECT username FROM users WHERE id=?`, req.authUid);
   const myName = String((me && me.username) || '');
   const existing = await q.get(`SELECT id FROM profile_likes WHERE profile_id=? AND user_id=?`, targetId, req.authUid);
