@@ -19,7 +19,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20260919-qladder">
+<link rel="stylesheet" href="/css/style.css?v=20260919-usort1">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body>
@@ -170,6 +170,17 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <span class="sp-pill">
           <textarea id="userSearch" rows="1" placeholder="بحث عن مستخدمين"></textarea>
           <i class="f7-icons sp-filter">line_horizontal3_decrease</i>
+        </span>
+        <!-- زر فرز المستخدمين: يفتح قائمة (الجميع / الذكور / الإناث) -->
+        <span class="usort-wrap" id="usersSortWrap">
+          <button class="_sortButton_1ihve_371 usort-btn" id="usersSortBtn" type="button" aria-label="فرز المستخدمين" aria-haspopup="menu" aria-expanded="false" title="فرز المستخدمين">
+            <i aria-hidden="true" class="_framework7_1m4rw_2 f7-icons">sort_down</i>
+          </button>
+          <div class="enter-drop usort-drop" id="usersSortDrop" role="menu" aria-label="فرز المستخدمين">
+            <button type="button" class="usort-item active" role="menuitemradio" aria-checked="true" data-users-sort="all">الجميع <i class="f7-icons">checkmark</i></button>
+            <button type="button" class="usort-item" role="menuitemradio" aria-checked="false" data-users-sort="boy">الذكور <i class="f7-icons">chevron_right</i></button>
+            <button type="button" class="usort-item" role="menuitemradio" aria-checked="false" data-users-sort="girl">الإناث <i class="f7-icons">chevron_right</i></button>
+          </div>
         </span>
         <i class="f7-icons sp-xplain" id="usersPanelX">xmark</i>
       </div>
@@ -1623,8 +1634,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/i18n-words.js?v=20260918-i18n4" defer></script>
-<script src="/js/app.js?v=20260919-qladder" defer></script>
+<script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
+<script src="/js/app.js?v=20260919-usort1" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
