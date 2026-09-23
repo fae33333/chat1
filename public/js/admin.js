@@ -3029,7 +3029,7 @@ const PAGES = {
     bind: async () => {
       const d = await api('/api/admin/expired-memberships');
       const rows = d.rows || [];
-      $('#expiredMembershipsList').innerHTML = rows.length ? `<table><thead><tr><th>المستخدم</th><th>العضوية</th><th>الصلاحية</th><th>تاريخ الانتهاء</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.username)}</td><td>${esc(r.membership || 'none')}</td><td>${esc(r.rank || 'user')}</td><td>${new Date((+r.expired_at || 0) * 1000).toLocaleString('ar-JO')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">لا توجد عضويات منتهية بعد</div>';
+      $('#expiredMembershipsList').innerHTML = rows.length ? `<table><thead><tr><th>المستخدم</th><th>العضوية</th><th>الصلاحية</th><th>تاريخ الانتهاء</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.username)}</td><td>${esc(r.membership || 'none')}</td><td>${esc(r.rank || 'user')}</td><td>${new Date((+r.expired_at > 100000000000 ? +r.expired_at : (+r.expired_at || 0) * 1000)).toLocaleString('ar-JO')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">لا توجد عضويات منتهية بعد</div>';
     }
   },
 

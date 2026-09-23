@@ -5635,6 +5635,7 @@ app.get('/api/admin/expired-memberships', requireAdmin, async (req, res) => {
       id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, membership TEXT,
       rank TEXT, expired_at INTEGER, recorded_at INTEGER DEFAULT (strftime('%s','now'))
     )`);
+    await cleanupExpiredMemberships();
     const rows = await q.all(`SELECT * FROM expired_memberships ORDER BY recorded_at DESC LIMIT 500`);
     res.json({ ok: true, rows });
   } catch (e) {
