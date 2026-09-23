@@ -5637,7 +5637,14 @@ app.get('/api/admin/expired-memberships', requireAdmin, async (req, res) => {
     )`);
     await cleanupExpiredMemberships();
     const rows = await q.all(`SELECT * FROM expired_memberships ORDER BY recorded_at DESC LIMIT 500`);
-    res.json({ ok: true, rows });
+    const now = Math.floor(Date.now() / 1000);
+    const verifiedExpired = await q.all(`SELECT username, expires_at FROM verified WHERE expires_at>0 AND expires_at<=?`, now);
+    const royalExpired = await q.all(`SELECT username, expires_at FROM royal_users WHERE expires_at>0 AND expires_at<=?`, now);
+    const extra = [
+      ...verifiedExpired.map(r => ({ username: r.username, membership: 'التوثيق', rank: 'verified', expired_at: r.expires_at })),
+      ...royalExpired.map(r => ({ username: r.username, membership: 'الدخول الملكي', rank: 'royal', expired_at: r.expires_at }))
+    ];
+    res.json({ ok: true, rows: [...rows, ...extra] });
   } catch (e) {
     console.error('expired-memberships:', e);
     res.status(500).json({ error: 'تعذر تحميل قائمة العضويات المنتهية' });
