@@ -9882,7 +9882,7 @@ $('#mnPrivateSettings').onclick = async () => {
     const enabled = confirm(state.enabled ? 'الخاص مفتوح حالياً. اضغط موافق لإغلاق استقبال الرسائل الخاصة.' : 'الخاص مغلق حالياً. اضغط موافق لفتحه واستقبال الرسائل الخاصة.');
     await api('/api/user/private-settings', 'POST', { enabled: enabled ? '0' : '1' });
     toast(enabled ? 'تم إغلاق استقبال الرسائل الخاصة' : 'تم فتح استقبال الرسائل الخاصة');
-    closeOv('userMenu');
+    closeOv('menuOv');
   } catch (e) { toast(e.error || 'تعذر تعديل إعدادات الخاص', false); }
 };
 $('#mnLogout').onclick = logoutWithoutReload;
