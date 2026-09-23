@@ -5629,8 +5629,18 @@ async function cleanupExpiredMemberships() {
 setInterval(() => cleanupExpiredMemberships().catch(() => { }), 60000);
 
 app.get('/api/admin/expired-memberships', requireAdmin, async (req, res) => {
-  const rows = await q.all(`SELECT * FROM expired_memberships ORDER BY recorded_at DESC LIMIT 500`);
-  res.json({ ok: true, rows });
+  try {
+    // إنشاء الجدول هنا أيضاً لضمان عمله مع قواعد البيانات القديمة أو عند بدء الخادم سريعاً.
+    await q.run(`CREATE TABLE IF NOT EXISTS expired_memberships (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, membership TEXT,
+      rank TEXT, expired_at INTEGER, recorded_at INTEGER DEFAULT (strftime('%s','now'))
+    )`);
+    const rows = await q.all(`SELECT * FROM expired_memberships ORDER BY recorded_at DESC LIMIT 500`);
+    res.json({ ok: true, rows });
+  } catch (e) {
+    console.error('expired-memberships:', e);
+    res.status(500).json({ error: 'تعذر تحميل قائمة العضويات المنتهية' });
+  }
 });
 
 // ---- طلبات التوثيق والترقية ----
