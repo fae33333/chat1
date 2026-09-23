@@ -12160,6 +12160,7 @@ function leaveRoom() {
   setRoomsPanel(false);
   $('#roomsVeil').style.display = 'none';
 }
+$('#btnDesktopMenu').onclick = () => openMenu();
 $('#btnRoomUsers').onclick = () => setUsersPanel(!$('#usersPanel').classList.contains('open'));
 // زر النقاط: قائمة خيارات الغرفة — نفس القالب على الهاتف والكمبيوتر
 function closeRoomDrop() { $('#roomDrop').classList.remove('open'); $('#roomDropBg').style.display = 'none'; }

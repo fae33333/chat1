@@ -5725,7 +5725,7 @@ app.post('/api/admin/service-requests/:id/approve', requireSuperAdmin, async (re
       io.to('user_' + target.id).emit('royal_granted', { royal: 1, animal: royalAnimal });
     } else {
       await q.run(`UPDATE users SET membership=?,membership_expires=? WHERE id=?`,
-        request.plan, Date.now() + Math.max(1, request.months) * 30 * 86400000, target.id);
+        request.plan, Math.floor(Date.now() / 1000) + Math.max(1, request.months) * 30 * 86400, target.id);
       await refreshUserEverywhere(target.id);
       io.to('user_' + target.id).emit('membership_changed', { plan: request.plan });
     }
