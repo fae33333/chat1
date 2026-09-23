@@ -351,6 +351,39 @@ function isUserActiveInChat(userId) {
   });
 }
 
+// احتساب وقت الدردشة على الخادم حتى لا يستطيع الزائر أو العميل تزوير المدة.
+// لا تُحتسب المكافأة إلا لحساب registered=1، وتتكرر كل مدة يحددها المشرف.
+const chatRewardProgress = new Map();
+setInterval(async () => {
+  try {
+    const settings = await getSettings();
+    const minutes = Math.max(1, parseInt(settings.chat_reward_minutes) || 15);
+    const gold = Math.max(0, parseInt(settings.chat_reward_gold) || 0);
+    if (!gold) return;
+    const now = Date.now();
+    for (const uid of Object.keys(userSockets)) {
+      const id = +uid;
+      if (!isUserActiveInChat(id)) { chatRewardProgress.delete(id); continue; }
+      const user = await q.get('SELECT id,username,registered,balance FROM users WHERE id=?', id);
+      if (!user || !user.registered) { chatRewardProgress.delete(id); continue; }
+      const state = chatRewardProgress.get(id) || { since: now, credited: 0 };
+      const elapsed = Math.max(0, now - state.since);
+      const units = Math.floor(elapsed / (minutes * 60000));
+      if (units > state.credited) {
+        const amount = (units - state.credited) * gold;
+        await q.run('UPDATE users SET balance=balance+? WHERE id=? AND registered=1', amount, id);
+        state.credited = units;
+        const fresh = await q.get('SELECT balance FROM users WHERE id=?', id);
+        if (fresh) {
+          if (onlineUsers[id]) onlineUsers[id].balance = fresh.balance;
+          io.to('user_' + id).emit('notify', { type: 'chat_reward', text: `مكافأة وقت الدردشة: حصلت على ${amount} ذهب 🪙`, balance: fresh.balance });
+        }
+      }
+      chatRewardProgress.set(id, state);
+    }
+  } catch (e) { console.warn('chat reward tick:', e.message); }
+}, 60000);
+
 const sessionMw = session({
   secret: 'nujum-chat-secret-2026',
   resave: false,
@@ -7613,6 +7646,9 @@ app.get('/api/public-settings', async (req, res) => {
     name_color_registered: validHexColor(s.name_color_registered, '#795548'),
     name_color_guest: validHexColor(s.name_color_guest, '#000000'),
     register_gold: Math.max(0, parseInt(s.register_gold) !== undefined ? +s.register_gold : 10),
+    // مكافأة وقت الدردشة للأعضاء المسجلين فقط (تُضبط من لوحة الإدارة)
+    chat_reward_minutes: Math.max(1, parseInt(s.chat_reward_minutes) || 15),
+    chat_reward_gold: Math.max(0, parseInt(s.chat_reward_gold) || 0),
     favicon_url: s.favicon_url || '',
     seo_title: s.seo_title || '',
     vip_cost: +s.vip_cost || 30,

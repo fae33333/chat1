@@ -3044,6 +3044,12 @@ const PAGES = {
         ${inpRow('phone_fill', '#10b981', 'تكلفة المكالمة الصوتية المفتوحة (تُخصم من المتصل)', 'call_cost', 'number', 'ذهب')}
         ${inpRow('videocam_fill', '#ec4899', 'تكلفة مكالمة الفيديو الخاصة (تُخصم من المتصل)', 'video_call_cost', 'number', 'ذهب')}
         ${inpRow('crown_fill', '#f59e0b', 'تكلفة الدخول الملكي 👑 (تُخصم عند موافقة الإدارة)', 'royal_entry_cost', 'number', 'ذهب')}
+        <div class="info-box" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;margin:18px 0 12px;line-height:1.7">
+          <b>مكافأة وقت الدردشة للأعضاء المسجلين</b><br>
+          يُضاف الذهب تلقائياً للعضو المسجل فقط عند بقائه متصلاً بالدردشة. اختر مدة المكافأة وحدد قيمتها.
+        </div>
+        ${inpRow('timer_fill', '#10b981', 'مدة المكافأة (بالدقائق)', 'chat_reward_minutes', 'number', 'دقيقة')}
+        ${inpRow('money_dollar_circle_fill', '#f59e0b', 'الذهب الممنوح لكل مدة', 'chat_reward_gold', 'number', 'ذهب')}
         <div class="btn-row">
           <button class="btn btn-gray" id="resetMem"><i class="f7-icons">arrow_clockwise</i> استعادة الافتراضي</button>
           <button class="btn btn-green" id="saveMem"><i class="f7-icons">square_arrow_down_fill</i> حفظ الإعدادات</button>
@@ -3051,12 +3057,12 @@ const PAGES = {
       </div>`,
     bind: () => {
       $('#saveMem').onclick = async () => {
-        await saveKeys(['vip_cost', 'premium_cost', 'plus_cost', 'register_gold', 'call_cost', 'video_call_cost', 'royal_entry_cost']);
+        await saveKeys(['vip_cost', 'premium_cost', 'plus_cost', 'register_gold', 'call_cost', 'video_call_cost', 'royal_entry_cost', 'chat_reward_minutes', 'chat_reward_gold']);
         toast('تم حفظ إعدادات رصيد العضويات والتسجيل بنجاح');
       };
       $('#resetMem').onclick = async () => {
-        SETTINGS = { ...SETTINGS, vip_cost: '30', premium_cost: '20', plus_cost: '10', register_gold: '10', call_cost: '2', video_call_cost: '5', royal_entry_cost: '50' };
-        await saveKeys(['vip_cost', 'premium_cost', 'plus_cost', 'register_gold', 'call_cost', 'video_call_cost', 'royal_entry_cost']);
+        SETTINGS = { ...SETTINGS, vip_cost: '30', premium_cost: '20', plus_cost: '10', register_gold: '10', call_cost: '2', video_call_cost: '5', royal_entry_cost: '50', chat_reward_minutes: '15', chat_reward_gold: '0' };
+        await saveKeys(['vip_cost', 'premium_cost', 'plus_cost', 'register_gold', 'call_cost', 'video_call_cost', 'royal_entry_cost', 'chat_reward_minutes', 'chat_reward_gold']);
         loadPage('memberships');
         toast('تمت استعادة القيم الافتراضية');
       };
