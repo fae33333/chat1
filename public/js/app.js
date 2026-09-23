@@ -9875,6 +9875,16 @@ async function logoutWithoutReload() {
   refreshNav();
   toast('تم تسجيل الخروج');
 }
+$('#mnPrivateSettings').onclick = async () => {
+  try {
+    const state = await api('/api/user/private-settings');
+    if (!state.eligible) return toast('هذه الميزة متاحة للإدارة والمميز فقط', false);
+    const enabled = confirm(state.enabled ? 'الخاص مفتوح حالياً. اضغط موافق لإغلاق استقبال الرسائل الخاصة.' : 'الخاص مغلق حالياً. اضغط موافق لفتحه واستقبال الرسائل الخاصة.');
+    await api('/api/user/private-settings', 'POST', { enabled: enabled ? '0' : '1' });
+    toast(enabled ? 'تم إغلاق استقبال الرسائل الخاصة' : 'تم فتح استقبال الرسائل الخاصة');
+    closeOv('userMenu');
+  } catch (e) { toast(e.error || 'تعذر تعديل إعدادات الخاص', false); }
+};
 $('#mnLogout').onclick = logoutWithoutReload;
 
 // =====================================================

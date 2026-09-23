@@ -42,6 +42,8 @@ db.serialize(() => {
   )`);
 
   db.run(`ALTER TABLE users ADD COLUMN is_bot INTEGER DEFAULT 0`, () => { });
+  // استقبال الرسائل الخاصة: 1 مفتوح، 0 مغلق (للرتب الإدارية والمميز)
+  db.run(`ALTER TABLE users ADD COLUMN private_messages_enabled INTEGER DEFAULT 1`, () => { });
   // صلاحية فردية تمنحها الإدارة للمستخدم للصعود كمذيع.
   db.run(`ALTER TABLE users ADD COLUMN broadcast_allowed INTEGER DEFAULT 0`, () => { });
   // منع الصعود إلى البث (يُفعّله مشرف عبر «سحب مع منع صعود») — يبقى حتى يفكّه المشرف من قائمة المستخدمين.

@@ -2362,6 +2362,21 @@ app.get('/api/rooms/:id/users', requireUser, requireRoomNotKicked, async (req, r
   res.json(users);
 });
 
+app.post('/api/user/private-settings', requireUser, async (req, res) => {
+  const me = await q.get(`SELECT rank,membership FROM users WHERE id=?`, req.authUid);
+  const eligible = ['superadmin', 'supermaster', 'admin', 'roomadmin'].includes(me.rank) || me.membership === 'mmez';
+  if (!eligible) return res.status(403).json({ error: 'هذه الميزة متاحة للإدارة والمميز فقط' });
+  const enabled = String(req.body.enabled) === '1' ? 1 : 0;
+  await q.run(`UPDATE users SET private_messages_enabled=? WHERE id=?`, enabled, req.authUid);
+  res.json({ ok: true, enabled });
+});
+
+app.get('/api/user/private-settings', requireUser, async (req, res) => {
+  const me = await q.get(`SELECT rank,membership,private_messages_enabled FROM users WHERE id=?`, req.authUid);
+  const eligible = ['superadmin', 'supermaster', 'admin', 'roomadmin'].includes(me.rank) || me.membership === 'mmez';
+  res.json({ eligible, enabled: me.private_messages_enabled !== 0 });
+});
+
 app.get('/api/user/:id', requireUser, async (req, res) => {
   const u = await q.get(`SELECT * FROM users WHERE id=?`, req.params.id);
   if (!u) return res.status(404).json({ error: 'غير موجود' });
@@ -9327,8 +9342,27 @@ io.on('connection', async (socket) => {
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
     if (!await canUseMembershipFeature(uid, 'private_message_allowed_memberships'))
       return socket.emit('err', 'عضويتك غير مسموح لها بإرسال الرسائل الخاصة');
-    const recipient = await q.get(`SELECT id FROM users WHERE id=?`, +toId);
+    const recipient = await q.get(`SELECT id,username,rank,membership,private_messages_enabled FROM users WHERE id=?`, +toId);
     if (!recipient) return socket.emit('err', 'المستخدم غير موجود');
+    // احترام إغلاق الخاص مع استثناءات الرتب الأعلى فقط:
+    // المميز يسمح للـ roomadmin/admin/super، والـ roomadmin يسمح للـ admin/super،
+    // والـ admin يسمح للسوبر فقط، والسوبر لا يستقبل من أحد عند الإغلاق.
+    if (recipient.private_messages_enabled === 0) {
+      const senderRank = String(me.rank || 'user');
+      const targetRank = String(recipient.rank || 'user');
+      const rankLevel = { user: 0, roomadmin: 1, admin: 2, superadmin: 3, supermaster: 4 };
+      const targetIsMmez = recipient.membership === 'mmez' && targetRank === 'user';
+      const allowed = targetIsMmez
+        ? ['roomadmin', 'admin', 'superadmin', 'supermaster'].includes(senderRank)
+        : targetRank === 'roomadmin'
+          ? ['admin', 'superadmin', 'supermaster'].includes(senderRank)
+          : targetRank === 'admin'
+            ? ['superadmin', 'supermaster'].includes(senderRank)
+            : targetRank === 'superadmin' || targetRank === 'supermaster'
+              ? false
+              : (rankLevel[senderRank] || 0) > (rankLevel[targetRank] || 0);
+      if (!allowed) return socket.emit('err', 'هذا المستخدم أغلق استقبال الرسائل الخاصة');
+    }
     if (await usersIgnoreEachOther(uid, +toId))
       return socket.emit('err', 'لا يمكن تبادل الرسائل الخاصة بسبب التجاهل بين الحسابين');
 
