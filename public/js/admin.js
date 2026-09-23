@@ -6255,6 +6255,18 @@ window.delRoom = async (id) => {
 window.clearRoomForm = () => { editingRoom = null; loadPage('roomAdd'); };
 window.editWord = (id, w) => { editingWord = id; $('#newWord').value = w; $('#newWord').focus(); toast('عدّل الكلمة ثم اضغط اضافة'); };
 window.delWord = async (id) => { await api('/api/admin/words/' + id, 'DELETE'); toast('تم حذف الكلمة'); await renderWords(); };
+window.renewVerified = async (username) => {
+  if (!confirm('تجديد التوثيق لمدة شهر لـ "' + username + '"؟')) return;
+  await api('/api/admin/verify-renew', 'POST', { username });
+  toast('تم تجديد التوثيق لمدة شهر');
+  await renderVerified();
+};
+window.renewRoyal = async (username) => {
+  if (!confirm('تجديد الدخول الملكي لمدة شهر لـ "' + username + '"؟')) return;
+  await api('/api/admin/royal-renew', 'POST', { username });
+  toast('تم تجديد الدخول الملكي لمدة شهر');
+  await renderVerified();
+};
 window.delVerified = async (username) => {
   if (!confirm('إزالة التوثيق من "' + username + '"؟')) return;
   await api('/api/admin/verify-remove', 'POST', { username });
@@ -6292,19 +6304,21 @@ async function renderVerified() {
   $('#verList').innerHTML = verified.length ? verified.map(v => `
     <div class="list-card">
       <span class="word-name"><i class="f7-icons" style="color:#059669">checkmark_shield_fill</i> ${esc(v.username)} <span style="color:#6b7280;font-size:12px">${esc(fmtExp(v.expires_at))}</span></span>
-      <button class="btn btn-red btn-sm ver-remove" data-name="${esc(v.username)}"><i class="f7-icons">trash_fill</i> حذف</button>
+      <span style="display:flex;gap:6px"><button class="btn btn-yellow btn-sm ver-renew" data-name="${esc(v.username)}"><i class="f7-icons">arrow_clockwise</i> تجديد</button><button class="btn btn-red btn-sm ver-remove" data-name="${esc(v.username)}"><i class="f7-icons">trash_fill</i> حذف</button></span>
     </div>`).join('') : '<div class="empty">⏳ لا توجد أسماء موثقة بعد</div>';
   $$('#verList .ver-remove').forEach(b => b.onclick = () => delVerified(b.dataset.name));
+  $$('#verList .ver-renew').forEach(b => b.onclick = () => renewVerified(b.dataset.name));
 
   const royal = (data.royal || []);
   $('#royalList').innerHTML = royal.length ? royal.map(r => {
     const ra = RA[String(r.animal || 'lion')] || RA.lion;
     return `<div class="list-card">
       <span class="word-name"><i class="f7-icons" style="color:#b45309">crown_fill</i> ${esc(r.username)} • ${ra[0]} ${ra[1]} <span style="color:#6b7280;font-size:12px">${esc(fmtExp(r.expires_at))}</span></span>
-      <button class="btn btn-red btn-sm royal-remove" data-name="${esc(r.username)}"><i class="f7-icons">trash_fill</i> حذف</button>
+      <span style="display:flex;gap:6px"><button class="btn btn-yellow btn-sm royal-renew" data-name="${esc(r.username)}"><i class="f7-icons">arrow_clockwise</i> تجديد</button><button class="btn btn-red btn-sm royal-remove" data-name="${esc(r.username)}"><i class="f7-icons">trash_fill</i> حذف</button></span>
     </div>`;
   }).join('') : '<div class="empty">👑 لا يوجد أصحاب دخول ملكي بعد</div>';
   $$('#royalList .royal-remove').forEach(b => b.onclick = () => delRoyal(b.dataset.name));
+  $$('#royalList .royal-renew').forEach(b => b.onclick = () => renewRoyal(b.dataset.name));
 }
 
 // ---------- حفظ الإعدادات ----------

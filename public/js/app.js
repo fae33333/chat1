@@ -4522,7 +4522,7 @@ const ROOM_SYNC_BASE = {};          // roomId -> آخر معرّف رسالة ع
 // تنبيه انتهاء مدة التوثيق/الدخول الملكي (شهر): لا يُحذف تلقائياً، ويكتب جنب الاسم
 // أن الشهر تجاوز ويمكن الإلغاء عبر الإدارة فقط.
 function expireNoteHtml(u) {
-  return (u && (u.verified_expired || u.royal_expired)) ? ' <span class="expire-note">⚠ تم تجاوز الشهر الخاص به ويمكن الغائه عبر الادارة</span>' : '';
+  return (ME && (ME.rank === 'superadmin' || ME.rank === 'supermaster') && u && (u.verified_expired || u.royal_expired)) ? ' <span class="expire-note">⚠ تم تجاوز الشهر الخاص به ويمكن الغائه عبر الادارة</span>' : '';
 }
 // الموجة المتحركة: نمط النقاط المتموجة (mwave.gif) يغطي فقاعة الرسالة كاملة —
 // زهري للمميز، وأسود للأدمن والسوبر أدمن (التلوين عبر فلاتر SVG في index.html).

@@ -5734,6 +5734,17 @@ app.get('/api/admin/verified-royal', requireAdmin, async (req, res) => {
 });
 
 // حذف التوثيق (يُحدَّث فوراً في كل الغرف والواجهة).
+app.post('/api/admin/verify-renew', requireSuperAdmin, async (req, res) => {
+  const username = String((req.body || {}).username || '').trim();
+  if (!username) return res.status(400).json({ error: 'حدد اسم المستخدم' });
+  const nowS = Math.floor(Date.now() / 1000);
+  const result = await q.run(`UPDATE verified SET expires_at=? WHERE username=?`, nowS + ROYAL_GRANT_DAYS * 86400, username);
+  if (!result.changes) return res.status(404).json({ error: 'التوثيق غير موجود' });
+  await refreshVerified();
+  await broadcastVerificationState(username);
+  res.json({ ok: true, username });
+});
+
 app.post('/api/admin/verify-remove', requireAdmin, async (req, res) => {
   const username = String((req.body || {}).username || '').trim();
   if (!username) return res.status(400).json({ error: 'حدد اسم المستخدم' });
@@ -5813,6 +5824,17 @@ app.put('/api/admin/royal-animals/:id', requireSuperAdmin, async (req, res) => {
   io.emit('royal_animals_changed', {});
   res.json({ ok: true });
 });
+app.post('/api/admin/royal-renew', requireSuperAdmin, async (req, res) => {
+  const username = String((req.body || {}).username || '').trim();
+  if (!username) return res.status(400).json({ error: 'حدد اسم المستخدم' });
+  const nowS = Math.floor(Date.now() / 1000);
+  const result = await q.run(`UPDATE royal_users SET expires_at=? WHERE username=?`, nowS + ROYAL_GRANT_DAYS * 86400, username);
+  if (!result.changes) return res.status(404).json({ error: 'الدخول الملكي غير موجود' });
+  await refreshRoyal();
+  await broadcastRoyalState(username);
+  res.json({ ok: true, username });
+});
+
 app.post('/api/admin/royal-remove', requireAdmin, async (req, res) => {
   const username = String((req.body || {}).username || '').trim();
   if (!username) return res.status(400).json({ error: 'حدد اسم المستخدم' });
@@ -9274,7 +9296,7 @@ io.on('connection', async (socket) => {
     const messageUser = hiddenAdmin
       ? { ...freshPub, hidden_admin: 1 }
       : { ...freshPub, live_broadcast_host: liveBroadcastHost ? 1 : 0 };
-    const extra = JSON.stringify({ badge: effectiveBadge, gender: me.gender, rank: effectiveRank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: mutedActive(me) ? 1 : 0, reply: rp, color: col, media: cleanMedia, live_broadcast_host: liveBroadcastHost ? 1 : 0, verified: VERIFIED_SET.has(me.username) ? 1 : 0, verified_expired: VERIFIED_SET.has(me.username) ? expiredNow(VERIFIED_EXPIRES.get(me.username)) : 0, royal_expired: ROYAL_MAP.has(me.username) ? expiredNow(ROYAL_EXPIRES.get(me.username)) : 0, hidden_admin: hiddenAdmin ? 1 : 0, broadcast_banned: me.broadcast_banned ? 1 : 0 });
+    const extra = JSON.stringify({ badge: effectiveBadge, gender: me.gender, rank: effectiveRank, membership: me.membership, avatar: me.avatar || '', registered: me.registered, muted: mutedActive(me) ? 1 : 0, reply: rp, color: col, media: cleanMedia, live_broadcast_host: liveBroadcastHost ? 1 : 0, verified: VERIFIED_SET.has(me.username) ? 1 : 0, verified_expired: ['superadmin', 'supermaster'].includes(me.rank) && VERIFIED_SET.has(me.username) ? expiredNow(VERIFIED_EXPIRES.get(me.username)) : 0, royal_expired: ['superadmin', 'supermaster'].includes(me.rank) && ROYAL_MAP.has(me.username) ? expiredNow(ROYAL_EXPIRES.get(me.username)) : 0, hidden_admin: hiddenAdmin ? 1 : 0, broadcast_banned: me.broadcast_banned ? 1 : 0 });
     const ins = await q.run(`INSERT INTO messages (room_id,user_id,username,text,type,extra) VALUES (?,?,?,?,'msg',?)`, roomId, uid, me.username, text, extra);
     const msg = {
       id: ins.lastID, room_id: roomId, text, type: 'msg', hidden_admin: hiddenAdmin ? 1 : 0,
