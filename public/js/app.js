@@ -5490,6 +5490,20 @@ function syncUserActionSheet() {
   $('#usIgnoreLabel').textContent = IGNORED_USERS.has(+CUR_TARGET.id) ? 'إلغاء التجاهل' : 'تجاهل';
   $('#usMuteLabel').textContent = CUR_TARGET.muted ? 'إلغاء الكتم' : 'كتم المستخدم';
   $('#usMuteIcon').textContent = CUR_TARGET.muted ? 'mic_fill' : 'mic_slash_fill';
+  const privateBtn = $('#usPrivate');
+  if (privateBtn) {
+    const myRank = String((ME && ME.rank) || 'user');
+    const targetRank = String(CUR_TARGET.rank || 'user');
+    const levels = { user: 0, roomadmin: 1, admin: 2, superadmin: 3, supermaster: 4 };
+    const targetMmez = CUR_TARGET.membership === 'mmez' && targetRank === 'user';
+    const allowedOverride = targetMmez
+      ? ['roomadmin','admin','superadmin','supermaster'].includes(myRank)
+      : targetRank === 'roomadmin' ? ['admin','superadmin','supermaster'].includes(myRank)
+      : targetRank === 'admin' ? ['superadmin','supermaster'].includes(myRank)
+      : ['superadmin','supermaster'].includes(targetRank) ? false
+      : (levels[myRank] || 0) > (levels[targetRank] || 0);
+    privateBtn.style.display = (CUR_TARGET.private_messages_enabled === 0 && !allowedOverride) ? 'none' : 'flex';
+  }
 
   // زر الرد على الرسالة يظهر فقط عند النقر على رسالة في العام ويختفي من قائمة المستخدمين
   const replyBtn = $('#usReply');

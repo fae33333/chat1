@@ -1619,6 +1619,7 @@ function pubUser(u) {
     country: String(u.country || ''),
     balance: Math.max(0, +u.balance || 0),
     membership: String(u.membership || 'none'),
+    private_messages_enabled: u.private_messages_enabled !== 0 ? 1 : 0,
     rank: String(u.rank || 'user'),
     registered: u.registered ? 1 : 0,
     free_call_used: u.free_call_used ? 1 : 0,
