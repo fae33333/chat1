@@ -5617,7 +5617,7 @@ app.delete('/api/admin/mutes/ip/:id', requireAdmin, async (req, res) => {
 async function cleanupExpiredMemberships() {
   const now = Math.floor(Date.now() / 1000);
   const rows = await q.all(`SELECT id,username,membership,rank,membership_expires FROM users
-    WHERE membership_expires>0 AND membership_expires<=? AND rank!='supermaster'`, now);
+    WHERE membership_expires>0 AND (membership_expires<=? OR membership_expires<=?*1000) AND rank!='supermaster'`, now, now);
   for (const u of rows) {
     await q.run(`INSERT INTO expired_memberships (user_id,username,membership,rank,expired_at) VALUES (?,?,?,?,?)`, u.id, u.username, u.membership || 'none', u.rank || 'user', u.membership_expires);
     await q.run(`UPDATE users SET membership='none',membership_expires=0,rank=CASE WHEN rank IN ('admin','roomadmin') THEN 'user' ELSE rank END WHERE id=? AND rank!='supermaster'`, u.id);

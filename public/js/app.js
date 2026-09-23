@@ -9893,9 +9893,15 @@ $('#mnPrivateSettings').onclick = async () => {
   try {
     const state = await api('/api/user/private-settings');
     if (!state.eligible) return toast('هذه الميزة متاحة للإدارة والمميز فقط', false);
-    const enabled = confirm(state.enabled ? 'الخاص مفتوح حالياً. اضغط موافق لإغلاق استقبال الرسائل الخاصة.' : 'الخاص مغلق حالياً. اضغط موافق لفتحه واستقبال الرسائل الخاصة.');
-    await api('/api/user/private-settings', 'POST', { enabled: enabled ? '0' : '1' });
-    toast(enabled ? 'تم إغلاق استقبال الرسائل الخاصة' : 'تم فتح استقبال الرسائل الخاصة');
+    let next;
+    if (state.enabled) {
+      if (!confirm('هل تريد إغلاق استقبال الرسائل الخاصة؟')) return;
+      next = '0';
+    } else {
+      next = '1';
+    }
+    await api('/api/user/private-settings', 'POST', { enabled: next });
+    toast(next === '0' ? 'تم إغلاق استقبال الرسائل الخاصة' : 'تم فتح استقبال الرسائل الخاصة');
     closeOv('menuOv');
   } catch (e) { toast(e.error || 'تعذر تعديل إعدادات الخاص', false); }
 };
