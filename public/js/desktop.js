@@ -268,6 +268,7 @@
     mk(g2, { icon: 'photo_on_rectangle', cls: 'purple' }, 'تغيير الصورة', () => g(() => $('#mnAvatar').click()));
     mk(g2, { icon: 'slash_circle_fill', cls: 'red' }, 'قوائم الحظر', () => g(() => $('#mnBlocks').click()));
     mk(g2, { icon: 'gear_alt_fill', cls: 'blue' }, 'الاعدادات', () => g(() => $('#mnSettings').click()));
+    mk(g2, { icon: 'lock_shield_fill', cls: 'blue' }, 'استقبال الرسائل الخاصة', () => g(() => $('#mnPrivateSettings').click()));
     mk(g2, { icon: 'arrow_down_to_line', cls: 'orange' }, 'تطبيق العرب', () => window.open('https://play.google.com/', '_blank'));
     mk(g3, { icon: 'gift_fill', cls: 'pink' }, 'هدايا حسابي', () => g(() => $('#mnMyGifts').click()));
     mk(g3, { icon: 'power', cls: 'gray' }, 'تسجيل الخروج', () => g(() => $('#mnLogout').click()));
