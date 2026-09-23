@@ -1770,6 +1770,7 @@ const MENU = [
     { id: 'userAdd', icon: 'plus_circle_fill', label: 'اضافه مستخدم' },
     { id: 'userEdit', icon: 'pencil_circle_fill', label: 'تحرير مستخدم', superAdminOnly: true },
     { id: 'serviceRequests', icon: 'bell_badge_fill', label: 'طلبات التوثيق والترقية', superAdminOnly: true },
+    { id: 'expiredMemberships', icon: 'clock_badge_exclamationmark_fill', label: 'العضويات والصلاحيات المنتهية', superAdminOnly: true },
     { id: 'userComplaints', icon: 'exclamationmark_triangle_fill', label: 'شكاوى المستخدمين', superAdminOnly: true },
     { id: 'admins', icon: 'rosette', label: 'الحسابات الادارية', superAdminOnly: true },
     { id: 'kicks', icon: 'square_arrow_right_fill', label: 'قائمة المطرودين' },
@@ -3019,6 +3020,16 @@ const PAGES = {
       } catch (e) {
         $('#transactionsList').innerHTML = '<div class="empty" style="color:#ef4444">تعذر تحميل سجل العمليات</div>';
       }
+    }
+  },
+
+  // ====== العضويات والصلاحيات المنتهية ======
+  expiredMemberships: {
+    build: () => `<div class="page-title"><i class="f7-icons mi" style="color:#f59e0b">clock_badge_exclamationmark_fill</i> العضويات والصلاحيات المنتهية</div><div class="section"><div class="info-box">تظهر هنا العضويات والصلاحيات التي انتهت وتم حذفها تلقائياً. السوبر أدمن والسوبر ماستر لا تنتهي صلاحياتهما تلقائياً.</div><div id="expiredMembershipsList" class="table-wrap">جاري التحميل...</div></div>`,
+    bind: async () => {
+      const d = await api('/api/admin/expired-memberships');
+      const rows = d.rows || [];
+      $('#expiredMembershipsList').innerHTML = rows.length ? `<table><thead><tr><th>المستخدم</th><th>العضوية</th><th>الصلاحية</th><th>تاريخ الانتهاء</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.username)}</td><td>${esc(r.membership || 'none')}</td><td>${esc(r.rank || 'user')}</td><td>${new Date((+r.expired_at || 0) * 1000).toLocaleString('ar-JO')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">لا توجد عضويات منتهية بعد</div>';
     }
   },
 
