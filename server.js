@@ -5628,6 +5628,29 @@ async function cleanupExpiredMemberships() {
 }
 setInterval(() => cleanupExpiredMemberships().catch(() => { }), 60000);
 
+app.post('/api/admin/expired-memberships/action', requireSuperAdmin, async (req, res) => {
+  const kind = String(req.body.kind || '');
+  const username = String(req.body.username || '').trim();
+  const action = String(req.body.action || '');
+  if (!username || !['verified','royal','membership'].includes(kind) || !['renew','delete'].includes(action)) return res.status(400).json({ error: 'بيانات غير صالحة' });
+  const now = Math.floor(Date.now() / 1000);
+  if (kind === 'verified') {
+    if (action === 'delete') await q.run('DELETE FROM verified WHERE username=?', username);
+    else await q.run('UPDATE verified SET expires_at=? WHERE username=?', now + 30 * 86400, username);
+    await refreshVerified(); await broadcastVerificationState(username);
+  } else if (kind === 'royal') {
+    if (action === 'delete') await q.run('DELETE FROM royal_users WHERE username=?', username);
+    else await q.run('UPDATE royal_users SET expires_at=? WHERE username=?', now + 30 * 86400, username);
+    await refreshRoyal(); await broadcastRoyalState(username);
+  } else {
+    const old = await q.get('SELECT membership FROM expired_memberships WHERE username=? ORDER BY id DESC LIMIT 1', username);
+    if (action === 'delete') await q.run("UPDATE users SET membership='none',membership_expires=0 WHERE username=? AND rank!='supermaster'", username);
+    else await q.run("UPDATE users SET membership=?,membership_expires=? WHERE username=? AND rank!='supermaster'", old && old.membership || 'none', now + 30 * 86400, username);
+    const u = await q.get('SELECT id FROM users WHERE username=?', username); if (u) await refreshUserEverywhere(u.id);
+  }
+  res.json({ ok: true });
+});
+
 app.get('/api/admin/expired-memberships', requireAdmin, async (req, res) => {
   try {
     // إنشاء الجدول هنا أيضاً لضمان عمله مع قواعد البيانات القديمة أو عند بدء الخادم سريعاً.
@@ -5641,8 +5664,8 @@ app.get('/api/admin/expired-memberships', requireAdmin, async (req, res) => {
     const verifiedExpired = await q.all(`SELECT username, expires_at FROM verified WHERE expires_at>0 AND expires_at<=?`, now);
     const royalExpired = await q.all(`SELECT username, expires_at FROM royal_users WHERE expires_at>0 AND expires_at<=?`, now);
     const extra = [
-      ...verifiedExpired.map(r => ({ username: r.username, membership: 'التوثيق', rank: 'verified', expired_at: r.expires_at })),
-      ...royalExpired.map(r => ({ username: r.username, membership: 'الدخول الملكي', rank: 'royal', expired_at: r.expires_at }))
+      ...verifiedExpired.map(r => ({ username: r.username, membership: 'التوثيق', rank: 'verified', kind: 'verified', expired_at: r.expires_at })),
+      ...royalExpired.map(r => ({ username: r.username, membership: 'الدخول الملكي', rank: 'royal', kind: 'royal', expired_at: r.expires_at }))
     ];
     res.json({ ok: true, rows: [...rows, ...extra] });
   } catch (e) {

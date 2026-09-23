@@ -3029,7 +3029,9 @@ const PAGES = {
     bind: async () => {
       const d = await api('/api/admin/expired-memberships');
       const rows = d.rows || [];
-      $('#expiredMembershipsList').innerHTML = rows.length ? `<table><thead><tr><th>المستخدم</th><th>العضوية</th><th>الصلاحية</th><th>تاريخ الانتهاء</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.username)}</td><td>${esc(r.membership || 'none')}</td><td>${esc(r.rank || 'user')}</td><td>${new Date((+r.expired_at > 100000000000 ? +r.expired_at : (+r.expired_at || 0) * 1000)).toLocaleString('ar-JO')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">لا توجد عضويات منتهية بعد</div>';
+      const kindOf = r => r.kind || (r.membership === 'التوثيق' ? 'verified' : r.membership === 'الدخول الملكي' ? 'royal' : 'membership');
+      window.expiredAction = async (kind, username, action) => { if (!confirm((action === 'renew' ? 'تجديد' : 'حذف') + ' هذا العنصر لمدة/إلى الأبد؟')) return; await api('/api/admin/expired-memberships/action','POST',{kind,username,action}); toast('تم تنفيذ العملية'); loadPage('expiredMemberships'); };
+      $('#expiredMembershipsList').innerHTML = rows.length ? `<table><thead><tr><th>المستخدم</th><th>العنصر المنتهي</th><th>التفاصيل</th><th>تاريخ الانتهاء</th><th>الإجراء</th></tr></thead><tbody>${rows.map(r => { const k=kindOf(r); const label=k==='verified'?'توثيق الحساب':k==='royal'?'الدخول الملكي':('عضوية '+(r.membership||'غير محددة')); return `<tr><td>${esc(r.username)}</td><td><b>${label}</b></td><td>${esc(r.rank || 'مستخدم')}</td><td>${new Date((+r.expired_at > 100000000000 ? +r.expired_at : (+r.expired_at || 0) * 1000)).toLocaleString('ar-JO')}</td><td><button class="btn btn-yellow btn-sm" onclick="expiredAction('${k}','${esc(r.username)}','renew')">تجديد شهر</button> <button class="btn btn-red btn-sm" onclick="expiredAction('${k}','${esc(r.username)}','delete')">حذف</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">لا توجد عضويات منتهية بعد</div>';
     }
   },
 
