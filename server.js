@@ -5612,6 +5612,26 @@ app.delete('/api/admin/mutes/ip/:id', requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+// تنظيف العضويات والرتب المؤقتة بعد انتهاء الشهر. السوبر ماستر مستثنى دائماً.
+async function cleanupExpiredMemberships() {
+  const now = Math.floor(Date.now() / 1000);
+  const rows = await q.all(`SELECT id,username,membership,rank,membership_expires FROM users
+    WHERE membership_expires>0 AND membership_expires<=? AND rank!='supermaster'`, now);
+  for (const u of rows) {
+    await q.run(`INSERT INTO expired_memberships (user_id,username,membership,rank,expired_at) VALUES (?,?,?,?,?)`, u.id, u.username, u.membership || 'none', u.rank || 'user', u.membership_expires);
+    await q.run(`UPDATE users SET membership='none',membership_expires=0,rank=CASE WHEN rank IN ('admin','roomadmin') THEN 'user' ELSE rank END WHERE id=? AND rank!='supermaster'`, u.id);
+    try { await refreshUserEverywhere(u.id); } catch (e) { }
+    io.to('user_' + u.id).emit('membership_expired', { username: u.username });
+  }
+  return rows.length;
+}
+setInterval(() => cleanupExpiredMemberships().catch(() => { }), 60000);
+
+app.get('/api/admin/expired-memberships', requireAdmin, async (req, res) => {
+  const rows = await q.all(`SELECT * FROM expired_memberships ORDER BY recorded_at DESC LIMIT 500`);
+  res.json({ ok: true, rows });
+});
+
 // ---- طلبات التوثيق والترقية ----
 app.get('/api/admin/service-requests', requireSuperAdmin, async (req, res) => {
   const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : '';
