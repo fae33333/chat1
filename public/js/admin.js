@@ -5451,24 +5451,6 @@ const PAGES = {
         } catch (e) { toast(e.error || 'تعذر رفع الصورة', false); }
       };
 
-      // رفع فافيكون مسار SEO فرعي
-      $('#uploadPageFaviconBtn').onclick = () => $('#pageFaviconFileInput').click();
-      $('#pageFaviconFileInput').onchange = async () => {
-        const file = $('#pageFaviconFileInput').files && $('#pageFaviconFileInput').files[0];
-        if (!file) return;
-        const fd = new FormData();
-        fd.append('file', file);
-        fd.append('kind', 'favicon');
-        try {
-          toast('جاري رفع أيقونة الفافيكون...');
-          const res = await api('/api/admin/upload/seo-image', 'POST', fd, true);
-          if (res && res.path) {
-            $('#seoPageFavicon').value = res.path;
-            toast('تم رفع أيقونة الفافيكون بنجاح ✓');
-          }
-        } catch (e) { toast(e.error || 'تعذر رفع الأيقونة', false); }
-      };
-
       // التوليد الذكي بالذكاء الاصطناعي للموقع الأساسي
       $('#aiGenMainSeoBtn').onclick = () => openSeoAiModal('main');
 
@@ -5572,31 +5554,6 @@ const PAGES = {
             renderSeoDuplicates();
           };
         });
-      };
-
-      // ---------- الأيقونة المصغّرة: توليد فريد أو جلب من موقع خارجي ----------
-      $('#autoFaviconBtn').onclick = async () => {
-        const slug = $('#seoPageSlug').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-        if (!slug) return toast('اكتب اسم المسار أولاً', false);
-        try {
-          const r = await api('/api/admin/seo-favicon/auto', 'POST', { slug });
-          $('#seoPageFavicon').value = r.path || '';
-          updateSeoFaviconPreview(r.path || '');
-          toast('تم توليد أيقونة فريدة لهذا المسار \u2713');
-        } catch (e) { toast(e.error || 'تعذر توليد الأيقونة', false); }
-      };
-
-      $('#fetchFaviconBtn').onclick = async () => {
-        const slug = $('#seoPageSlug').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-        const url = $('#seoPageFaviconUrl').value.trim();
-        if (!slug) return toast('اكتب اسم المسار أولاً', false);
-        if (!url) return toast('اكتب رابط الموقع لجلب أيقونته', false);
-        try {
-          const r = await api('/api/admin/seo-favicon/auto', 'POST', { slug, url });
-          $('#seoPageFavicon').value = r.path || '';
-          updateSeoFaviconPreview(r.path || '');
-          toast(r.fetched ? 'تم جلب الأيقونة من الموقع \u2713' : 'تعذر الجلب — تم توليد أيقونة فريدة بدلاً منها');
-        } catch (e) { toast(e.error || 'تعذر جلب الأيقونة', false); }
       };
 
       $('#addNewSeoPageBtn').onclick = () => {
