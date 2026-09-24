@@ -152,9 +152,29 @@ db.serialize(() => {
     user_id INTEGER NOT NULL,
     username TEXT NOT NULL,
     created_at INTEGER DEFAULT (strftime('%s','now')),
+    expires_at INTEGER DEFAULT 0,
     UNIQUE(room_id, user_id)
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_admins_lookup ON room_admins (room_id, user_id)`);
+  db.run(`ALTER TABLE room_admins ADD COLUMN expires_at INTEGER DEFAULT 0`, () => { });
+
+  // ---------- العضويات والصلاحيات المنتهية ----------
+  db.run(`CREATE TABLE IF NOT EXISTS expired_memberships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT NOT NULL,
+    membership TEXT DEFAULT 'none',
+    rank TEXT DEFAULT 'user',
+    kind TEXT DEFAULT 'membership',
+    details TEXT DEFAULT '',
+    expired_at INTEGER,
+    recorded_at INTEGER DEFAULT (strftime('%s','now')),
+    status TEXT DEFAULT 'expired'
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_expired_memberships_user ON expired_memberships (username)`);
+  db.run(`ALTER TABLE expired_memberships ADD COLUMN kind TEXT DEFAULT 'membership'`, () => { });
+  db.run(`ALTER TABLE expired_memberships ADD COLUMN details TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE expired_memberships ADD COLUMN status TEXT DEFAULT 'expired'`, () => { });
 
   // ---------- رسائل الروبوت المجدولة ----------
   db.run(`CREATE TABLE IF NOT EXISTS bots (

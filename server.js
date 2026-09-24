@@ -5161,8 +5161,10 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
 
     const ex = await q.get(`SELECT id, rank FROM users WHERE username=?`, r.username);
     if (ex && +ex.id !== +r.id) return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً لعضو آخر' });
-    let sql = `UPDATE users SET username=?,email=?,gender=?,age=?,country=?,balance=?,membership=?,rank=?,registered=?`;
-    const p = [r.username, r.email || '', r.gender || 'secret', r.age || 25, r.country || '', +r.balance || 0, r.membership || 'none', requestedRank, r.registered !== undefined ? (r.registered ? 1 : 0) : 1];
+    const days = r.days !== undefined ? parseInt(r.days) : 30;
+    const expires = (days > 0 && (r.membership !== 'none' || requestedRank === 'roomadmin')) ? (Math.floor(Date.now() / 1000) + days * 86400) : 0;
+    let sql = `UPDATE users SET username=?,email=?,gender=?,age=?,country=?,balance=?,membership=?,rank=?,registered=?,membership_expires=?`;
+    const p = [r.username, r.email || '', r.gender || 'secret', r.age || 25, r.country || '', +r.balance || 0, r.membership || 'none', requestedRank, r.registered !== undefined ? (r.registered ? 1 : 0) : 1, expires];
     if (r.password) { sql += `,password=?`; p.push(bcrypt.hashSync(r.password, 10)); }
     sql += ` WHERE id=?`; p.push(r.id);
     await q.run(sql, ...p);
@@ -5184,9 +5186,11 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const ex = await q.get(`SELECT id FROM users WHERE username=?`, r.username);
   if (ex) return res.status(400).json({ error: 'اسم المستخدم موجود مسبقا' });
   if (!r.password) return res.status(400).json({ error: 'كلمة المرور مطلوبة' });
-  const out = await q.run(`INSERT INTO users (username,password,email,gender,age,country,balance,membership,rank,registered) VALUES (?,?,?,?,?,?,?,?,?,1)`,
+  const days = r.days !== undefined ? parseInt(r.days) : 30;
+  const expires = (days > 0 && (r.membership !== 'none' || requestedRank === 'roomadmin')) ? (Math.floor(Date.now() / 1000) + days * 86400) : 0;
+  const out = await q.run(`INSERT INTO users (username,password,email,gender,age,country,balance,membership,rank,registered,membership_expires) VALUES (?,?,?,?,?,?,?,?,?,1,?)`,
     r.username, bcrypt.hashSync(r.password, 10), r.email || '', r.gender || 'secret', r.age || 25, r.country || '',
-    r.balance || 0, r.membership || 'none', requestedRank);
+    r.balance || 0, r.membership || 'none', requestedRank, expires);
   res.json({ ok: true, id: out.lastID });
 });
 
@@ -5642,61 +5646,381 @@ app.delete('/api/admin/mutes/ip/:id', requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-// تنظيف العضويات والرتب المؤقتة بعد انتهاء الشهر. السوبر ماستر مستثنى دائماً.
+// تنظيف وإلغاء العضويات والرتب والصلاحيات المنتهية تلقائياً من داخل الحسابات
 async function cleanupExpiredMemberships() {
   const now = Math.floor(Date.now() / 1000);
-  const rows = await q.all(`SELECT id,username,membership,rank,membership_expires FROM users
-    WHERE membership_expires>0 AND (membership_expires<=? OR membership_expires<=?*1000) AND rank!='supermaster'`, now, now);
-  for (const u of rows) {
-    await q.run(`INSERT INTO expired_memberships (user_id,username,membership,rank,expired_at) VALUES (?,?,?,?,?)`, u.id, u.username, u.membership || 'none', u.rank || 'user', u.membership_expires);
-    await q.run(`UPDATE users SET membership='none',membership_expires=0,rank=CASE WHEN rank IN ('admin','roomadmin') THEN 'user' ELSE rank END WHERE id=? AND rank!='supermaster'`, u.id);
-    try { await refreshUserEverywhere(u.id); } catch (e) { }
-    io.to('user_' + u.id).emit('membership_expired', { username: u.username });
+  let cleanedCount = 0;
+
+  try {
+    // 1. المستخدمون الذين انتهت عضويتهم (المميز، VIP، Premium، Plus) أو رتبهم المؤقتة (أدمن غرفة)
+    const rows = await q.all(`
+      SELECT id, username, membership, rank, membership_expires 
+      FROM users
+      WHERE membership_expires > 0 
+        AND (membership_expires <= ? OR membership_expires <= ? * 1000) 
+        AND rank != 'supermaster'
+    `, now, now);
+
+    for (const u of rows) {
+      const expiredAt = +u.membership_expires > 100000000000 ? Math.floor(+u.membership_expires / 1000) : +u.membership_expires;
+      let kind = 'membership';
+      let details = '';
+      let itemLabel = '';
+
+      if (u.membership === 'mmez') {
+        kind = 'mmez';
+        itemLabel = 'عضوية مميز ✨';
+        details = 'عضوية المميز';
+      } else if (u.rank === 'roomadmin' && (!u.membership || u.membership === 'none')) {
+        kind = 'roomadmin';
+        itemLabel = 'أدمن غرفة 🏠';
+        details = 'رتبة أدمن غرفة';
+      } else if (u.membership && u.membership !== 'none') {
+        kind = 'membership';
+        const mNames = { vip: 'عضوية VIP 👑', premium: 'عضوية Premium 💎', plus: 'عضوية Plus ⭐' };
+        itemLabel = mNames[u.membership] || ('عضوية ' + u.membership);
+        details = itemLabel;
+      } else if (u.rank === 'roomadmin') {
+        kind = 'roomadmin';
+        itemLabel = 'أدمن غرفة 🏠';
+        details = 'رتبة أدمن غرفة';
+      } else {
+        itemLabel = 'صلاحية منتهية';
+        details = u.rank || 'user';
+      }
+
+      // حفظ السجل في جدول العضويات المنتهية
+      const existing = await q.get(`
+        SELECT id FROM expired_memberships 
+        WHERE username = ? AND kind = ? AND expired_at = ?
+      `, u.username, kind, expiredAt);
+
+      if (!existing) {
+        await q.run(`
+          INSERT INTO expired_memberships (user_id, username, membership, rank, kind, details, expired_at, recorded_at, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'expired')
+        `, u.id, u.username, u.membership || 'none', u.rank || 'user', kind, details, expiredAt, now);
+      }
+
+      // إلغاء الصلاحية فوراً من داخل حساب المستخدم وتجريده منها
+      await q.run(`
+        UPDATE users 
+        SET membership = 'none',
+            membership_expires = 0,
+            rank = CASE WHEN rank IN ('admin', 'roomadmin') THEN 'user' ELSE rank END 
+        WHERE id = ? AND rank != 'supermaster'
+      `, u.id);
+
+      try { await refreshUserEverywhere(u.id); } catch (e) { }
+      io.to('user_' + u.id).emit('membership_expired', { username: u.username, kind, item: itemLabel });
+      cleanedCount++;
+    }
+
+    // 2. الدخول الملكي المنتهي (royal_users)
+    const expiredRoyals = await q.all(`
+      SELECT username, animal, granted_at, expires_at 
+      FROM royal_users 
+      WHERE expires_at > 0 AND expires_at <= ?
+    `, now);
+
+    for (const r of expiredRoyals) {
+      const u = await q.get(`SELECT id, rank FROM users WHERE username = ?`, r.username);
+      const uid = u ? u.id : 0;
+      const animalRow = royalAnimalRow(r.animal);
+      const animalName = animalRow ? animalRow.name : (r.animal || 'الأسد');
+      const details = `الحيوان الملكي: ${animalName} (${r.animal || 'lion'})`;
+
+      const existing = await q.get(`
+        SELECT id FROM expired_memberships 
+        WHERE username = ? AND kind = 'royal' AND expired_at = ?
+      `, r.username, r.expires_at);
+
+      if (!existing) {
+        await q.run(`
+          INSERT INTO expired_memberships (user_id, username, membership, rank, kind, details, expired_at, recorded_at, status)
+          VALUES (?, ?, 'الدخول الملكي', 'royal', 'royal', ?, ?, ?, 'expired')
+        `, uid, r.username, details, r.expires_at, now);
+      }
+
+      // إلغاء وتجريد الدخول الملكي من الحساب فوراً
+      await q.run(`DELETE FROM royal_users WHERE username = ?`, r.username);
+      await refreshRoyal();
+      await broadcastRoyalState(r.username);
+      if (uid) {
+        try { await refreshUserEverywhere(uid); } catch (e) { }
+        io.to('user_' + uid).emit('royal_expired', { username: r.username });
+      }
+      cleanedCount++;
+    }
+
+    // 3. التوثيق المنتهي (verified)
+    const expiredVerified = await q.all(`
+      SELECT id, username, added_at, expires_at 
+      FROM verified 
+      WHERE expires_at > 0 AND expires_at <= ?
+    `, now);
+
+    for (const v of expiredVerified) {
+      const u = await q.get(`SELECT id, rank FROM users WHERE username = ?`, v.username);
+      const uid = u ? u.id : 0;
+      const details = 'شارة التوثيق الزرقاء ✓';
+
+      const existing = await q.get(`
+        SELECT id FROM expired_memberships 
+        WHERE username = ? AND kind = 'verified' AND expired_at = ?
+      `, v.username, v.expires_at);
+
+      if (!existing) {
+        await q.run(`
+          INSERT INTO expired_memberships (user_id, username, membership, rank, kind, details, expired_at, recorded_at, status)
+          VALUES (?, ?, 'توثيق الحساب', 'verified', 'verified', ?, ?, ?, 'expired')
+        `, uid, v.username, details, v.expires_at, now);
+      }
+
+      // إلغاء وتجريد التوثيق من الحساب فوراً
+      await q.run(`DELETE FROM verified WHERE username = ?`, v.username);
+      await refreshVerified();
+      await broadcastVerificationState(v.username);
+      if (uid) {
+        try { await refreshUserEverywhere(uid); } catch (e) { }
+        io.to('user_' + uid).emit('verification_expired', { username: v.username });
+      }
+      cleanedCount++;
+    }
+
+    // 4. إشراف الغرف المنتهي (room_admins)
+    const expiredRoomAdmins = await q.all(`
+      SELECT ra.id, ra.room_id, ra.user_id, ra.username, ra.expires_at, r.name as room_name
+      FROM room_admins ra
+      LEFT JOIN rooms r ON r.id = ra.room_id
+      WHERE ra.expires_at > 0 AND ra.expires_at <= ?
+    `, now);
+
+    for (const ra of expiredRoomAdmins) {
+      const details = `إشراف غرفة: ${ra.room_name || ('غرفة #' + ra.room_id)} [room:${ra.room_id}]`;
+
+      const existing = await q.get(`
+        SELECT id FROM expired_memberships 
+        WHERE username = ? AND kind = 'roomadmin' AND expired_at = ?
+      `, ra.username, ra.expires_at);
+
+      if (!existing) {
+        await q.run(`
+          INSERT INTO expired_memberships (user_id, username, membership, rank, kind, details, expired_at, recorded_at, status)
+          VALUES (?, ?, 'أدمن غرفة', 'roomadmin', 'roomadmin', ?, ?, ?, 'expired')
+        `, ra.user_id, ra.username, details, ra.expires_at, now);
+      }
+
+      // إلغاء إشراف الغرفة فوراً
+      await q.run(`DELETE FROM room_admins WHERE id = ?`, ra.id);
+      await emitRoomUsers(ra.room_id);
+      io.emit('sync');
+      if (ra.user_id) {
+        try { await refreshUserEverywhere(ra.user_id); } catch (e) { }
+      }
+      cleanedCount++;
+    }
+  } catch (err) {
+    console.error('cleanupExpiredMemberships error:', err);
   }
-  return rows.length;
+
+  return cleanedCount;
 }
 setInterval(() => cleanupExpiredMemberships().catch(() => { }), 60000);
 
-app.post('/api/admin/expired-memberships/action', requireSuperAdmin, async (req, res) => {
-  const kind = String(req.body.kind || '');
-  const username = String(req.body.username || '').trim();
-  const action = String(req.body.action || '');
-  if (!username || !['verified','royal','membership'].includes(kind) || !['renew','delete'].includes(action)) return res.status(400).json({ error: 'بيانات غير صالحة' });
-  const now = Math.floor(Date.now() / 1000);
-  if (kind === 'verified') {
-    if (action === 'delete') await q.run('DELETE FROM verified WHERE username=?', username);
-    else await q.run('UPDATE verified SET expires_at=? WHERE username=?', now + 30 * 86400, username);
-    await refreshVerified(); await broadcastVerificationState(username);
-  } else if (kind === 'royal') {
-    if (action === 'delete') await q.run('DELETE FROM royal_users WHERE username=?', username);
-    else await q.run('UPDATE royal_users SET expires_at=? WHERE username=?', now + 30 * 86400, username);
-    await refreshRoyal(); await broadcastRoyalState(username);
-  } else {
-    const old = await q.get('SELECT membership FROM expired_memberships WHERE username=? ORDER BY id DESC LIMIT 1', username);
-    if (action === 'delete') await q.run("UPDATE users SET membership='none',membership_expires=0 WHERE username=? AND rank!='supermaster'", username);
-    else await q.run("UPDATE users SET membership=?,membership_expires=? WHERE username=? AND rank!='supermaster'", old && old.membership || 'none', now + 30 * 86400, username);
-    const u = await q.get('SELECT id FROM users WHERE username=?', username); if (u) await refreshUserEverywhere(u.id);
+// زر يدوي لفحص وتنظيف الصلاحيات المنتهية في أي وقت
+app.post('/api/admin/expired-memberships/cleanup', requireAdmin, async (req, res) => {
+  try {
+    const cleaned = await cleanupExpiredMemberships();
+    res.json({ ok: true, cleaned });
+  } catch (e) {
+    console.error('cleanup error:', e);
+    res.status(500).json({ error: 'تعذر تشغيل الفحص والتنظيف' });
   }
-  res.json({ ok: true });
 });
 
+// إجراءات إدارة الصلاحيات المنتهية: تجديد شهر / حذف من السجل / إلغاء
+app.post('/api/admin/expired-memberships/action', requireSuperAdmin, async (req, res) => {
+  try {
+    const id = req.body.id ? +req.body.id : 0;
+    let kind = String(req.body.kind || '').trim();
+    const username = String(req.body.username || '').trim();
+    const action = String(req.body.action || '').trim();
+    const days = Math.max(1, parseInt(req.body.days) || 30);
+    const now = Math.floor(Date.now() / 1000);
+
+    if (!username || !['renew', 'delete', 'revoke'].includes(action)) {
+      return res.status(400).json({ error: 'بيانات غير صالحة' });
+    }
+
+    let record = null;
+    if (id) {
+      record = await q.get(`SELECT * FROM expired_memberships WHERE id=?`, id);
+      if (record && !kind) kind = record.kind;
+    }
+    if (!record) {
+      record = await q.get(`SELECT * FROM expired_memberships WHERE username=? ORDER BY id DESC LIMIT 1`, username);
+      if (record && !kind) kind = record.kind;
+    }
+
+    if (!kind && record) kind = record.kind;
+    if (!['verified', 'royal', 'mmez', 'membership', 'roomadmin'].includes(kind)) {
+      kind = (record && record.membership === 'الدخول الملكي') ? 'royal' : ((record && (record.membership === 'توثيق الحساب' || record.membership === 'التوثيق')) ? 'verified' : ((record && record.membership === 'mmez') ? 'mmez' : ((record && (record.rank === 'roomadmin' || record.membership === 'أدمن غرفة')) ? 'roomadmin' : 'membership')));
+    }
+
+    const u = await q.get(`SELECT id, username, rank, membership FROM users WHERE username=?`, username);
+
+    // حذف السجل من قائمة المنتهية
+    if (action === 'delete') {
+      if (id) {
+        await q.run(`DELETE FROM expired_memberships WHERE id=?`, id);
+      } else {
+        await q.run(`DELETE FROM expired_memberships WHERE username=? AND (kind=? OR membership=?)`, username, kind, kind);
+      }
+      return res.json({ ok: true, deleted: true });
+    }
+
+    // إلغاء فوري إن كانت الصلاحية لا تزال موجودة بالحساب
+    if (action === 'revoke') {
+      if (kind === 'verified') {
+        await q.run(`DELETE FROM verified WHERE username=?`, username);
+        await refreshVerified();
+        await broadcastVerificationState(username);
+      } else if (kind === 'royal') {
+        await q.run(`DELETE FROM royal_users WHERE username=?`, username);
+        await refreshRoyal();
+        await broadcastRoyalState(username);
+      } else if (kind === 'mmez' || kind === 'membership') {
+        await q.run(`UPDATE users SET membership='none', membership_expires=0 WHERE username=? AND rank!='supermaster'`, username);
+        if (u) await refreshUserEverywhere(u.id);
+      } else if (kind === 'roomadmin') {
+        await q.run(`UPDATE users SET rank='user', membership_expires=0 WHERE username=? AND rank!='supermaster'`, username);
+        if (u) {
+          await q.run(`DELETE FROM room_admins WHERE user_id=?`, u.id);
+          await refreshUserEverywhere(u.id);
+        }
+        io.emit('sync');
+      }
+      return res.json({ ok: true, revoked: true });
+    }
+
+    // تجديد الصلاحية وإعادتها فوراً للمستخدم
+    if (action === 'renew') {
+      const expiresAt = now + days * 86400;
+
+      if (kind === 'verified') {
+        await q.run(`DELETE FROM verified WHERE username=?`, username);
+        await q.run(`INSERT INTO verified (username, added_at, expires_at) VALUES (?, ?, ?)`, username, now, expiresAt);
+        await refreshVerified();
+        await broadcastVerificationState(username);
+        if (u) {
+          await refreshUserEverywhere(u.id);
+          const notif = await createUserNotification(u.id, `✓ تم تجديد توثيق حسابك بنجاح لمدة ${days} يوماً`, 'checkmark_seal_fill');
+          io.to('user_' + u.id).emit('notify', notif);
+        }
+      } else if (kind === 'royal') {
+        let animal = 'lion';
+        if (record && record.details) {
+          const m = record.details.match(/\(([^)]+)\)/);
+          if (m && m[1]) animal = m[1];
+          else if (ROYAL_ANIMALS.includes(record.details.trim())) animal = record.details.trim();
+        }
+        await q.run(`
+          INSERT INTO royal_users (username, animal, granted_at, expires_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(username) DO UPDATE SET animal=excluded.animal, granted_at=excluded.granted_at, expires_at=excluded.expires_at
+        `, username, animal, now, expiresAt);
+        await refreshRoyal();
+        await broadcastRoyalState(username);
+        if (u) {
+          await refreshUserEverywhere(u.id);
+          const notif = await createUserNotification(u.id, `👑 تم تجديد اشتراك الدخول الملكي لحسابك بنجاح لمدة ${days} يوماً`, 'crown_fill');
+          io.to('user_' + u.id).emit('notify', notif);
+        }
+      } else if (kind === 'mmez') {
+        await q.run(`UPDATE users SET membership='mmez', membership_expires=? WHERE username=? AND rank!='supermaster'`, expiresAt, username);
+        if (u) {
+          await refreshUserEverywhere(u.id);
+          const notif = await createUserNotification(u.id, `✨ تم تجديد عضوية مميز لحسابك بنجاح لمدة ${days} يوماً`, 'sparkles');
+          io.to('user_' + u.id).emit('notify', notif);
+        }
+      } else if (kind === 'membership') {
+        const rawMem = record ? record.membership : '';
+        const plan = ['vip', 'premium', 'plus', 'mmez'].includes(rawMem) ? rawMem : 'vip';
+        await q.run(`UPDATE users SET membership=?, membership_expires=? WHERE username=? AND rank!='supermaster'`, plan, expiresAt, username);
+        if (u) {
+          await refreshUserEverywhere(u.id);
+          const notif = await createUserNotification(u.id, `👑 تم تجديد عضويتك (${plan.toUpperCase()}) بنجاح لمدة ${days} يوماً`, 'chart_bar_fill');
+          io.to('user_' + u.id).emit('notify', notif);
+        }
+      } else if (kind === 'roomadmin') {
+        await q.run(`UPDATE users SET rank='roomadmin', membership_expires=? WHERE username=? AND rank!='supermaster'`, expiresAt, username);
+        if (record && record.details && record.details.includes('[room:')) {
+          const matchRoom = record.details.match(/\[room:(\d+)\]/);
+          if (matchRoom && matchRoom[1] && u) {
+            const rid = +matchRoom[1];
+            await q.run(`
+              INSERT INTO room_admins (room_id, user_id, username, expires_at)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT(room_id, user_id) DO UPDATE SET expires_at=excluded.expires_at
+            `, rid, u.id, username, expiresAt);
+            await emitRoomUsers(rid);
+          }
+        }
+        if (u) {
+          await refreshUserEverywhere(u.id);
+          const notif = await createUserNotification(u.id, `🏠 تم تجديد صلاحية أدمن الغرفة لحسابك بنجاح لمدة ${days} يوماً`, 'house_fill');
+          io.to('user_' + u.id).emit('notify', notif);
+        }
+        io.emit('sync');
+      }
+
+      // حذف السجل من قائمة المنتهية بعد نجاح التجديد
+      if (id) {
+        await q.run(`DELETE FROM expired_memberships WHERE id=?`, id);
+      } else {
+        await q.run(`DELETE FROM expired_memberships WHERE username=? AND (kind=? OR membership=?)`, username, kind, kind);
+      }
+
+      return res.json({ ok: true, renewed: true, username, kind, expires_at: expiresAt });
+    }
+
+    res.status(400).json({ error: 'إجراء غير معروف' });
+  } catch (e) {
+    console.error('expired-memberships action error:', e);
+    res.status(500).json({ error: 'تعذر تنفيذ الإجراء' });
+  }
+});
+
+// جلب قائمة العضويات والصلاحيات المنتهية مع الإحصائيات
 app.get('/api/admin/expired-memberships', requireAdmin, async (req, res) => {
   try {
-    // إنشاء الجدول هنا أيضاً لضمان عمله مع قواعد البيانات القديمة أو عند بدء الخادم سريعاً.
     await q.run(`CREATE TABLE IF NOT EXISTS expired_memberships (
       id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, membership TEXT,
-      rank TEXT, expired_at INTEGER, recorded_at INTEGER DEFAULT (strftime('%s','now'))
+      rank TEXT, kind TEXT DEFAULT 'membership', details TEXT DEFAULT '', expired_at INTEGER,
+      recorded_at INTEGER DEFAULT (strftime('%s','now')), status TEXT DEFAULT 'expired'
     )`);
     await cleanupExpiredMemberships();
-    const rows = await q.all(`SELECT * FROM expired_memberships ORDER BY recorded_at DESC LIMIT 500`);
+
+    const rows = await q.all(`
+      SELECT em.*, u.avatar as user_avatar, u.gender as user_gender, u.membership as current_membership, u.rank as current_rank
+      FROM expired_memberships em
+      LEFT JOIN users u ON u.username = em.username
+      ORDER BY em.recorded_at DESC, em.id DESC
+      LIMIT 500
+    `);
+
     const now = Math.floor(Date.now() / 1000);
-    const verifiedExpired = await q.all(`SELECT username, expires_at FROM verified WHERE expires_at>0 AND expires_at<=?`, now);
-    const royalExpired = await q.all(`SELECT username, expires_at FROM royal_users WHERE expires_at>0 AND expires_at<=?`, now);
-    const extra = [
-      ...verifiedExpired.map(r => ({ username: r.username, membership: 'التوثيق', rank: 'verified', kind: 'verified', expired_at: r.expires_at })),
-      ...royalExpired.map(r => ({ username: r.username, membership: 'الدخول الملكي', rank: 'royal', kind: 'royal', expired_at: r.expires_at }))
-    ];
-    res.json({ ok: true, rows: [...rows, ...extra] });
+    const counts = {
+      total: rows.length,
+      mmez: rows.filter(r => r.kind === 'mmez' || r.membership === 'mmez').length,
+      membership: rows.filter(r => r.kind === 'membership' && r.membership !== 'mmez').length,
+      royal: rows.filter(r => r.kind === 'royal' || r.membership === 'الدخول الملكي').length,
+      verified: rows.filter(r => r.kind === 'verified' || r.membership === 'توثيق الحساب' || r.membership === 'التوثيق').length,
+      roomadmin: rows.filter(r => r.kind === 'roomadmin' || r.rank === 'roomadmin' || r.membership === 'أدمن غرفة').length
+    };
+
+    res.json({ ok: true, rows, counts, now });
   } catch (e) {
     console.error('expired-memberships:', e);
     res.status(500).json({ error: 'تعذر تحميل قائمة العضويات المنتهية' });
@@ -7600,7 +7924,9 @@ app.post('/api/admin/room-admins', requireSuperAdmin, async (req, res) => {
   const exists = await q.get(`SELECT id FROM room_admins WHERE room_id=? AND user_id=?`, roomId, targetUser.id);
   if (exists) return res.status(400).json({ error: 'هذا المستخدم مشرف بالفعل في هذه الغرفة' });
 
-  await q.run(`INSERT INTO room_admins (room_id, user_id, username) VALUES (?,?,?)`, roomId, targetUser.id, targetUser.username);
+  const days = req.body && req.body.days !== undefined ? parseInt(req.body.days) : 30;
+  const expiresAt = days > 0 ? (Math.floor(Date.now() / 1000) + days * 86400) : 0;
+  await q.run(`INSERT INTO room_admins (room_id, user_id, username, expires_at) VALUES (?,?,?,?)`, roomId, targetUser.id, targetUser.username, expiresAt);
   await emitRoomUsers(roomId);
   io.emit('sync');
   res.json({ ok: true });

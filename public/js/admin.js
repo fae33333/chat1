@@ -3031,13 +3031,278 @@ const PAGES = {
 
   // ====== العضويات والصلاحيات المنتهية ======
   expiredMemberships: {
-    build: () => `<div class="page-title"><i class="f7-icons mi" style="color:#f59e0b">clock_badge_exclamationmark_fill</i> العضويات والصلاحيات المنتهية</div><div class="section"><div class="info-box">تظهر هنا العضويات والصلاحيات التي انتهت وتم حذفها تلقائياً. السوبر أدمن والسوبر ماستر لا تنتهي صلاحياتهما تلقائياً.</div><div id="expiredMembershipsList" class="table-wrap">جاري التحميل...</div></div>`,
+    build: () => `
+      <div class="page-title">
+        <i class="f7-icons mi" style="color:#f59e0b">clock_badge_exclamationmark_fill</i> العضويات والصلاحيات المنتهية
+      </div>
+      <div class="info-box" style="line-height:1.8;margin-bottom:16px">
+        <b>نظام فحص وإلغاء الصلاحيات المنتهية تلقائياً:</b><br>
+        يقوم النظام تلقائياً وبشكل دوري بمراقبة تواريخ انتهاء الصلاحيات، وتجريد العضو وإلغاء الصلاحية من حسابه فور انتهائها (سواء كانت <b>عضوية مميز ✨</b>، أو <b>الدخول الملكي 👑</b>، أو <b>توثيق الحساب ✓</b>، أو <b>أدمن غرفة 🏠</b>، أو <b>عضويات VIP / Premium / Plus</b>).<br>
+        تظهر هنا جميع الصلاحيات التي انتهت وتم إلغاؤها من الحسابات، مع إمكانية <b>تجديدها فوراً لشهر جديد</b> وإعادتها لحساب المستخدم، أو حذفها نهائياً من السجل.
+      </div>
+
+      <div id="expiredStatsCards" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px;margin-bottom:18px">
+        <!-- عدادات الإحصائيات -->
+      </div>
+
+      <div class="section" style="padding:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:260px;flex-wrap:wrap">
+            <input class="inp" id="expiredSearchInput" placeholder="🔍 ابحث باسم المستخدم أو التفاصيل..." style="max-width:280px">
+            <div id="expiredFilterTabs" style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-sm btn-primary filter-tab active" data-filter="all">الكل</button>
+              <button class="btn btn-sm btn-gray filter-tab" data-filter="mmez">المميز ✨</button>
+              <button class="btn btn-sm btn-gray filter-tab" data-filter="royal">الدخول الملكي 👑</button>
+              <button class="btn btn-sm btn-gray filter-tab" data-filter="verified">التوثيق ✓</button>
+              <button class="btn btn-sm btn-gray filter-tab" data-filter="roomadmin">أدمن غرفة 🏠</button>
+              <button class="btn btn-sm btn-gray filter-tab" data-filter="membership">العضويات 💎</button>
+            </div>
+          </div>
+          <button class="btn btn-yellow btn-sm" id="btnRunCleanup" style="white-space:nowrap">
+            <i class="f7-icons" style="font-size:16px">arrow_2_circlepath</i> فحص وتنظيف المنتهين الآن
+          </button>
+        </div>
+
+        <div id="expiredMembershipsList" class="table-wrap">جاري التحميل...</div>
+      </div>
+    `,
     bind: async () => {
-      const d = await api('/api/admin/expired-memberships');
-      const rows = d.rows || [];
-      const kindOf = r => r.kind || (r.membership === 'التوثيق' ? 'verified' : r.membership === 'الدخول الملكي' ? 'royal' : 'membership');
-      window.expiredAction = async (kind, username, action) => { if (!confirm((action === 'renew' ? 'تجديد' : 'حذف') + ' هذا العنصر لمدة/إلى الأبد؟')) return; await api('/api/admin/expired-memberships/action','POST',{kind,username,action}); toast('تم تنفيذ العملية'); loadPage('expiredMemberships'); };
-      $('#expiredMembershipsList').innerHTML = rows.length ? `<table><thead><tr><th>المستخدم</th><th>العنصر المنتهي</th><th>التفاصيل</th><th>تاريخ الانتهاء</th><th>الإجراء</th></tr></thead><tbody>${rows.map(r => { const k=kindOf(r); const label=k==='verified'?'توثيق الحساب':k==='royal'?'الدخول الملكي':('عضوية '+(r.membership||'غير محددة')); return `<tr><td>${esc(r.username)}</td><td><b>${label}</b></td><td>${esc(r.rank || 'مستخدم')}</td><td>${new Date((+r.expired_at > 100000000000 ? +r.expired_at : (+r.expired_at || 0) * 1000)).toLocaleString('ar-JO')}</td><td><button class="btn btn-yellow btn-sm" onclick="expiredAction('${k}','${esc(r.username)}','renew')">تجديد شهر</button> <button class="btn btn-red btn-sm" onclick="expiredAction('${k}','${esc(r.username)}','delete')">حذف</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">لا توجد عضويات منتهية بعد</div>';
+      let currentFilter = 'all';
+      let searchQuery = '';
+      let cachedRows = [];
+      let counts = {};
+
+      const kindOf = r => {
+        if (r.kind && ['mmez', 'royal', 'verified', 'roomadmin', 'membership'].includes(r.kind)) return r.kind;
+        if (r.membership === 'mmez') return 'mmez';
+        if (r.membership === 'الدخول الملكي' || r.rank === 'royal') return 'royal';
+        if (r.membership === 'توثيق الحساب' || r.membership === 'التوثيق' || r.rank === 'verified') return 'verified';
+        if (r.rank === 'roomadmin' || r.membership === 'أدمن غرفة') return 'roomadmin';
+        return 'membership';
+      };
+
+      const badgeOfKind = (k, r) => {
+        if (k === 'mmez') {
+          return `<span class="chip" style="background:#fce7f3;color:#be185d;font-weight:800;border:1px solid #fbcfe8"><i class="f7-icons" style="font-size:14px;vertical-align:middle;margin-inline-end:3px">sparkles</i> عضوية مميز ✨</span>`;
+        }
+        if (k === 'royal') {
+          return `<span class="chip" style="background:#fef3c7;color:#b45309;font-weight:800;border:1px solid #fde68a"><i class="f7-icons" style="font-size:14px;vertical-align:middle;margin-inline-end:3px">crown_fill</i> الدخول الملكي 👑</span>`;
+        }
+        if (k === 'verified') {
+          return `<span class="chip" style="background:#e0f2fe;color:#0284c7;font-weight:800;border:1px solid #bae6fd"><i class="f7-icons" style="font-size:14px;vertical-align:middle;margin-inline-end:3px">checkmark_seal_fill</i> توثيق الحساب ✓</span>`;
+        }
+        if (k === 'roomadmin') {
+          return `<span class="chip" style="background:#ffedd5;color:#c2410c;font-weight:800;border:1px solid #fed7aa"><i class="f7-icons" style="font-size:14px;vertical-align:middle;margin-inline-end:3px">house_fill</i> أدمن غرفة 🏠</span>`;
+        }
+        const mem = String(r.membership || '').toLowerCase();
+        if (mem === 'vip') {
+          return `<span class="chip" style="background:#fef9c3;color:#a16207;font-weight:800;border:1px solid #fef08a"><i class="f7-icons" style="font-size:14px;vertical-align:middle;margin-inline-end:3px">rosette</i> عضوية VIP 👑</span>`;
+        }
+        if (mem === 'premium') {
+          return `<span class="chip" style="background:#ede9fe;color:#6d28d9;font-weight:800;border:1px solid #ddd6fe"><i class="f7-icons" style="font-size:14px;vertical-align:middle;margin-inline-end:3px">suit_diamond_fill</i> عضوية Premium 💎</span>`;
+        }
+        if (mem === 'plus') {
+          return `<span class="chip" style="background:#dcfce7;color:#15803d;font-weight:800;border:1px solid #bbf7d0"><i class="f7-icons" style="font-size:14px;vertical-align:middle;margin-inline-end:3px">star_fill</i> عضوية Plus ⭐</span>`;
+        }
+        return `<span class="chip" style="background:#f1f5f9;color:#334155;font-weight:800;border:1px solid #cbd5e1">عضوية ${esc(r.membership || 'منتهية')}</span>`;
+      };
+
+      const formatTimeAgo = ts => {
+        if (!ts) return 'غير محدد';
+        const t = (+ts > 100000000000 ? Math.floor(+ts / 1000) : +ts);
+        const diff = Math.floor(Date.now() / 1000) - t;
+        if (diff < 60) return 'منذ لحظات';
+        if (diff < 3600) return `منذ ${Math.floor(diff / 60)} دقيقة`;
+        if (diff < 86400) return `منذ ${Math.floor(diff / 3600)} ساعة`;
+        const days = Math.floor(diff / 86400);
+        if (days === 1) return 'منذ يوم';
+        if (days === 2) return 'منذ يومين';
+        if (days <= 10) return `منذ ${days} أيام`;
+        return `منذ ${days} يوماً`;
+      };
+
+      window.expiredAction = async (id, kind, username, action, days = 30) => {
+        let name = 'الصلاحية';
+        if (kind === 'mmez') name = 'عضوية مميز ✨';
+        else if (kind === 'royal') name = 'الدخول الملكي 👑';
+        else if (kind === 'verified') name = 'توثيق الحساب ✓';
+        else if (kind === 'roomadmin') name = 'أدمن الغرفة 🏠';
+        else if (kind === 'membership') name = 'العضوية';
+
+        if (action === 'renew') {
+          if (!confirm(`هل تريد تجديد (${name}) للمستخدم [${username}] لمدة شهر (30 يوماً) وإعادتها لحسابه الآن؟`)) return;
+        } else if (action === 'delete') {
+          if (!confirm(`هل تريد حذف سجل (${name}) للمستخدم [${username}] نهائياً من القائمة؟`)) return;
+        }
+
+        try {
+          await api('/api/admin/expired-memberships/action', 'POST', { id, kind, username, action, days });
+          toast(action === 'renew' ? `تم تجديد (${name}) للمستخدم [${username}] بنجاح ✓` : 'تم حذف السجل بنجاح');
+          loadPage('expiredMemberships');
+        } catch (e) {
+          toast(e.error || 'تعذر تنفيذ الإجراء', false);
+        }
+      };
+
+      const renderTable = () => {
+        const filtered = cachedRows.filter(r => {
+          const k = kindOf(r);
+          if (currentFilter !== 'all') {
+            if (currentFilter === 'mmez' && k !== 'mmez') return false;
+            if (currentFilter === 'royal' && k !== 'royal') return false;
+            if (currentFilter === 'verified' && k !== 'verified') return false;
+            if (currentFilter === 'roomadmin' && k !== 'roomadmin') return false;
+            if (currentFilter === 'membership' && k !== 'membership') return false;
+          }
+          if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            return (r.username || '').toLowerCase().includes(q) || (r.details || '').toLowerCase().includes(q);
+          }
+          return true;
+        });
+
+        if (!filtered.length) {
+          $('#expiredMembershipsList').innerHTML = '<div class="empty">لا توجد عضويات أو صلاحيات منتهية مطابقة للبحث</div>';
+          return;
+        }
+
+        $('#expiredMembershipsList').innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>المستخدم</th>
+                <th>الشيء المنتهي</th>
+                <th>التفاصيل</th>
+                <th>تاريخ الانتهاء</th>
+                <th>حالة الإلغاء</th>
+                <th>الإجراء</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filtered.map(r => {
+                const k = kindOf(r);
+                const expTs = (+r.expired_at > 100000000000 ? Math.floor(+r.expired_at / 1000) : (+r.expired_at || 0));
+                const expDateStr = expTs ? new Date(expTs * 1000).toLocaleString('ar-JO') : 'غير محدد';
+                const avatar = r.user_avatar ? `<img src="${esc(r.user_avatar)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-inline-end:8px">` : `<span style="display:inline-flex;width:32px;height:32px;border-radius:50%;background:#e2e8f0;align-items:center;justify-content:center;margin-inline-end:8px;vertical-align:middle;font-size:14px;color:#64748b"><i class="f7-icons">person_fill</i></span>`;
+
+                return `
+                  <tr>
+                    <td>
+                      <div style="display:flex;align-items:center">
+                        ${avatar}
+                        <div>
+                          <b style="font-size:13.5px;color:#0f172a">${esc(r.username)}</b>
+                          <div style="font-size:11px;color:#64748b">الرتبة الحالية: ${esc(r.current_rank || r.rank || 'عضو')}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>${badgeOfKind(k, r)}</td>
+                    <td>
+                      <div style="font-size:12.5px;color:#334155">${esc(r.details || r.membership || '—')}</div>
+                    </td>
+                    <td>
+                      <div style="font-size:12.5px;font-weight:600;color:#0f172a">${expDateStr}</div>
+                      <div style="font-size:11px;color:#ef4444;margin-top:2px">${formatTimeAgo(expTs)}</div>
+                    </td>
+                    <td>
+                      <span class="chip" style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;font-size:11.5px;font-weight:700">
+                        <i class="f7-icons" style="font-size:12px;vertical-align:middle;margin-inline-end:3px">checkmark_alt</i> أُلغيت من الحساب
+                      </span>
+                    </td>
+                    <td>
+                      <div style="display:flex;gap:6px;flex-wrap:wrap">
+                        <button class="btn btn-green btn-sm" onclick="expiredAction(${r.id || 0}, '${k}', '${esc(r.username)}', 'renew', 30)" title="تجديد شهر وإعادة الصلاحية للحساب">
+                          <i class="f7-icons" style="font-size:13px">arrow_clockwise</i> تجديد شهر
+                        </button>
+                        <button class="btn btn-red btn-sm" onclick="expiredAction(${r.id || 0}, '${k}', '${esc(r.username)}', 'delete')" title="حذف هذا السجل نهائياً">
+                          <i class="f7-icons" style="font-size:13px">trash_fill</i> حذف
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+      };
+
+      try {
+        const d = await api('/api/admin/expired-memberships');
+        cachedRows = d.rows || [];
+        counts = d.counts || {
+          total: cachedRows.length,
+          mmez: cachedRows.filter(r => kindOf(r) === 'mmez').length,
+          royal: cachedRows.filter(r => kindOf(r) === 'royal').length,
+          verified: cachedRows.filter(r => kindOf(r) === 'verified').length,
+          roomadmin: cachedRows.filter(r => kindOf(r) === 'roomadmin').length,
+          membership: cachedRows.filter(r => kindOf(r) === 'membership').length
+        };
+
+        $('#expiredStatsCards').innerHTML = `
+          <div class="stat-card" style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+            <div style="font-size:11.5px;color:#64748b;font-weight:bold">إجمالي المنتهية</div>
+            <div style="font-size:22px;font-weight:900;color:#0f172a;margin-top:4px">${counts.total || 0}</div>
+          </div>
+          <div class="stat-card" style="background:#fdf2f8;border:1px solid #fbcfe8;border-radius:10px;padding:12px;text-align:center">
+            <div style="font-size:11.5px;color:#be185d;font-weight:bold">المميز ✨</div>
+            <div style="font-size:22px;font-weight:900;color:#be185d;margin-top:4px">${counts.mmez || 0}</div>
+          </div>
+          <div class="stat-card" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px;text-align:center">
+            <div style="font-size:11.5px;color:#b45309;font-weight:bold">الدخول الملكي 👑</div>
+            <div style="font-size:22px;font-weight:900;color:#b45309;margin-top:4px">${counts.royal || 0}</div>
+          </div>
+          <div class="stat-card" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px;text-align:center">
+            <div style="font-size:11.5px;color:#0369a1;font-weight:bold">توثيق الحساب ✓</div>
+            <div style="font-size:22px;font-weight:900;color:#0369a1;margin-top:4px">${counts.verified || 0}</div>
+          </div>
+          <div class="stat-card" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px;text-align:center">
+            <div style="font-size:11.5px;color:#c2410c;font-weight:bold">أدمن غرفة 🏠</div>
+            <div style="font-size:22px;font-weight:900;color:#c2410c;margin-top:4px">${counts.roomadmin || 0}</div>
+          </div>
+          <div class="stat-card" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:12px;text-align:center">
+            <div style="font-size:11.5px;color:#7e22ce;font-weight:bold">العضويات الأخرى 💎</div>
+            <div style="font-size:22px;font-weight:900;color:#7e22ce;margin-top:4px">${counts.membership || 0}</div>
+          </div>
+        `;
+
+        renderTable();
+
+        $$('#expiredFilterTabs .filter-tab').forEach(btn => {
+          btn.onclick = () => {
+            $$('#expiredFilterTabs .filter-tab').forEach(b => {
+              b.classList.remove('active', 'btn-primary');
+              b.classList.add('btn-gray');
+            });
+            btn.classList.add('active', 'btn-primary');
+            btn.classList.remove('btn-gray');
+            currentFilter = btn.dataset.filter;
+            renderTable();
+          };
+        });
+
+        $('#expiredSearchInput').oninput = e => {
+          searchQuery = e.target.value.trim();
+          renderTable();
+        };
+
+        $('#btnRunCleanup').onclick = async () => {
+          const btn = $('#btnRunCleanup');
+          btn.disabled = true;
+          btn.innerHTML = '<i class="f7-icons spin" style="font-size:16px">arrow2_circlepath</i> جاري الفحص...';
+          try {
+            const res = await api('/api/admin/expired-memberships/cleanup', 'POST');
+            toast(`تم الفحص وتنظيف الصلاحيات المنتهية بنجاح (تم إلغاء وتجريد ${res.cleaned || 0} عنصر منتهي) ✓`);
+            loadPage('expiredMemberships');
+          } catch (e) {
+            toast(e.error || 'تعذر تشغيل الفحص', false);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="f7-icons" style="font-size:16px">arrow_2_circlepath</i> فحص وتنظيف المنتهين الآن';
+          }
+        };
+      } catch (err) {
+        $('#expiredMembershipsList').innerHTML = `<div class="empty" style="color:#ef4444">تعذر تحميل قائمة العضويات المنتهية: ${esc(err.message || 'خطأ غير معروف')}</div>`;
+      }
     }
   },
 
@@ -4098,7 +4363,7 @@ const PAGES = {
 
       <div class="section" style="margin-bottom:20px">
         <div class="section-title"><i class="f7-icons mi" style="color:#6366f1">plus_circle_fill</i> تعيين مشرف جديد لغرفة</div>
-        <div class="grid2">
+        <div class="grid3">
           <div class="fgroup">
             <label><i class="f7-icons mi" style="color:#fb923c">house_fill</i> اختر الغرفة المستهدفة:</label>
             <select class="inp" id="raRoomSelect">
@@ -4108,6 +4373,10 @@ const PAGES = {
           <div class="fgroup">
             <label><i class="f7-icons mi" style="color:#10b981">person_fill</i> اسم المستخدم المراد تعيينه كأدمن:</label>
             <input class="inp" id="raUsernameInput" placeholder="اكتب اسم المستخدم المسجل بدقة">
+          </div>
+          <div class="fgroup">
+            <label><i class="f7-icons mi" style="color:#f59e0b">timer_fill</i> مدة الصلاحية (بالأيام):</label>
+            <input class="inp" type="number" id="raDaysInput" value="30" placeholder="30 يوماً (أو 0 لدائم)">
           </div>
         </div>
         <div class="btn-row" style="justify-content:flex-start;margin-top:14px">
@@ -4132,12 +4401,13 @@ const PAGES = {
       $('#addRoomAdminBtn').onclick = async () => {
         const roomId = $('#raRoomSelect').value;
         const username = $('#raUsernameInput').value.trim();
+        const days = $('#raDaysInput') ? (parseInt($('#raDaysInput').value) || 30) : 30;
         if (!roomId) return toast('اختر الغرفة أولاً', false);
         if (!username) return toast('اكتب اسم المستخدم', false);
         try {
-          await api('/api/admin/room-admins', 'POST', { room_id: +roomId, username });
+          await api('/api/admin/room-admins', 'POST', { room_id: +roomId, username, days });
           $('#raUsernameInput').value = '';
-          toast(`تم تعيين ${username} أدمن في الغرفة بنجاح ✓`);
+          toast(`تم تعيين ${username} أدمن في الغرفة بنجاح (${days ? days + ' يوماً' : 'دائم'}) ✓`);
           renderRoomAdminsList();
         } catch (e) {
           toast(e.error || 'تعذر تعيين المشرف', false);
@@ -6032,7 +6302,7 @@ function userForm(u) {
       <div class="fgroup"><label><i class="f7-icons mi" style="color:#fdba74">gift_fill</i> العمر (bt) :</label>
         <input class="inp" type="number" id="uAge" value="${u.age || 25}"></div>
     </div>
-    <div class="grid2">
+    <div class="grid3">
       <div class="fgroup"><label><i class="f7-icons mi" style="color:#fbbf24">rosette</i> العضوية :</label>
         <select class="inp" id="uMembership">
           <option value="none" ${(!u.membership || u.membership === 'none') ? 'selected' : ''}>بدون عضوية</option>
@@ -6053,6 +6323,8 @@ function userForm(u) {
           ` : ''}
           ${isMaster ? `<option value="supermaster" ${u.rank === 'supermaster' ? 'selected' : ''}>ملك الدردشة (سوبر ماستر 👑)</option>` : ''}
         </select></div>
+      <div class="fgroup"><label><i class="f7-icons mi" style="color:#f59e0b">timer_fill</i> مدة الصلاحية / العضوية (بالأيام):</label>
+        <input class="inp" type="number" id="uDays" value="30" placeholder="30 يوماً (أو 0 لدائم)"></div>
     </div>
     <div class="btn-row">
       <button class="btn btn-gray" onclick="resetUserForm()"><i class="f7-icons">trash_fill</i> تفريغ الحقول</button>
@@ -6065,7 +6337,8 @@ function bindUserForm(u) {
       username: $('#uName').value.trim(), password: $('#uPass').value,
       email: $('#uEmail').value.trim(), balance: +$('#uBalance').value || 0,
       country: $('#uCountry').value.trim(), gender: $('#uGender').value,
-      age: +$('#uAge').value || 25, membership: $('#uMembership').value, rank: $('#uRank').value
+      age: +$('#uAge').value || 25, membership: $('#uMembership').value, rank: $('#uRank').value,
+      days: $('#uDays') ? (parseInt($('#uDays').value) || 0) : 30
     };
     if (u) body.id = u.id;
     try {
@@ -6840,6 +7113,7 @@ async function renderRoomAdminsList() {
             <div style="display:flex;gap:10px;margin-top:4px;font-size:12px;color:#64748b;flex-wrap:wrap">
               <span>🏠 الغرفة: <b style="color:#0f172a">${esc(item.room_name || 'غرفة')}</b></span>
               <span>📅 تاريخ التعيين: ${new Date(item.created_at * 1000).toLocaleDateString('ar-JO')}</span>
+              ${item.expires_at ? `<span>⏳ نهاية الصلاحية: <b style="color:${item.expires_at <= (Date.now()/1000) ? '#ef4444' : '#059669'}">${new Date(item.expires_at * 1000).toLocaleDateString('ar-JO')}</b></span>` : '<span>⏳ الصلاحية: دائمة</span>'}
             </div>
           </div>
         </div>
