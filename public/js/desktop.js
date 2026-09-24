@@ -268,7 +268,10 @@
     mk(g2, { icon: 'photo_on_rectangle', cls: 'purple' }, 'تغيير الصورة', () => g(() => $('#mnAvatar').click()));
     mk(g2, { icon: 'slash_circle_fill', cls: 'red' }, 'قوائم الحظر', () => g(() => $('#mnBlocks').click()));
     mk(g2, { icon: 'gear_alt_fill', cls: 'blue' }, 'الاعدادات', () => g(() => $('#mnSettings').click()));
-    const privBtn = mk(g2, { icon: 'lock_shield_fill', cls: 'blue' }, 'استقبال الرسائل الخاصة', () => g(() => $('#mnPrivateSettings').click()));
+    const isPrivEnabled = g(() => !ME || ME.private_messages_enabled !== 0);
+    const privLabel = isPrivEnabled ? 'إيقاف الرسائل الخاصة لحسابك' : 'فك الرسائل الخاصة';
+    const privIcon = isPrivEnabled ? 'lock_fill' : 'lock_open_fill';
+    const privBtn = mk(g2, { icon: privIcon, cls: 'blue' }, privLabel, () => g(() => $('#mnPrivateSettings').click()));
     privBtn.id = 'dskPrivateSettings';
     privBtn.style.display = g(() => typeof canUsePrivateSettings === 'function' && canUsePrivateSettings()) ? '' : 'none';
     mk(g2, { icon: 'arrow_down_to_line', cls: 'orange' }, 'تطبيق العرب', () => window.open('https://play.google.com/', '_blank'));
@@ -301,7 +304,16 @@
     const admGroup = $('#dskMenuAdminGroup');
     if (admGroup) admGroup.style.display = g(() => !!(typeof isAdmRank === 'function' && isAdmRank())) ? '' : 'none';
     const dskPrivBtn = $('#dskPrivateSettings');
-    if (dskPrivBtn) dskPrivBtn.style.display = g(() => typeof canUsePrivateSettings === 'function' && canUsePrivateSettings()) ? '' : 'none';
+    if (dskPrivBtn) {
+      const allowed = g(() => typeof canUsePrivateSettings === 'function' && canUsePrivateSettings());
+      dskPrivBtn.style.display = allowed ? '' : 'none';
+      if (allowed && me) {
+        const isEnabled = me.private_messages_enabled !== 0;
+        const label = isEnabled ? 'إيقاف الرسائل الخاصة لحسابك' : 'فك الرسائل الخاصة';
+        const icon = isEnabled ? 'lock_fill' : 'lock_open_fill';
+        dskPrivBtn.innerHTML = `<span class="mni blue"><i class="f7-icons">${icon}</i></span> <span>${label}</span>`;
+      }
+    }
     $('#dskMenuDrop').classList.add('open');
     $('#dskMenuVeil').classList.add('open');
   }

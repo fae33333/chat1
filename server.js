@@ -2398,6 +2398,7 @@ app.post('/api/user/private-settings', requireUser, async (req, res) => {
   if (!eligible) return res.status(403).json({ error: 'هذه الميزة متاحة للإدارة وللعضويات المسموح لها فقط' });
   const enabled = String(req.body.enabled) === '1' ? 1 : 0;
   await q.run(`UPDATE users SET private_messages_enabled=? WHERE id=?`, enabled, req.authUid);
+  try { await refreshUserEverywhere(req.authUid); } catch (e) { }
   res.json({ ok: true, enabled });
 });
 

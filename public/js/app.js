@@ -9818,9 +9818,32 @@ function openMenu() {
   const isAdm = isAdmRank();
   const adminSec = $('#menuAdminSection');
   if (adminSec) adminSec.style.display = isAdm ? 'block' : 'none';
-  const privBtn = $('#mnPrivateSettings');
-  if (privBtn) privBtn.style.display = canUsePrivateSettings() ? '' : 'none';
+  updatePrivateSettingsButton();
   openOv('menuOv');
+}
+// تحديث نص وشكل زر إعدادات الرسائل الخاصة طبقاً لحالة الحساب الحالية
+function updatePrivateSettingsButton() {
+  const privBtn = $('#mnPrivateSettings');
+  const dskPrivBtn = $('#dskPrivateSettings');
+  const allowed = canUsePrivateSettings();
+  if (privBtn) {
+    privBtn.style.display = allowed ? '' : 'none';
+    if (allowed && ME) {
+      const isEnabled = ME.private_messages_enabled !== 0;
+      const label = isEnabled ? 'إيقاف الرسائل الخاصة لحسابك' : 'فك الرسائل الخاصة';
+      const icon = isEnabled ? 'lock_fill' : 'lock_open_fill';
+      privBtn.innerHTML = `<span class="mni"><i class="f7-icons">${icon}</i></span> <span id="mnPrivateSettingsText">${label}</span> <i class="f7-icons mnc">chevron_right</i>`;
+    }
+  }
+  if (dskPrivBtn) {
+    dskPrivBtn.style.display = allowed ? '' : 'none';
+    if (allowed && ME) {
+      const isEnabled = ME.private_messages_enabled !== 0;
+      const label = isEnabled ? 'إيقاف الرسائل الخاصة لحسابك' : 'فك الرسائل الخاصة';
+      const icon = isEnabled ? 'lock_fill' : 'lock_open_fill';
+      dskPrivBtn.innerHTML = `<span class="mni ${isEnabled ? 'blue' : 'green'}"><i class="f7-icons">${icon}</i></span> <span>${label}</span>`;
+    }
+  }
 }
 // قائمة الحالة السريعة
 function openQuick() {
@@ -9908,18 +9931,19 @@ async function logoutWithoutReload() {
 $('#mnPrivateSettings').onclick = async () => {
   try {
     if (!canUsePrivateSettings()) return toast('هذه الميزة متاحة للإدارة وللعضويات المسموح لها فقط', false);
-    const state = await api('/api/user/private-settings');
-    if (!state.eligible) return toast('هذه الميزة متاحة للإدارة وللعضويات المسموح لها فقط', false);
+    const isCurrentlyEnabled = !ME || ME.private_messages_enabled !== 0;
     let next;
-    if (state.enabled) {
-      if (!confirm('هل تريد إغلاق استقبال الرسائل الخاصة؟')) return;
+    if (isCurrentlyEnabled) {
+      if (!confirm('هل تريد إيقاف استقبال الرسائل الخاصة لحسابك؟')) return;
       next = '0';
     } else {
+      if (!confirm('هل تريد فك واستقبال الرسائل الخاصة لحسابك؟')) return;
       next = '1';
     }
     await api('/api/user/private-settings', 'POST', { enabled: next });
     if (ME) ME.private_messages_enabled = (next === '1' ? 1 : 0);
-    toast(next === '0' ? 'تم إغلاق استقبال الرسائل الخاصة' : 'تم فتح استقبال الرسائل الخاصة');
+    updatePrivateSettingsButton();
+    toast(next === '0' ? 'تم إيقاف الرسائل الخاصة لحسابك' : 'تم فك الرسائل الخاصة');
     closeOv('menuOv');
   } catch (e) { toast(e.error || 'تعذر تعديل إعدادات الخاص', false); }
 };
@@ -11786,10 +11810,7 @@ function onLoggedIn() {
   // شارة بيضاء صغيرة بأيقونة خطوط التنازلية — inline styles كما طلب التصميم
   const bm = $('#bnMenu');
   bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar, '', frameOf(ME))}<span style="color: rgb(110, 110, 115); justify-content: center; align-items: center; width: 15px; height: 15px; display: flex; position: absolute; bottom: -3.5px; right: -1.5px; background: rgb(255, 255, 255); border-width: 0px; border-style: none; border-color: currentcolor; border-image: none; border-radius: 50%;"><i aria-hidden="true" class="f7-icons" style="font-size: 10.5px;">line_horizontal_3_decrease_circle_fill</i></span></span><span>القائمة</span>`;
-  const privBtn = $('#mnPrivateSettings');
-  if (privBtn) privBtn.style.display = canUsePrivateSettings() ? '' : 'none';
-  const dskPrivBtn = $('#dskPrivateSettings');
-  if (dskPrivBtn) dskPrivBtn.style.display = canUsePrivateSettings() ? '' : 'none';
+  updatePrivateSettingsButton();
 }
 let _sockTried = false;
 function connectSocketRetry() {
