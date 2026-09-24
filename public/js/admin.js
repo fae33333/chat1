@@ -5272,7 +5272,7 @@ const PAGES = {
               <img id="mainFaviconPreview" src="" alt="معاينة الفافيكون" style="max-height:36px;border-radius:4px;border:1px solid #e2e8f0;display:none">
             </div>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:800;color:#334155;margin-top:10px;font-size:12.5px">
-              <input type="checkbox" id="seoUniqueFavicon" checked style="width:18px;height:18px;accent-color:#7c3aed">
+              <input type="checkbox" id="seoUniqueFavicon" style="width:18px;height:18px;accent-color:#7c3aed">
               توليد أيقونة (Favicon) <b>فريدة ومختلفة</b> لكل مسار تلقائياً — إلغاء التحديد يوحّد أيقونة الموقع لكل المسارات
             </label>
           </div>
@@ -5377,7 +5377,7 @@ const PAGES = {
         $('#seoMainImage').value = mainSeo.seo_image || mainSeo.logo_url || '';
         $('#seoMainFavicon').value = mainSeo.favicon_url || '';
         $('#seoMainSiteName').value = mainSeo.site_name || SETTINGS.site_name || '';
-        if ($('#seoUniqueFavicon')) $('#seoUniqueFavicon').checked = String(mainSeo.seo_unique_favicon || '1') !== '0';
+        if ($('#seoUniqueFavicon')) $('#seoUniqueFavicon').checked = String(mainSeo.seo_unique_favicon || '0') === '1';
         if (mainSeo.seo_image || mainSeo.logo_url) {
           $('#mainSeoImagePreview').src = mainSeo.seo_image || mainSeo.logo_url;
           $('#mainSeoImagePreview').style.display = 'block';

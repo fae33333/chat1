@@ -6064,6 +6064,7 @@ app.post('/api/admin/logo', requireSuperAdmin, upload.single('logo'), async (req
     url = '/uploads/' + path.basename(converted || req.file.path);
   }
   await q.run(`INSERT INTO settings (key,value) VALUES ('logo_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, url);
+  await syncSiteFaviconIco(url);
   res.json({ ok: true, logo_url: url });
 });
 
@@ -6336,6 +6337,10 @@ app.post('/api/admin/seo-settings', requireSuperAdmin, async (req, res) => {
       await q.run(`INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, String(v));
     }
   }
+  const effectiveFavicon = favicon_url || logo_url || seo_image;
+  if (effectiveFavicon) {
+    await syncSiteFaviconIco(effectiveFavicon);
+  }
   io.emit('sync');
   res.json({ ok: true });
 });
@@ -6392,10 +6397,10 @@ app.post('/api/admin/seo-pages', requireSuperAdmin, async (req, res) => {
     if (!intro) intro = uniq.intro;
   }
   if (!title) return res.status(400).json({ error: 'اكتب عنوان الصفحة لمحركات البحث' });
-  // أيقونة تلقائية لكل مسار: فريدة افتراضياً (ما لم تُعطَّل من الإعدادات)
+  // أيقونة المسار: تأخذ أيقونة الموقع الموحدة ما لم يُفعل خيار الأيقونة الفريدة صراحة
   if (!favicon) {
-    const uniqueOn = String(settingsNow.seo_unique_favicon || '1') !== '0';
-    favicon = (uniqueOn ? (generateSlugFavicon(slug) || settingsNow.favicon_url || '') : (settingsNow.favicon_url || generateSlugFavicon(slug) || ''));
+    const uniqueOn = String(settingsNow.seo_unique_favicon || '0') === '1';
+    favicon = uniqueOn ? (generateSlugFavicon(slug) || settingsNow.favicon_url || '/favicon.ico') : (settingsNow.favicon_url || '/favicon.ico');
   }
   // محتوى فريد احتياطي إن تُركت الحقول فارغة بلا تشغيل التوليد التلقائي
   if (!h1 || !intro) {
@@ -6443,7 +6448,11 @@ app.post('/api/admin/upload/seo-image', requireSuperAdmin, (req, res) => {
     const kind = String(req.body.kind || 'image');
     const maxDim = kind === 'favicon' ? 64 : 1200;
     const converted = await toWebP(req.file.path, maxDim);
-    res.json({ ok: true, path: '/uploads/' + path.basename(converted || req.file.path) });
+    const uploadedPath = '/uploads/' + path.basename(converted || req.file.path);
+    if (kind === 'favicon') {
+      await syncSiteFaviconIco(uploadedPath);
+    }
+    res.json({ ok: true, path: uploadedPath });
   });
 });
 
@@ -6979,7 +6988,45 @@ async function downloadFaviconToDisk(targetUrl, slug) {
   return '';
 }
 
-// يضمن أن لكل مسار أيقونة خاصة موجودة فعلياً على القرص (تجنب أخطاء 404 في محركات البحث)
+// توليد ومزامنة ملف favicon.ico القياسي على القرص من أي صورة مرفوعة (PNG/WebP/SVG/JPG)
+async function syncSiteFaviconIco(imageRelPath) {
+  try {
+    if (!imageRelPath) return false;
+    let clean = String(imageRelPath).trim();
+    if (clean === '/favicon.ico') return true;
+    if (clean.startsWith('/')) clean = clean.slice(1);
+    const abs = path.join(__dirname, 'public', clean);
+    if (!fs.existsSync(abs)) return false;
+
+    // تحويل الصورة المرفوعة لأيقونة favicon.ico قياسية بحجم 32x32
+    const pngBuf = await sharp(abs)
+      .resize(32, 32, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toBuffer();
+
+    const header = Buffer.alloc(22);
+    header.writeUInt16LE(0, 0);     // reserved
+    header.writeUInt16LE(1, 2);     // type: ICO
+    header.writeUInt16LE(1, 4);     // 1 image
+    header.writeUInt8(32, 6);       // width
+    header.writeUInt8(32, 7);       // height
+    header.writeUInt8(0, 8);        // color palette
+    header.writeUInt8(0, 9);        // reserved
+    header.writeUInt16LE(1, 10);    // color planes
+    header.writeUInt16LE(32, 12);   // bits per pixel
+    header.writeUInt32LE(pngBuf.length, 14); // image size
+    header.writeUInt32LE(22, 18);   // offset
+
+    const icoBuf = Buffer.concat([header, pngBuf]);
+    fs.writeFileSync(path.join(__dirname, 'public/favicon.ico'), icoBuf);
+    return true;
+  } catch (e) {
+    console.warn('syncSiteFaviconIco error:', e.message);
+    return false;
+  }
+}
+
+// يضمن أن تأخذ جميع المسارات أيقونة الموقع الأساسية المرفوعة من الصفحة الرئيسية
 async function ensureSeoFavicon(page, settings) {
   const checkAsset = (p) => {
     if (!p) return '';
@@ -6989,25 +7036,29 @@ async function ensureSeoFavicon(page, settings) {
     return fs.existsSync(abs) ? clean : '';
   };
 
-  const pageFav = checkAsset(page && page.favicon);
-  if (pageFav) return pageFav;
-
-  // «توليد أيقونة فريدة لكل مسار» والتأكد من إنشائها على القرص
-  if (page && page.slug) {
-    const gen = generateSlugFavicon(page.slug);
-    if (gen && checkAsset(gen)) {
-      if (page.id) {
-        try { await q.run(`UPDATE seo_pages SET favicon=? WHERE id=?`, gen, page.id); } catch (e) { }
-      }
-      return gen;
-    }
+  // 1. أيقونة الموقع الأساسية المرفوعة من الصفحة الرئيسية / الإعدادات العامة
+  // عند رفع صورة من الصفحة الرئيسية تأخذها كل المسارات تلقائياً
+  const setFav = checkAsset(settings && settings.favicon_url);
+  if (setFav && !setFav.startsWith('/uploads/favicons/')) {
+    return setFav;
   }
 
-  const setFav = checkAsset(settings && settings.favicon_url);
-  if (setFav) return setFav;
+  // 2. إذا كانت الصفحة تملك أيقونة مخصصة صريحة مرفوعة يدوياً
+  const pageFav = checkAsset(page && page.favicon);
+  if (pageFav && !pageFav.startsWith('/uploads/favicons/')) {
+    return pageFav;
+  }
 
-  const siteFav = generateSlugFavicon('site');
-  if (siteFav && checkAsset(siteFav)) return siteFav;
+  // 3. الشعار المرفوع من الصفحة الرئيسية
+  const logoFav = checkAsset(settings && (settings.logo_url || settings.seo_image));
+  if (logoFav) {
+    return logoFav;
+  }
+
+  // 4. الأيقونة القياسية /favicon.ico الموجودة على القرص
+  if (fs.existsSync(path.join(__dirname, 'public/favicon.ico'))) {
+    return '/favicon.ico';
+  }
 
   return '/favicon.ico';
 }
@@ -8151,12 +8202,26 @@ app.get('/robots.txt', async (req, res) => {
   );
 });
 
-// أيقونة الموقع المصغرة الافتراضية
-app.get('/favicon.ico', (req, res) => {
+// أيقونة الموقع المصغرة (تخدم favicon.ico القياسي المتطابق مع صورة الموقع المرفوعة)
+app.get('/favicon.ico', async (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=604800, must-revalidate');
   const ico = path.join(__dirname, 'public/favicon.ico');
-  if (fs.existsSync(ico)) return res.sendFile(ico);
-  res.sendFile(path.join(__dirname, 'public/uploads/favicons/site.svg'));
+  if (fs.existsSync(ico)) {
+    res.type('image/x-icon');
+    return res.sendFile(ico);
+  }
+  try {
+    const settings = await getSettings();
+    const fallbackSrc = settings.favicon_url || settings.logo_url || settings.seo_image;
+    if (fallbackSrc) {
+      await syncSiteFaviconIco(fallbackSrc);
+      if (fs.existsSync(ico)) {
+        res.type('image/x-icon');
+        return res.sendFile(ico);
+      }
+    }
+  } catch (e) { }
+  res.status(204).end();
 });
 
 app.get('/', async (req, res) => {
@@ -9883,6 +9948,11 @@ async function migrateUploadsToWebP() {
 
 (async () => {
   await syncRoomBots(false).catch(() => { });
+  try {
+    const s = await getSettings();
+    const src = s.favicon_url || s.logo_url || s.seo_image;
+    if (src) await syncSiteFaviconIco(src);
+  } catch (e) { }
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`★ سيرفر الدردشة يعمل على ${SERVER_PROTOCOL}://0.0.0.0:${PORT}`);
     console.log(`★ لوحة التحكم: ${SERVER_PROTOCOL}://localhost:${PORT}/admin.html  (ax / 123456)`);
