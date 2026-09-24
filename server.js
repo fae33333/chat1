@@ -7898,9 +7898,22 @@ ${breadcrumbSchema}
       indexHtml = indexHtml.replace('<div class="r-list" id="roomsList"></div>', `<div class="r-list" id="roomsList">${rowsHtml}</div>`);
     }
   } catch (e) { }
-  // المحتوى الفريد يُحقن مباشرة بعد <body> حتى تراه محركات البحث قبل أي سكربت
+  // يوضع المحتوى التعريفي أسفل قائمة الغرف مباشرة، وليس قبل تطبيق الدردشة.
+  // يبقى نصاً ظاهراً للزائر ومحركات البحث في صفحة المسار، ويُخفى عند فتح غرفة.
   if (indexHtml.indexOf('id="seoLandingContent"') === -1) {
-    indexHtml = indexHtml.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs}>\n${seoBody}`);
+    const roomMarker = '</div>\n    </div>'; // نهاية حاوية قائمة الغرف في القالب
+    const roomPos = indexHtml.indexOf('<div class="r-list" id="roomsList">');
+    if (roomPos >= 0) {
+      const sectionEnd = indexHtml.indexOf('</div>\n  </section>', roomPos);
+      if (sectionEnd >= 0) {
+        const end = sectionEnd + 6;
+        indexHtml = indexHtml.slice(0, end) + '\n' + seoBody + indexHtml.slice(end);
+      } else {
+        indexHtml = indexHtml.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs}>\n${seoBody}`);
+      }
+    } else {
+      indexHtml = indexHtml.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs}>\n${seoBody}`);
+    }
   }
   return indexHtml;
 }

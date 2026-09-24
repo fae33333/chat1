@@ -4326,6 +4326,9 @@ function renderRooms() {
   renderRoomsPanel();
 }
 function enterRoom(id, pwd, hiddenChoice) {
+  // المحتوى التعريفي يكون أسفل الغرف في صفحة المسار، ويختفي عند بدء جلسة الغرفة.
+  const seoLanding = document.getElementById('seoLandingContent');
+  if (seoLanding) seoLanding.style.display = 'none';
   if (!ME) { openLogin(); return; }
   const r = ROOMS.find(x => x.id === id);
   if (!r) return;
@@ -11798,6 +11801,8 @@ function showExitBlock(icon, title, msg, actionLabel, mode) {
 }
 // يمنع الخروج إذا كانت هناك مكالمة أو بث جارٍ، ويعرض قالباً يوضح السبب
 function attemptLeaveRoom() {
+  const seoLanding = document.getElementById('seoLandingContent');
+  if (seoLanding) seoLanding.style.display = '';
   const inCall = inActiveCall();
   const inBcast = inActiveBroadcast();
   if (!inCall && !inBcast) return openOv('exitOv');
