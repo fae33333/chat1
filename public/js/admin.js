@@ -286,6 +286,8 @@ const ADMIN_I18N_EN = {
   "كتابة وإرسال الرسائل النصية والإيموجي داخل الغرف العامة.": "Writing and sending text messages and emojis in public rooms.",
   "إرسال الرسائل الخاصة": "Send Private Messages",
   "إرسال رسالة نصية مباشرة إلى مستخدم آخر في الخاص.": "Sending direct one-on-one private messages to other users.",
+  "إغلاق واستقبال الرسائل الخاصة": "Toggle Receiving Private Messages",
+  "ظهور زر (استقبال الرسائل الخاصة) بالقائمة وإمكانية إغلاق أو فتح الخاص للحساب.": "Show the private messages toggle button in the menu and allow users to open or close their direct messages.",
   "المكالمات الصوتية في الخاص": "Private Voice Calls",
   "إجراء وبدء مكالمات صوتية مباشرة بين شخصين في المحادثة الخاصة.": "Making direct one-on-one private voice calls.",
   "إرسال الصور في العام": "Send Public Photos",
@@ -767,6 +769,8 @@ const ADMIN_I18N_ES = {
   "كتابة وإرسال الرسائل النصية والإيموجي داخل الغرف العامة.": "Escribir y enviar mensajes de texto y emojis en salas públicas.",
   "إرسال الرسائل الخاصة": "Enviar Mensajes Privados",
   "إرسال رسالة نصية مباشرة إلى مستخدم آخر في الخاص.": "Enviar mensajes de texto directos a otros usuarios en privado.",
+  "إغلاق واستقبال الرسائل الخاصة": "Alternar Recepción de Mensajes Privados",
+  "ظهور زر (استقبال الرسائل الخاصة) بالقائمة وإمكانية إغلاق أو فتح الخاص للحساب.": "Mostrar el botón de recepción de mensajes privados en el menú y permitir abrir o cerrar los mensajes privados.",
   "المكالمات الصوتية في الخاص": "Llamadas de Voz Privadas",
   "إجراء وبدء مكالمات صوتية مباشرة بين شخصين في المحادثة الخاصة.": "Iniciar llamadas de voz directas entre dos personas en privado.",
   "إرسال الصور في العام": "Enviar Fotos en Público",
@@ -1246,6 +1250,8 @@ const ADMIN_I18N_TR = {
   "كتابة وإرسال الرسائل النصية والإيموجي داخل الغرف العامة.": "Genel odalarda metin mesajları ve emojiler yazma ve gönderme.",
   "إرسال الرسائل الخاصة": "Özel Mesaj Gönder",
   "إرسال رسالة نصية مباشرة إلى مستخدم آخر في الخاص.": "Özel sohbette diğer kullanıcılara doğrudan metin mesajı gönderme.",
+  "إغلاق واستقبال الرسائل الخاصة": "Özel Mesaj Alımını Açma/Kapatma",
+  "ظهور زر (استقبال الرسائل الخاصة) بالقائمة وإمكانية إغلاق أو فتح الخاص للحساب.": "Menüde özel mesaj alma butonunu gösterir ve hesabın özel mesajlarını açıp kapatmasına izin verir.",
   "المكالمات الصوتية في الخاص": "Özel Sesli Aramalar",
   "إجراء وبدء مكالمات صوتية مباشرة بين شخصين في المحادثة الخاصة.": "Özel sohbette birebir doğrudan sesli arama yapma.",
   "إرسال الصور في العام": "Genel Fotoğraf Gönder",
@@ -3218,6 +3224,7 @@ const PAGES = {
       <div style="background:#eef2ff;border:1px solid #c7d2fe;color:#4f46e5;border-radius:12px;padding:13px 16px;margin-bottom:18px;font-size:13.5px;font-weight:700">حدد العضويات المسموح لها باستخدام كل ميزة. حسابات الإدارة ومشرفو الغرف مسموح لهم دائماً.</div>
       ${membershipAccessCard('chat_bubble_fill', '#2563eb', 'إرسال الرسائل في العام', 'public_message_allowed_memberships', 'كتابة وإرسال الرسائل النصية والإيموجي داخل الغرف العامة.')}
       ${membershipAccessCard('bubble_left_bubble_right_fill', '#14b8a6', 'إرسال الرسائل الخاصة', 'private_message_allowed_memberships', 'إرسال رسالة نصية مباشرة إلى مستخدم آخر في الخاص.')}
+      ${membershipAccessCard('lock_shield_fill', '#0284c7', 'إغلاق واستقبال الرسائل الخاصة', 'private_settings_allowed_memberships', 'ظهور زر (استقبال الرسائل الخاصة) بالقائمة وإمكانية إغلاق أو فتح الخاص للحساب.')}
       ${membershipAccessCard('phone_fill', '#10b981', 'المكالمات الصوتية في الخاص', 'private_call_allowed_memberships', 'إجراء وبدء مكالمات صوتية مباشرة بين شخصين في المحادثة الخاصة.')}
       ${membershipAccessCard('videocam_fill', '#ec4899', 'مكالمات الفيديو في الخاص (سناب شات)', 'video_call_allowed_memberships', 'تحديد من يمكنه بدء مكالمة فيديو خاصة — يتم تحديد العضويات المسموح لها بدقة من هنا.')}
       ${membershipAccessCard('photo_fill', '#22c55e', 'إرسال الصور في العام', 'public_image_allowed_memberships', 'رفع صورة من زر الكاميرا وإرسالها داخل الغرفة العامة.')}
@@ -3256,7 +3263,7 @@ const PAGES = {
       $('#saveFeatureAccess').onclick = async () => {
         const body = {};
         [
-          'public_message_allowed_memberships', 'private_message_allowed_memberships', 'private_call_allowed_memberships',
+          'public_message_allowed_memberships', 'private_message_allowed_memberships', 'private_settings_allowed_memberships', 'private_call_allowed_memberships',
           'video_call_allowed_memberships',
           'public_image_allowed_memberships', 'voice_allowed_memberships', 'broadcast_allowed_memberships',
           'wall_allowed_memberships', 'status_allowed_memberships'

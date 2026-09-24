@@ -736,6 +736,7 @@ const defaultSettings = {
   max_live_speakers: 4,
   public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip',
   private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip',
+  private_settings_allowed_memberships: 'mmez',
   private_call_allowed_memberships: 'mmez,plus,premium,vip',
   public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip',
   snd_join: '1',

@@ -1560,7 +1560,8 @@ const FEATURE_MEMBERSHIP_DEFAULTS = {
   private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip',
   private_call_allowed_memberships: 'mmez,plus,premium,vip',
   video_call_allowed_memberships: 'mmez,plus,premium,vip',
-  public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip'
+  public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip',
+  private_settings_allowed_memberships: 'mmez'
 };
 async function canUseMembershipFeature(userId, settingKey) {
   const user = await q.get(`SELECT registered,membership,rank FROM users WHERE id=?`, +userId);
@@ -2393,9 +2394,8 @@ app.get('/api/rooms/:id/users', requireUser, requireRoomNotKicked, async (req, r
 });
 
 app.post('/api/user/private-settings', requireUser, async (req, res) => {
-  const me = await q.get(`SELECT rank,membership FROM users WHERE id=?`, req.authUid);
-  const eligible = ['superadmin', 'supermaster', 'admin', 'roomadmin'].includes(me.rank) || me.membership === 'mmez';
-  if (!eligible) return res.status(403).json({ error: 'هذه الميزة متاحة للإدارة والمميز فقط' });
+  const eligible = await canUseMembershipFeature(req.authUid, 'private_settings_allowed_memberships');
+  if (!eligible) return res.status(403).json({ error: 'هذه الميزة متاحة للإدارة وللعضويات المسموح لها فقط' });
   const enabled = String(req.body.enabled) === '1' ? 1 : 0;
   await q.run(`UPDATE users SET private_messages_enabled=? WHERE id=?`, enabled, req.authUid);
   res.json({ ok: true, enabled });
@@ -2403,8 +2403,8 @@ app.post('/api/user/private-settings', requireUser, async (req, res) => {
 
 app.get('/api/user/private-settings', requireUser, async (req, res) => {
   const me = await q.get(`SELECT rank,membership,private_messages_enabled FROM users WHERE id=?`, req.authUid);
-  const eligible = ['superadmin', 'supermaster', 'admin', 'roomadmin'].includes(me.rank) || me.membership === 'mmez';
-  res.json({ eligible, enabled: me.private_messages_enabled !== 0 });
+  const eligible = await canUseMembershipFeature(req.authUid, 'private_settings_allowed_memberships');
+  res.json({ eligible, enabled: me ? me.private_messages_enabled !== 0 : true });
 });
 
 app.get('/api/user/:id', requireUser, async (req, res) => {
@@ -7765,6 +7765,7 @@ app.get('/api/public-settings', async (req, res) => {
     voice_allowed_memberships: s.voice_allowed_memberships || 'mmez,plus,premium,vip',
     public_message_allowed_memberships: s.public_message_allowed_memberships || 'guest,registered,mmez,plus,premium,vip',
     private_message_allowed_memberships: s.private_message_allowed_memberships || 'guest,registered,mmez,plus,premium,vip',
+    private_settings_allowed_memberships: s.private_settings_allowed_memberships !== undefined ? s.private_settings_allowed_memberships : 'mmez',
     private_call_allowed_memberships: s.private_call_allowed_memberships || 'mmez,plus,premium,vip',
     public_image_allowed_memberships: s.public_image_allowed_memberships || 'guest,registered,mmez,plus,premium,vip',
     snd_join: s.snd_join !== undefined ? s.snd_join : '1',

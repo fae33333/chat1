@@ -53,7 +53,7 @@ function refreshSocketHandshakeKey(socket) {
   return key;
 }
 
-let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, public_message_spacing_px: 4, public_message_name_size_px: 14, public_message_body_width: 'fit', msg_badge_superadmin_size: 24, msg_badge_admin_size: 24, msg_badge_roomadmin_size: 24, msg_badge_mmez_size: 24, msg_badge_vip_size: 24, msg_badge_premium_size: 24, msg_badge_plus_size: 24, msg_badge_register_size: 24, msg_badge_guest_size: 24, msg_badge_hidden_admin_size: 28, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wave_enabled: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_call_allowed_memberships: 'mmez,plus,premium,vip', video_call_cost: 5, video_call_allowed_memberships: 'mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', name_color_supermaster: '#000000', name_color_superadmin: '#000000', name_color_admin: '#000000', name_color_roomadmin: '#e03131', name_color_vip: '#1479f2', name_color_premium: '#38b6ff', name_color_plus: '#2e9e44', name_color_mmez: '#e91e8c', name_color_registered: '#795548', name_color_guest: '#000000' };
+let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, public_message_spacing_px: 4, public_message_name_size_px: 14, public_message_body_width: 'fit', msg_badge_superadmin_size: 24, msg_badge_admin_size: 24, msg_badge_roomadmin_size: 24, msg_badge_mmez_size: 24, msg_badge_vip_size: 24, msg_badge_premium_size: 24, msg_badge_plus_size: 24, msg_badge_register_size: 24, msg_badge_guest_size: 24, msg_badge_hidden_admin_size: 28, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wave_enabled: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_settings_allowed_memberships: 'mmez', private_call_allowed_memberships: 'mmez,plus,premium,vip', video_call_cost: 5, video_call_allowed_memberships: 'mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', name_color_supermaster: '#000000', name_color_superadmin: '#000000', name_color_admin: '#000000', name_color_roomadmin: '#e03131', name_color_vip: '#1479f2', name_color_premium: '#38b6ff', name_color_plus: '#2e9e44', name_color_mmez: '#e91e8c', name_color_registered: '#795548', name_color_guest: '#000000' };
 let PREFS = { snd_all: 1, snd_msg: 1, snd_join: 1, snd_leave: 1, show_time: 1, pm_recv: 1, dsk_ntf: 1 };
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
@@ -144,6 +144,15 @@ const canModerateRank = () => {
   }
   return false;
 };
+function canUsePrivateSettings() {
+  if (!ME) return false;
+  if (['roomadmin', 'admin', 'superadmin', 'supermaster'].includes(ME.rank)) return true;
+  if (typeof canUseMembershipFeature === 'function') {
+    return canUseMembershipFeature('private_settings_allowed_memberships');
+  }
+  return ME.membership === 'mmez';
+}
+window.canUsePrivateSettings = canUsePrivateSettings;
 let ROOM_USERS = [], CUR_TARGET = null;
 let GIFTS = [], SEL_GIFT = null, G_QTY = 1;
 let UP_PLAN = 'vip', UP_MONTHS = 1, UP_TARGET = null;
@@ -9808,6 +9817,8 @@ function openMenu() {
   const isAdm = isAdmRank();
   const adminSec = $('#menuAdminSection');
   if (adminSec) adminSec.style.display = isAdm ? 'block' : 'none';
+  const privBtn = $('#mnPrivateSettings');
+  if (privBtn) privBtn.style.display = canUsePrivateSettings() ? '' : 'none';
   openOv('menuOv');
 }
 // قائمة الحالة السريعة
@@ -9884,6 +9895,10 @@ async function logoutWithoutReload() {
   const menu = $('#bnMenu');
   menu.innerHTML = '<i class="f7-icons" id="bnMenuIcon">square_grid2x2_fill</i><span>القائمة</span>';
   $('#lPass').value = ''; $('#rPass').value = '';
+  const privBtn = $('#mnPrivateSettings');
+  if (privBtn) privBtn.style.display = 'none';
+  const dskPrivBtn = $('#dskPrivateSettings');
+  if (dskPrivBtn) dskPrivBtn.style.display = 'none';
   showScreen('rooms');
   renderRooms();
   refreshNav();
@@ -9891,8 +9906,9 @@ async function logoutWithoutReload() {
 }
 $('#mnPrivateSettings').onclick = async () => {
   try {
+    if (!canUsePrivateSettings()) return toast('هذه الميزة متاحة للإدارة وللعضويات المسموح لها فقط', false);
     const state = await api('/api/user/private-settings');
-    if (!state.eligible) return toast('هذه الميزة متاحة للإدارة والمميز فقط', false);
+    if (!state.eligible) return toast('هذه الميزة متاحة للإدارة وللعضويات المسموح لها فقط', false);
     let next;
     if (state.enabled) {
       if (!confirm('هل تريد إغلاق استقبال الرسائل الخاصة؟')) return;
@@ -9901,6 +9917,7 @@ $('#mnPrivateSettings').onclick = async () => {
       next = '1';
     }
     await api('/api/user/private-settings', 'POST', { enabled: next });
+    if (ME) ME.private_messages_enabled = (next === '1' ? 1 : 0);
     toast(next === '0' ? 'تم إغلاق استقبال الرسائل الخاصة' : 'تم فتح استقبال الرسائل الخاصة');
     closeOv('menuOv');
   } catch (e) { toast(e.error || 'تعذر تعديل إعدادات الخاص', false); }
@@ -11768,6 +11785,10 @@ function onLoggedIn() {
   // شارة بيضاء صغيرة بأيقونة خطوط التنازلية — inline styles كما طلب التصميم
   const bm = $('#bnMenu');
   bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar, '', frameOf(ME))}<span style="color: rgb(110, 110, 115); justify-content: center; align-items: center; width: 15px; height: 15px; display: flex; position: absolute; bottom: -3.5px; right: -1.5px; background: rgb(255, 255, 255); border-width: 0px; border-style: none; border-color: currentcolor; border-image: none; border-radius: 50%;"><i aria-hidden="true" class="f7-icons" style="font-size: 10.5px;">line_horizontal_3_decrease_circle_fill</i></span></span><span>القائمة</span>`;
+  const privBtn = $('#mnPrivateSettings');
+  if (privBtn) privBtn.style.display = canUsePrivateSettings() ? '' : 'none';
+  const dskPrivBtn = $('#dskPrivateSettings');
+  if (dskPrivBtn) dskPrivBtn.style.display = canUsePrivateSettings() ? '' : 'none';
 }
 let _sockTried = false;
 function connectSocketRetry() {
