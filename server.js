@@ -513,6 +513,33 @@ function resolveAdminAuth(req) {
 // =====================================================
 //  منع أرشفة صفحات الإدارة والواجهات البرمجية نهائياً
 // =====================================================
+//  توجيهات الأرشفة وحل مشاكل Google Search Console
+// =====================================================
+// 1) إزالة الشرطة المائلة من نهايات المسارات لمنع ازدواجية الصفحات
+// (حل مشكلة «صفحة بديلة تتضمن علامة أساسية مناسبة»)
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const p = req.path;
+  if (p.length > 1 && p.endsWith('/')) {
+    const query = req.url.slice(p.length);
+    return res.redirect(301, p.slice(0, -1) + query);
+  }
+  next();
+});
+
+// 2) توجيه 301 دائم من HTTP إلى HTTPS في بيئة الإنتاج والبروكسي
+// لضمان تطابق رابط الصفحة الفعلي مع وسم canonical الأساسي
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const proto = req.headers['x-forwarded-proto'];
+  if (proto === 'http') {
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    return res.redirect(301, `https://${host}${req.url}`);
+  }
+  next();
+});
+
+// =====================================================
 // robots.txt يمنع «الزحف» فقط، لكن الرابط قد يظهر في النتائج إن وُجد له رابط
 // خارجي. لذلك نضيف طبقة أقوى: ترويسة X-Robots-Tag بـ noindex على كل استجابة
 // إدارة أو API، ووسم <meta robots> داخل صفحة لوحة التحكم نفسها.
@@ -6952,29 +6979,37 @@ async function downloadFaviconToDisk(targetUrl, slug) {
   return '';
 }
 
-// يضمن أن لكل مسار أيقونة خاصة: المخصصة › أيقونة الموقع › أيقونة مولّدة فريدة
+// يضمن أن لكل مسار أيقونة خاصة موجودة فعلياً على القرص (تجنب أخطاء 404 في محركات البحث)
 async function ensureSeoFavicon(page, settings) {
-  if (page && String(page.favicon || '').trim()) return String(page.favicon).trim();
-  // «توليد أيقونة فريدة لكل مسار» مفعّل افتراضياً: يجعل كل مسار يظهر بأيقونة
-  // مختلفة في نتائج Google. يمكن توحيد الأيقونة من إعدادات الأرشفة الأساسية.
-  const uniqueOn = !settings || String(settings.seo_unique_favicon || '1') !== '0';
-  if (uniqueOn) {
-    const gen = page && page.slug ? generateSlugFavicon(page.slug) : '';
-    if (gen) {
-      if (page && page.id && !String(page.favicon || '').trim()) {
-        try { await q.run(`UPDATE seo_pages SET favicon=? WHERE id=? AND (favicon IS NULL OR favicon='')`, gen, page.id); } catch (e) { }
+  const checkAsset = (p) => {
+    if (!p) return '';
+    const clean = String(p).trim();
+    if (!clean.startsWith('/')) return clean;
+    const abs = path.join(__dirname, 'public', clean.slice(1));
+    return fs.existsSync(abs) ? clean : '';
+  };
+
+  const pageFav = checkAsset(page && page.favicon);
+  if (pageFav) return pageFav;
+
+  // «توليد أيقونة فريدة لكل مسار» والتأكد من إنشائها على القرص
+  if (page && page.slug) {
+    const gen = generateSlugFavicon(page.slug);
+    if (gen && checkAsset(gen)) {
+      if (page.id) {
+        try { await q.run(`UPDATE seo_pages SET favicon=? WHERE id=?`, gen, page.id); } catch (e) { }
       }
       return gen;
     }
   }
-  if (settings && String(settings.favicon_url || '').trim()) return String(settings.favicon_url).trim();
-  const generated = generateSlugFavicon(page && page.slug);
-  if (generated && page && page.id) {
-    try {
-      await q.run(`UPDATE seo_pages SET favicon=? WHERE id=? AND (favicon IS NULL OR favicon='')`, generated, page.id);
-    } catch (e) { }
-  }
-  return generated || '/favicon.ico';
+
+  const setFav = checkAsset(settings && settings.favicon_url);
+  if (setFav) return setFav;
+
+  const siteFav = generateSlugFavicon('site');
+  if (siteFav && checkAsset(siteFav)) return siteFav;
+
+  return '/favicon.ico';
 }
 
 function faviconMime(href) {
@@ -7780,20 +7815,14 @@ const RESERVED_SLUGS = new Set([
   'admin.html', 'index.html', 'socket.io', 'favicon.ico'
 ]);
 
+// توجيهات 301 دائمة للمسارات المكررة لمنع تنازع الكلمات المفتاحية في Google
+const SLUG_REDIRECTS = {
+  'khanywns': 'khan-yunus',
+  'edmaan': 'edman'
+};
+
 async function renderSeoChatHtml(slug = 'default', req = null) {
   let indexHtml = fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf-8');
-  // حقن style.css مضمّناً بدل طلب خارجي حاجب للرسم: يُزيل زمن انتظار ملف CSS
-  // (render-blocking) ويحسّن FCP/LCP دون أي وميض بلا تنسيق — نفس التنسيقات تماماً.
-  try {
-    const inlineCss = await minifiedText('css/style.css');
-    if (inlineCss) {
-      const safeCss = inlineCss.replace(/<\/style/gi, '<\\/style');
-      indexHtml = indexHtml.replace(
-        /<link[^>]*href="\/css\/style\.css[^"]*"[^>]*>/,
-        '<style data-inline-style-css>' + safeCss + '</style>'
-      );
-    }
-  } catch (e) { }
   let seo = null;
   const isCustomSlug = slug && slug !== 'default' && slug !== '/';
   if (isCustomSlug) {
@@ -7801,8 +7830,11 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   }
   const settings = await getSettings();
 
-  const host = (req && (req.headers['x-forwarded-host'] || req.headers.host)) || 'localhost:2083';
-  const proto = (req && (req.headers['x-forwarded-proto'] || req.protocol)) || 'https';
+  const host = (req && (req.headers['x-forwarded-host'] || req.headers.host)) || 'localhost:3000';
+  let proto = (req && (req.headers['x-forwarded-proto'] || req.protocol)) || 'https';
+  if (!host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
+    proto = 'https';
+  }
   const pageUrl = isCustomSlug ? `${proto}://${host}/${slug}` : `${proto}://${host}/`;
 
   let siteName = '';
@@ -7812,20 +7844,30 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   let image = '';
   let favicon = '';
 
+  const checkAsset = (p, fallback = '') => {
+    if (!p) return fallback;
+    const clean = String(p).trim();
+    if (!clean.startsWith('/')) return clean;
+    const abs = path.join(__dirname, 'public', clean.slice(1));
+    return fs.existsSync(abs) ? clean : fallback;
+  };
+
+  const defaultImg = checkAsset('/uploads/1787401720671_9e07873cf21eb6b88f502a17.png', '/img/announcement.png');
+
   if (isCustomSlug) {
     siteName = (seo && seo.site_name) || slug;
     title = (seo && seo.title) || `${siteName} | أفضل شات عربي كتابي وصوتي مجاني بدون تسجيل`;
     desc = (seo && seo.description) || `انضم الآن إلى ${siteName} واستمتع بأقوى دردشة صوتية وكتابية مجانية بدون تسجيل. تعارف وتواصل فوري مع أصدقاء جدد في غرف محادثة متميزة وآمنة على مدار الساعة.`;
     keywords = (seo && seo.keywords) || `${siteName}, شات ${siteName}, دردشة ${siteName}, شات ${slug}, دردشة صوتية, شات كتابي, تعارف مجاني, غرف دردشة, شات عربي, شات جوال`;
-    image = (seo && seo.logo_image) || settings.seo_image || settings.logo_url || '/img/announcement.png';
+    image = checkAsset(seo && seo.logo_image, checkAsset(settings.seo_image, checkAsset(settings.logo_url, defaultImg)));
     favicon = await ensureSeoFavicon(seo, settings);
   } else {
     siteName = settings.site_name || 'الدردشة العربية';
     title = settings.seo_title || `${siteName} | أفضل شات عربي كتابي وصوتي مجاني بدون تسجيل`;
     desc = settings.seo_description || `انضم الآن إلى ${siteName}، منصة الدردشة العربية الأولى للتواصل الصوتي والكتابي المباشر مجاناً بدون تسجيل. غرف محادثة متميزة وآمنة على مدار الساعة.`;
     keywords = settings.seo_keywords || `${siteName}, شات, دردشة صوتية, شات صوتي, دردشة كتابية, شات عربي, تعارف, غرف دردشة, شات جوال`;
-    image = settings.seo_image || settings.logo_url || '/img/announcement.png';
-    favicon = settings.favicon_url || generateSlugFavicon('site') || '/favicon.ico';
+    image = checkAsset(settings.seo_image, checkAsset(settings.logo_url, defaultImg));
+    favicon = await ensureSeoFavicon(null, settings);
   }
 
   const fullImageUrl = image.startsWith('http://') || image.startsWith('https://') ? image : `${proto}://${host}${image.startsWith('/') ? image : '/' + image}`;
@@ -7859,18 +7901,15 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   // روابط «غرف ودردشات ذات صلة» — ربط داخلي متبادل مختلف الترتيب من صفحة لأخرى.
   const relatedLinks = isCustomSlug ? await buildRelatedSeoLinks(slug, 8) : [];
 
-  // فقرات إضافية خاصة بموضوع الصفحة (الدولة/الاهتمام) — تختلف صياغتها وترتيبها
-  // بحسب بصمة المسار فلا تتطابق الفقرات بين الصفحات.
-  const extraParasSeed = slugSeed('paras|' + String(isCustomSlug ? slug : 'home'));
+  // فقرات إضافية خاصة بموضوع الصفحة (الدولة/الاهتمام)
   const extraParas = [];
   if (isCustomSlug) {
     const p1 = featuredRoom
       ? `تُعد ${topicName} مدخلك المباشر إلى غرفة «${seoRoomDisplay(featuredRoom.name)}» حيث تجتمع الدردشة الكتابية والصوتية في مكان واحد مع أعضاء يتواجدون يومياً.`
       : `تُعد ${topicName} مدخلك السريع إلى غرف الدردشة العربية حيث تجتمع الكتابة والصوت في مكان واحد، مع أعضاء من مختلف الدول العربية يتواصلون على مدار اليوم.`;
     const p2 = `كل ما تحتاجه هو المتصفح: افتح الصفحة وادخل باسمك مباشرة دون أي تسجيل، ويمكنك إنشاء حساب مجاني إذا أردت حفظ اسمك وصورتك ورصيدك في زياراتك القادمة.`;
-    const p3 = `من داخل ${topicName} يمكنك الانتقال بلمسة واحدة إلى بقية غرف المنصة: ${pickMany(relatedLinks.map(l => l.text), extraParasSeed, 3).join('، ') || 'غرف الدردشة الأخرى'} وغيرها.`;
-    const ordered = extraParasSeed % 2 === 0 ? [p1, p2, p3] : [p1, p3, p2];
-    extraParas.push(...ordered);
+    const p3 = `من داخل ${topicName} يمكنك الانتقال بلمسة واحدة إلى بقية غرف المنصة: ${relatedLinks.slice(0, 3).map(l => l.text).join('، ') || 'غرف الدردشة الأخرى'} وغيرها.`;
+    extraParas.push(p1, p2, p3);
   }
 
   // أسئلة شائعة إضافية خاصة بالصفحة نفسها (تذكر اسمها وغرفتها وصفحاتها الشقيقة)
@@ -7882,44 +7921,48 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
       });
     }
     pageFaq.push({
-      q: `هل ${topicName} مفتوح طوال الوقت؟`,
-      a: `نعم، ${topicName} يعمل على مدار الساعة طوال أيام الأسبوع، وتتواجد فيه أعضاء يومياً للدردشة الكتابية والصوتية في أجواء محترمة يشرف عليها فريق متابعة دائم.`
+      q: `هل ${topicName} مفتوح طوال الوقت ومجاني؟`,
+      a: `نعم، ${topicName} يعمل مجاناً على مدار 24 ساعة طوال أيام الأسبوع، وتتواجد فيه أعضاء يومياً للدردشة الكتابية والصوتية في أجواء محترمة يشرف عليها فريق متابعة دائم.`
     });
     if (relatedLinks.length >= 2) {
       pageFaq.push({
         q: `هل توجد دردشات وغرف مشابهة لـ${topicName}؟`,
-        a: `نعم، ترتبط صفحة ${topicName} بغرف ودردشات أخرى في المنصة مثل ${relatedLinks.slice(0, 3).map(l => l.text).join('، ')}، ويمكنك الانتقال بينها من الروابط في أسفل المحتوى أو من قائمة الغرف داخل الدردشة.`
+        a: `نعم، ترتبط صفحة ${topicName} بغرف ودردشات أخرى في المنصة مثل ${relatedLinks.slice(0, 3).map(l => l.text).join('، ')}، ويمكنك الانتقال بينها من الروابط أدناه.`
       });
     }
   }
 
-  // قائمة مميزات الصفحة — 5 نقاط تُنتقى بدوران بصمة المسار من جمل المحتوى
+  // قائمة مميزات الصفحة
   const featSeed = slugSeed('feat|' + String(isCustomSlug ? slug : 'home'));
   let featureItems = [];
   try {
     const vId = 'top_rank';
     const sentPool = SEO_SENTENCE_POOL[vId] || [];
-    featureItems = pickMany(sentPool, featSeed, 5).map(t => fillTemplate(t, { site: siteName, base: topicName, region: topicName, slug }));
+    featureItems = pickMany(sentPool, featSeed, 4).map(t => fillTemplate(t, { site: siteName, base: topicName, region: topicName, slug }));
   } catch (e) { featureItems = []; }
 
-  // قائمة غرف الصفحة داخل المحتوى الفريد (اسم + وصف) — مجموعة وترتيب مختلفان لكل مسار
+  // قائمة غرف الصفحة داخل المحتوى الفريد (اسم + وصف)
   const planRooms = roomPlan.matched.concat(roomPlan.others);
   const miniRooms = planRooms.slice(0, 6)
     .map(r => `«${String(r.name || '').trim()}»${String(r.description || '').trim() ? ' — ' + String(r.description).trim() : ''}`);
 
   const relatedHtml = relatedLinks.length
-    ? `<h2>غرف ودردشات ذات صلة</h2>\n  <ul>\n    ${relatedLinks.map(l => `<li><a href="/${esc(l.slug)}">${esc(l.text)}</a></li>`).join('\n    ')}\n  </ul>`
+    ? `<h2><i class="f7-icons">link</i> غرف ودردشات ذات صلة</h2>\n  <div class="seo-related-chips">\n    ${relatedLinks.map(l => `<a href="/${esc(l.slug)}" class="seo-chip-link">📍 ${esc(l.text)}</a>`).join('\n    ')}\n  </div>`
     : '';
 
+  // المحتوى المرئي الكامل لمسار الأرشفة (غير مخفي وواضح للمستخدم ولمحركات البحث)
   const seoBody = `
-<div class="seo-only" id="seoLandingContent">
+<div class="seo-landing-section" id="seoLandingContent">
   <h1>${esc(pageH1 || title)}</h1>
   <p>${esc(pageIntro || desc)}</p>
   ${extraParas.map(p => `<p>${esc(p)}</p>`).join('\n  ')}
-  ${featuredRoom ? `<h2>غرفة ${esc(seoRoomDisplay(featuredRoom.name))} — الدخول المباشر</h2><p>${esc(`غرفة ${seoRoomDisplay(featuredRoom.name)} متاحة الآن للدخول من صفحة ${topicName}، دردشة كتابية وصوتية معاً بدون تسجيل وبدون أي رسوم.`)}</p>` : ''}
-  ${miniRooms.length ? `<h2>غرف الدردشة المتوفرة في ${esc(topicName)}</h2><ul>\n    ${miniRooms.map(m => `<li>${esc(m)}</li>`).join('\n    ')}\n  </ul>` : ''}
-  ${featureItems.length ? `<h2>أبرز ما يميز ${esc(topicName)}</h2><ul>\n    ${featureItems.map(f => `<li>${esc(f)}</li>`).join('\n    ')}\n  </ul>` : ''}
-  ${pageFaq.length ? `<h2>الأسئلة الشائعة حول ${esc(siteName)}</h2>` + pageFaq.map(f => `<h3>${esc(f.q)}</h3><p>${esc(f.a)}</p>`).join('\n  ') : ''}
+  ${featuredRoom ? `<h2><i class="f7-icons">star_fill</i> غرفة ${esc(seoRoomDisplay(featuredRoom.name))} — الدخول المباشر</h2><p>${esc(`غرفة ${seoRoomDisplay(featuredRoom.name)} متاحة الآن للدخول من صفحة ${topicName}، دردشة كتابية وصوتية معاً بدون تسجيل وبدون أي رسوم.`)}</p>` : ''}
+  ${featureItems.length ? `<h2><i class="f7-icons">sparkles</i> أبرز ما يميز ${esc(topicName)}</h2>
+  <div class="seo-feat-grid">
+    ${featureItems.map(f => `<div class="seo-feat-card"><i class="f7-icons">checkmark_alt_circle_fill</i><span>${esc(f)}</span></div>`).join('\n    ')}
+  </div>` : ''}
+  ${miniRooms.length ? `<h2><i class="f7-icons">bubble_left_bubble_right_fill</i> غرف الدردشة المتوفرة</h2><ul>\n    ${miniRooms.map(m => `<li>${esc(m)}</li>`).join('\n    ')}\n  </ul>` : ''}
+  ${pageFaq.length ? `<h2><i class="f7-icons">question_circle_fill</i> الأسئلة الشائعة حول ${esc(siteName)}</h2>` + pageFaq.map(f => `<div class="seo-faq-card"><div class="seo-faq-q">❓ ${esc(f.q)}</div><div class="seo-faq-a">${esc(f.a)}</div></div>`).join('\n  ') : ''}
   ${relatedHtml}
 </div>`;
 
@@ -7996,15 +8039,13 @@ ${breadcrumbSchema}
   `.trim();
 
   indexHtml = indexHtml.replace(/<title[\s\S]*?<\/title>/i, metaTags);
-  // تفعيل تعمية مسارات API قبل أي سكربت آخر في الصفحة (مؤجّلة في الصفحة العامة لتسريع FCP)
+  // تفعيل تعمية مسارات API قبل أي سكربت آخر في الصفحة
   indexHtml = indexHtml.replace('</head>', cloakBootstrapTag(true) + '</head>');
-  // عرض الغرف مسبقاً من الخادم داخل #roomsList: يجعل نص الغرف (عنصر LCP) ظاهراً
-  // من أول رسم للصفحة دون انتظار تحميل/تنفيذ app.js — يقلّل LCP بشكل كبير.
-  // في مسارات الأرشفة تتصدر الغرفة المطابقة لكلمات المسار القائمة وتُعرض مجموعة
-  // بدوران ثابت للمسار (بدل القائمة المتطابقة في كل الصفحات) — app.js يعيد
-  // رسم القائمة كاملة عند وصول بيانات الغرف فلا يتأثر المستخدم.
+
+  // عرض الغرف مسبقاً من الخادم مع حقن محتوى الأرشفة المرئي تحتها مباشرة داخل #roomsList
   try {
     const rooms = isCustomSlug ? planRooms.slice(0, 10) : planRooms;
+    let rowsHtml = '';
     if (rooms && rooms.length) {
       const thumb = (src, px) => {
         const s = String(src || '');
@@ -8014,10 +8055,10 @@ ${breadcrumbSchema}
         }
         return s;
       };
-      const rowsHtml = rooms.map(r => {
+      rowsHtml = rooms.map(r => {
         const name = esc(String(r.name || ''));
         const desc = esc(String(r.description || `أهلاً وسهلاً بكم في ${siteName} ★`));
-        const img = String(r.image || '');
+        const img = checkAsset(r.image, '/img/room.png');
         const imgHtml = img
           ? `<div class="room-img"><img src="${esc(thumb(img, 104))}" alt="${name}" width="104" height="104" decoding="async"></div>`
           : `<div class="room-img"><span>${name}</span></div>`;
@@ -8028,10 +8069,11 @@ ${breadcrumbSchema}
         if (r.locked) feats += '<i class="f7-icons" title="الغرفة برقم سري" style="color:#d946a6">lock_fill</i>';
         return `<div class="room-row" data-id="${+r.id}">${imgHtml}<div class="room-info"><div class="room-name">${name}</div><div class="room-desc">${desc}</div></div><div class="room-side"><div class="room-count"><i class="f7-icons">person_2_fill</i><b>0</b>/${+r.max_users || 1000}</div><i class="f7-icons room-chev">chevron_right</i><div class="room-feats">${feats}</div></div></div>`;
       }).join('');
-      indexHtml = indexHtml.replace('<div class="r-list" id="roomsList"></div>', `<div class="r-list" id="roomsList">${rowsHtml}</div>`);
     }
+    indexHtml = indexHtml.replace('<div class="r-list" id="roomsList"></div>', `<div class="r-list" id="roomsList">${rowsHtml}\n${seoBody}</div>`);
   } catch (e) { }
-  // المحتوى الفريد يُحقن مباشرة بعد <body> حتى تراه محركات البحث قبل أي سكربت
+
+  // احتياط: إذا لم يُحقن داخل #roomsList يُحقن داخل body
   if (indexHtml.indexOf('id="seoLandingContent"') === -1) {
     indexHtml = indexHtml.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs}>\n${seoBody}`);
   }
@@ -8039,11 +8081,12 @@ ${breadcrumbSchema}
 }
 
 // ---------- خريطة الموقع (sitemap.xml) وملف robots.txt ----------
-// يعرضان كل مسارات الأرشفة المفعّلة تلقائياً؛ أي مسار جديد يضاف للوحة التحكم
-// يظهر هنا فوراً دون أي إعداد إضافي.
 function siteBaseUrl(req) {
   const host = String((req && (req.headers['x-forwarded-host'] || req.headers.host)) || '').trim();
-  const proto = String((req && (req.headers['x-forwarded-proto'] || req.protocol)) || 'https').split(',')[0].trim();
+  let proto = String((req && (req.headers['x-forwarded-proto'] || req.protocol)) || 'https').split(',')[0].trim();
+  if (!host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
+    proto = 'https';
+  }
   return `${proto}://${host}`;
 }
 
@@ -8053,11 +8096,13 @@ app.get('/sitemap.xml', async (req, res) => {
     const base = siteBaseUrl(req);
     const iso = ts => {
       const n = Number(ts || 0);
-      const d = n > 0 ? new Date(n * 1000) : new Date();
+      const d = n > 0 ? new Date(n * 1000) : new Date(1789807205000);
       return d.toISOString().replace(/\.\d+Z$/, '+00:00');
     };
+    // تاريخ آخر تعديل فعلي لمحتوى الموقع
+    const lastModAll = rows.reduce((max, r) => Math.max(max, Number(r.updated_at || r.created_at || 0)), 0);
     const urls = [];
-    urls.push(`  <url>\n    <loc>${base}/</loc>\n    <lastmod>${iso(Math.floor(Date.now() / 1000))}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>`);
+    urls.push(`  <url>\n    <loc>${base}/</loc>\n    <lastmod>${iso(lastModAll)}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>`);
     for (const r of rows) {
       urls.push(`  <url>\n    <loc>${base}/${String(r.slug)}</loc>\n    <lastmod>${iso(r.updated_at || r.created_at)}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`);
     }
@@ -8075,13 +8120,20 @@ app.get('/robots.txt', async (req, res) => {
   res.type('text/plain').send(
     `User-agent: *\n` +
     `Allow: /\n` +
+    `Allow: /uploads/\n` +
+    `Allow: /img/\n` +
+    `Allow: /css/\n` +
+    `Allow: /js/\n` +
+    `Allow: /fonts/\n` +
+    `Allow: /icons/\n` +
     `\n` +
-    `# منع زحف محركات البحث إلى صفحات الإدارة والواجهات البرمجية منعاً باتاً\n` +
+    `# منع زحف محركات البحث إلى لوحة الإدارة والواجهات البرمجية ومعلمات التتبع\n` +
     `Disallow: /admin\n` +
     `Disallow: /admin.html\n` +
     `Disallow: /admin/\n` +
     `Disallow: /api/\n` +
     `Disallow: /socket.io/\n` +
+    `Disallow: /*?*\n` +
     `Disallow: /*token=\n` +
     `Disallow: /*?token=\n` +
     `\n` +
@@ -8089,13 +8141,17 @@ app.get('/robots.txt', async (req, res) => {
   );
 });
 
+// أيقونة الموقع المصغرة الافتراضية
+app.get('/favicon.ico', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=604800, must-revalidate');
+  const ico = path.join(__dirname, 'public/favicon.ico');
+  if (fs.existsSync(ico)) return res.sendFile(ico);
+  res.sendFile(path.join(__dirname, 'public/uploads/favicons/site.svg'));
+});
+
 app.get('/', async (req, res) => {
-  // صفحات الأرشفة قابلة للفهرسة: نُحسّن الكاش ليتمكن محرك البحث من تخزين/إعادة
-  // معاينة الصفحة (بدلاً من no-store الذي يُبعد الصفحة عن التخزين وقد يسبّب
-  // «مكتشفة - غير مفهرسة»). المحتوى الديناميكي يُحمَّل عبر JS/API فلا يتأثر.
   res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
-  // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
   try {
     const html = await renderSeoChatHtml('default', req);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -8106,20 +8162,31 @@ app.get('/', async (req, res) => {
 });
 
 app.get('/:slug', async (req, res, next) => {
-  // صفحات الأرشفة قابلة للفهرسة: كاش قصير يساعد محركات البحث على التأكد من الصفحة.
   res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
   const slug = String(req.params.slug || '').trim().toLowerCase();
-  if (RESERVED_SLUGS.has(slug) || slug.includes('.')) return next();
-  // (أُلغيت بوابة الحماية وفقاً لطلب المالك — لا حظر على VPN/متصفحات/روبوتات)
+  if (RESERVED_SLUGS.has(slug)) return next();
+
+  // تحويل المسارات المكررة إلى المسار الأساسي المعتمد بتوجيه 301 دائم
+  if (SLUG_REDIRECTS[slug]) {
+    return res.redirect(301, '/' + SLUG_REDIRECTS[slug]);
+  }
+
+  // إذا كان الرابط يحتوي على نقطة (ملف امتداد) فهو ملف ثابت مفقود
+  if (slug.includes('.')) return next();
+
   try {
     const seo = await q.get(`SELECT id FROM seo_pages WHERE slug=? AND active=1`, slug);
-    if (!seo) return next();
+    if (!seo) {
+      // أي مسار نصي غير معروف (صفحة قديمة تم حذفها أو رابط خطأ) يُحوّل 301 إلى الصفحة الرئيسية
+      // هذا الإجراء يحل خطأ 404 في Google Search Console فوراً وينقل قوة الصفحة للرئيسية
+      return res.redirect(301, '/');
+    }
     const html = await renderSeoChatHtml(slug, req);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (e) {
-    next();
+    res.redirect(301, '/');
   }
 });
 

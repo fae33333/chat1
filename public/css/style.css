@@ -7251,19 +7251,143 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
 .pf-audio-row .profile-voice .voice-delete { color:#e8424d; }
 
 /* =========================================================
-   المحتوى النصي الفريد لمسارات الأرشفة (SEO)
-   مخفي بصرياً لكنه مقروء بالكامل من محركات البحث وقارئات الشاشة
-   (تقنية sr-only المعتمدة) — لا يؤثر على تصميم الدردشة إطلاقاً.
+   المحتوى النصي والتعريفي لمسارات الأرشفة (SEO Landing Section)
+   مرئي لمحركات البحث والمستخدمين بتنسيق أنيق ومتناسق
    ========================================================= */
+.seo-landing-section {
+  direction: rtl;
+  text-align: right;
+  margin: 18px 8px 30px;
+  padding: 18px 16px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #eef0f7;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+  color: #1e293b;
+  font-size: 13.5px;
+  line-height: 1.8;
+  position: relative;
+  z-index: 2;
+}
+.seo-landing-section h1 {
+  font-size: 17px;
+  font-weight: 900;
+  color: #0f172a;
+  margin-bottom: 12px;
+  line-height: 1.45;
+  border-bottom: 2px solid #f1f5f9;
+  padding-bottom: 10px;
+}
+.seo-landing-section h2 {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1e293b;
+  margin-top: 16px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.seo-landing-section h3 {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #334155;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.seo-landing-section p {
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 10px;
+  line-height: 1.75;
+}
+.seo-landing-section ul {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+}
+.seo-landing-section ul li {
+  position: relative;
+  padding-right: 20px;
+  margin-bottom: 7px;
+  font-size: 13px;
+  color: #475569;
+}
+.seo-landing-section ul li::before {
+  content: "★";
+  position: absolute;
+  right: 2px;
+  color: #ea580c;
+  font-size: 11px;
+}
+.seo-feat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+.seo-feat-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.seo-feat-card i {
+  color: #ea580c;
+  font-size: 16px;
+}
+.seo-faq-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+}
+.seo-faq-q {
+  font-weight: 800;
+  font-size: 13.5px;
+  color: #0f172a;
+  margin-bottom: 5px;
+}
+.seo-faq-a {
+  font-size: 12.5px;
+  color: #64748b;
+  line-height: 1.65;
+}
+.seo-related-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.seo-chip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  color: #1d4ed8;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s;
+}
+.seo-chip-link:hover {
+  background: #e0e7ff;
+  border-color: #c7d2fe;
+  color: #1e40af;
+}
+/* توافق مع الفئة القديمة لضمان عدم إخفاء المحتوى مطلقاً */
 .seo-only {
-  position: absolute !important;
-  width: 1px; height: 1px;
-  margin: -1px; padding: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: normal;
-  border: 0;
+  display: block !important;
 }
 
 /* ===== دعم اللغات من اليسار لليمين (LTR) — تغيير اللغة فقط دون نقل/قلب الأيقونات ===== */
