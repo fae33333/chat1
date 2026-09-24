@@ -21,6 +21,10 @@ try { sharp = require('sharp'); } catch (e) { }
 
 const app = express();
 const COOKIE_SECRET = process.env.COOKIE_SECRET || 'nujum-admin-device-secret-2026';
+const cloak = require('./lib/cloak');
+const CLOAK_KEY = process.env.API_CLOAK_KEY || crypto.createHash('sha256')
+  .update('nujum-api-cloak::' + COOKIE_SECRET).digest('hex').slice(0, 48);
+const CLOAK_PREFIX = '/s/';
 const DEVICE_COOKIE_NAME = 'nujum_device_id';
 const DEVICE_COOKIE_MAX_AGE = 1000 * 60 * 60 * 24 * 365 * 5;
 const HTTPS_KEY_PATH = process.env.HTTPS_KEY || path.join(__dirname, 'key.pem');
@@ -45,7 +49,14 @@ if (!server) server = http.createServer(app);
 // التحقق والحظر الفعليان موجودان في allowSocketHandshake أدناه.
 // pingTimeout أوسع من الافتراضي (20 ث) ليتحمل انقطاع شبكة الهاتف اللحظي
 // (تحويل شبكة ↔ WiFi) دون فصل الاتصال؛ التبويب المعلق ينقطع من الطرف الآخر على أي حال.
-const io = new Server(server, { allowRequest: allowSocketHandshake, pingInterval: 25000, pingTimeout: 30000 });
+// مفسّر الحزم المشفّر (parser) يضمن تعمية كل حزمة صاعدة وهابطة داخل غلاف {"_nv":"..."}
+// ويمنع أي اتصال خارجي من قراءة الحزم أو إرسال حزم غير معمّاة.
+const io = new Server(server, {
+  parser: cloak.createSocketParser(CLOAK_KEY),
+  allowRequest: allowSocketHandshake,
+  pingInterval: 25000,
+  pingTimeout: 30000
+});
 
 // خلف nginx نعمل HTTP على 3000 (nginx يعتني بـ SSL). وإلا فنفس السلوك السابق:
 // إن كانت شهادة self-signed متاحة نفتح 2083 مباشرة، وإن لا فـ 3000 HTTP.
@@ -216,11 +227,7 @@ app.use(compression({
 // =====================================================
 //  تعمية مسارات API: /api/... ← /s/<رمز مشفّر>
 // =====================================================
-const cloak = require('./lib/cloak');
 const { minifyStatic, prewarm, minifiedText } = require('./lib/minify-static');
-const CLOAK_KEY = process.env.API_CLOAK_KEY || crypto.createHash('sha256')
-  .update('nujum-api-cloak::' + COOKIE_SECRET).digest('hex').slice(0, 48);
-const CLOAK_PREFIX = '/s/';
 // يفك الرمز ويعيد كتابة الطلب داخلياً قبل أي مسار Express، فلا يظهر أي مسار
 // API حقيقي في الشبكة أو في سجلات البروكسي.
 app.use((req, res, next) => {

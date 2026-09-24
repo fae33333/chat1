@@ -2444,7 +2444,10 @@ function connectSocket() {
   if (!ME || !CHAT_TOKEN) return;
   // هوية هذه الصفحة تنتقل إلى الخادم عبر WebSocket ولا تعتمد على كوكي مشترك بين التبويبات.
   // إعادة الاتصال غير محدودة مع تدرج زمني، مع بقاء الرمز في ذاكرة هذه الصفحة فقط.
-  const socket = io({
+  const cloakParser = (window.NujumCloak && window.__API_CLOAK__ && typeof window.NujumCloak.createSocketParser === 'function')
+    ? window.NujumCloak.createSocketParser(window.__API_CLOAK__.key)
+    : undefined;
+  const socketOpts = {
     auth: { client: 'chat', token: CHAT_TOKEN },
     query: { key: nextSocketHandshakeKey() },
     reconnection: true,
@@ -2453,7 +2456,9 @@ function connectSocket() {
     reconnectionDelayMax: 2500,
     randomizationFactor: .35,
     timeout: 10000
-  });
+  };
+  if (cloakParser) socketOpts.parser = cloakParser;
+  const socket = io(socketOpts);
   SOCKET = socket;
   startChatPing(); // نبضة الاحتفاظ بالجلسة (تبقى حية حتى من تبويب خلفية)
   startKeepaliveBeat(); // نبضة السوكيت المعتمة — تبقي الاتصال حياً في الخلفية

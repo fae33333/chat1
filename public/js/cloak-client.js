@@ -248,10 +248,40 @@
     return socket;
   }
 
+  function ensureSocketCloakParser() {
+    if (!window.NujumCloak || !config || !config.key) return null;
+    try {
+      if (!window.__SOCKET_CLOAK_PARSER__) {
+        window.__SOCKET_CLOAK_PARSER__ = window.NujumCloak.createSocketParser(config.key);
+      }
+      return window.__SOCKET_CLOAK_PARSER__;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function wrapIoFactory(factory) {
     if (!factory || factory.__nujumSignWrapped) return factory;
     function wrappedIo() {
-      var socket = factory.apply(this, arguments);
+      var args = Array.prototype.slice.call(arguments);
+      var optsIndex = -1;
+      if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
+        optsIndex = 0;
+      } else if (args.length >= 2 && typeof args[1] === 'object' && args[1] !== null) {
+        optsIndex = 1;
+      } else if (args.length === 0) {
+        args.push({});
+        optsIndex = 0;
+      }
+      if (optsIndex !== -1) {
+        var opts = Object.assign({}, args[optsIndex]);
+        if (!opts.parser) {
+          var parser = ensureSocketCloakParser();
+          if (parser) opts.parser = parser;
+        }
+        args[optsIndex] = opts;
+      }
+      var socket = factory.apply(this, args);
       try { patchClientSocket(socket); } catch (e) { }
       return socket;
     }
