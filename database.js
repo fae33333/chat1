@@ -744,7 +744,7 @@ const defaultSettings = {
   snd_pm: '1',
   snd_ntf: '1',
   logo_url: '',
-  favicon_url: '/favicon.ico',
+  favicon_url: '/uploads/favicon.ico',
   seo_unique_favicon: '0',
   skin: 'default',
   font_size: '14',

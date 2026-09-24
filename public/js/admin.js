@@ -5325,10 +5325,14 @@ const PAGES = {
                 <input type="file" id="pageSeoFileInput" accept="image/*" style="display:none">
                 <button class="btn btn-green btn-sm" id="uploadPageSeoFileBtn" type="button"><i class="f7-icons">camera_fill</i> رفع</button>
               </div>
+              <div style="margin-top:6px;display:flex;align-items:center;gap:8px">
+                <img id="seoPageImagePreview" src="" alt="معاينة الشعار" style="max-height:50px;border-radius:6px;border:1px solid #cbd5e1;display:none;object-fit:cover">
+                <span style="font-size:11.5px;color:#64748b">يُرفع لكل مسار صورة وشعار خاص به يُميزه في محركات البحث ومشاركات الروابط</span>
+              </div>
             </div>
           </div>
           <div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:10px;padding:10px 13px;margin-bottom:14px;font-size:12px;font-weight:700;line-height:1.9">
-            \uD83E\uDDEC <b>منع «طبق الأصل»:</b> يُولَّد لكل مسار عنوان H1 ومحتوى تعريفي وأسئلة شائعة <b>مختلفة</b> تلقائياً من بصمة المسار نفسه. اترك الحقول أدناه فارغة ليُملأ كل مسار بمحتوى فريد، أو اكتبها يدوياً لتتحكم بها بالكامل.
+            🧬 <b>منع «طبق الأصل»:</b> يُولَّد لكل مسار عنوان H1 ومحتوى تعريفي وأسئلة شائعة <b>مختلفة</b> تلقائياً من بصمة المسار نفسه. اترك الحقول أدناه فارغة ليُملأ كل مسار بمحتوى فريد، أو اكتبها يدوياً لتتحكم بها بالكامل.
           </div>
           <div class="fgroup">
             <label>العنوان الرئيسي المرئي لمحركات البحث (H1):</label>
@@ -5338,18 +5342,10 @@ const PAGES = {
             <label>المحتوى التعريفي الفريد داخل الصفحة (Intro):</label>
             <textarea class="inp" id="seoPageIntro" rows="3" placeholder="نص فريد يظهر داخل صفحة هذا المسار فقط — اتركه فارغاً للتوليد التلقائي..."></textarea>
           </div>
-          <div class="fgroup">
-            <label>أيقونة الموقع المصغّرة (Favicon) — تُجلب أو تُولَّد تلقائياً:</label>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <img id="seoPageFaviconPreview" src="" alt="" style="width:28px;height:28px;border-radius:7px;border:1px solid #cbd5e1;background:#fff;object-fit:contain;display:none">
-              <input class="inp" id="seoPageFavicon" placeholder="اتركه فارغاً ليُولَّد تلقائياً" style="flex:1;min-width:150px">
-              <input type="file" id="pageFaviconFileInput" accept=".ico,.png,.jpg,.jpeg,.webp,.svg" style="display:none">
-              <button class="btn btn-green btn-sm" id="uploadPageFaviconBtn" type="button"><i class="f7-icons">camera_fill</i> رفع أيقونة</button>
-              <button class="btn btn-blue btn-sm" id="autoFaviconBtn" type="button"><i class="f7-icons">sparkles</i> توليد فريد</button>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-              <input class="inp" id="seoPageFaviconUrl" placeholder="أو رابط الموقع لجلب أيقونته: https://example.com" style="flex:1">
-              <button class="btn btn-purple btn-sm" id="fetchFaviconBtn" type="button"><i class="f7-icons">arrow_down_circle_fill</i> جلب من الموقع</button>
+          <div class="fgroup" style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:10px 14px">
+            <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;color:#334155">
+              <img src="/uploads/favicon.ico" alt="" style="width:18px;height:18px;object-fit:contain">
+              <span>أيقونة الموقع (Favicon): <b>ثابتة وموحدة لجميع المسارات</b> تلقائياً (<code dir="ltr">/uploads/favicon.ico</code>)</span>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
@@ -5439,6 +5435,10 @@ const PAGES = {
           const res = await api('/api/admin/upload/seo-image', 'POST', fd, true);
           if (res && res.path) {
             $('#seoPageImage').value = res.path;
+            if ($('#seoPageImagePreview')) {
+              $('#seoPageImagePreview').src = res.path;
+              $('#seoPageImagePreview').style.display = 'block';
+            }
             toast('تم رفع صورة الشعار بنجاح ✓');
           }
         } catch (e) { toast(e.error || 'تعذر رفع الصورة', false); }
@@ -5518,8 +5518,8 @@ const PAGES = {
               <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px">
                 <span class="chip">اسم الدردشة: ${esc(p.site_name || 'افتراضي')}</span>
                 <span class="chip">الكلمات: ${esc(p.keywords || '—')}</span>
-                ${p.logo_image ? `<span class="chip" style="color:#0284c7">🖼️ الشعار مرفق</span>` : ''}
-                ${p.favicon ? `<span class="chip" style="color:#7c3aed"><img src="${esc(p.favicon)}" alt="" style="width:13px;height:13px;vertical-align:-2px;margin-left:4px;border-radius:3px"> أيقونة خاصة</span>` : '<span class="chip" style="color:#94a3b8">⏳ أيقونة تلقائية</span>'}
+                ${p.logo_image ? `<span class="chip" style="color:#0284c7"><img src="${esc(p.logo_image)}" alt="" style="max-height:13px;vertical-align:-2px;border-radius:2px;margin-left:4px"> الشعار مخصص</span>` : '<span class="chip" style="color:#64748b">الشعار الافتراضي</span>'}
+                <span class="chip" style="color:#10b981"><img src="/uploads/favicon.ico" alt="" style="width:12px;height:12px;vertical-align:-2px;margin-left:4px"> فافيكون موحد</span>
                 ${p.h1 || p.intro ? '<span class="chip" style="background:#f0fdf4;color:#166534">🧬 محتوى فريد</span>' : '<span class="chip" style="background:#fef2f2;color:#b91c1c">⚠️ بلا محتوى فريد</span>'}
               </div>
             </div>
@@ -5545,10 +5545,12 @@ const PAGES = {
             $('#seoPageDesc').value = page.description || '';
             $('#seoPageKeywords').value = page.keywords || '';
             $('#seoPageImage').value = page.logo_image || '';
-            $('#seoPageFavicon').value = page.favicon || '';
+            if ($('#seoPageImagePreview')) {
+              $('#seoPageImagePreview').src = page.logo_image || '';
+              $('#seoPageImagePreview').style.display = page.logo_image ? 'block' : 'none';
+            }
             $('#seoPageH1').value = page.h1 || '';
             $('#seoPageIntro').value = page.intro || '';
-            updateSeoFaviconPreview(page.favicon || '');
             $('#seoPageActive').checked = !!page.active;
             $('#seoFormContainer').scrollIntoView({ behavior: 'smooth' });
           };
@@ -5600,11 +5602,9 @@ const PAGES = {
         $('#seoPageDesc').value = '';
         $('#seoPageKeywords').value = '';
         $('#seoPageImage').value = '';
-        $('#seoPageFavicon').value = '';
-        $('#seoPageFaviconUrl').value = '';
+        if ($('#seoPageImagePreview')) $('#seoPageImagePreview').style.display = 'none';
         $('#seoPageH1').value = '';
         $('#seoPageIntro').value = '';
-        updateSeoFaviconPreview('');
         $('#seoPageActive').checked = true;
       };
 
@@ -5628,16 +5628,14 @@ const PAGES = {
             keywords: $('#seoPageKeywords').value.trim(),
             logo_image: $('#seoPageImage').value.trim(),
             site_name: $('#seoPageSiteName').value.trim(),
-            favicon: $('#seoPageFavicon').value.trim(),
             h1: $('#seoPageH1').value.trim(),
             intro: $('#seoPageIntro').value.trim(),
             auto_fill: 1,
             active: $('#seoPageActive').checked ? 1 : 0
           });
-          if (res && res.favicon) { $('#seoPageFavicon').value = res.favicon; updateSeoFaviconPreview(res.favicon); }
           if (res && res.h1 && !$('#seoPageH1').value.trim()) $('#seoPageH1').value = res.h1;
           if (res && res.intro && !$('#seoPageIntro').value.trim()) $('#seoPageIntro').value = res.intro;
-          toast('تم حفظ مسار الأرشفة بنجاح ✓ — بمحتوى وأيقونة فريدة');
+          toast('تم حفظ مسار الأرشفة بنجاح ✓');
           if (res && res.seo_room && res.seo_room.created) {
             setTimeout(() => toast(`تم إنشاء غرفة SEO مخفية باسم «${res.seo_room.name}» 🤖 — مرئية لمحركات البحث فقط`), 900);
           }

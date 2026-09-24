@@ -16,6 +16,8 @@ const multer = require('multer');
 const compression = require('compression');
 const { Server } = require('socket.io');
 const db = require('./database');
+let sharp;
+try { sharp = require('sharp'); } catch (e) { }
 
 const app = express();
 const COOKIE_SECRET = process.env.COOKIE_SECRET || 'nujum-admin-device-secret-2026';
@@ -6397,11 +6399,8 @@ app.post('/api/admin/seo-pages', requireSuperAdmin, async (req, res) => {
     if (!intro) intro = uniq.intro;
   }
   if (!title) return res.status(400).json({ error: 'اكتب عنوان الصفحة لمحركات البحث' });
-  // أيقونة المسار: تأخذ أيقونة الموقع الموحدة ما لم يُفعل خيار الأيقونة الفريدة صراحة
-  if (!favicon) {
-    const uniqueOn = String(settingsNow.seo_unique_favicon || '0') === '1';
-    favicon = uniqueOn ? (generateSlugFavicon(slug) || settingsNow.favicon_url || '/favicon.ico') : (settingsNow.favicon_url || '/favicon.ico');
-  }
+  // أيقونة الموقع ثابتة وموحدة لجميع المسارات: /uploads/favicon.ico
+  favicon = '/uploads/favicon.ico';
   // محتوى فريد احتياطي إن تُركت الحقول فارغة بلا تشغيل التوليد التلقائي
   if (!h1 || !intro) {
     const brandName2 = site_name || settingsNow.site_name || '';
@@ -6991,9 +6990,12 @@ async function downloadFaviconToDisk(targetUrl, slug) {
 // توليد ومزامنة ملف favicon.ico القياسي على القرص من أي صورة مرفوعة (PNG/WebP/SVG/JPG)
 async function syncSiteFaviconIco(imageRelPath) {
   try {
+    if (!sharp) {
+      try { sharp = require('sharp'); } catch (e) { return false; }
+    }
     if (!imageRelPath) return false;
     let clean = String(imageRelPath).trim();
-    if (clean === '/favicon.ico') return true;
+    if (clean === '/favicon.ico' || clean === '/uploads/favicon.ico') return true;
     if (clean.startsWith('/')) clean = clean.slice(1);
     const abs = path.join(__dirname, 'public', clean);
     if (!fs.existsSync(abs)) return false;
@@ -7019,6 +7021,7 @@ async function syncSiteFaviconIco(imageRelPath) {
 
     const icoBuf = Buffer.concat([header, pngBuf]);
     fs.writeFileSync(path.join(__dirname, 'public/favicon.ico'), icoBuf);
+    fs.writeFileSync(path.join(__dirname, 'public/uploads/favicon.ico'), icoBuf);
     return true;
   } catch (e) {
     console.warn('syncSiteFaviconIco error:', e.message);
@@ -7026,41 +7029,9 @@ async function syncSiteFaviconIco(imageRelPath) {
   }
 }
 
-// يضمن أن تأخذ جميع المسارات أيقونة الموقع الأساسية المرفوعة من الصفحة الرئيسية
+// يضمن أن تأخذ جميع المسارات أيقونة الموقع الثابتة الموحدة: /uploads/favicon.ico
 async function ensureSeoFavicon(page, settings) {
-  const checkAsset = (p) => {
-    if (!p) return '';
-    const clean = String(p).trim();
-    if (!clean.startsWith('/')) return clean;
-    const abs = path.join(__dirname, 'public', clean.slice(1));
-    return fs.existsSync(abs) ? clean : '';
-  };
-
-  // 1. أيقونة الموقع الأساسية المرفوعة من الصفحة الرئيسية / الإعدادات العامة
-  // عند رفع صورة من الصفحة الرئيسية تأخذها كل المسارات تلقائياً
-  const setFav = checkAsset(settings && settings.favicon_url);
-  if (setFav && !setFav.startsWith('/uploads/favicons/')) {
-    return setFav;
-  }
-
-  // 2. إذا كانت الصفحة تملك أيقونة مخصصة صريحة مرفوعة يدوياً
-  const pageFav = checkAsset(page && page.favicon);
-  if (pageFav && !pageFav.startsWith('/uploads/favicons/')) {
-    return pageFav;
-  }
-
-  // 3. الشعار المرفوع من الصفحة الرئيسية
-  const logoFav = checkAsset(settings && (settings.logo_url || settings.seo_image));
-  if (logoFav) {
-    return logoFav;
-  }
-
-  // 4. الأيقونة القياسية /favicon.ico الموجودة على القرص
-  if (fs.existsSync(path.join(__dirname, 'public/favicon.ico'))) {
-    return '/favicon.ico';
-  }
-
-  return '/favicon.ico';
+  return '/uploads/favicon.ico';
 }
 
 function faviconMime(href) {
@@ -8202,22 +8173,24 @@ app.get('/robots.txt', async (req, res) => {
   );
 });
 
-// أيقونة الموقع المصغرة (تخدم favicon.ico القياسي المتطابق مع صورة الموقع المرفوعة)
-app.get('/favicon.ico', async (req, res) => {
+// أيقونة الموقع المصغرة (تخدم favicon.ico الموحد والثابت لجميع المسارات)
+app.get(['/favicon.ico', '/uploads/favicon.ico'], async (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=604800, must-revalidate');
-  const ico = path.join(__dirname, 'public/favicon.ico');
-  if (fs.existsSync(ico)) {
+  const p1 = path.join(__dirname, 'public/uploads/favicon.ico');
+  const p2 = path.join(__dirname, 'public/favicon.ico');
+  const file = fs.existsSync(p1) ? p1 : (fs.existsSync(p2) ? p2 : null);
+  if (file) {
     res.type('image/x-icon');
-    return res.sendFile(ico);
+    return res.sendFile(file);
   }
   try {
     const settings = await getSettings();
-    const fallbackSrc = settings.favicon_url || settings.logo_url || settings.seo_image;
+    const fallbackSrc = settings.logo_url || settings.seo_image;
     if (fallbackSrc) {
       await syncSiteFaviconIco(fallbackSrc);
-      if (fs.existsSync(ico)) {
+      if (fs.existsSync(p1)) {
         res.type('image/x-icon');
-        return res.sendFile(ico);
+        return res.sendFile(p1);
       }
     }
   } catch (e) { }
