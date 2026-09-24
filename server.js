@@ -7889,7 +7889,8 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
     title = (seo && seo.title) || `${siteName} | أفضل شات عربي كتابي وصوتي مجاني بدون تسجيل`;
     desc = (seo && seo.description) || `انضم الآن إلى ${siteName} واستمتع بأقوى دردشة صوتية وكتابية مجانية بدون تسجيل. تعارف وتواصل فوري مع أصدقاء جدد في غرف محادثة متميزة وآمنة على مدار الساعة.`;
     keywords = (seo && seo.keywords) || `${siteName}, شات ${siteName}, دردشة ${siteName}, شات ${slug}, دردشة صوتية, شات كتابي, تعارف مجاني, غرف دردشة, شات عربي, شات جوال`;
-    image = checkAsset(seo && seo.logo_image, checkAsset(settings.seo_image, checkAsset(settings.logo_url, defaultImg)));
+    const customRouteLogo = (seo && seo.logo_image && String(seo.logo_image).trim()) || '';
+    image = customRouteLogo || checkAsset(settings.seo_image, checkAsset(settings.logo_url, defaultImg));
     favicon = await ensureSeoFavicon(seo, settings);
   } else {
     siteName = settings.site_name || 'الدردشة العربية';
@@ -8076,6 +8077,24 @@ ${breadcrumbSchema}
   indexHtml = indexHtml.replace(/<title[\s\S]*?<\/title>/i, metaTags);
   // تفعيل تعمية مسارات API قبل أي سكربت آخر في الصفحة
   indexHtml = indexHtml.replace('</head>', cloakBootstrapTag(true) + '</head>');
+
+  // تحديث الشعار والاسم في الهيدر ليتطابق فوراً مع مسار الصفحة المحدد
+  try {
+    const effectiveLogo = isCustomSlug
+      ? ((seo && seo.logo_image && String(seo.logo_image).trim()) || settings.logo_url || '')
+      : (settings.logo_url || '');
+    if (effectiveLogo) {
+      const thumbRel = p => {
+        const s = String(p || '');
+        if (!s.startsWith('/')) return s;
+        return `/tf/260x72${s}`;
+      };
+      const logoImgHtml = `<span class="r-logo-ico" style="display:none"><i class="f7-icons">smiley_fill</i></span><img class="site-logo-image" src="${esc(thumbRel(effectiveLogo))}" alt="${esc(siteName)}" width="130" height="36"><span class="r-logo-txt" id="siteName">${esc(siteName)}</span>`;
+      indexHtml = indexHtml.replace(/<div class="r-logo" id="siteLogo">[\s\S]*?<\/div>/i, `<div class="r-logo" id="siteLogo">${logoImgHtml}</div>`);
+    } else {
+      indexHtml = indexHtml.replace('<span class="r-logo-txt" id="siteName"></span>', `<span class="r-logo-txt" id="siteName">${esc(siteName)}</span>`);
+    }
+  } catch (e) { }
 
   // عرض الغرف مسبقاً من الخادم داخل #roomsList (بطاقات الغرف النقية فقط، دون أي قوالب لتظل شبكة الغرف مثالية)
   try {

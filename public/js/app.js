@@ -2130,6 +2130,7 @@ function applySettings() {
     document.body.classList.add('lang-' + APP_LANG, 'lang-ltr');
   }
   const activeSiteName = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة';
+  const activeLogoUrl = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.logo_image) || SETTINGS.logo_url;
 
   // لا نستبدل innerHTML للشعار بالكامل؛ لأن ذلك كان يحذف #siteName ثم تسبب
   // أي settings_changed لاحق في خطأ null. نحدّث الصورة والاسم مع إبقاء العقد.
@@ -2145,13 +2146,13 @@ function applySettings() {
   if (siteLogo) {
     let logoIcon = siteLogo.querySelector('.r-logo-ico');
     let logoImage = siteLogo.querySelector('.site-logo-image') || siteLogo.querySelector(':scope > img');
-    if (SETTINGS.logo_url) {
+    if (activeLogoUrl) {
       if (!logoImage) {
         logoImage = document.createElement('img');
         siteLogo.insertBefore(logoImage, siteName || siteLogo.firstChild);
       }
       logoImage.className = 'site-logo-image';
-      logoImage.src = thumbUrl(String(SETTINGS.logo_url), 260, 72, true);
+      logoImage.src = thumbUrl(String(activeLogoUrl), 260, 72, true);
       logoImage.alt = activeSiteName;
       logoImage.width = 130;
       logoImage.height = 36;
