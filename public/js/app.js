@@ -4317,18 +4317,11 @@ function renderRoomsPanel() {
     attemptRoomSwitch(+row.dataset.id);
   });
 }
-let INITIAL_SEO_LANDING_HTML = '';
-
 function renderRooms() {
   const q1 = ($('#roomSearch').value || '').trim();
   // جميع الغرف صوتية الآن — لا يوجد تقسيم إلى أقسام.
   const list = ROOMS.filter(r => (!q1 || r.name.includes(q1)));
-  const roomsHtml = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
-  if (!INITIAL_SEO_LANDING_HTML) {
-    const seoBox = $('#seoLandingContent');
-    if (seoBox) INITIAL_SEO_LANDING_HTML = seoBox.outerHTML;
-  }
-  $('#roomsList').innerHTML = roomsHtml + (INITIAL_SEO_LANDING_HTML || '');
+  $('#roomsList').innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
   $$('#roomsList .room-row').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
   renderRoomsPanel();
 }

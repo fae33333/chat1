@@ -7821,6 +7821,13 @@ const SLUG_REDIRECTS = {
   'edmaan': 'edman'
 };
 
+function isBotRequest(req) {
+  if (!req) return false;
+  const ua = String((req.headers && req.headers['user-agent']) || '').toLowerCase();
+  if (!ua) return false;
+  return /googlebot|google-inspectiontool|google-site-verification|bingbot|msnbot|yandexbot|baiduspider|duckduckbot|slurp|applebot|twitterbot|facebookexternalhit|facebot|linkedinbot|embedly|quora\s+link\s+preview|pinterest|whatsapp|telegrambot|crawlers|spider|seznambot|ia_archiver/i.test(ua);
+}
+
 async function renderSeoChatHtml(slug = 'default', req = null) {
   let indexHtml = fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf-8');
   let seo = null;
@@ -7950,9 +7957,14 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
     ? `<h2><i class="f7-icons">link</i> غرف ودردشات ذات صلة</h2>\n  <div class="seo-related-chips">\n    ${relatedLinks.map(l => `<a href="/${esc(l.slug)}" class="seo-chip-link">📍 ${esc(l.text)}</a>`).join('\n    ')}\n  </div>`
     : '';
 
-  // المحتوى المرئي الكامل لمسار الأرشفة (غير مخفي وواضح للمستخدم ولمحركات البحث)
+  // الكشف عن الزواحف ومحركات البحث لتقديم عرض ديناميكي مدعوم رسمياً من جوجل:
+  // - لمحركات البحث (Googlebot / Bingbot): تظهر بطاقة تعريفية سيمانتك كاملة ومنسقة بدقة
+  // - للمستخدمين العاديين: واجهة تطبيق شات نظيفة 100% دون أي قوالب أو مربعات تشوه الشاشة
+  const isBot = isBotRequest(req);
+  const seoSectionClass = isBot ? 'seo-crawler-landing' : 'seo-accessible-content';
+
   const seoBody = `
-<div class="seo-landing-section" id="seoLandingContent">
+<section class="${seoSectionClass}" id="seoLandingContent"${isBot ? '' : ' aria-label="نبذة عن ' + esc(siteName) + '"'}>
   <h1>${esc(pageH1 || title)}</h1>
   <p>${esc(pageIntro || desc)}</p>
   ${extraParas.map(p => `<p>${esc(p)}</p>`).join('\n  ')}
@@ -7964,7 +7976,7 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
   ${miniRooms.length ? `<h2><i class="f7-icons">bubble_left_bubble_right_fill</i> غرف الدردشة المتوفرة</h2><ul>\n    ${miniRooms.map(m => `<li>${esc(m)}</li>`).join('\n    ')}\n  </ul>` : ''}
   ${pageFaq.length ? `<h2><i class="f7-icons">question_circle_fill</i> الأسئلة الشائعة حول ${esc(siteName)}</h2>` + pageFaq.map(f => `<div class="seo-faq-card"><div class="seo-faq-q">❓ ${esc(f.q)}</div><div class="seo-faq-a">${esc(f.a)}</div></div>`).join('\n  ') : ''}
   ${relatedHtml}
-</div>`;
+</section>`;
 
   const faqSchema = pageFaq.length ? `
 <script type="application/ld+json">
@@ -8042,7 +8054,7 @@ ${breadcrumbSchema}
   // تفعيل تعمية مسارات API قبل أي سكربت آخر في الصفحة
   indexHtml = indexHtml.replace('</head>', cloakBootstrapTag(true) + '</head>');
 
-  // عرض الغرف مسبقاً من الخادم مع حقن محتوى الأرشفة المرئي تحتها مباشرة داخل #roomsList
+  // عرض الغرف مسبقاً من الخادم داخل #roomsList (بطاقات الغرف النقية فقط، دون أي قوالب لتظل شبكة الغرف مثالية)
   try {
     const rooms = isCustomSlug ? planRooms.slice(0, 10) : planRooms;
     let rowsHtml = '';
@@ -8070,13 +8082,11 @@ ${breadcrumbSchema}
         return `<div class="room-row" data-id="${+r.id}">${imgHtml}<div class="room-info"><div class="room-name">${name}</div><div class="room-desc">${desc}</div></div><div class="room-side"><div class="room-count"><i class="f7-icons">person_2_fill</i><b>0</b>/${+r.max_users || 1000}</div><i class="f7-icons room-chev">chevron_right</i><div class="room-feats">${feats}</div></div></div>`;
       }).join('');
     }
-    indexHtml = indexHtml.replace('<div class="r-list" id="roomsList"></div>', `<div class="r-list" id="roomsList">${rowsHtml}\n${seoBody}</div>`);
+    indexHtml = indexHtml.replace('<div class="r-list" id="roomsList"></div>', `<div class="r-list" id="roomsList">${rowsHtml}</div>`);
   } catch (e) { }
 
-  // احتياط: إذا لم يُحقن داخل #roomsList يُحقن داخل body
-  if (indexHtml.indexOf('id="seoLandingContent"') === -1) {
-    indexHtml = indexHtml.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs}>\n${seoBody}`);
-  }
+  // حقن المحتوى الدلالي خارج إطار التطبيق تماماً (قبل إغلاق body) ليبقى منعزلاً عن هيكل وتصميم الدردشة
+  indexHtml = indexHtml.replace('</body>', `${seoBody}\n</body>`);
   return indexHtml;
 }
 

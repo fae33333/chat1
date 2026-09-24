@@ -7251,26 +7251,26 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
 .pf-audio-row .profile-voice .voice-delete { color:#e8424d; }
 
 /* =========================================================
-   المحتوى النصي والتعريفي لمسارات الأرشفة (SEO Landing Section)
-   مرئي لمحركات البحث والمستخدمين بتنسيق أنيق ومتناسق
+   محتوى الأرشفة ومحركات البحث (SEO Engine)
+   للزواحف ومحركات البحث: محتوى مرئي كامل بدون أي إخفاء
+   للمستخدمين: واجهة دردشة نقية بدون أي تشويه للتصميم
    ========================================================= */
-.seo-landing-section {
+.seo-crawler-landing {
   direction: rtl;
   text-align: right;
-  margin: 18px 8px 30px;
-  padding: 18px 16px;
+  margin: 20px auto;
+  max-width: 900px;
+  padding: 24px;
   background: #ffffff;
   border-radius: 14px;
   border: 1px solid #eef0f7;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
   color: #1e293b;
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.8;
-  position: relative;
-  z-index: 2;
+  display: block;
 }
-.seo-landing-section h1 {
-  font-size: 17px;
+.seo-crawler-landing h1 {
+  font-size: 22px;
   font-weight: 900;
   color: #0f172a;
   margin-bottom: 12px;
@@ -7278,42 +7278,35 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
   border-bottom: 2px solid #f1f5f9;
   padding-bottom: 10px;
 }
-.seo-landing-section h2 {
-  font-size: 15px;
+.seo-crawler-landing h2 {
+  font-size: 16px;
   font-weight: 800;
   color: #1e293b;
-  margin-top: 16px;
+  margin-top: 18px;
   margin-bottom: 10px;
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.seo-landing-section h3 {
+.seo-crawler-landing p {
   font-size: 13.5px;
-  font-weight: 800;
-  color: #334155;
-  margin-top: 10px;
-  margin-bottom: 4px;
-}
-.seo-landing-section p {
-  font-size: 13px;
   color: #475569;
   margin-bottom: 10px;
   line-height: 1.75;
 }
-.seo-landing-section ul {
+.seo-crawler-landing ul {
   list-style: none;
   padding: 0;
   margin: 10px 0;
 }
-.seo-landing-section ul li {
+.seo-crawler-landing ul li {
   position: relative;
   padding-right: 20px;
   margin-bottom: 7px;
   font-size: 13px;
   color: #475569;
 }
-.seo-landing-section ul li::before {
+.seo-crawler-landing ul li::before {
   content: "★";
   position: absolute;
   right: 2px;
@@ -7322,7 +7315,7 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
 }
 .seo-feat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
   margin: 14px 0;
 }
@@ -7378,16 +7371,19 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
   font-weight: 700;
   text-decoration: none;
   border: 1px solid #e2e8f0;
-  transition: all 0.2s;
 }
-.seo-chip-link:hover {
-  background: #e0e7ff;
-  border-color: #c7d2fe;
-  color: #1e40af;
-}
-/* توافق مع الفئة القديمة لضمان عدم إخفاء المحتوى مطلقاً */
-.seo-only {
-  display: block !important;
+
+/* طبقة المحتوى الدلالي للمستخدمين العاديين: لا تشوه واجهة الدردشة */
+.seo-accessible-content, .seo-landing-section, .seo-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: normal !important;
+  border: 0 !important;
 }
 
 /* ===== دعم اللغات من اليسار لليمين (LTR) — تغيير اللغة فقط دون نقل/قلب الأيقونات ===== */
