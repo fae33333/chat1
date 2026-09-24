@@ -7668,7 +7668,9 @@ async function renderSeoChatHtml(slug = 'default', req = null) {
 
   const host = (req && (req.headers['x-forwarded-host'] || req.headers.host)) || 'localhost:2083';
   const proto = (req && (req.headers['x-forwarded-proto'] || req.protocol)) || 'https';
-  const pageUrl = isCustomSlug ? `${proto}://${host}/${slug}` : `${proto}://${host}/`;
+  // canonical ثابت للدومين الأساسي، مع دعم تغيير الدومين من البيئة عند النقل.
+  const canonicalBase = String(process.env.CANONICAL_BASE_URL || 'https://arab.me').replace(/\/$/, '');
+  const pageUrl = isCustomSlug ? `${canonicalBase}/${slug}` : `${canonicalBase}/`;
 
   let siteName = '';
   let title = '';
@@ -7912,6 +7914,38 @@ function siteBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
+// خريطة مستقلة لكل مسار: يمكن إرسال /اسم-المسار/sitemap.xml إلى Google
+// دون خلط روابط المسارات الأخرى، مع إبقاء الخريطة العامة للتوافق مع الأدوات القديمة.
+app.get('/:slug/sitemap.xml', async (req, res, next) => {
+  try {
+    const slug = String(req.params.slug || '').toLowerCase();
+    const page = await q.get(`SELECT slug, updated_at, created_at FROM seo_pages WHERE slug=? AND active=1`, slug);
+    if (!page) return next();
+    const base = siteBaseUrl(req);
+    const stamp = Number(page.updated_at || page.created_at || 0);
+    const lastmod = (stamp ? new Date(stamp * 1000) : new Date()).toISOString().replace(/\.\d+Z$/, '+00:00');
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>${base}/${page.slug}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n</urlset>`;
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.type('application/xml').send(xml);
+  } catch (e) { return next(e); }
+});
+
+// فهرس اختياري يجمع خرائط المسارات المستقلة، ويسهّل إضافة عدد كبير منها إلى Search Console.
+app.get('/sitemap-index.xml', async (req, res) => {
+  try {
+    const rows = await q.all(`SELECT slug, updated_at, created_at FROM seo_pages WHERE active=1 ORDER BY id ASC`);
+    const base = siteBaseUrl(req);
+    const escXml = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const items = rows.map(r => {
+      const stamp = Number(r.updated_at || r.created_at || 0);
+      const d = (stamp ? new Date(stamp * 1000) : new Date()).toISOString().replace(/\.\d+Z$/, '+00:00');
+      return `  <sitemap><loc>${escXml(base + '/' + r.slug + '/sitemap.xml')}</loc><lastmod>${d}</lastmod></sitemap>`;
+    }).join('\n');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${items}\n</sitemapindex>`);
+  } catch (e) { return res.status(500).type('text/plain').send('sitemap index error'); }
+});
+
 app.get('/sitemap.xml', async (req, res) => {
   try {
     const rows = await q.all(`SELECT slug, updated_at, created_at FROM seo_pages WHERE active=1 ORDER BY id ASC`);
@@ -7950,7 +7984,8 @@ app.get('/robots.txt', async (req, res) => {
     `Disallow: /*token=\n` +
     `Disallow: /*?token=\n` +
     `\n` +
-    `Sitemap: ${base}/sitemap.xml\n`
+    `Sitemap: ${base}/sitemap.xml\n` +
+    `Sitemap: ${base}/sitemap-index.xml\n`
   );
 });
 

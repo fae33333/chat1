@@ -7256,15 +7256,27 @@ body.lang-en .legal-body { text-align:left; direction:ltr; }
    (تقنية sr-only المعتمدة) — لا يؤثر على تصميم الدردشة إطلاقاً.
    ========================================================= */
 .seo-only {
-  position: absolute !important;
-  width: 1px; height: 1px;
-  margin: -1px; padding: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: normal;
-  border: 0;
+  position: relative;
+  width: min(100% - 32px, 980px);
+  margin: 18px auto 12px;
+  padding: 24px;
+  overflow: visible;
+  background: #fff;
+  color: #1f2937;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  line-height: 1.9;
+  direction: rtl;
+  text-align: right;
+  box-shadow: 0 5px 18px rgba(15, 23, 42, .06);
+  z-index: 2;
 }
+.seo-only h1 { margin: 0 0 12px; font-size: clamp(24px, 4vw, 34px); color: #172554; }
+.seo-only h2 { margin: 22px 0 8px; font-size: 20px; color: #334155; }
+.seo-only h3 { margin: 14px 0 3px; font-size: 16px; color: #475569; }
+.seo-only p { margin: 7px 0; }
+.seo-only ul { margin: 6px 0; padding-right: 24px; }
+.seo-only a { color: #2563eb; text-decoration: underline; }
 
 /* ===== دعم اللغات من اليسار لليمين (LTR) — تغيير اللغة فقط دون نقل/قلب الأيقونات ===== */
 body.lang-ltr { text-align: left; }
