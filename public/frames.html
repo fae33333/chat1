@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>إطلالات نجوم العرب ✨</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    min-height:100vh;
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, Arial, sans-serif;
+    background:radial-gradient(1200px 600px at 70% -10%, #1e2a63 0%, transparent 60%),
+              radial-gradient(900px 500px at 10% 110%, #3b1d5e 0%, transparent 55%),
+              #0b1026;
+    color:#fff; padding:34px 18px 50px; text-align:center;
+  }
+  h1 { font-size:clamp(22px, 5vw, 34px); font-weight:900; letter-spacing:.5px;
+       background:linear-gradient(90deg,#ffd700,#fff3c4,#f59e0b,#ffd700);
+       -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+       margin-bottom:8px; }
+  .sub { color:#aeb8e0; font-size:14px; font-weight:700; margin-bottom:30px; }
+  .sub b { color:#ffd76e; }
+
+  /* ===== بطاقة العرض الكبيرة ===== */
+  .hero {
+    display:flex; justify-content:center; gap:26px; flex-wrap:wrap;
+    margin-bottom:38px;
+  }
+  .hero-item { display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .hero-item .size { width:130px; height:130px; }
+  .hero-item small { color:#8f9ac4; font-size:11px; font-weight:700; }
+
+  /* ===== شبكة الإطلالات ===== */
+  .grid {
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(105px, 1fr));
+    gap:16px; max-width:760px; margin:0 auto;
+  }
+  .card {
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    padding:18px 8px 14px; border-radius:16px;
+    background:rgba(255,255,255,.055);
+    border:1px solid rgba(255,255,255,.09);
+    transition:transform .25s ease, background .25s ease, border-color .25s ease;
+  }
+  .card:hover { transform:translateY(-5px); background:rgba(255,255,255,.1); border-color:rgba(255,215,0,.45); }
+  .card .size { width:86px; height:86px; }
+  .card b { font-size:12.5px; font-weight:800; color:#e8ecff; }
+  .card .tag { font-size:9.5px; font-weight:800; padding:2.5px 9px; border-radius:20px;
+    background:linear-gradient(135deg,#ffd700,#f59e0b); color:#3d2b00; }
+  .card .tag.old { background:rgba(255,255,255,.14); color:#c6cdea; }
+
+  .hint { margin:34px auto 0; max-width:520px; padding:14px 18px; border-radius:14px;
+    background:rgba(255,215,0,.08); border:1px dashed rgba(255,215,0,.35);
+    color:#ffe9ad; font-size:13px; font-weight:700; line-height:1.9; }
+
+  /* ===== محرّك الإطلالات (نفس نظام التطبيق) ===== */
+  .ava-framed {
+    position:relative; display:block; width:100%; height:100%;
+    border-radius:50%; overflow:hidden;
+    border:2.5px solid transparent;
+    background-origin:border-box; background-clip:content-box, border-box, border-box;
+  }
+  .ava-framed > span {
+    width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+    font-size:2.6em; border-radius:50%; user-select:none;
+  }
+  @property --ang   { syntax:'<angle>'; initial-value:0deg; inherits:false; }
+  @property --glint { syntax:'<angle>'; initial-value:0deg; inherits:false; }
+
+  .af-gold, .af-neon, .af-fire, .af-ice, .af-royal, .af-hearts, .af-leaf, .af-rainbow,
+  .af-stars, .af-diamond, .af-galaxy, .af-energy, .af-emerald, .af-platinum, .af-sunset, .af-aurora {
+    background-clip:content-box, border-box, border-box;
+  }
+  .af-stars {
+    --glow: rgba(255,199,71,.6);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,215,130,.95) 12deg, transparent 32deg, transparent 150deg, rgba(255,255,255,.92) 164deg, transparent 184deg, transparent 300deg, rgba(255,223,141,.85) 312deg, transparent 330deg),
+      conic-gradient(from var(--ang), #0f2557, #2b4bb3, #6b5ce7, #1a2c6b, #0f2557);
+    animation:afRot 8s linear infinite, afGlint 3.6s linear infinite, afGlowPulse 2.8s ease-in-out infinite;
+  }
+  .af-diamond {
+    --glow: rgba(147,216,255,.65);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,1) 8deg, transparent 22deg, transparent 120deg, rgba(255,255,255,.85) 132deg, transparent 148deg),
+      conic-gradient(from var(--ang), #ffffff, #7dd3fc, #e0f2fe, #38bdf8, #bae6fd, #ffffff);
+    animation:afRot 2.6s linear infinite, afGlint 2s linear infinite, afGlowPulse 2.2s ease-in-out infinite;
+  }
+  .af-galaxy {
+    --glow: rgba(168,85,247,.6);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.9) 14deg, transparent 38deg),
+      conic-gradient(from var(--ang), #1e1b4b, #7e22ce, #db2777, #4f46e5, #312e81, #1e1b4b);
+    animation:afRot 9s linear infinite, afGlint 4.2s linear infinite, afGlowPulse 3.2s ease-in-out infinite;
+  }
+  .af-energy {
+    --glow: rgba(34,211,238,.7);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,1) 10deg, transparent 26deg),
+      conic-gradient(from var(--ang), #06b6d4, #8b5cf6, #22d3ee, #4f46e5, #06b6d4);
+    animation:afRot 2.2s linear infinite, afGlint 1.7s linear infinite, afGlowPulse 1.6s ease-in-out infinite;
+  }
+  .af-emerald {
+    --glow: rgba(16,185,129,.55);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.92) 14deg, transparent 40deg),
+      conic-gradient(from var(--ang), #065f46, #10b981, #a7f3d0, #059669, #047857, #065f46);
+    animation:afRot 5.5s linear infinite, afGlint 3.2s linear infinite, afGlowPulse 3s ease-in-out infinite;
+  }
+  .af-platinum {
+    --glow: rgba(203,213,225,.8);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 18deg, transparent 48deg),
+      conic-gradient(from var(--ang), #f9fafb, #9ca3af, #e5e7eb, #6b7280, #f3f4f6, #f9fafb);
+    animation:afRot 6s linear infinite, afGlint 3.8s linear infinite, afGlowPulse 3.4s ease-in-out infinite;
+  }
+  .af-sunset {
+    --glow: rgba(251,146,60,.6);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,244,214,.95) 14deg, transparent 40deg),
+      conic-gradient(from var(--ang), #f97316, #ec4899, #8b5cf6, #f59e0b, #fb7185, #f97316);
+    animation:afRot 6.5s linear infinite, afGlint 3.4s linear infinite, afGlowPulse 2.8s ease-in-out infinite;
+  }
+  .af-aurora {
+    --glow: rgba(52,211,153,.6);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(224,255,250,.9) 16deg, transparent 44deg),
+      conic-gradient(from var(--ang), #06b6d4, #34d399, #8b5cf6, #22d3ee, #2dd4bf, #06b6d4);
+    animation:afRot 7s linear infinite, afGlint 3.6s linear infinite, afGlowPulse 3s ease-in-out infinite;
+  }
+  .af-gold {
+    --glow: rgba(255,190,60,.6);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 14deg, transparent 38deg),
+      conic-gradient(from var(--ang), #ffd700, #fff3c4, #f59e0b, #ff9d00, #ffd700);
+    animation:afRot 5s linear infinite, afGlint 3s linear infinite, afGlowPulse 2.6s ease-in-out infinite;
+  }
+  .af-neon {
+    --glow: rgba(0,229,255,.65);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 12deg, transparent 32deg),
+      conic-gradient(from var(--ang), #00e5ff, #a855f7, #ff00cc, #00e5ff);
+    animation:afRot 3s linear infinite, afGlint 2.4s linear infinite, afGlowPulse 2s ease-in-out infinite;
+  }
+  .af-fire {
+    --glow: rgba(255,110,20,.7);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,220,.95) 10deg, transparent 28deg),
+      conic-gradient(from var(--ang), #ff7700, #ff0055, #ffcc00, #ff3300, #ff7700);
+    animation:afRot 2.4s linear infinite, afGlint 1.5s linear infinite, afGlowPulse 1.3s ease-in-out infinite;
+  }
+  .af-ice {
+    --glow: rgba(125,211,252,.6);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 12deg, transparent 34deg),
+      conic-gradient(from var(--ang), #a5f3fc, #3b82f6, #e0f2fe, #0ea5e9, #a5f3fc);
+    animation:afRot 4.5s linear infinite, afGlint 3s linear infinite, afGlowPulse 2.8s ease-in-out infinite;
+  }
+  .af-royal {
+    --glow: rgba(168,85,247,.65);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 14deg, transparent 38deg),
+      conic-gradient(from var(--ang), #a855f7, #ffd700, #7c3aed, #fbbf24, #a855f7);
+    animation:afRot 4s linear infinite, afGlint 2.8s linear infinite, afGlowPulse 2.4s ease-in-out infinite;
+  }
+  .af-hearts {
+    --glow: rgba(236,72,153,.6);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,228,240,.95) 14deg, transparent 38deg),
+      conic-gradient(from var(--ang), #ff5a8a, #ec4899, #ffb3c9, #e11d48, #ff5a8a);
+    animation:afRot 4.5s linear infinite, afGlint 3.2s linear infinite, afHeartbeat 1.6s ease-in-out infinite;
+  }
+  .af-leaf {
+    --glow: rgba(74,222,128,.55);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.9) 14deg, transparent 40deg),
+      conic-gradient(from var(--ang), #22c55e, #a3e635, #15803d, #4ade80, #22c55e);
+    animation:afRot 6s linear infinite, afGlint 3.6s linear infinite, afGlowPulse 3.2s ease-in-out infinite;
+  }
+  .af-rainbow {
+    --glow: rgba(255,128,200,.6);
+    background-image:linear-gradient(#fff,#fff),
+      conic-gradient(from var(--glint), transparent 0deg, rgba(255,255,255,.95) 12deg, transparent 34deg),
+      conic-gradient(from var(--ang), #ff0055, #ff7700, #ffd700, #00ff66, #00e5ff, #a855f7, #ff0055);
+    animation:afRot 4s linear infinite, afGlint 2.6s linear infinite, afGlowPulse 2.4s ease-in-out infinite;
+  }
+  @keyframes afRot   { to { --ang: 360deg; } }
+  @keyframes afGlint { to { --glint: 360deg; } }
+  @keyframes afGlowPulse {
+    0%, 100% { box-shadow:0 0 5px 0 var(--glow, rgba(255,255,255,.5)); }
+    50%      { box-shadow:0 0 15px 2px var(--glow, rgba(255,255,255,.95)); }
+  }
+  @keyframes afHeartbeat {
+    0%, 100% { box-shadow:0 0 5px 0 var(--glow, rgba(236,72,153,.6)); }
+    18%      { box-shadow:0 0 16px 3px var(--glow, rgba(236,72,153,.9)); }
+    32%      { box-shadow:0 0 6px 0 var(--glow, rgba(236,72,153,.6)); }
+    50%      { box-shadow:0 0 14px 2px var(--glow, rgba(236,72,153,.85)); }
+  }
+  @media (prefers-reduced-motion:reduce) {
+    .af-gold, .af-neon, .af-fire, .af-ice, .af-royal, .af-hearts, .af-leaf, .af-rainbow,
+    .af-stars, .af-diamond, .af-galaxy, .af-energy, .af-emerald, .af-platinum, .af-sunset, .af-aurora { animation:none; }
+  }
+</style>
+</head>
+<body>
+  <h1>✨ إطلالات نجوم العرب ✨</h1>
+  <div class="sub">إطلالات احترافية <b>متحركة</b> لصورتك الشخصية — <b>متاحة مجاناً لجميع المستخدمين</b></div>
+
+  <div class="hero">
+    <div class="hero-item"><span class="ava-framed af-stars size"><span style="background:linear-gradient(135deg,#1e3a8a,#3b82f6)">🌟</span></span><small>في الشات</small></div>
+    <div class="hero-item"><span class="ava-framed af-galaxy size"><span style="background:linear-gradient(135deg,#4c1d95,#a855f7)">🦅</span></span><small>في القائمة</small></div>
+    <div class="hero-item"><span class="ava-framed af-diamond size"><span style="background:linear-gradient(135deg,#155e75,#22d3ee)">🌙</span></span><small>في الرسائل</small></div>
+    <div class="hero-item"><span class="ava-framed af-royal size"><span style="background:linear-gradient(135deg,#7c3aed,#fbbf24)">👑</span></span><small>في ملفك</small></div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><span class="ava-framed af-stars size"><span style="background:linear-gradient(135deg,#1e3a8a,#3b82f6)">🌟</span></span><b>نجوم متلألئة</b><span class="tag">جديدة</span></div>
+    <div class="card"><span class="ava-framed af-galaxy size"><span style="background:linear-gradient(135deg,#4c1d95,#a855f7)">🌌</span></span><b>مجرة</b><span class="tag">جديدة</span></div>
+    <div class="card"><span class="ava-framed af-diamond size"><span style="background:linear-gradient(135deg,#155e75,#22d3ee)">💎</span></span><b>ماسة</b><span class="tag">جديدة</span></div>
+    <div class="card"><span class="ava-framed af-energy size"><span style="background:linear-gradient(135deg,#0e7490,#06b6d4)">⚡</span></span><b>طاقة</b><span class="tag">جديدة</span></div>
+    <div class="card"><span class="ava-framed af-aurora size"><span style="background:linear-gradient(135deg,#065f46,#34d399)">🌠</span></span><b>شفق قطبي</b><span class="tag">جديدة</span></div>
+    <div class="card"><span class="ava-framed af-emerald size"><span style="background:linear-gradient(135deg,#064e3b,#10b981)">🦚</span></span><b>زمردي</b><span class="tag">جديدة</span></div>
+    <div class="card"><span class="ava-framed af-platinum size"><span style="background:linear-gradient(135deg,#334155,#94a3b8)">🛡️</span></span><b>بلاتينية</b><span class="tag">جديدة</span></div>
+    <div class="card"><span class="ava-framed af-sunset size"><span style="background:linear-gradient(135deg,#9a3412,#f97316)">🌅</span></span><b>غروب</b><span class="tag">جديدة</span></div>
+    <div class="card"><span class="ava-framed af-gold size"><span style="background:linear-gradient(135deg,#92400e,#f59e0b)">🏅</span></span><b>ذهبية</b><span class="tag old">مطوّرة</span></div>
+    <div class="card"><span class="ava-framed af-neon size"><span style="background:linear-gradient(135deg,#581c87,#c026d3)">🎯</span></span><b>نيون</b><span class="tag old">مطوّرة</span></div>
+    <div class="card"><span class="ava-framed af-fire size"><span style="background:linear-gradient(135deg,#7f1d1d,#ef4444)">🔥</span></span><b>لهب</b><span class="tag old">مطوّرة</span></div>
+    <div class="card"><span class="ava-framed af-ice size"><span style="background:linear-gradient(135deg,#0c4a6e,#38bdf8)">❄️</span></span><b>جليد</b><span class="tag old">مطوّرة</span></div>
+    <div class="card"><span class="ava-framed af-royal size"><span style="background:linear-gradient(135deg,#7c3aed,#fbbf24)">👑</span></span><b>ملكية</b><span class="tag old">مطوّرة</span></div>
+    <div class="card"><span class="ava-framed af-hearts size"><span style="background:linear-gradient(135deg,#9d174d,#f472b6)">💝</span></span><b>قلوب</b><span class="tag old">مطوّرة</span></div>
+    <div class="card"><span class="ava-framed af-leaf size"><span style="background:linear-gradient(135deg,#14532d,#4ade80)">🌿</span></span><b>أوراق</b><span class="tag old">مطوّرة</span></div>
+    <div class="card"><span class="ava-framed af-rainbow size"><span style="background:linear-gradient(135deg,#1e40af,#a855f7)">🌈</span></span><b>قوس قزح</b><span class="tag old">مطوّرة</span></div>
+  </div>
+
+  <div class="hint">
+    📌 لتفعيل إطلالتك داخل الشات:<br>
+    الملف الشخصي ← الصورة الشخصية ← <b>أضف إطلالة</b> ← اختر ما يعجبك ← حفظ ✅
+  </div>
+
+  <script src="/js/i18n-words.js?v=20260918-i18n4"></script>
+  <script>
+  (function(){
+    // قراءة اللغة المختارة من localStorage (أو افتراضي العربية)
+    function getLang(){
+      try { return localStorage.getItem('chatLang') || 'ar'; } catch(e){ return 'ar'; }
+    }
+    const FRAME_TRANS = {
+      en: {
+        title: "Celeb Avatars ✨",
+        sub: "Animated <b>professional</b> frames for your profile picture — <b>free for all users</b>",
+        "في الشات":"In Chat", "في القائمة":"In List", "في الرسائل":"In Messages", "في ملفك":"In Profile",
+        "نجوم متلألئة":"Twinkling Stars", "مجرة":"Galaxy", "ماسة":"Diamond", "طاقة":"Energy",
+        "شفق قطبي":"Aurora", "زمردي":"Emerald", "بلاتينية":"Platinum", "غروب":"Sunset",
+        "ذهبية":"Gold", "نيون":"Neon", "لهب":"Flame", "جليد":"Ice", "ملكية":"Royal",
+        "قلوب":"Hearts", "أوراق":"Leaves", "قوس قزح":"Rainbow",
+        "جديدة":"New", "مطوّرة":"Updated",
+        hint: "📌 To activate your frame inside the chat:<br>Profile ← Profile Picture ← <b>Add Frame</b> ← Choose what you like ← Save ✅"
+      },
+      es: {
+        title: "Avatares Estrella ✨",
+        sub: "Marcos <b>profesionales animados</b> para tu foto de perfil — <b>gratis para todos</b>",
+        "في الشات":"En el Chat", "في القائمة":"En la Lista", "في الرسائل":"En Mensajes", "في ملفك":"En tu Perfil",
+        "نجوم متلألئة":"Estrellas Brillantes", "مجرة":"Galaxia", "ماسة":"Diamante", "طاقة":"Energía",
+        "شفق قطبي":"Aurora", "زمردي":"Esmeralda", "بلاتينية":"Platino", "غروب":"Atardecer",
+        "ذهبية":"Oro", "نيون":"Neón", "لهب":"Llama", "جليد":"Hielo", "ملكية":"Real",
+        "قلوب":"Corazones", "أوراق":"Hojas", "قوس قزح":"Arcoíris",
+        "جديدة":"Nuevo", "مطوّرة":"Actualizado",
+        hint: "📌 Para activar tu marco dentro del chat:<br>Perfil ← Foto de Perfil ← <b>Añadir Marco</b> ← Elige tu favorito ← Guardar ✅"
+      },
+      tr: {
+        title: "Yıldız Görünümler ✨",
+        sub: "Profil resmin için <b>animasyonlu profesyonel</b> görünümler — <b>tüm kullanıcılara ücretsiz</b>",
+        "في الشات":"Sohbette", "في القائمة":"Listede", "في الرسائل":"Mesajlarda", "في ملفك":"Profilinde",
+        "نجوم متلألئة":"Parıldayan Yıldızlar", "مجرة":"Galaksi", "ماسة":"Elmas", "طاقة":"Enerji",
+        "شفق قطبي":"Aurora", "زمردي":"Zümrüt", "بلاتينية":"Platin", "غروب":"Gün Batımı",
+        "ذهبية":"Altın", "نيون":"Neon", "لهب":"Alev", "جليد":"Buz", "ملكية":"Kraliyet",
+        "قلوب":"Kalpler", "أوراق":"Yapraklar", "قوس قزح":"Gökkuşağı",
+        "جديدة":"Yeni", "مطوّرة":"Geliştirilmiş",
+        hint: "📌 Sohbet içinde görünümünü etkinleştirmek için:<br>Profil ← Profil Resmi ← <b>Görünüm Ekle</b> ← Beğendiğini Seç ← Kaydet ✅"
+      },
+      fr: {
+        title: "Looks de Stars ✨",
+        sub: "Cadres <b>professionnels animés</b> pour votre photo de profil — <b>gratuits pour tous</b>",
+        "في الشات":"Dans le Tchat", "في القائمة":"Dans la Liste", "في الرسائل":"Dans les Messages", "في ملفك":"Dans votre Profil",
+        "نجوم متلألئة":"Étoiles Scintillantes", "مجرة":"Galaxie", "ماسة":"Diamant", "طاقة":"Énergie",
+        "شفق قطبي":"Aurora", "زمردي":"Émeraude", "بلاتينية":"Platine", "غروب":"Coucher",
+        "ذهبية":"Or", "نيون":"Néon", "لهب":"Flammes", "جليد":"Glace", "ملكية":"Royal",
+        "قلوب":"Cœurs", "أوراق":"Feuilles", "قوس قزح":"Arc-en-ciel",
+        "جديدة":"Nouveau", "مطوّرة":"Amélioré",
+        hint: "📌 Pour activer votre cadre dans le tchat :<br>Profil ← Photo de profil ← <b>Ajouter un cadre</b> ← Choisissez ← Enregistrer ✅"
+      }
+    };
+
+    function applyFramesLang(lang){
+      lang = lang || 'ar';
+      document.documentElement.lang = lang;
+      const isRTL = lang === 'ar';
+      document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
+      document.body.classList.remove('lang-ar','lang-en','lang-es','lang-tr','lang-fr');
+      document.body.classList.add('lang-' + lang);
+      if (lang === 'ar') {
+        // إعادة النصوص الأصلية العربية (نسترجع من data-ar إن وُجد)
+        document.querySelectorAll('[data-ar]').forEach(el => {
+          const tag = el.tagName.toLowerCase();
+          if (tag === 'title') { el.textContent = el.getAttribute('data-ar'); }
+          else if (el.dataset.arHtml) el.innerHTML = el.dataset.arHtml;
+          else el.textContent = el.getAttribute('data-ar');
+        });
+        document.title = "إطلالات نجوم العرب ✨";
+        return;
+      }
+      const t = FRAME_TRANS[lang] || FRAME_TRANS.en;
+      if (!document.querySelector('title').getAttribute('data-ar')){
+        document.querySelector('title').setAttribute('data-ar', document.title);
+      }
+      document.title = t.title;
+      document.querySelector('h1').setAttribute('data-ar', document.querySelector('h1').getAttribute('data-ar') || '✨ إطلالات نجوم العرب ✨');
+      document.querySelector('h1').textContent = t.title;
+      const sub = document.querySelector('.sub');
+      if (!sub.dataset.arHtml) sub.dataset.arHtml = sub.innerHTML;
+      sub.innerHTML = t.sub;
+      document.querySelectorAll('.hero-item small').forEach(s => {
+        const ar = s.getAttribute('data-ar') || s.textContent;
+        s.setAttribute('data-ar', ar);
+        s.textContent = t[ar] || (window.__i18nWordTranslate ? window.__i18nWordTranslate(ar, lang) : ar);
+      });
+      document.querySelectorAll('.card b').forEach(b => {
+        const ar = b.getAttribute('data-ar') || b.textContent;
+        b.setAttribute('data-ar', ar);
+        b.textContent = t[ar] || (window.__i18nWordTranslate ? window.__i18nWordTranslate(ar, lang) : ar);
+      });
+      document.querySelectorAll('.card .tag').forEach(tag => {
+        const ar = tag.getAttribute('data-ar') || tag.textContent;
+        tag.setAttribute('data-ar', ar);
+        tag.textContent = t[ar] || (window.__i18nWordTranslate ? window.__i18nWordTranslate(ar, lang) : ar);
+      });
+      const hint = document.querySelector('.hint');
+      if (!hint.dataset.arHtml) hint.dataset.arHtml = hint.innerHTML;
+      hint.innerHTML = t.hint;
+    }
+    const LANG = getLang();
+    applyFramesLang(LANG);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'chatLang') applyFramesLang(e.newValue || 'ar');
+    });
+  })();
+  </script>
+</body>
+</html>
