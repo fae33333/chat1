@@ -2456,8 +2456,12 @@ app.post('/api/rooms/create', requireUser, async (req, res) => {
   const partyMode = ['chat', 'partner', 'disco', 'pk', 'live'].includes(String((req.body || {}).party_mode || ''))
     ? String((req.body || {}).party_mode)
     : 'chat';
+  const seatCount = partyMode === 'partner' ? 2 : (+(req.body || {}).seat_count === 12 ? 12 : 8);
   const roomType = partyMode === 'live' || String((req.body || {}).type || '') === 'live' ? 'live' : 'voice';
   if (!name) return res.status(400).json({ error: 'اكتب اسم الغرفة' });
+  if (name.includes('تطابق') || description === 'غرفة تطابق صوتي') {
+    return res.status(400).json({ error: 'التطابق الصوتي مكالمة وليس غرفة' });
+  }
   const staff = isStaffRank(me.rank);
   if (!staff) {
     const owned = await q.get(`SELECT id, name FROM rooms WHERE owner_id=? AND COALESCE(party_mode,'chat') NOT IN ('partner') ORDER BY id DESC LIMIT 1`, me.id);
@@ -2469,9 +2473,9 @@ app.post('/api/rooms/create', requireUser, async (req, res) => {
   let image = String((req.body || {}).image || '').trim();
   if (!image.startsWith('/uploads/rooms/') && !image.startsWith('/img/covers/')) image = '';
   const out = await q.run(
-    `INSERT INTO rooms (name, description, type, max_users, status, welcome, password, image, audience, owner_id, party_mode)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    name, description || (roomType === 'live' ? 'بث مباشر ★' : 'حفلة صوتية مباشرة ★'), roomType, 200, 'open', welcome, password, image || defaultRoomCover(Date.now()), 'all', me.id, partyMode === 'live' ? 'live' : partyMode
+    `INSERT INTO rooms (name, description, type, max_users, status, welcome, password, image, audience, owner_id, party_mode, seat_count)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    name, description || (roomType === 'live' ? 'بث مباشر ★' : 'حفلة صوتية مباشرة ★'), roomType, 200, 'open', welcome, password, image || defaultRoomCover(Date.now()), 'all', me.id, partyMode === 'live' ? 'live' : partyMode, seatCount
   );
   const roomId = out.lastID;
   try {
@@ -2644,66 +2648,218 @@ function soulMatchScore(me, other) {
   return s;
 }
 
-async function soulCreateMatchRoom(me, other) {
-  const name = ('تطابق ★ ' + String(me.username || '').slice(0, 8)).slice(0, 24);
-  let roomName = name;
-  let n = 1;
-  while (await q.get(`SELECT id FROM rooms WHERE name=?`, roomName)) {
-    roomName = (name.slice(0, 20) + '-' + n).slice(0, 24);
-    n += 1;
-  }
-  const out = await q.run(
-    `INSERT INTO rooms (name, description, type, max_users, status, welcome, password, image, audience, owner_id, party_mode)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    roomName, 'غرفة تطابق صوتي', 'voice', 8, 'open', 'تعارف صوتي — استمتعوا 🎤', '', defaultRoomCover(Date.now()), 'all', me.id, 'partner'
-  );
-  const roomId = out.lastID;
-  try { await q.run(`INSERT OR IGNORE INTO room_admins (room_id, user_id, username) VALUES (?,?,?)`, roomId, me.id, me.username); } catch (e) { }
-  const payload = {
-    roomId,
-    name: roomName,
-    peer_a: mapFollowUser(me),
-    peer_b: other ? mapFollowUser(other) : { id: 0, username: 'روح' }
+function matchCallPayload(a, b, callerId) {
+  return {
+    call: true,
+    duration: 300,
+    caller_id: +callerId,
+    peer_a: mapFollowUser(a),
+    peer_b: mapFollowUser(b)
   };
-  io.to('user_' + me.id).emit('soul:match', payload);
-  if (other && other.id) io.to('user_' + other.id).emit('soul:match', payload);
-  io.emit('sync');
-  addXp(me.id, 8).catch(() => { });
-  return payload;
 }
 
-app.post('/api/soul/match', requireUser, async (req, res) => {
-  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
-  if (!me || !me.registered) return res.status(403).json({ error: 'التطابق للأعضاء المسجلين' });
-  matchDrop(req.authUid);
+async function findSoulCallPeer(me) {
   let best = null;
   let bestScore = -1;
   for (const item of MATCH_QUEUE.slice()) {
     if (+item.uid === +me.id) continue;
+    if (activePrivateCalls.has(+item.uid)) { matchDrop(item.uid); continue; }
     const other = await q.get(`SELECT * FROM users WHERE id=?`, item.uid);
-    const sc = soulMatchScore(me, other);
+    if (!other || +other.is_bot || +other.banned) { matchDrop(item.uid); continue; }
+    const sc = soulMatchScore(me, other) + 50;
     if (sc > bestScore) { bestScore = sc; best = other; }
   }
-  if (best) {
-    matchDrop(best.id);
-    const payload = await soulCreateMatchRoom(me, best);
-    return res.json({ ok: true, waiting: false, ...payload });
-  }
-  let onlineBest = null;
-  let onlineScore = -1;
+  if (best) return best;
   for (const uid of Object.keys(onlineUsers)) {
     if (+uid === +me.id) continue;
-    const row = await q.get(`SELECT * FROM users WHERE id=? AND registered=1`, +uid);
+    if (activePrivateCalls.has(+uid)) continue;
+    const row = await q.get(
+      `SELECT * FROM users WHERE id=? AND COALESCE(is_bot,0)=0 AND COALESCE(banned,0)=0`,
+      +uid
+    );
     if (!row) continue;
     const sc = soulMatchScore(me, row);
-    if (sc > onlineScore) { onlineScore = sc; onlineBest = row; }
+    if (sc > bestScore) { bestScore = sc; best = row; }
   }
-  if (onlineBest) {
-    const payload = await soulCreateMatchRoom(me, onlineBest);
+  return best;
+}
+
+app.post('/api/soul/match', requireUser, async (req, res) => {
+  // Voice match = private 5-min audio call only. Never INSERT a room.
+  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
+  if (!me || !me.registered) return res.status(403).json({ error: 'التطابق للأعضاء المسجلين' });
+  if (activePrivateCalls.has(+me.id)) return res.status(409).json({ error: 'أنت في مكالمة حالياً' });
+  matchDrop(req.authUid);
+  const best = await findSoulCallPeer(me);
+  if (best) {
+    matchDrop(best.id);
+    const payload = matchCallPayload(me, best, me.id);
+    io.to('user_' + me.id).emit('soul:match', payload);
+    io.to('user_' + best.id).emit('soul:match', payload);
+    addXp(me.id, 6).catch(() => { });
     return res.json({ ok: true, waiting: false, ...payload });
   }
   MATCH_QUEUE.push({ uid: +me.id, at: Date.now(), gender: me.gender, planet: me.soul_planet || '' });
-  return res.json({ ok: true, waiting: true });
+  return res.json({ ok: true, waiting: true, call: false });
+});
+
+(async function purgeLegacySoulMatchRooms() {
+  try {
+    await q.run(`DELETE FROM room_admins WHERE room_id IN (SELECT id FROM rooms WHERE name LIKE '%تطابق%' OR description='غرفة تطابق صوتي')`);
+    await q.run(`DELETE FROM messages WHERE room_id IN (SELECT id FROM rooms WHERE name LIKE '%تطابق%' OR description='غرفة تطابق صوتي')`);
+    await q.run(`DELETE FROM rooms WHERE name LIKE '%تطابق%' OR description='غرفة تطابق صوتي'`);
+    try { io.emit('sync'); } catch (e2) { }
+  } catch (e) { }
+})();
+
+const SOUL_LOOK_ITEMS = [
+  { id: 'hair-pink', kind: 'hair', name: 'شعر وردي', cost: 80, emoji: '💇' },
+  { id: 'hair-gold', kind: 'hair', name: 'شعر ذهبي', cost: 120, emoji: '✨' },
+  { id: 'face-star', kind: 'face', name: 'وجه نجمة', cost: 60, emoji: '🌟' },
+  { id: 'face-fox', kind: 'face', name: 'وجه ثعلب', cost: 90, emoji: '🦊' },
+  { id: 'cloth-suit', kind: 'cloth', name: 'بدلة الحفلة', cost: 150, emoji: '🤵' },
+  { id: 'cloth-dress', kind: 'cloth', name: 'فستان ليلي', cost: 150, emoji: '👗' },
+  { id: 'acc-crown', kind: 'acc', name: 'تاج صغير', cost: 200, emoji: '👑' },
+  { id: 'acc-headset', kind: 'acc', name: 'سماعة دي جي', cost: 110, emoji: '🎧' },
+  { id: 'acc-glasses', kind: 'acc', name: 'نظارة نيون', cost: 70, emoji: '😎' }
+];
+
+app.get('/api/soul/shop', requireUser, async (req, res) => {
+  const u = await q.get(`SELECT balance, membership, soul_premium, soul_look, credit_score, phone, xp, level FROM users WHERE id=?`, req.authUid);
+  const owned = await q.all(`SELECT item_id FROM soul_look_owned WHERE user_id=?`, req.authUid);
+  const look = (() => { try { return JSON.parse(u && u.soul_look || '{}'); } catch (e) { return {}; } })();
+  const pkgs = await q.all(`SELECT * FROM gold_packages WHERE active=1 ORDER BY sort, id`);
+  res.json({
+    balance: +(u && u.balance) || 0,
+    membership: (u && u.membership) || 'none',
+    premium: +((u && u.soul_premium) || 0),
+    credit: +((u && u.credit_score) || 100),
+    phone: (u && u.phone) || '',
+    xp: +(u && u.xp) || 0,
+    level: +(u && u.level) || 1,
+    look,
+    items: SOUL_LOOK_ITEMS.map(it => ({ ...it, owned: (owned || []).some(r => r.item_id === it.id) })),
+    packages: pkgs || [],
+    vip: { vip: 30, premium: 20, plus: 10, soul_pass: 500 },
+    lucky_cost: 80,
+    pay: { paypal: true, card: true, stripe: true, google_play: false, apple: false }
+  });
+});
+
+app.post('/api/soul/look/buy', requireUser, async (req, res) => {
+  const id = String((req.body || {}).item_id || '');
+  const item = SOUL_LOOK_ITEMS.find(x => x.id === id);
+  if (!item) return res.status(400).json({ error: 'العنصر غير موجود' });
+  const u = await q.get(`SELECT id, balance FROM users WHERE id=?`, req.authUid);
+  const has = await q.get(`SELECT item_id FROM soul_look_owned WHERE user_id=? AND item_id=?`, req.authUid, id);
+  if (has) return res.json({ ok: true, already: true, balance: +u.balance });
+  if (+u.balance < item.cost) return res.status(400).json({ error: 'رصيدك غير كافٍ', need: item.cost });
+  await q.run(`UPDATE users SET balance=balance-? WHERE id=?`, item.cost, req.authUid);
+  await q.run(`INSERT OR IGNORE INTO soul_look_owned (user_id, item_id) VALUES (?,?)`, req.authUid, id);
+  const fresh = await q.get(`SELECT balance FROM users WHERE id=?`, req.authUid);
+  addXp(req.authUid, 4).catch(() => { });
+  res.json({ ok: true, balance: +fresh.balance, item });
+});
+
+app.post('/api/soul/look/wear', requireUser, async (req, res) => {
+  const body = req.body || {};
+  const owned = await q.all(`SELECT item_id FROM soul_look_owned WHERE user_id=?`, req.authUid);
+  const set = new Set((owned || []).map(r => r.item_id));
+  const look = {};
+  ['hair', 'face', 'cloth', 'acc'].forEach(k => {
+    const v = String(body[k] || '');
+    if (v && set.has(v)) look[k] = v;
+  });
+  await q.run(`UPDATE users SET soul_look=? WHERE id=?`, JSON.stringify(look), req.authUid);
+  res.json({ ok: true, look });
+});
+
+app.post('/api/soul/lucky', requireUser, async (req, res) => {
+  const cost = 80;
+  const u = await q.get(`SELECT id, balance, username FROM users WHERE id=?`, req.authUid);
+  if (!u || !u.id) return res.status(404).json({ error: 'الحساب غير موجود' });
+  if (+u.balance < cost) return res.status(400).json({ error: 'تحتاج 80 ذهباً لفتح الصندوق' });
+  await q.run(`UPDATE users SET balance=balance-? WHERE id=?`, cost, req.authUid);
+  const roll = Math.random();
+  let prize;
+  if (roll < 0.45) prize = { kind: 'gold', label: 'ذهب صغير', value: 20 + Math.floor(Math.random() * 50) };
+  else if (roll < 0.75) prize = { kind: 'gold', label: 'ذهب متوسط', value: 80 + Math.floor(Math.random() * 80) };
+  else if (roll < 0.9) prize = { kind: 'gold', label: 'جائزة ذهبية', value: 160 + Math.floor(Math.random() * 80) };
+  else if (roll < 0.97) {
+    prize = { kind: 'item', label: 'سماعة دي جي', value: 0, item_id: 'acc-headset' };
+    await q.run(`INSERT OR IGNORE INTO soul_look_owned (user_id, item_id) VALUES (?,?)`, req.authUid, 'acc-headset');
+  } else {
+    const until = Math.floor(Date.now() / 1000) + 86400;
+    prize = { kind: 'pass', label: 'Soul Pass ليوم', value: 1 };
+    await q.run(`UPDATE users SET soul_premium=MAX(COALESCE(soul_premium,0), ?) WHERE id=?`, until, req.authUid);
+  }
+  if (prize.kind === 'gold') await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, prize.value, req.authUid);
+  await q.run(`INSERT INTO soul_lucky_log (user_id, cost, prize_kind, prize_label, prize_value) VALUES (?,?,?,?,?)`,
+    req.authUid, cost, prize.kind, prize.label, prize.value || 0);
+  const fresh = await q.get(`SELECT balance FROM users WHERE id=?`, req.authUid);
+  addXp(req.authUid, 6).catch(() => { });
+  res.json({ ok: true, prize, balance: +fresh.balance });
+});
+
+app.get('/api/soul/events/all', async (req, res) => {
+  const rows = await q.all(`SELECT * FROM soul_events WHERE active=1 ORDER BY id DESC LIMIT 20`);
+  const featured = soulWeekEvents();
+  res.json({ events: rows || [], featured });
+});
+
+app.post('/api/soul/phone', requireUser, async (req, res) => {
+  const phone = String((req.body || {}).phone || '').replace(/[^\d+]/g, '').slice(0, 20);
+  await q.run(`UPDATE users SET phone=? WHERE id=?`, phone, req.authUid);
+  res.json({ ok: true, phone });
+});
+
+app.post('/api/rooms/:id/mod', requireUser, async (req, res) => {
+  const roomId = +req.params.id;
+  const targetId = +((req.body || {}).user_id);
+  const room = await q.get(`SELECT id, owner_id FROM rooms WHERE id=?`, roomId);
+  if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+  const me = await q.get(`SELECT id, rank, username FROM users WHERE id=?`, req.authUid);
+  const staff = me && isStaffRank(me.rank);
+  if (!staff && +room.owner_id !== +req.authUid) return res.status(403).json({ error: 'المضيف فقط يعيّن المشرفين' });
+  const t = await q.get(`SELECT id, username FROM users WHERE id=?`, targetId);
+  if (!t) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  await q.run(`INSERT OR IGNORE INTO room_admins (room_id, user_id, username) VALUES (?,?,?)`, roomId, t.id, t.username);
+  io.to('room_' + roomId).emit('notify', { text: t.username + ' أصبح مشرف الغرفة', icon: 'shield_fill' });
+  io.emit('sync');
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/soul/overview', requireSuperAdmin, async (req, res) => {
+  const users = await q.get(`SELECT COUNT(*) c FROM users WHERE registered=1 AND COALESCE(is_bot,0)=0`);
+  const gold = await q.get(`SELECT SUM(balance) s FROM users`);
+  const lucky = await q.get(`SELECT COUNT(*) c FROM soul_lucky_log`);
+  const pay = await q.get(`SELECT COUNT(*) c, SUM(amount_paid) s FROM payment_transactions WHERE status='completed'`);
+  const reports = await q.get(`SELECT COUNT(*) c FROM complaints`);
+  const gifts = await q.get(`SELECT COUNT(*) c FROM gifts_log`);
+  res.json({
+    users: +(users && users.c) || 0,
+    gold: +(gold && gold.s) || 0,
+    lucky: +(lucky && lucky.c) || 0,
+    payments: +(pay && pay.c) || 0,
+    revenue: +(pay && pay.s) || 0,
+    reports: +(reports && reports.c) || 0,
+    gifts: +(gifts && gifts.c) || 0,
+    online: Object.keys(onlineUsers).length
+  });
+});
+
+app.get('/api/admin/soul/lucky', requireSuperAdmin, async (req, res) => {
+  const rows = await q.all(`SELECT l.*, u.username FROM soul_lucky_log l LEFT JOIN users u ON u.id=l.user_id ORDER BY l.id DESC LIMIT 80`);
+  res.json(rows || []);
+});
+
+app.post('/api/admin/soul/events', requireSuperAdmin, async (req, res) => {
+  const title = String((req.body || {}).title || '').trim().slice(0, 80);
+  const body = String((req.body || {}).body || '').trim().slice(0, 240);
+  const emoji = String((req.body || {}).emoji || '✦').slice(0, 8);
+  if (!title) return res.status(400).json({ error: 'اكتب عنوان الفعالية' });
+  await q.run(`INSERT INTO soul_events (title, body, emoji, active) VALUES (?,?,?,1)`, title, body, emoji);
+  res.json({ ok: true });
 });
 
 app.get('/api/pk/current', requireUser, async (req, res) => {
@@ -2864,10 +3020,17 @@ app.post('/api/logout', (req, res) => {
 // =====================================================
 app.get('/api/rooms', async (req, res) => {
   // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً
-  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience, owner_id, mic_locked, party_mode FROM rooms WHERE hidden=0 ORDER BY sort,id`);
+  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience, owner_id, mic_locked, party_mode, seat_count FROM rooms WHERE hidden=0 ORDER BY sort,id`);
   const counts = {};
   Object.entries(roomUsers).forEach(([rid, set]) => counts[rid] = set.size);
-  res.json(rooms.map(r => ({
+  const visible = (rooms || []).filter(r => {
+    const n = String(r.name || '').trim();
+    const d = String(r.description || '');
+    if (!n || n.length < 2) return false;
+    if (n.includes('تطابق') || d.includes('تطابق')) return false;
+    return true;
+  });
+  res.json(visible.map(r => ({
     id: +r.id,
     name: String(r.name || ''),
     description: String(r.description || ''),
@@ -2880,6 +3043,7 @@ app.get('/api/rooms', async (req, res) => {
     online: counts[r.id] || 0,
     faces: roomFaceList(r.id),
     owner_id: +r.owner_id || 0,
+    seat_count: +r.seat_count === 12 ? 12 : 8,
     mic_locked: r.mic_locked ? 1 : 0,
     live: String(r.type) === 'live' ? 1 : 0,
     audience: String(r.audience || 'all') === 'registered' ? 'registered' : 'all',
@@ -10477,13 +10641,14 @@ io.on('connection', async (socket) => {
   });
 
   // ===== مكالمات صوتية/فيديو خاصة (1-to-1 WebRTC) =====
-  socket.on('call:request', async ({ toId, type }) => {
+  socket.on('call:request', async ({ toId, type, soul }) => {
     toId = +toId;
     if (!toId || toId === uid) return socket.emit('call:rejected', { fromId: toId, reason: 'invalid' });
     // نوع المكالمة: audio (الافتراضي) | video — تُدار الصلاحيات والتكلفة لكل نوع بشكل مستقل من لوحة الإدارة.
     const callType = type === 'video' ? 'video' : 'audio';
+    const isSoulMatch = !!soul;
     const callMembershipKey = callType === 'video' ? 'video_call_allowed_memberships' : 'private_call_allowed_memberships';
-    if (!await canUseMembershipFeature(uid, callMembershipKey)) {
+    if (!isSoulMatch && !await canUseMembershipFeature(uid, callMembershipKey)) {
       return socket.emit('call:rejected', { fromId: toId, reason: 'not_allowed', error: callType === 'video' ? 'عضويتك غير مسموح لها بإجراء مكالمات الفيديو الخاصة' : 'عضويتك غير مسموح لها بإجراء المكالمات الخاصة' });
     }
     const target = await q.get(`SELECT id, username, avatar, registered, membership, rank FROM users WHERE id=?`, toId);
@@ -10510,8 +10675,8 @@ io.on('connection', async (socket) => {
       ? normalizeNonNegativeCost(settings.video_call_cost, 5)
       : Math.max(1, parseInt(settings.call_cost) || 2);
 
-    // إذا استنفذ المكالمة المجانية الأولى وليس من الإدارة، يشترط وجود الذهب المطلوب
-    if (!isStaff && !isFreeTrial && (+me.balance || 0) < callCost) {
+    // تطابق الروح مجاني ولا يستهلك التجربة. غير ذلك: ذهب أو تجربة.
+    if (!isSoulMatch && !isStaff && !isFreeTrial && (+me.balance || 0) < callCost) {
       return socket.emit('call:rejected', {
         fromId: toId,
         reason: 'insufficient_balance',
@@ -10519,12 +10684,12 @@ io.on('connection', async (socket) => {
       });
     }
 
-    activePrivateCalls.set(uid, { targetId: toId, callerId: uid, state: 'calling', requestedAt: Date.now(), isFreeTrial, callCost, callType });
-    activePrivateCalls.set(toId, { targetId: uid, callerId: uid, state: 'calling', requestedAt: Date.now(), isFreeTrial, callCost, callType });
+    activePrivateCalls.set(uid, { targetId: toId, callerId: uid, state: 'calling', requestedAt: Date.now(), isFreeTrial: isSoulMatch ? false : isFreeTrial, callCost: isSoulMatch ? 0 : callCost, callType, soul: isSoulMatch });
+    activePrivateCalls.set(toId, { targetId: uid, callerId: uid, state: 'calling', requestedAt: Date.now(), isFreeTrial: isSoulMatch ? false : isFreeTrial, callCost: isSoulMatch ? 0 : callCost, callType, soul: isSoulMatch });
 
     io.to('user_' + toId).emit('call:incoming', {
-      from: { id: uid, username: me.username, avatar: me.avatar || '' },
-      type: callType, callCost
+      from: { id: uid, username: me.username, avatar: me.avatar || '', soul_planet: me.soul_planet || '' },
+      type: callType, callCost: isSoulMatch ? 0 : callCost, soul: isSoulMatch
     });
     socket.emit('call:ringing', { toId, isFreeTrial, callCost });
   });
@@ -10655,6 +10820,14 @@ io.on('connection', async (socket) => {
     if (typeof ack === 'function') {
       try { ack({ ok: true, ts: Date.now(), hidden: !!(payload && payload.hidden) }); } catch (e) { }
     }
+  });
+
+  socket.on('soul:reveal', async ({ toId }) => {
+    toId = +toId;
+    if (!toId) return;
+    const other = await q.get(`SELECT id, username, avatar FROM users WHERE id=?`, toId);
+    io.to('user_' + toId).emit('soul:revealed', { fromId: uid, username: me.username, avatar: me.avatar || '' });
+    socket.emit('soul:revealed', { fromId: toId, username: (other && other.username) || '', avatar: (other && other.avatar) || '' });
   });
 
   socket.on('soul:game', (roomId, data) => {

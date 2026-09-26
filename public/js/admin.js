@@ -1786,6 +1786,12 @@ const MENU = [
     { id: 'broadcast', icon: 'bolt_badge_a_fill', label: 'ارسال اعلان للجميع' },
     { id: 'words', icon: 'search', label: 'فلترة الكلمات' },
     { id: 'restart', icon: 'arrow_clockwise_circle_fill', label: 'استئناف الخادم', superAdminOnly: true }]},
+  { icon: 'star_fill', color: '#a855f7', label: 'SoulChill', superAdminOnly: true, subs: [
+    { id: 'soulHub', icon: 'star_fill', label: 'نظرة Soul (إحصائيات ومالية)', superAdminOnly: true },
+    { id: 'soulLuckyAdmin', icon: 'gift_fill', label: 'سجل صناديق الحظ', superAdminOnly: true },
+    { id: 'userComplaints', icon: 'exclamationmark_triangle_fill', label: 'البلاغات والمحتوى', superAdminOnly: true },
+    { id: 'broadcast', icon: 'bell_fill', label: 'إشعارات وفعاليات', superAdminOnly: true }
+  ]},
   { icon: 'gift_fill', color: '#f472b6', label: 'الهدايا والإيموجي', superAdminOnly: true, subs: [
     { id: 'gifts', icon: 'gift_fill', label: 'ادارة الهدايا', superAdminOnly: true },
     { id: 'userGifts', icon: 'person_crop_circle_badge_xmark', label: 'هدايا حساب (بحث وحذف)', superAdminOnly: true },
@@ -6259,6 +6265,71 @@ const PAGES = {
       renderComplaints();
       const s = $('#complaintSearch');
       if (s) s.oninput = e => renderComplaints(e.target.value);
+    }
+  },
+
+  soulHub: {
+    build: () => `
+      <div class="page-title"><i class="f7-icons mi" style="color:#a855f7">star_fill</i> نظرة Soul — مالية وإحصائيات</div>
+      <div class="info-box" style="background:#f5f3ff;border-color:#ddd6fe;color:#5b21b6;margin-bottom:16px">ملخص المستخدمين، الذهب، صناديق الحظ، المدفوعات، البلاغات والهدايا.</div>
+      <div id="soulHubStats" class="loading"><i class="f7-icons">arrow2_circlepath</i>جاري التحميل...</div>
+      <div class="section-title">فعالية جديدة</div>
+      <div class="grid2">
+        <div class="fgroup"><label>العنوان</label><input class="inp" id="soulEvTitle" placeholder="عنوان الفعالية"></div>
+        <div class="fgroup"><label>إيموجي</label><input class="inp" id="soulEvEmoji" value="✦"></div>
+      </div>
+      <div class="fgroup"><label>الوصف</label><input class="inp" id="soulEvBody" placeholder="وصف قصير"></div>
+      <button class="btn btn-purple" id="soulEvSave" type="button">نشر الفعالية</button>
+    `,
+    bind: async () => {
+      try {
+        const d = await api('/api/admin/soul/overview');
+        $('#soulHubStats').innerHTML = `
+          <div class="grid2" style="gap:10px">
+            <div class="section" style="padding:12px"><div style="color:#94a3b8">المستخدمون</div><b style="font-size:22px">${d.users}</b></div>
+            <div class="section" style="padding:12px"><div style="color:#94a3b8">المتصلون</div><b style="font-size:22px">${d.online}</b></div>
+            <div class="section" style="padding:12px"><div style="color:#94a3b8">الذهب الكلي</div><b style="font-size:22px">${d.gold}</b></div>
+            <div class="section" style="padding:12px"><div style="color:#94a3b8">إيراد المدفوعات</div><b style="font-size:22px">${d.revenue || 0}</b></div>
+            <div class="section" style="padding:12px"><div style="color:#94a3b8">صناديق الحظ</div><b style="font-size:22px">${d.lucky}</b></div>
+            <div class="section" style="padding:12px"><div style="color:#94a3b8">الهدايا المرسلة</div><b style="font-size:22px">${d.gifts}</b></div>
+            <div class="section" style="padding:12px"><div style="color:#94a3b8">البلاغات</div><b style="font-size:22px">${d.reports}</b></div>
+            <div class="section" style="padding:12px"><div style="color:#94a3b8">عمليات الدفع</div><b style="font-size:22px">${d.payments}</b></div>
+          </div>`;
+      } catch (e) {
+        $('#soulHubStats').innerHTML = '<div class="empty">تعذر التحميل</div>';
+      }
+      const btn = $('#soulEvSave');
+      if (btn) btn.onclick = async () => {
+        try {
+          await api('/api/admin/soul/events', 'POST', {
+            title: $('#soulEvTitle').value,
+            body: $('#soulEvBody').value,
+            emoji: $('#soulEvEmoji').value
+          });
+          toast('نُشرت الفعالية');
+          $('#soulEvTitle').value = '';
+          $('#soulEvBody').value = '';
+        } catch (e) { toast((e && e.error) || 'تعذر النشر', false); }
+      };
+    }
+  },
+
+  soulLuckyAdmin: {
+    build: () => `
+      <div class="page-title"><i class="f7-icons mi" style="color:#f59e0b">gift_fill</i> سجل صناديق الحظ</div>
+      <div id="soulLuckyAdminList" class="loading">جاري التحميل...</div>`,
+    bind: async () => {
+      try {
+        const rows = await api('/api/admin/soul/lucky');
+        const box = $('#soulLuckyAdminList');
+        if (!rows || !rows.length) { box.innerHTML = '<div class="empty">لا فتحات بعد</div>'; return; }
+        box.innerHTML = rows.map(r => `<div class="row" style="justify-content:space-between;padding:10px 0;border-bottom:1px solid #eee">
+          <span><b>${esc(r.username || r.user_id)}</b> — ${esc(r.prize_label || r.prize_kind)}</span>
+          <small>${r.prize_value || 0} · ${new Date((+r.created_at || 0) * 1000).toLocaleString('ar')}</small>
+        </div>`).join('');
+      } catch (e) {
+        $('#soulLuckyAdminList').innerHTML = '<div class="empty">تعذر التحميل</div>';
+      }
     }
   }
 };

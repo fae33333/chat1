@@ -2854,8 +2854,22 @@ function connectSocket() {
   SOCKET.on('slow_down', payload => showSlowDownTemplate(payload));
 
   // ===== أحداث المكالمات الصوتية الخاصة (1-to-1 WebRTC) =====
-  SOCKET.on('call:incoming', ({ from, type }) => {
-    handleIncomingPrivateCall(from, type);
+  SOCKET.on('call:incoming', ({ from, type, soul }) => {
+    handleIncomingPrivateCall(from, type, soul);
+  });
+  SOCKET.on('soul:revealed', ({ username, avatar }) => {
+    if (!PM_CALL) return;
+    const already = !!PM_CALL.soulRevealed;
+    PM_CALL.soulRevealed = true;
+    if (username) { PM_CALL.realName = username; PM_CALL.peerName = username; }
+    if (avatar) PM_CALL.peerAvatar = avatar;
+    const n = document.getElementById('pmCallActiveName');
+    if (n) n.textContent = PM_CALL.peerName;
+    const av = document.getElementById('pmCallActiveAvatar');
+    if (av && avatar && typeof avatarHtml === 'function') av.innerHTML = avatarHtml(avatar);
+    const rev = document.getElementById('soulRevealBtn');
+    if (rev) rev.hidden = true;
+    if (!already && typeof toast === 'function') toast('تم كشف الهوية — المكالمة بلا حد زمني');
   });
   SOCKET.on('call:accepted', async ({ from, type }) => {
     await handlePrivateCallAccepted(from, type);
@@ -4262,8 +4276,15 @@ function pushNotif(icon, text, extra = {}) {
 // =====================================================
 //  الغرف
 // =====================================================
+function isMatchJunkRoom(r) {
+  const n = String((r && r.name) || '').trim();
+  const d = String((r && r.description) || '');
+  if (!n || n.length < 2) return true;
+  if (n.includes('تطابق') || d.includes('تطابق')) return true;
+  return false;
+}
 async function loadRooms() {
-  ROOMS = await api('/api/rooms');
+  ROOMS = ((await api('/api/rooms')) || []).filter(r => !isMatchJunkRoom(r));
   ROOMS.forEach(r => ROOM_COUNTS[r.id] = r.online || 0);
   // أي تعديل للغرفة من لوحة الإدارة (نوعها، اسمها، حالتها...) ينعكس فوراً على الغرفة
   // المفتوحة حالياً دون إعادة تحميل — فيتحدث شريط البث/زر «تحدث» حسب النوع الجديد مباشرة.
@@ -4347,7 +4368,7 @@ function roomMiniHtml(r) {
 function renderRoomsPanel() {
   const q2 = ($('#roomSearch2').value || '').trim();
   // جميع الغرف صوتية الآن — لا يوجد تقسيم إلى أقسام.
-  const list = ROOMS.filter(r => (!q2 || r.name.includes(q2)));
+  const list = ROOMS.filter(r => !isMatchJunkRoom(r) && (!q2 || r.name.includes(q2)));
   $('#roomsList2').innerHTML = list.length ? list.map(roomMiniHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
   $$('#roomsList2 .room-mini').forEach(row => row.onclick = () => {
     if (CUR_ROOM && +row.dataset.id === CUR_ROOM.id) return toast('أنت متواجد في هذه الغرفة حالياً 📍');
@@ -4357,7 +4378,7 @@ function renderRoomsPanel() {
 function renderRooms() {
   const q1 = ($('#roomSearch').value || '').trim();
   // جميع الغرف صوتية الآن — لا يوجد تقسيم إلى أقسام.
-  const list = ROOMS.filter(r => (!q1 || r.name.includes(q1)));
+  const list = ROOMS.filter(r => !isMatchJunkRoom(r) && (!q1 || r.name.includes(q1)));
   $('#roomsList').innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
   $$('#roomsList .room-row').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
   renderRoomsPanel();
@@ -7397,6 +7418,28 @@ function stopCallAudioTones() {
 
 function startPrivateCall() { beginPrivateCallFlow('audio'); }
 function startVideoCall() { beginPrivateCallFlow('video'); }
+window.soulStartMatchCall = async function (peer) {
+  if (!peer || !peer.id) return;
+  if (PM_CALL) return;
+  PM_WITH = { id: +peer.id, username: peer.username, avatar: peer.avatar || '' };
+  window.SOUL_MATCH_CALL = true;
+  try {
+    await executePrivateCall('audio');
+  } finally {
+    window.SOUL_MATCH_CALL = false;
+  }
+};
+window.soulRevealMatch = function () {
+  if (!PM_CALL || !PM_CALL.soulMatch) return;
+  PM_CALL.soulRevealed = true;
+  PM_CALL.peerName = PM_CALL.realName || PM_CALL.peerName;
+  const n = document.getElementById('pmCallActiveName');
+  if (n) n.textContent = PM_CALL.peerName;
+  const rev = document.getElementById('soulRevealBtn');
+  if (rev) rev.hidden = true;
+  if (typeof SOCKET !== 'undefined' && SOCKET) SOCKET.emit('soul:reveal', { toId: PM_CALL.peerId });
+  if (typeof toast === 'function') toast('تم كشف الهوية — المكالمة بلا حد زمني');
+};
 function beginPrivateCallFlow(callType) {
   if (!PM_WITH) return toast('اختر مستخدماً للاتصال به', false);
   if (PM_CALL) return toast('أنت في مكالمة حالياً', false);
@@ -7622,6 +7665,11 @@ const PRO_CAPTURE_LADDER = [
 // صوت فقط لكن المكالمة تبقى «فيديو»: نستقبل فيديو الطرف الآخر ونشاهده.
 async function acquireProCallMedia(isVideo) {
   const audio = proAudioConstraints();
+  if (!isVideo && window.SOUL_PRESTREAM) {
+    const s = window.SOUL_PRESTREAM;
+    window.SOUL_PRESTREAM = null;
+    return { stream: s, hasVideo: false };
+  }
   if (!isVideo) return { stream: await navigator.mediaDevices.getUserMedia({ audio, video: false }), hasVideo: false };
   let lastErr = null;
   for (const v of PRO_CAPTURE_LADDER) {
@@ -7709,10 +7757,14 @@ async function executePrivateCall(callType = 'audio') {
     const media = await acquireProCallMedia(isVideo);
     const stream = media.stream;
     const noCamera = isVideo && !media.hasVideo;
+    const soulCall = !!(typeof window !== 'undefined' && window.SOUL_MATCH_CALL);
     PM_CALL = {
       peerId: +PM_WITH.id,
-      peerName: PM_WITH.username,
+      peerName: soulCall ? 'روح قريبة' : PM_WITH.username,
       peerAvatar: PM_WITH.avatar || '',
+      soulMatch: soulCall,
+      soulRevealed: !soulCall,
+      realName: PM_WITH.username,
       isCaller: true,
       callType: callType,
       pc: null,
@@ -7736,7 +7788,7 @@ async function executePrivateCall(callType = 'audio') {
     if (noCamera) toast('لا توجد كاميرا متاحة — ستتحدث بالصوت وتشاهد فيديو الطرف الآخر 📹');
     else showCallActiveModal();
     playCallRingback();
-    SOCKET.emit('call:request', { toId: PM_WITH.id, type: callType });
+    SOCKET.emit('call:request', { toId: PM_WITH.id, type: callType, soul: !!(soulCall || (PM_CALL && PM_CALL.soulMatch)) });
   } catch (err) {
     toast(isVideo
       ? 'تعذر الوصول إلى الكاميرا/الميكروفون: ' + (err.message || 'يرجى منح الإذن')
@@ -7744,15 +7796,18 @@ async function executePrivateCall(callType = 'audio') {
   }
 }
 
-function handleIncomingPrivateCall(from, type) {
+function handleIncomingPrivateCall(from, type, soul) {
   if (PM_CALL) {
     return SOCKET.emit('call:reject', { toId: from.id, reason: 'busy' });
   }
   const callType = (type === 'video') ? 'video' : 'audio';
   PM_CALL = {
     peerId: +from.id,
-    peerName: from.username,
+    peerName: soul ? 'روح قريبة' : from.username,
     peerAvatar: from.avatar || '',
+    soulMatch: !!soul,
+    soulRevealed: !soul,
+    realName: from.username,
     isCaller: false,
     callType: callType,
     pc: null,
@@ -9006,7 +9061,16 @@ function startCallTimer() {
     PM_CALL.callSeconds = Math.max(0, Math.floor((Date.now() - (PM_CALL.startTime || Date.now())) / 1000));
     const m = String(Math.floor(PM_CALL.callSeconds / 60)).padStart(2, '0');
     const s = String(PM_CALL.callSeconds % 60).padStart(2, '0');
-    const timeStr = `${m}:${s}`;
+    let timeStr = `${m}:${s}`;
+    if (PM_CALL.soulMatch && !PM_CALL.soulRevealed) {
+      const left = Math.max(0, 300 - PM_CALL.callSeconds);
+      timeStr = String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');
+      if (left <= 0) {
+        if (typeof toast === 'function') toast('انتهت الـ 5 دقائق — اكشف الهوية للمتابعة أو ستنتهي المكالمة', false);
+        try { if (typeof endPrivateCall === 'function') endPrivateCall(); } catch (e) {}
+        return;
+      }
+    }
     const t = $('#pmCallTimer');
     if (t) t.textContent = timeStr;
     const ft = $('#pmCallFloatingTimer');
@@ -9075,7 +9139,11 @@ function showCallIncomingModal() {
   const incLabel = $('#pmCallIncStatus');
   if (incLabel) {
     const isVideo = PM_CALL.callType === 'video';
-    incLabel.innerHTML = `<i class="f7-icons">${isVideo ? 'videocam_fill' : 'phone_fill'}</i> ${isVideo ? 'مكالمة فيديو خاصة واردة...' : 'مكالمة صوتية خاصة واردة...'}`;
+    if (PM_CALL.soulMatch) {
+      incLabel.innerHTML = `<i class="f7-icons">sparkles</i> تطابق روحي — مكالمة 5 دقائق`;
+    } else {
+      incLabel.innerHTML = `<i class="f7-icons">${isVideo ? 'videocam_fill' : 'phone_fill'}</i> ${isVideo ? 'مكالمة فيديو خاصة واردة...' : 'مكالمة صوتية خاصة واردة...'}`;
+    }
   }
   openOv('pmCallIncomingOv');
   updateFloatingCallBar();
@@ -9090,6 +9158,8 @@ function showCallActiveModal() {
   if (!PM_CALL) return;
   $('#pmCallActiveName').textContent = PM_CALL.peerName;
   $('#pmCallActiveAvatar').innerHTML = avatarHtml(PM_CALL.peerAvatar);
+  const rev = document.getElementById('soulRevealBtn');
+  if (rev) rev.hidden = !(PM_CALL.soulMatch && !PM_CALL.soulRevealed);
   $('#pmCallStatus').textContent = PM_CALL.state === 'connected' ? 'مكالمة جارية' : (PM_CALL.isCaller ? 'جاري الاتصال...' : 'جاري التوصيل...');
   const timerEl = $('#pmCallTimer');
   if (timerEl) {

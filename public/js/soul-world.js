@@ -141,29 +141,74 @@
     });
   }
 
+  function stopPrestream() {
+    try {
+      if (window.SOUL_PRESTREAM && window.SOUL_PRESTREAM.getTracks) {
+        window.SOUL_PRESTREAM.getTracks().forEach(t => { try { t.stop(); } catch (e) { } });
+      }
+    } catch (e) { }
+    window.SOUL_PRESTREAM = null;
+  }
+
   async function startMatch() {
+    if (startMatch._busy || MATCHING) return;
     if (!needAuth()) return;
     if (typeof ME !== 'undefined' && ME && !ME.registered) {
       if (typeof openOv === 'function') openOv('needRegOv');
       return;
     }
+    if (typeof PM_CALL !== 'undefined' && PM_CALL) {
+      if (typeof toast === 'function') toast('أنت في مكالمة حالياً', false);
+      return;
+    }
+    startMatch._busy = true;
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        window.SOUL_PRESTREAM = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      }
+    } catch (e) {
+      startMatch._busy = false;
+      if (typeof toast === 'function') toast('اسمح بالميكروفون لبدء Voice match', false);
+      return;
+    }
     MATCHING = true;
     if (typeof openOv === 'function') openOv('soulMatchOv');
     const title = $('#soulMatchTitle');
-    if (title) title.textContent = 'جارٍ البحث عن روح قريبة...';
-    try {
+    if (title) title.textContent = 'Voice match — searching…';
+    const tryOnce = async () => {
       const d = await api('/api/soul/match', 'POST', {});
-      if (d && d.waiting) {
-        setTimeout(() => {
-          if (!MATCHING) return;
-          api('/api/soul/match/cancel', 'POST', {}).catch(() => { });
-          MATCHING = false;
-          if (title) title.textContent = 'لا يوجد أحد الآن — جرّب الاكتشاف';
-          setTimeout(() => { closeOv('soulMatchOv'); if (typeof soulOpenDiscover === 'function') soulOpenDiscover(); }, 900);
-        }, 18000);
-      } else if (d && d.roomId) joinMatch(d);
+      if (!d || d.waiting) return null;
+      if (d.roomId) return null;
+      if (d.call || d.peer_a || d.peer_b) return d;
+      return null;
+    };
+    try {
+      const first = await tryOnce();
+      if (first) {
+        startMatch._busy = false;
+        return joinMatch(first);
+      }
+      const poll = setInterval(async () => {
+        if (!MATCHING) { clearInterval(poll); startMatch._busy = false; return; }
+        try {
+          const n = await tryOnce();
+          if (n) { clearInterval(poll); startMatch._busy = false; joinMatch(n); }
+        } catch (e) { }
+      }, 3000);
+      setTimeout(() => {
+        clearInterval(poll);
+        startMatch._busy = false;
+        if (!MATCHING) return;
+        api('/api/soul/match/cancel', 'POST', {}).catch(() => { });
+        MATCHING = false;
+        stopPrestream();
+        if (title) title.textContent = 'No one now — try again';
+        setTimeout(() => { closeOv('soulMatchOv'); }, 900);
+      }, 20000);
     } catch (e) {
       MATCHING = false;
+      startMatch._busy = false;
+      stopPrestream();
       closeOv('soulMatchOv');
       if (typeof toast === 'function') toast((e && e.error) || 'تعذر التطابق', false);
     }
@@ -171,17 +216,26 @@
 
   function joinMatch(d) {
     MATCHING = false;
+    startMatch._busy = false;
     closeOv('soulMatchOv');
-    if (typeof toast === 'function') toast('تم العثور على روح ✨');
-    if (typeof loadRooms === 'function') loadRooms().then(() => {
-      if (typeof enterRoom === 'function') enterRoom(d.roomId);
-    }).catch(() => {
-      if (typeof enterRoom === 'function') enterRoom(d.roomId);
-    });
+    if (!d) return;
+    if (d.roomId) return;
+    const key = [d.caller_id, d.peer_a && d.peer_a.id, d.peer_b && d.peer_b.id].join('-');
+    if (joinMatch._k === key) return;
+    joinMatch._k = key;
+    if (typeof toast === 'function') toast('Voice match — 5 min audio');
+    const meId = (typeof ME !== 'undefined' && ME) ? +ME.id : 0;
+    const peer = (d.peer_a && +d.peer_a.id === meId) ? d.peer_b : d.peer_a;
+    if (!peer || !peer.id) return;
+    if (+d.caller_id === meId && typeof window.soulStartMatchCall === 'function') {
+      window.soulStartMatchCall(peer);
+    }
   }
 
   function cancelMatch() {
     MATCHING = false;
+    startMatch._busy = false;
+    stopPrestream();
     api('/api/soul/match/cancel', 'POST', {}).catch(() => { });
     closeOv('soulMatchOv');
   }
@@ -269,7 +323,10 @@
   function bindSocket(s) {
     if (!s || s._soulWorld) return;
     s._soulWorld = true;
-    s.on('soul:match', d => { if (d && d.roomId) joinMatch(d); });
+    s.on('soul:match', d => {
+      if (!d || d.roomId) return;
+      if (d.call || d.peer_a || d.peer_b) joinMatch(d);
+    });
     s.on('soul:game', showGame);
     s.on('soul:invite', d => {
       if (!d) return;
@@ -290,6 +347,14 @@
     };
     const vm = $('#soulVoiceMatch');
     if (vm) vm.onclick = startMatch;
+    const mate = $('#soulMateBtn');
+    if (mate) mate.onclick = startMatch;
+    const goParty = $('#soulGoParty');
+    if (goParty) goParty.onclick = () => {
+      closeOv('discoverOv');
+      if (typeof showScreen === 'function') showScreen('rooms');
+      $$('.bn-item').forEach(b => b.classList.toggle('active', b.dataset.nav === 'rooms'));
+    };
     const test = $('#mnSoulTest');
     if (test) test.onclick = () => { closeOv('menuOv'); openSoulTest(); };
     const fr = $('#mnSoulFriends');

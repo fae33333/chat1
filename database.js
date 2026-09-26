@@ -747,6 +747,40 @@ db.serialize(() => {
     path TEXT NOT NULL,
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+
+  db.run(`ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE users ADD COLUMN credit_score INTEGER DEFAULT 100`, () => { });
+  db.run(`ALTER TABLE users ADD COLUMN soul_look TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE rooms ADD COLUMN seat_count INTEGER DEFAULT 8`, () => { });
+
+  db.run(`CREATE TABLE IF NOT EXISTS soul_look_owned (
+    user_id INTEGER NOT NULL,
+    item_id TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (user_id, item_id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS soul_lucky_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    cost INTEGER DEFAULT 0,
+    prize_kind TEXT DEFAULT '',
+    prize_label TEXT DEFAULT '',
+    prize_value INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_soul_lucky_user ON soul_lucky_log (user_id, created_at)`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS soul_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    body TEXT DEFAULT '',
+    emoji TEXT DEFAULT '✦',
+    active INTEGER DEFAULT 1,
+    starts_at INTEGER DEFAULT 0,
+    ends_at INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT (strftime('%s','now'))
+  )`);
 });
 
 // ====== الإعدادات الافتراضية ======

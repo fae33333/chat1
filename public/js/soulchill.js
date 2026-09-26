@@ -3,6 +3,8 @@
   const SEAT_COUNT = 8;
   function soulSeatCount() {
     if (typeof CUR_ROOM !== 'undefined' && CUR_ROOM && CUR_ROOM.party_mode === 'partner') return 2;
+    const n = +(CUR_ROOM && CUR_ROOM.seat_count);
+    if (n === 12) return 12;
     return SEAT_COUNT;
   }
   const GMAIL_RE = /^[a-z0-9._%+-]+@gmail\.com$/i;
@@ -38,7 +40,7 @@
   }
 
   function soulCloseNav(except) {
-    ['privOv', 'notifOv', 'wallOv', 'menuOv', 'myGiftsOv', 'blocksOv', 'discoverOv', 'friendsOv', 'createRoomOv', 'pkPickOv', 'soulTestOv', 'soulMatchOv', 'soulGameOv', 'soulOnboardOv', 'soulPassOv', 'soulInviteOv'].forEach(id => {
+    ['privOv', 'notifOv', 'wallOv', 'menuOv', 'myGiftsOv', 'blocksOv', 'discoverOv', 'friendsOv', 'createRoomOv', 'pkPickOv', 'soulTestOv', 'soulMatchOv', 'soulGameOv', 'soulOnboardOv', 'soulPassOv', 'soulInviteOv', 'soulShopOv', 'soulEventsOv', 'soulLuckyOv'].forEach(id => {
       if (id !== except && typeof closeOv === 'function') closeOv(id);
     });
   }
@@ -71,6 +73,7 @@
       const lvl = $('#soulMeLevel'); if (lvl) lvl.textContent = d.level || 1;
       const sid = $('#soulMeId'); if (sid) sid.textContent = d.public_id || '-';
       const fol = $('#soulMeFollowers'); if (fol) fol.textContent = d.followers || 0;
+      const fing = $('#soulMeFollowing'); if (fing) fing.textContent = d.following || 0;
       const xp = $('#soulMeXp'); if (xp) xp.textContent = d.xp || 0;
       soulPaintCoins();
     } catch (e) { }
@@ -106,7 +109,14 @@
 
   function soulFilterRooms() {
     const q1 = (($('#roomSearch') && $('#roomSearch').value) || '').trim();
-    let list = (typeof ROOMS !== 'undefined' ? ROOMS : []).filter(r => !q1 || (r.name || '').includes(q1));
+    let list = (typeof ROOMS !== 'undefined' ? ROOMS : []).filter(r => {
+      const n = String(r.name || '').trim();
+      const d = String(r.description || '');
+      if (!n || n.length < 2) return false;
+      if (n.includes('تطابق') || d.includes('تطابق')) return false;
+      if (!q1) return true;
+      return n.includes(q1);
+    });
     if (ROOM_CAT === 'voice') list = list.filter(r => r.type === 'voice');
     if (ROOM_CAT === 'live') list = list.filter(r => r.type === 'live' || r.party_mode === 'live');
     if (ROOM_CAT === 'partner') list = list.filter(r => r.party_mode === 'partner');
@@ -262,10 +272,17 @@
       if (go) go.style.display = (isLive && soulCanHostMic() && !soulIsOnMic()) ? '' : 'none';
     }
     const banner = $('#soulRoomBanner');
-    if (banner && CUR_ROOM) {
-      banner.style.backgroundImage = `url('${CUR_ROOM.image || '/img/room.png'}')`;
-      banner.innerHTML = `<span>${CUR_ROOM.name || ''}</span>`;
+    if (banner) banner.hidden = true;
+    if (chat && CUR_ROOM) {
+      const cover = (CUR_ROOM.image && CUR_ROOM.image !== '/img/room.png') ? CUR_ROOM.image : '/img/soul-room-bg.jpg';
+      chat.style.backgroundImage = `linear-gradient(180deg, rgba(8,3,16,.22) 0%, rgba(8,3,16,.45) 42%, rgba(8,3,16,.88) 100%), url('${cover}')`;
+      chat.style.backgroundSize = 'cover';
+      chat.style.backgroundPosition = 'center top';
     }
+    const flash = $('#topcmm-123flashchat');
+    if (flash) flash.style.display = 'none';
+    const up = $('#usersPanel');
+    if (voice && up) up.classList.remove('open');
     const lockBtn = $('#dropLockMics');
     if (lockBtn) {
       lockBtn.style.display = soulCanHostMic() ? '' : 'none';
@@ -285,7 +302,10 @@
 
   function soulResetRoomUi() {
     const chat = $('#chatScreen');
-    if (chat) chat.classList.remove('soul-voice', 'soul-live', 'soul-disco');
+    if (chat) {
+      chat.classList.remove('soul-voice', 'soul-live', 'soul-disco');
+      chat.style.backgroundImage = '';
+    }
     const stage = $('#soulStage'); if (stage) stage.hidden = true;
     const dock = $('#soulDock'); if (dock) dock.hidden = true;
     PK_STATE = null;
@@ -310,6 +330,8 @@
     for (let i = 0; i < soulSeatCount(); i++) seats.push(speakers[i] || null);
     const locked = soulMicsLocked();
     const pending = !!(typeof SPEAK_REQUEST_PENDING !== 'undefined' && SPEAK_REQUEST_PENDING);
+    box.classList.toggle('seats-12', soulSeatCount() === 12);
+    box.classList.toggle('seats-2', soulSeatCount() === 2);
     box.innerHTML = seats.map((u, i) => {
       if (!u) {
         return `<button type="button" class="soul-seat empty${locked ? ' locked' : ''}${pending && i === speakers.length ? ' pending' : ''}" data-empty="1">
@@ -318,14 +340,18 @@
         </button>`;
       }
       const isOwner = CUR_ROOM && +CUR_ROOM.owner_id === +u.id;
+      const isMod = !isOwner && (u.rank === 'roomadmin' || u.badge === 'roomadmin.png');
+      const role = isOwner ? 'HOST' : (isMod ? 'MOD' : 'MIC');
       const name = typeof esc === 'function' ? esc(u.username) : u.username;
       const lvl = u.level || 1;
       return `<button type="button" class="soul-seat host" data-uid="${u.id}">
         <span class="soul-seat-ava">${u.avatar ? `<img src="${avaUrl(u)}" alt="">` : '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>'}${isOwner ? '<span class="soul-crown">♛</span>' : ''}<em class="lv">${lvl}</em></span>
         <small>${name}</small>
+        <em class="soul-role">${role}</em>
       </button>`;
     }).join('');
-    const audienceCount = Math.max(0, users.length - speakers.length);
+    const speakerIds = new Set(speakers.map(u => +u.id));
+    const audience = users.filter(u => !speakerIds.has(+u.id));
     let audBox = $('#soulAudience');
     if (!audBox) {
       audBox = document.createElement('div');
@@ -333,10 +359,20 @@
       box.after(audBox);
     }
     audBox.className = 'soul-audience';
-    audBox.textContent = 'الجمهور ' + audienceCount;
+    const extra = Math.max(0, audience.length - 12);
+    audBox.innerHTML = audience.slice(0, 12).map(u =>
+      `<button type="button" class="soul-aud-face" data-uid="${u.id}" style="background-image:url('${avaUrl(u)}')" title="${typeof esc === 'function' ? esc(u.username) : (u.username || '')}"></button>`
+    ).join('') + (extra ? `<span class="soul-aud-more">+${extra}</span>` : '');
+    $$('#soulAudience .soul-aud-face').forEach(btn => {
+      btn.onclick = () => { if (typeof openUserSheet === 'function') openUserSheet(+btn.dataset.uid, null, btn); };
+    });
     $$('#soulSeats .soul-seat').forEach(btn => {
       btn.onclick = () => {
         if (btn.dataset.empty) { if (!soulIsOnMic()) soulHandleMic(); return; }
+        if (typeof ME !== 'undefined' && ME && +btn.dataset.uid === +ME.id && soulIsOnMic()) {
+          soulHandleMic();
+          return;
+        }
         if (typeof openUserSheet === 'function') openUserSheet(+btn.dataset.uid, null, btn);
       };
     });
@@ -447,7 +483,9 @@
         const d = await api('/api/discover');
         const list = (d && d.users) || [];
         const count = $('#soulOnlineSouls');
-        if (count) count.textContent = 'Online Soulers  ' + list.length;
+        if (count) count.textContent = list.length + ' Soulers are partying';
+        const nEl = $('#soulOnlineN');
+        if (nEl) nEl.textContent = list.length;
         people.innerHTML = list.length ? list.slice(0, 18).map((u, i) => {
           const name = typeof esc === 'function' ? esc(u.username) : u.username;
           const pct = u.match || matchPercent(ME && ME.id, u.id);
@@ -564,10 +602,15 @@
     const password = ($('#soulRoomPass') && $('#soulRoomPass').value || '').trim();
     const err = $('#soulRoomErr');
     if (!name) { if (err) err.textContent = 'اكتب اسم الغرفة'; return; }
+    if (name.includes('تطابق') || description.includes('تطابق')) {
+      if (err) err.textContent = 'التطابق الصوتي مكالمة وليس غرفة';
+      return;
+    }
     try {
       const modeBtn = document.querySelector('#soulModePicks button.active');
       const party_mode = (modeBtn && modeBtn.dataset.mode) || 'chat';
-      const d = await api('/api/rooms/create', 'POST', { name, description, password, party_mode, type: party_mode === 'live' ? 'live' : 'voice', image: ROOM_COVER_PATH });
+      const seat_count = (typeof soulSeatPicked === 'function') ? soulSeatPicked() : 8;
+      const d = await api('/api/rooms/create', 'POST', { name, description, password, party_mode, type: party_mode === 'live' ? 'live' : 'voice', image: ROOM_COVER_PATH, seat_count: party_mode === 'partner' ? 2 : seat_count });
       closeOv('createRoomOv');
       if (typeof toast === 'function') toast('تم إنشاء الغرفة 🎤');
       if (typeof loadRooms === 'function') await loadRooms();
@@ -659,7 +702,8 @@
     const shop = $('#soulShopBtn');
     if (shop) shop.onclick = () => {
       if (!needAuth()) return;
-      if (typeof openBuy === 'function') openBuy();
+      if (typeof soulOpenShop === 'function') soulOpenShop('coins');
+      else if (typeof openBuy === 'function') openBuy();
     };
     const bell = $('#soulBellBtn');
     if (bell) bell.onclick = () => {
@@ -702,12 +746,32 @@
       if (first && typeof openGifts === 'function') openGifts(first);
       else if (typeof toast === 'function') toast('اختر شخصاً لإرسال الهدية', false);
     };
-    const dockEmoji = $('#soulDockEmoji');
-    if (dockEmoji) dockEmoji.onclick = () => { const b = $('#btnEmoji'); if (b) b.click(); };
+    const dockMenu = $('#soulDockMenu');
+    if (dockMenu) dockMenu.onclick = () => {
+      const bar = $('#inputBar');
+      if (bar) {
+        bar.classList.toggle('soul-composer-open');
+        const i = $('#msgInput');
+        if (bar.classList.contains('soul-composer-open') && i) i.focus();
+      }
+    };
+    const dockGames = $('#soulDockGames');
+    if (dockGames) dockGames.onclick = () => {
+      if (typeof openOv === 'function') openOv('soulGameOv');
+    };
     const dockMic = $('#soulDockMic');
     if (dockMic) dockMic.onclick = soulHandleMic;
     const dockMore = $('#soulDockMore');
-    if (dockMore) dockMore.onclick = () => { const b = $('#btnApps'); if (b) b.click(); };
+    if (dockMore) dockMore.onclick = () => { const b = $('#btnRoomMore'); if (b) b.click(); };
+    const dockSpeaker = $('#soulDockSpeaker');
+    if (dockSpeaker) dockSpeaker.onclick = () => { const b = $('#liveBarMute'); if (b) b.click(); };
+    const dockHello = $('#soulDockHello');
+    if (dockHello) dockHello.onclick = () => {
+      const i = $('#msgInput');
+      if (!i || typeof sendMsg !== 'function') return;
+      i.value = 'مرحبا 👋';
+      sendMsg();
+    };
     const dockChat = $('#soulDockChat');
     if (dockChat) dockChat.onclick = () => { const i = $('#msgInput'); if (i) i.focus(); };
     const lockBtn = $('#dropLockMics');
@@ -715,8 +779,12 @@
     const folStat = $('#soulMeFollowers');
     if (folStat && folStat.parentElement) folStat.parentElement.onclick = () => soulOpenFriends('followers');
 
-    const voiceMatch = $('#soulVoiceMatch');
-    if (voiceMatch) voiceMatch.onclick = () => soulRenderDiscover('people');
+    const momFlag = $('#soulMomentsFlag');
+    if (momFlag) momFlag.onclick = () => {
+      if (typeof soulOpenEvents === 'function') soulOpenEvents();
+      else if (typeof openOv === 'function') openOv('soulEventsOv');
+    };
+
     const pkWatch = $('#soulPkWatch');
     if (pkWatch) pkWatch.onclick = () => {
       closeOv('discoverOv');
@@ -845,7 +913,7 @@
         _ol();
         const bm = $('#bnMenu');
         if (bm && typeof ME !== 'undefined' && ME && typeof avatarHtml === 'function') {
-          bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar, '', typeof frameOf === 'function' ? frameOf(ME) : '')}</span><span>أنا</span>`;
+          bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar, '', typeof frameOf === 'function' ? frameOf(ME) : '')}</span><span>Me</span>`;
         }
         soulPaintMe();
         soulShowHomeNav(true);
