@@ -1315,21 +1315,82 @@ body.soul-app #roomsScreen .soul-cats button.active::after {
   border-radius: 3px;
   background: linear-gradient(90deg, #ec4899, #a855f7);
 }
-.soul-room-avas {
+.soul-room-card {
+  background: transparent;
+  border: 0;
+  border-radius: 18px;
+}
+.soul-room-cover {
   position: relative;
-  height: 132px;
-  background: radial-gradient(120px 80px at 50% 40%, rgba(168,85,247,.35), transparent 70%);
+  height: 148px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #2a1444 center/cover no-repeat;
 }
-.soul-room-avas .ava {
+.soul-room-cover::after {
+  content: "";
   position: absolute;
-  border-radius: 50%;
-  background: #3b1760 center/cover no-repeat;
-  border: 2px solid #f5d0fe;
-  box-shadow: 0 8px 18px rgba(0,0,0,.35);
+  inset: auto 0 0;
+  height: 56px;
+  background: linear-gradient(180deg, transparent, rgba(10, 3, 18, .88));
 }
-.soul-room-avas .a1 { width: 78px; height: 78px; left: 18px; top: 28px; z-index: 2; }
-.soul-room-avas .a2 { width: 62px; height: 62px; right: 22px; top: 18px; z-index: 1; }
-.soul-room-avas .a3 { width: 44px; height: 44px; right: 16px; bottom: 14px; z-index: 3; }
+.soul-room-faces {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: flex;
+  direction: ltr;
+}
+.soul-room-faces .face {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #3b1760 center/cover no-repeat;
+  margin-left: -8px;
+}
+.soul-room-faces .face:first-child { margin-left: 0; }
+.soul-room-meta {
+  padding: 8px 4px 4px;
+}
+.soul-room-meta b { font-size: 13.5px; }
+.soul-cover-pick {
+  display: block;
+  margin: 0 0 12px;
+  cursor: pointer;
+}
+.soul-cover-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 110px;
+  border-radius: 16px;
+  border: 1px dashed rgba(232,121,249,.45);
+  color: #e9d5ff;
+  font-weight: 800;
+  background: rgba(255,255,255,.05) center/cover no-repeat;
+}
+.soul-own-room {
+  background: rgba(236,72,153,.16);
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+.soul-own-room button {
+  display: block;
+  margin-top: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  padding: 8px;
+  font-weight: 800;
+  background: #db2777;
+  color: #fff;
+  cursor: pointer;
+}
 body.soul-app .soul-fab {
   width: 54px; height: 54px; padding: 0;
   border-radius: 50%;
@@ -1488,8 +1549,76 @@ body.soul-app .soul-tabbar {
 body.soul-app #discoverOv,
 body.soul-app #wallOv,
 body.soul-app #privOv,
-body.soul-app #menuOv {
+body.soul-app #menuOv,
+body.soul-app #notifOv,
+body.soul-app #profOv,
+body.soul-app #friendsOv {
   background: #12061f;
+}
+body.soul-app #notifOv .pvpage,
+body.soul-app #profOv .pvpage { background: #140824; color: #fff; }
+body.soul-app #notifList .pv-item,
+body.soul-app #privList .pv-item {
+  background: transparent;
+  color: #fff;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+body.soul-app #menuOv .mn-user {
+  flex-direction: column;
+  text-align: center;
+  padding: 22px 12px 16px;
+  gap: 8px;
+}
+body.soul-app #menuOv .mn-ava {
+  width: 92px; height: 92px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid #e879f9;
+  margin: 0 auto;
+}
+body.soul-app #menuOv .mn-chev { display: none; }
+body.soul-app #menuOv .mn-uinfo { align-items: center; }
+body.soul-app .soul-me-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 0 12px 12px;
+}
+body.soul-app .soul-me-stats div {
+  background: rgba(255,255,255,.06);
+  border-radius: 12px;
+  padding: 8px 4px;
+  text-align: center;
+  color: #f5d0fe;
+}
+body.soul-app .soul-me-stats b { display: block; font-size: 15px; color: #fff; }
+body.soul-app .soul-me-stats span { font-size: 10px; }
+body.soul-app #menuOv .mn-balance {
+  margin: 0 12px 10px;
+  background: linear-gradient(135deg, rgba(251,191,36,.2), rgba(168,85,247,.16));
+  border-radius: 12px;
+  color: #fde68a;
+}
+body.soul-app #profOv .prof-hero {
+  background: radial-gradient(500px 180px at 50% 0, rgba(168,85,247,.4), transparent);
+  padding: 18px 12px 10px;
+  text-align: center;
+  color: #fff;
+}
+body.soul-app #profOv .prof-name { color: #fff; }
+body.soul-app #profOv .pg-head { background: transparent; color: #fff; border: 0; }
+body.soul-app .pill-tabs {
+  background: transparent;
+  border: 0;
+}
+body.soul-app .pill-tabs .pv-tab {
+  color: #c4b5fd;
+  background: rgba(255,255,255,.06);
+  border-radius: 999px;
+}
+body.soul-app .pill-tabs .pv-tab.active {
+  background: linear-gradient(135deg, #a855f7, #db2777);
+  color: #fff;
 }
 .soul-me-planet {
   margin: 8px 12px 0;

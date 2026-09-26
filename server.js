@@ -1687,8 +1687,26 @@ function pubUser(u) {
     soul_premium: +u.soul_premium || 0
   };
 }
+function isStaffRank(rank) {
+  return ['admin', 'superadmin', 'supermaster'].includes(String(rank || ''));
+}
 function levelFromXp(xp) {
   return Math.min(99, Math.floor(Math.sqrt(Math.max(0, +xp || 0) / 20)) + 1);
+}
+function roomFaceList(roomId) {
+  const set = roomUsers[+roomId];
+  if (!set || !set.size) return [];
+  const faces = [];
+  for (const id of set) {
+    const u = onlineUsers[id];
+    if (!u) continue;
+    faces.push({ id: +id, username: String(u.username || ''), avatar: String(u.avatar || '') });
+    if (faces.length >= 3) break;
+  }
+  return faces;
+}
+function defaultRoomCover(id) {
+  return '/img/covers/c' + (((Math.abs(+id) || 0) % 6) + 1) + '.jpg';
 }
 async function addXp(userId, amount) {
   const uid = +userId;
@@ -2430,7 +2448,7 @@ app.get('/api/leaderboard', requireUser, async (req, res) => {
 });
 
 app.post('/api/rooms/create', requireUser, async (req, res) => {
-  const me = await q.get(`SELECT id, username, registered FROM users WHERE id=?`, req.authUid);
+  const me = await q.get(`SELECT id, username, registered, rank FROM users WHERE id=?`, req.authUid);
   if (!me || !me.registered) return res.status(403).json({ error: 'إنشاء الغرف للأعضاء المسجلين فقط' });
   const name = String((req.body || {}).name || '').trim().slice(0, 24);
   const description = String((req.body || {}).description || '').trim().slice(0, 80);
@@ -2440,15 +2458,20 @@ app.post('/api/rooms/create', requireUser, async (req, res) => {
     : 'chat';
   const roomType = partyMode === 'live' || String((req.body || {}).type || '') === 'live' ? 'live' : 'voice';
   if (!name) return res.status(400).json({ error: 'اكتب اسم الغرفة' });
-  const owned = await q.get(`SELECT COUNT(*) c FROM rooms WHERE owner_id=?`, me.id);
-  if (owned && +owned.c >= 5) return res.status(400).json({ error: 'وصلت للحد الأقصى (5 غرف)' });
+  const staff = isStaffRank(me.rank);
+  if (!staff) {
+    const owned = await q.get(`SELECT id, name FROM rooms WHERE owner_id=? AND COALESCE(party_mode,'chat') NOT IN ('partner') ORDER BY id DESC LIMIT 1`, me.id);
+    if (owned) return res.status(400).json({ error: 'يمكنك امتلاك غرفة واحدة فقط — احذف غرفتك الحالية ثم أنشئ أخرى', existing_id: +owned.id, existing_name: owned.name });
+  }
   const clash = await q.get(`SELECT id FROM rooms WHERE name=?`, name);
   if (clash) return res.status(400).json({ error: 'اسم الغرفة مستخدم' });
   const welcome = roomType === 'live' ? 'مرحباً في البث المباشر 📺' : (partyMode === 'disco' ? 'ديسكو الحفلة بدأ 🎶' : 'أهلاً بكم في الحفلة 🎤');
+  let image = String((req.body || {}).image || '').trim();
+  if (!image.startsWith('/uploads/rooms/') && !image.startsWith('/img/covers/')) image = '';
   const out = await q.run(
     `INSERT INTO rooms (name, description, type, max_users, status, welcome, password, image, audience, owner_id, party_mode)
      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    name, description || (roomType === 'live' ? 'بث مباشر ★' : 'حفلة صوتية مباشرة ★'), roomType, 200, 'open', welcome, password, '/img/room.png', 'all', me.id, partyMode === 'live' ? 'live' : partyMode
+    name, description || (roomType === 'live' ? 'بث مباشر ★' : 'حفلة صوتية مباشرة ★'), roomType, 200, 'open', welcome, password, image || defaultRoomCover(Date.now()), 'all', me.id, partyMode === 'live' ? 'live' : partyMode
   );
   const roomId = out.lastID;
   try {
@@ -2457,6 +2480,37 @@ app.post('/api/rooms/create', requireUser, async (req, res) => {
   addXp(me.id, 10).catch(() => { });
   io.emit('sync');
   res.json({ ok: true, id: roomId });
+});
+
+app.get('/api/rooms/mine', requireUser, async (req, res) => {
+  const row = await q.get(`SELECT id, name, image, type, party_mode FROM rooms WHERE owner_id=? AND COALESCE(party_mode,'chat') NOT IN ('partner') ORDER BY id DESC LIMIT 1`, req.authUid);
+  res.json({ room: row ? { id: +row.id, name: row.name, image: row.image, type: row.type, party_mode: row.party_mode } : null });
+});
+
+app.post('/api/rooms/cover', requireUser, (req, res) => {
+  uploadMedia.single('file')(req, res, async (err) => {
+    if (err || !req.file) return res.status(500).json({ error: 'تعذر رفع صورة الغرفة' });
+    if (!String(req.file.mimetype || '').startsWith('image/')) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      return res.status(400).json({ error: 'الملف يجب أن يكون صورة' });
+    }
+    const converted = await toWebP(req.file.path, 640);
+    const finalPath = converted || req.file.path;
+    res.json({ ok: true, path: '/uploads/rooms/' + path.basename(finalPath) });
+  });
+});
+
+app.post('/api/rooms/:id/delete', requireUser, async (req, res) => {
+  const roomId = +req.params.id;
+  const room = await q.get(`SELECT id, owner_id FROM rooms WHERE id=?`, roomId);
+  if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+  const me = await q.get(`SELECT rank FROM users WHERE id=?`, req.authUid);
+  const staff = me && isStaffRank(me.rank);
+  if (!staff && +room.owner_id !== +req.authUid) return res.status(403).json({ error: 'لا يمكنك حذف هذه الغرفة' });
+  if (!+room.owner_id && !staff) return res.status(403).json({ error: 'لا يمكن حذف غرف النظام' });
+  await q.run(`DELETE FROM rooms WHERE id=?`, roomId);
+  io.emit('sync');
+  res.json({ ok: true });
 });
 
 app.post('/api/rooms/:id/mic-lock', requireUser, (req, res, next) => {
@@ -2575,16 +2629,22 @@ app.post('/api/soul/match/cancel', requireUser, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/soul/match', requireUser, async (req, res) => {
-  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
-  if (!me || !me.registered) return res.status(403).json({ error: 'التطابق للأعضاء المسجلين' });
-  matchDrop(req.authUid);
-  const peer = MATCH_QUEUE.shift();
-  if (!peer || +peer.uid === +me.id) {
-    MATCH_QUEUE.push({ uid: +me.id, at: Date.now() });
-    return res.json({ ok: true, waiting: true });
-  }
-  const other = await q.get(`SELECT * FROM users WHERE id=?`, peer.uid);
+function soulMatchScore(me, other) {
+  if (!other || +other.id === +me.id) return -1;
+  let s = 1;
+  const g1 = String(me.gender || 'secret');
+  const g2 = String(other.gender || 'secret');
+  if ((g1 === 'boy' && g2 === 'girl') || (g1 === 'girl' && g2 === 'boy')) s += 60;
+  else if (g1 === 'secret' || g2 === 'secret') s += 18;
+  else if (g1 && g2 && g1 === g2) s += 10;
+  if (me.soul_planet && other.soul_planet && me.soul_planet === other.soul_planet) s += 35;
+  const a = String(me.soul_interests || '').split(',').map(x => x.trim()).filter(Boolean);
+  const b = String(other.soul_interests || '').split(',').map(x => x.trim()).filter(Boolean);
+  s += a.filter(x => b.includes(x)).length * 12;
+  return s;
+}
+
+async function soulCreateMatchRoom(me, other) {
   const name = ('تطابق ★ ' + String(me.username || '').slice(0, 8)).slice(0, 24);
   let roomName = name;
   let n = 1;
@@ -2595,7 +2655,7 @@ app.post('/api/soul/match', requireUser, async (req, res) => {
   const out = await q.run(
     `INSERT INTO rooms (name, description, type, max_users, status, welcome, password, image, audience, owner_id, party_mode)
      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    roomName, 'غرفة تطابق صوتي', 'voice', 8, 'open', 'تعارف صوتي — استمتعوا 🎤', '', '/img/room.png', 'all', me.id, 'partner'
+    roomName, 'غرفة تطابق صوتي', 'voice', 8, 'open', 'تعارف صوتي — استمتعوا 🎤', '', defaultRoomCover(Date.now()), 'all', me.id, 'partner'
   );
   const roomId = out.lastID;
   try { await q.run(`INSERT OR IGNORE INTO room_admins (room_id, user_id, username) VALUES (?,?,?)`, roomId, me.id, me.username); } catch (e) { }
@@ -2603,13 +2663,47 @@ app.post('/api/soul/match', requireUser, async (req, res) => {
     roomId,
     name: roomName,
     peer_a: mapFollowUser(me),
-    peer_b: other ? mapFollowUser(other) : { id: peer.uid, username: 'روح' }
+    peer_b: other ? mapFollowUser(other) : { id: 0, username: 'روح' }
   };
   io.to('user_' + me.id).emit('soul:match', payload);
-  io.to('user_' + peer.uid).emit('soul:match', payload);
+  if (other && other.id) io.to('user_' + other.id).emit('soul:match', payload);
   io.emit('sync');
   addXp(me.id, 8).catch(() => { });
-  res.json({ ok: true, waiting: false, ...payload });
+  return payload;
+}
+
+app.post('/api/soul/match', requireUser, async (req, res) => {
+  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
+  if (!me || !me.registered) return res.status(403).json({ error: 'التطابق للأعضاء المسجلين' });
+  matchDrop(req.authUid);
+  let best = null;
+  let bestScore = -1;
+  for (const item of MATCH_QUEUE.slice()) {
+    if (+item.uid === +me.id) continue;
+    const other = await q.get(`SELECT * FROM users WHERE id=?`, item.uid);
+    const sc = soulMatchScore(me, other);
+    if (sc > bestScore) { bestScore = sc; best = other; }
+  }
+  if (best) {
+    matchDrop(best.id);
+    const payload = await soulCreateMatchRoom(me, best);
+    return res.json({ ok: true, waiting: false, ...payload });
+  }
+  let onlineBest = null;
+  let onlineScore = -1;
+  for (const uid of Object.keys(onlineUsers)) {
+    if (+uid === +me.id) continue;
+    const row = await q.get(`SELECT * FROM users WHERE id=? AND registered=1`, +uid);
+    if (!row) continue;
+    const sc = soulMatchScore(me, row);
+    if (sc > onlineScore) { onlineScore = sc; onlineBest = row; }
+  }
+  if (onlineBest) {
+    const payload = await soulCreateMatchRoom(me, onlineBest);
+    return res.json({ ok: true, waiting: false, ...payload });
+  }
+  MATCH_QUEUE.push({ uid: +me.id, at: Date.now(), gender: me.gender, planet: me.soul_planet || '' });
+  return res.json({ ok: true, waiting: true });
 });
 
 app.get('/api/pk/current', requireUser, async (req, res) => {
@@ -2777,13 +2871,14 @@ app.get('/api/rooms', async (req, res) => {
     id: +r.id,
     name: String(r.name || ''),
     description: String(r.description || ''),
-    image: String(r.image || ''),
+    image: String(r.image || '') && String(r.image) !== '/img/room.png' ? String(r.image) : defaultRoomCover(r.id),
     sort: +r.sort || 0,
     type: String(r.type || 'default'),
     party_mode: String(r.party_mode || 'chat'),
     max_users: +r.max_users || 1000,
     status: String(r.status || 'open'),
     online: counts[r.id] || 0,
+    faces: roomFaceList(r.id),
     owner_id: +r.owner_id || 0,
     mic_locked: r.mic_locked ? 1 : 0,
     live: String(r.type) === 'live' ? 1 : 0,
@@ -9939,12 +10034,11 @@ io.on('connection', async (socket) => {
       ok: false,
       text: me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (mutedActive(me) ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع')
     });
-    const isStaff = ['admin', 'superadmin', 'supermaster'].includes(me.rank);
+    const isStaff = isStaffRank(me.rank);
     const isOwner = +room.owner_id === +uid;
     const isRoomAdm = !!(await q.get(`SELECT id FROM room_admins WHERE room_id=? AND user_id=?`, roomId, uid));
-    const canTakeMicDirect = isStaff || isOwner || isRoomAdm;
-    if (room.mic_locked && !canTakeMicDirect) return ack({ ok: false, text: 'المايكات مغلقة من مضيف الغرفة' });
-    if (!canTakeMicDirect) return ack({ ok: false, need_request: true, text: 'لا يمكن الصعود مباشرة — اطلب مقعداً من مضيف الغرفة' });
+    const canTakeMicDirect = true;
+    if (room.mic_locked && !(isStaff || isOwner || isRoomAdm)) return ack({ ok: false, text: 'المايكات مغلقة من مضيف الغرفة' });
     let b = roomBroadcast[roomId];
     if (b && b.hosts.has(uid)) return ack({ ok: false, text: 'أنت تبث بالفعل في هذه الغرفة' });
     // حد المذيعين المتزامنين (الميكروفونات) المُعيَّن من لوحة الإدارة
@@ -10038,10 +10132,12 @@ io.on('connection', async (socket) => {
   });
 
   // إزالة مذيع وإعادته مستمعاً — للمضيف الأساسي فقط
-  socket.on('bcast:remove_speaker', (roomId, targetUserId) => {
+  socket.on('bcast:remove_speaker', async (roomId, targetUserId) => {
     roomId = +roomId; targetUserId = +targetUserId;
     const b = roomBroadcast[roomId];
     if (!b || b.mode !== 'audio' || b.primaryHostId !== uid || targetUserId === uid || !b.hosts.has(targetUserId)) return;
+    const target = await q.get(`SELECT rank FROM users WHERE id=?`, targetUserId);
+    if (target && isStaffRank(target.rank)) return;
     b.hosts.delete(targetUserId);
     b.viewers.add(targetUserId);
     io.to('room_' + roomId).emit('bcast:host_left', { roomId, hostId: targetUserId, reason: 'removed_by_host' });
@@ -10055,6 +10151,8 @@ io.on('connection', async (socket) => {
     roomId = +roomId; targetUserId = +targetUserId;
     if (targetUserId === uid) return;
     if (!(await socketCanModerate(uid, roomId))) return;
+    const target = await q.get(`SELECT rank FROM users WHERE id=?`, targetUserId);
+    if (target && isStaffRank(target.rank)) return;
     const b = roomBroadcast[roomId];
     if (!b || !b.hosts.has(targetUserId)) return;
     const mode = b.mode;

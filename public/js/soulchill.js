@@ -76,24 +76,31 @@
     } catch (e) { }
   }
 
+  function soulRoomCover(r) {
+    const img = r && r.image;
+    if (img && img !== '/img/room.png') return img;
+    return '/img/covers/c' + ((((+r.id) || 0) % 6) + 1) + '.jpg';
+  }
+  function soulFaceSrc(u) {
+    if (!u) return '/avatars/default.png';
+    return avaUrl(u);
+  }
   function soulRoomCardHtml(r) {
     const online = (typeof ROOM_COUNTS !== 'undefined' && ROOM_COUNTS[r.id]) || r.online || 0;
-    const img = r.image || '/img/room.png';
     const live = online > 0;
     const isPk = !!(r.pk || (PK_STATE && (PK_STATE.room_a === r.id || PK_STATE.room_b === r.id)));
-    const safeImg = typeof esc === 'function' ? esc(img) : img;
+    const cover = typeof esc === 'function' ? esc(soulRoomCover(r)) : soulRoomCover(r);
     const name = typeof esc === 'function' ? esc(r.name) : r.name;
-    const desc = typeof esc === 'function' ? esc(r.description || '') : (r.description || '');
+    const faces = (r.faces || []).slice(0, 3);
+    const faceHtml = faces.map((u, i) => `<span class="face f${i}" style="background-image:url('${soulFaceSrc(u)}')"></span>`).join('');
     return `<article class="soul-room-card" data-id="${r.id}">
-      <div class="soul-room-avas">
-        <span class="ava a1" style="background-image:url('${safeImg}')"></span>
-        <span class="ava a2" style="background-image:url('${safeImg}')"></span>
-        <span class="ava a3" style="background-image:url('${safeImg}')"></span>
-        ${live || r.type === 'live' || online > 0 ? '<span class="soul-live">LIVE</span>' : ''}
+      <div class="soul-room-cover" style="background-image:url('${cover}')">
+        ${live ? '<span class="soul-live">LIVE</span>' : ''}
         ${isPk || r.party_mode === 'pk' ? '<span class="soul-pk-tag">PK</span>' : ''}
+        <div class="soul-room-faces">${faceHtml}</div>
         <div class="soul-room-online">${online}</div>
       </div>
-      <div class="soul-room-meta"><b class="room-name">${name}</b><small>${desc || (r.party_mode === 'disco' ? 'Disco' : 'Party')}</small></div>
+      <div class="soul-room-meta"><b class="room-name">${name}</b></div>
     </article>`;
   }
 
@@ -167,11 +174,7 @@
       if (typeof toast === 'function') toast('المايكات مغلقة من مضيف الغرفة', false);
       return;
     }
-    if (soulCanHostMic()) {
-      if (typeof bcastStart === 'function') bcastStart(CUR_ROOM.type === 'live' ? 'video' : 'audio');
-      return;
-    }
-    soulRequestSeat();
+    if (typeof bcastStart === 'function') bcastStart(CUR_ROOM.type === 'live' ? 'video' : 'audio');
   }
   function soulRequestSeat() {
     if (!CUR_ROOM || typeof SOCKET === 'undefined' || !SOCKET) return;
@@ -517,13 +520,42 @@
     }
   }
 
+  let ROOM_COVER_PATH = '';
   async function soulCreateRoom() {
     if (!needAuth()) return;
     if (typeof ME !== 'undefined' && ME && !ME.registered) {
       if (typeof openOv === 'function') openOv('needRegOv');
       return;
     }
+    ROOM_COVER_PATH = '';
+    const preview = $('#soulCoverPreview');
+    if (preview) { preview.style.backgroundImage = ''; preview.textContent = 'إضافة صورة الغرفة'; }
+    const err = $('#soulRoomErr'); if (err) err.textContent = '';
     openOv('createRoomOv');
+    const box = $('#soulOwnRoom');
+    if (box) {
+      box.hidden = true;
+      try {
+        const d = await api('/api/rooms/mine');
+        if (d && d.room) {
+          box.hidden = false;
+          box.innerHTML = `لديك غرفة <b>${typeof esc === 'function' ? esc(d.room.name) : d.room.name}</b> — احذفها لإنشاء غرفة جديدة
+            <button type="button" id="soulDeleteMine">حذف الغرفة الحالية</button>`;
+          const del = $('#soulDeleteMine');
+          if (del) del.onclick = async () => {
+            if (!confirm('حذف غرفتك الحالية؟')) return;
+            try {
+              await api('/api/rooms/' + d.room.id + '/delete', 'POST', {});
+              box.hidden = true;
+              if (typeof toast === 'function') toast('تم حذف الغرفة');
+              if (typeof loadRooms === 'function') loadRooms();
+            } catch (e) {
+              if (typeof toast === 'function') toast((e && e.error) || 'تعذر الحذف', false);
+            }
+          };
+        }
+      } catch (e) { }
+    }
   }
 
   async function soulSubmitRoom() {
@@ -535,7 +567,7 @@
     try {
       const modeBtn = document.querySelector('#soulModePicks button.active');
       const party_mode = (modeBtn && modeBtn.dataset.mode) || 'chat';
-      const d = await api('/api/rooms/create', 'POST', { name, description, password, party_mode, type: party_mode === 'live' ? 'live' : 'voice' });
+      const d = await api('/api/rooms/create', 'POST', { name, description, password, party_mode, type: party_mode === 'live' ? 'live' : 'voice', image: ROOM_COVER_PATH });
       closeOv('createRoomOv');
       if (typeof toast === 'function') toast('تم إنشاء الغرفة 🎤');
       if (typeof loadRooms === 'function') await loadRooms();
@@ -639,6 +671,24 @@
     if (fab) fab.onclick = soulCreateRoom;
     const make = $('#soulCreateGo');
     if (make) make.onclick = soulSubmitRoom;
+    const imgInp = $('#soulRoomImg');
+    if (imgInp) imgInp.onchange = async () => {
+      const f = imgInp.files && imgInp.files[0];
+      if (!f) return;
+      const fd = new FormData();
+      fd.append('file', f);
+      try {
+        const d = await api('/api/rooms/cover', 'POST', fd, true);
+        ROOM_COVER_PATH = d.path || '';
+        const preview = $('#soulCoverPreview');
+        if (preview) {
+          preview.textContent = '';
+          preview.style.backgroundImage = 'url(' + ROOM_COVER_PATH + ')';
+        }
+      } catch (e) {
+        if (typeof toast === 'function') toast((e && e.error) || 'تعذر رفع الصورة', false);
+      }
+    };
 
     $$('#discoverOv .soul-tabs button').forEach(b => b.onclick = () => soulRenderDiscover(b.dataset.dtab));
     $$('#friendsOv .soul-tabs button').forEach(b => b.onclick = () => soulRenderFriends(b.dataset.ftab));

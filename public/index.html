@@ -23,7 +23,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/style.css?v=20260919-usort1">
-<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul4">
+<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul5">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body class="soul-app">
@@ -1237,13 +1237,13 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   <!-- الإشعارات -->
   <div class="overlay full withnav" id="notifOv">
     <div class="pvpage notifications-page">
-      <div class="pg-head bar mid">
-        <span class="pg-close back" data-close="notifOv" style="display: flex;flex-direction: row-reverse;"><i class="f7-icons">chevron_left</i> عودة</span>
-        <span class="pg-title">الإشعارات</span>
-      </div>
-      <div class="page-heading">
-        <span class="ph-title">إشعارات</span>
+      <div class="pg-head bar mid soul-msg-head">
+        <span class="pg-title">Notice</span>
+        <span class="pg-close back" data-close="notifOv" style="display:none"><i class="f7-icons">chevron_left</i></span>
         <i class="f7-icons ph-icon" id="notifSettings">gear_alt_fill</i>
+      </div>
+      <div class="page-heading" style="display:none">
+        <span class="ph-title">إشعارات</span>
       </div>
       <div class="pv-list" id="notifList"></div>
     </div>
@@ -1756,6 +1756,11 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <button type="button" data-mode="partner">ثنائي</button>
         <button type="button" data-mode="disco">ديسكو</button>
       </div>
+      <div class="soul-own-room" id="soulOwnRoom" hidden></div>
+      <label class="soul-cover-pick" id="soulCoverPick">
+        <input type="file" id="soulRoomImg" accept="image/*" hidden>
+        <span class="soul-cover-preview" id="soulCoverPreview">إضافة صورة الغرفة</span>
+      </label>
       <div class="soul-field"><input id="soulRoomName" maxlength="24" placeholder="اسم الغرفة"></div>
       <div class="soul-field"><input id="soulRoomDesc" maxlength="80" placeholder="وصف قصير (اختياري)"></div>
       <div class="soul-field"><input id="soulRoomPass" maxlength="20" placeholder="كلمة سر للغرفة الخاصة (اختياري)"></div>
@@ -1861,9 +1866,9 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
-<script src="/js/app.js?v=20260926-soul4" defer></script>
-<script src="/js/soulchill.js?v=20260926-soul4" defer></script>
-<script src="/js/soul-world.js?v=20260926-soul4" defer></script>
+<script src="/js/app.js?v=20260926-soul5" defer></script>
+<script src="/js/soulchill.js?v=20260926-soul5" defer></script>
+<script src="/js/soul-world.js?v=20260926-soul5" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

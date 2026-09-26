@@ -5572,10 +5572,11 @@ function syncUserBroadcastControlButtons() {
   const state = CUR_ROOM ? ROOM_BCAST[CUR_ROOM.id] : null;
   const isLiveHost = !!(state && (state.hosts || []).some(h => +h.id === +CUR_TARGET.id));
   const isBanned = !!CUR_TARGET.broadcast_banned;
+  const staffTarget = CUR_TARGET && ['admin', 'superadmin', 'supermaster'].includes(CUR_TARGET.rank);
   const p1 = $('#usBcastPull'), p2 = $('#usBcastPullBan'), ub = $('#usBcastUnban');
-  if (p1) p1.style.display = (notSelf && isLiveHost) ? 'flex' : 'none';
-  if (p2) p2.style.display = (notSelf && isLiveHost) ? 'flex' : 'none';
-  if (ub) ub.style.display = (notSelf && isBanned) ? 'flex' : 'none';
+  if (p1) p1.style.display = (notSelf && isLiveHost && !staffTarget) ? 'flex' : 'none';
+  if (p2) p2.style.display = (notSelf && isLiveHost && !staffTarget) ? 'flex' : 'none';
+  if (ub) ub.style.display = (notSelf && isBanned && !staffTarget) ? 'flex' : 'none';
 }
 // عند تمرير «مرساة» (اسم/صورة في العام) تُعرض ورقة المستخدم نفسها بجانب الاسم
 // مع سهم جانبي يشير إليه — على الشاشات الكبيرة فقط. على الهاتف تبقى ورقة سفلية
@@ -5736,6 +5737,7 @@ $('#usIgnore').onclick = async () => {
 // [مشرف] سحب المايك من مذيع (إعادته مستمعاً فقط)
 $('#usBcastPull').onclick = async () => {
   if (!CUR_TARGET || !CUR_ROOM || !canModerateRank()) return toast('لا تملك صلاحية سحب المايك', false);
+  if (['admin', 'superadmin', 'supermaster'].includes(CUR_TARGET.rank)) return toast('لا يمكن سحب مايك الإدارة', false);
   const target = CUR_TARGET;
   closeOv('userSheet');
   try {
@@ -5746,6 +5748,7 @@ $('#usBcastPull').onclick = async () => {
 // [مشرف] سحب المايك مع منع الصعود إلى البث مستقبلاً
 $('#usBcastPullBan').onclick = async () => {
   if (!CUR_TARGET || !CUR_ROOM || !canModerateRank()) return toast('لا تملك صلاحية سحب المايك مع المنع', false);
+  if (['admin', 'superadmin', 'supermaster'].includes(CUR_TARGET.rank)) return toast('لا يمكن سحب مايك الإدارة', false);
   const target = CUR_TARGET;
   closeOv('userSheet');
   try {
