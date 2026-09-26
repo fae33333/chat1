@@ -1,21 +1,21 @@
 /* SoulChill-inspired shell: dark purple party rooms, Gmail gate, seats, PK */
 body.soul-app {
-  --soul-bg: #12061f;
-  --soul-bg2: #1b0a2e;
-  --soul-card: #241038;
-  --soul-line: rgba(168, 85, 247, .22);
-  --soul-pink: #ec4899;
-  --soul-purple: #a855f7;
-  --soul-gold: #fbbf24;
-  --soul-text: #f6edff;
-  --soul-mute: #b7a3cc;
-  --main: #a855f7;
-  --main2: #ec4899;
-  --navy: #f6edff;
-  --bg: #12061f;
-  --line: rgba(168, 85, 247, .18);
+  --soul-bg: #050508;
+  --soul-bg2: #0c0c12;
+  --soul-card: #14141c;
+  --soul-line: rgba(255, 255, 255, .08);
+  --soul-pink: #ff4d9a;
+  --soul-purple: #c85cff;
+  --soul-gold: #ffcc3d;
+  --soul-text: #ffffff;
+  --soul-mute: #8e8e96;
+  --main: #c85cff;
+  --main2: #ff4d9a;
+  --navy: #ffffff;
+  --bg: #050508;
+  --line: rgba(255, 255, 255, .08);
   --njomarab-theme-color: #e879f9;
-  background: #07010e;
+  background: #000;
 }
 
 body.soul-app #frame {
@@ -29,17 +29,14 @@ body.soul-app .main-stage {
 
 /* ---------- Home / Party ---------- */
 body.soul-app #roomsScreen {
-  background:
-    radial-gradient(1200px 420px at 50% -80px, rgba(168, 85, 247, .35), transparent 60%),
-    radial-gradient(800px 300px at 100% 0, rgba(236, 72, 153, .18), transparent 50%),
-    var(--soul-bg);
+  background: #000;
   color: var(--soul-text);
 }
 
 .soul-home-head {
   flex: none;
   padding: 8px 12px 4px;
-  background: linear-gradient(180deg, rgba(12, 4, 22, .88), rgba(12, 4, 22, 0));
+  background: linear-gradient(180deg, rgba(0, 0, 0, .88), rgba(0, 0, 0, 0));
 }
 
 .soul-home-top {
@@ -58,7 +55,7 @@ body.soul-app #roomsScreen {
   color: #fff;
   border-radius: 999px;
   padding: 5px 8px 5px 5px;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -78,7 +75,7 @@ body.soul-app #roomsScreen {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 body.soul-app #roomsScreen .r-logo-txt,
@@ -87,8 +84,8 @@ body.soul-app #roomsScreen .head-name {
 }
 
 body.soul-app #roomsScreen .r-logo-ico {
-  background: linear-gradient(150deg, #a855f7, #ec4899);
-  box-shadow: 0 6px 16px rgba(168, 85, 247, .45);
+  background: linear-gradient(150deg, #c85cff, #ff4d9a);
+  box-shadow: 0 6px 16px rgba(200, 92, 255, .45);
 }
 
 .soul-home-tools {
@@ -120,8 +117,8 @@ body.soul-app #roomsScreen .r-logo-ico {
 }
 
 body.soul-app #roomsScreen .btn-enter {
-  background: linear-gradient(135deg, #a855f7, #ec4899);
-  box-shadow: 0 6px 16px rgba(168, 85, 247, .35);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
+  box-shadow: 0 6px 16px rgba(200, 92, 255, .35);
   border-radius: 999px;
 }
 
@@ -137,8 +134,8 @@ body.soul-app #roomsScreen .btn-enter {
   flex: none;
   border: 0;
   background: rgba(255, 255, 255, .08);
-  color: #d8c6f0;
-  font-weight: 800;
+  color: #c8c8d0;
+  font-weight: 600;
   font-size: 12.5px;
   padding: 7px 14px;
   border-radius: 999px;
@@ -146,9 +143,9 @@ body.soul-app #roomsScreen .btn-enter {
 }
 
 .soul-cats button.active {
-  background: linear-gradient(135deg, #a855f7, #db2777);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
   color: #fff;
-  box-shadow: 0 6px 14px rgba(168, 85, 247, .35);
+  box-shadow: 0 6px 14px rgba(200, 92, 255, .35);
 }
 
 body.soul-app #roomsScreen .r-search,
@@ -164,7 +161,7 @@ body.soul-app .soul-search {
   direction: rtl;
 }
 
-body.soul-app #roomsScreen .r-search i { color: #c4b0e0; font-size: 16px; }
+body.soul-app #roomsScreen .r-search i { color: #8e8e96; font-size: 16px; }
 
 body.soul-app #roomsScreen .r-search textarea,
 body.soul-app #roomsScreen .r-search input {
@@ -176,7 +173,7 @@ body.soul-app #roomsScreen .r-search input {
   line-height: 34px;
 }
 
-body.soul-app #roomsScreen .r-search textarea::placeholder { color: #9b87b5; }
+body.soul-app #roomsScreen .r-search textarea::placeholder { color: #8e8e96; }
 
 body.soul-app #roomsList.r-list {
   display: grid;
@@ -201,7 +198,7 @@ body.soul-app #roomsList.r-list {
 .soul-room-cover {
   position: relative;
   height: 118px;
-  background: #2a1444 center/cover no-repeat;
+  background: #1a1a22 center/cover no-repeat;
 }
 
 .soul-room-cover::after {
@@ -218,7 +215,7 @@ body.soul-app #roomsList.r-list {
   top: 8px;
   z-index: 1;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   padding: 3px 7px;
   border-radius: 6px;
   color: #fff;
@@ -231,7 +228,7 @@ body.soul-app #roomsList.r-list {
 
 .soul-pk-tag {
   left: 8px;
-  background: linear-gradient(135deg, #7c3aed, #db2777);
+  background: linear-gradient(135deg, #7c3aed, #ff4d9a);
 }
 
 .soul-room-online {
@@ -244,7 +241,7 @@ body.soul-app #roomsList.r-list {
   gap: 3px;
   color: #fff;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   background: rgba(0, 0, 0, .4);
   padding: 2px 7px;
   border-radius: 999px;
@@ -280,7 +277,7 @@ body.soul-app #roomsList.r-list {
   text-align: center;
   color: var(--soul-mute);
   padding: 48px 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .soul-fab {
@@ -292,13 +289,13 @@ body.soul-app #roomsList.r-list {
   align-items: center;
   gap: 6px;
   border: 0;
-  background: linear-gradient(135deg, #a855f7, #ec4899);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
   color: #fff;
-  font-weight: 900;
+  font-weight: 700;
   font-size: 13px;
   padding: 11px 16px;
   border-radius: 999px;
-  box-shadow: 0 10px 24px rgba(168, 85, 247, .4);
+  box-shadow: 0 10px 24px rgba(200, 92, 255, .4);
   cursor: pointer;
 }
 
@@ -306,29 +303,26 @@ body.soul-app #roomsList.r-list {
 
 /* ---------- Bottom nav ---------- */
 body.soul-app .bottomnav {
-  background: rgba(16, 6, 28, .94);
+  background: rgba(8, 8, 12, .94);
   border-top: 1px solid var(--soul-line);
   backdrop-filter: blur(16px);
 }
 
-body.soul-app .bn-item { color: #8b769f; }
+body.soul-app .bn-item { color: #8e8e96; }
 
-body.soul-app .bn-item.active { color: #f0abfc; }
+body.soul-app .bn-item.active { color: #e879f9; }
 
 body.soul-app .bn-item.bn-center {
   transform: translateY(-8px);
 }
 
 body.soul-app .bn-item.bn-center i {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #a855f7, #ec4899);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8px 18px rgba(168, 85, 247, .45);
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  color: #e879f9;
+  box-shadow: none;
   font-size: 22px;
 }
 
@@ -338,7 +332,7 @@ body.soul-app .bn-ava img {
 
 /* ---------- Login gate ---------- */
 body.soul-app #loginOv.soul-gate {
-  background: #0c0314;
+  background: #000000;
   align-items: stretch;
 }
 
@@ -356,8 +350,8 @@ body.soul-app #loginOv.soul-gate .soul-login {
   text-align: center;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 0, rgba(168, 85, 247, .55), transparent 58%),
-    radial-gradient(circle at 80% 40%, rgba(236, 72, 153, .25), transparent 45%),
+    radial-gradient(circle at 50% 0, rgba(200, 92, 255, .55), transparent 58%),
+    radial-gradient(circle at 80% 40%, rgba(255, 77, 154, .25), transparent 45%),
     #14061f;
 }
 
@@ -367,7 +361,7 @@ body.soul-app #loginOv.soul-gate .soul-login {
   inset: 0;
   background-image:
     radial-gradient(#fff 1px, transparent 1px),
-    radial-gradient(#f5d0fe 1px, transparent 1px);
+    radial-gradient(#eeeeee 1px, transparent 1px);
   background-size: 42px 42px, 68px 68px;
   background-position: 0 0, 20px 30px;
   opacity: .28;
@@ -383,8 +377,8 @@ body.soul-app #loginOv.soul-gate .soul-login {
   align-items: center;
   justify-content: center;
   font-size: 42px;
-  background: linear-gradient(145deg, #c084fc, #db2777);
-  box-shadow: 0 16px 40px rgba(168, 85, 247, .45);
+  background: linear-gradient(145deg, #c85cff, #ff4d9a);
+  box-shadow: 0 16px 40px rgba(200, 92, 255, .45);
   position: relative;
   z-index: 1;
 }
@@ -394,7 +388,7 @@ body.soul-app #loginOv.soul-gate .soul-login {
   z-index: 1;
   color: #fff;
   font-size: 28px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: .4px;
 }
 
@@ -409,7 +403,7 @@ body.soul-app #loginOv.soul-gate .soul-login {
 
 .soul-login-card {
   flex: 1;
-  background: linear-gradient(180deg, #1a0a2c, #12061f);
+  background: linear-gradient(180deg, #16161e, #000000);
   border-radius: 28px 28px 0 0;
   padding: 22px 22px 28px;
   margin-top: -12px;
@@ -436,7 +430,7 @@ body.soul-app #loginOv .lg-switchrow { display: none; }
   border: 0;
   border-radius: 14px;
   padding: 13px 12px;
-  font-weight: 900;
+  font-weight: 700;
   font-size: 15px;
   cursor: pointer;
   margin-bottom: 14px;
@@ -451,7 +445,7 @@ body.soul-app #loginOv .lf-field {
   border-radius: 12px;
   color: #fff;
 }
-body.soul-app #loginOv .lf-ic { color: #e9d5ff; }
+body.soul-app #loginOv .lf-ic { color: #e8e8ee; }
 body.soul-app #loginOv .cl-err { color: #fda4af; }
 
 body.soul-app #loginOv .lf-field input,
@@ -462,20 +456,20 @@ body.soul-app #loginOv .lf-field small {
   border: 0;
   outline: 0;
 }
-body.soul-app #loginOv .lf-field input::placeholder { color: #b7a3cc; }
+body.soul-app #loginOv .lf-field input::placeholder { color: #8e8e96; }
 
 body.soul-app #loginOv .big-btn {
-  background: linear-gradient(135deg, #a855f7, #ec4899);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
   border-radius: 14px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 body.soul-app #loginOv .lg-q,
 body.soul-app #loginOv .lg-terms,
-body.soul-app #loginOv .lg-pill { color: #d8c6f0; }
+body.soul-app #loginOv .lg-pill { color: #c8c8d0; }
 
 body.soul-app #loginOv .lg-pill {
-  background: rgba(168, 85, 247, .18);
+  background: rgba(200, 92, 255, .18);
   border-radius: 999px;
   padding: 6px 12px;
 }
@@ -485,16 +479,16 @@ body.soul-app #loginOv .lg-pill {
   width: 100%;
   margin-top: 10px;
   background: transparent;
-  border: 1px dashed rgba(168, 85, 247, .4);
-  color: #e9d5ff;
+  border: 1px dashed rgba(200, 92, 255, .4);
+  color: #e8e8ee;
   border-radius: 12px;
   padding: 10px;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
 
 body.soul-app #regOv .sheet {
-  background: #1a0a2c;
+  background: #16161e;
   color: #fff;
 }
 
@@ -507,25 +501,26 @@ body.soul-app #regOv .f-input {
 }
 
 body.soul-app #regOv .big-btn {
-  background: linear-gradient(135deg, #a855f7, #ec4899);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
 }
 
 /* ---------- Voice room stage ---------- */
 body.soul-app #chatScreen {
   background:
-    radial-gradient(900px 280px at 50% -40px, rgba(168, 85, 247, .28), transparent 55%),
-    #14061f;
+    linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.72)),
+    url('/img/soul-room-bg.jpg') center / cover no-repeat,
+    #050508;
 }
 
 body.soul-app #chatScreen .c-top {
-  background: rgba(16, 6, 28, .92);
+  background: rgba(8, 8, 12, .92);
   border-bottom: 1px solid var(--soul-line);
   color: #fff;
 }
 
 body.soul-app #chatScreen .c-room-name { color: #fff; }
 
-body.soul-app #chatScreen .cbtn { color: #f5d0fe; }
+body.soul-app #chatScreen .cbtn { color: #eeeeee; }
 
 body.soul-app #chatScreen.soul-voice #liveBar { display: none !important; }
 
@@ -538,7 +533,7 @@ body.soul-app #chatScreen.soul-voice #liveBar { display: none !important; }
   height: 72px;
   margin: 0 12px 8px;
   border-radius: 14px;
-  background: #2a1444 center/cover no-repeat;
+  background: #1a1a22 center/cover no-repeat;
   position: relative;
   overflow: hidden;
 }
@@ -547,7 +542,7 @@ body.soul-app #chatScreen.soul-voice #liveBar { display: none !important; }
   position: absolute;
   inset: auto 10px 8px auto;
   color: #fff;
-  font-weight: 900;
+  font-weight: 700;
   font-size: 13px;
   text-shadow: 0 2px 8px #000;
 }
@@ -562,7 +557,7 @@ body.soul-app #chatScreen.soul-voice #liveBar { display: none !important; }
   border-radius: 14px;
   background: linear-gradient(90deg, #6d28d9, #be185d);
   color: #fff;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .soul-pk-bar .pk-side {
@@ -608,11 +603,11 @@ body.soul-app #chatScreen.soul-voice #liveBar { display: none !important; }
   border-radius: 50%;
   overflow: hidden;
   background: rgba(255, 255, 255, .06);
-  border: 2px solid rgba(168, 85, 247, .35);
+  border: 2px solid rgba(200, 92, 255, .35);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #c4b5fd;
+  color: #b4b4bc;
   position: relative;
 }
 
@@ -642,8 +637,8 @@ body.soul-app #chatScreen.soul-voice #liveBar { display: none !important; }
 .soul-seat small {
   max-width: 100%;
   font-size: 10.5px;
-  font-weight: 800;
-  color: #e9d5ff;
+  font-weight: 600;
+  color: #e8e8ee;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -656,7 +651,7 @@ body.soul-app #chatScreen.soul-voice #liveBar { display: none !important; }
   background: #7c3aed;
   color: #fff;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   border-radius: 8px;
   padding: 0 4px;
   min-width: 16px;
@@ -672,7 +667,7 @@ body.soul-app #chatScreen.soul-voice #liveBar { display: none !important; }
   flex: none;
   justify-content: space-around;
   padding: 6px 6px 4px;
-  background: rgba(16, 6, 28, .92);
+  background: rgba(8, 8, 12, .92);
   border-top: 1px solid var(--soul-line);
 }
 
@@ -682,12 +677,12 @@ body.soul-app #chatScreen.soul-voice .soul-dock { display: flex; }
   flex: 1;
   background: transparent;
   border: 0;
-  color: #f5d0fe;
+  color: #eeeeee;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  font-weight: 800;
+  font-weight: 600;
   font-size: 11px;
   cursor: pointer;
 }
@@ -695,7 +690,7 @@ body.soul-app #chatScreen.soul-voice .soul-dock { display: flex; }
 .soul-dock button i { font-size: 22px; }
 
 body.soul-app #chatScreen .c-input {
-  background: rgba(16, 6, 28, .94);
+  background: rgba(8, 8, 12, .94);
   border-top: 1px solid var(--soul-line);
 }
 
@@ -725,7 +720,7 @@ body.soul-app .bottomnav > #notifBadge { display: none !important; }
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px 8px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .soul-page-head b { font-size: 20px; }
@@ -739,15 +734,15 @@ body.soul-app .bottomnav > #notifBadge { display: none !important; }
 .soul-tabs button {
   border: 0;
   background: rgba(255, 255, 255, .08);
-  color: #d8c6f0;
+  color: #c8c8d0;
   border-radius: 999px;
   padding: 7px 12px;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .soul-tabs button.active {
-  background: linear-gradient(135deg, #a855f7, #db2777);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
   color: #fff;
 }
 
@@ -774,9 +769,9 @@ body.soul-app .bottomnav > #notifBadge { display: none !important; }
   height: 78px;
   border-radius: 50%;
   overflow: hidden;
-  border: 2px solid #a855f7;
+  border: 2px solid #c85cff;
   position: relative;
-  background: #2a1444;
+  background: #1a1a22;
 }
 
 .soul-person .ava img { width: 100%; height: 100%; object-fit: cover; }
@@ -786,15 +781,15 @@ body.soul-app .bottomnav > #notifBadge { display: none !important; }
   bottom: -4px;
   left: 50%;
   transform: translateX(-50%);
-  background: linear-gradient(135deg, #a855f7, #ec4899);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   padding: 1px 6px;
   border-radius: 8px;
 }
 
 .soul-person small {
-  font-weight: 800;
+  font-weight: 600;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -803,18 +798,18 @@ body.soul-app .bottomnav > #notifBadge { display: none !important; }
 
 .soul-follow {
   border: 0;
-  background: rgba(168, 85, 247, .2);
-  color: #f5d0fe;
+  background: rgba(200, 92, 255, .2);
+  color: #eeeeee;
   border-radius: 999px;
   padding: 4px 10px;
-  font-weight: 800;
+  font-weight: 600;
   font-size: 11px;
   cursor: pointer;
 }
 
 .soul-follow.on {
   background: rgba(255, 255, 255, .08);
-  color: #c4b5fd;
+  color: #b4b4bc;
 }
 
 .soul-list {
@@ -834,7 +829,7 @@ body.soul-app .bottomnav > #notifBadge { display: none !important; }
   height: 46px;
   border-radius: 50%;
   overflow: hidden;
-  background: #2a1444;
+  background: #1a1a22;
   flex: none;
 }
 
@@ -858,7 +853,7 @@ body.soul-app .bottomnav > #notifBadge { display: none !important; }
   border-radius: 14px;
   padding: 12px 10px;
   color: #fff;
-  font-weight: 800;
+  font-weight: 600;
   text-align: right;
   cursor: pointer;
 }
@@ -868,7 +863,7 @@ body.soul-app .bottomnav > #notifBadge { display: none !important; }
 }
 
 .soul-hero-actions .pk {
-  background: linear-gradient(135deg, #db2777, #f59e0b);
+  background: linear-gradient(135deg, #ff4d9a, #f59e0b);
 }
 
 .soul-hero-actions small { display: block; opacity: .8; font-size: 11px; }
@@ -923,7 +918,7 @@ body.soul-app #menuOv .mn-balance {
 
 .soul-me-stats b { display: block; color: #fff; font-size: 14px; }
 
-.soul-me-stats span { color: var(--soul-mute); font-size: 10.5px; font-weight: 800; }
+.soul-me-stats span { color: var(--soul-mute); font-size: 10.5px; font-weight: 600; }
 
 body.soul-app .enter-drop {
   background: #1f0b33;
@@ -933,7 +928,7 @@ body.soul-app .enter-drop {
 body.soul-app .enter-drop button { color: #fff; border-color: var(--soul-line); }
 
 .soul-sheet {
-  background: #1a0a2c;
+  background: #16161e;
   color: #fff;
   width: 100%;
   border-radius: 22px 22px 0 0;
@@ -969,9 +964,9 @@ body.soul-app .enter-drop button { color: #fff; border-color: var(--soul-line); 
   border: 0;
   border-radius: 14px;
   padding: 12px;
-  background: linear-gradient(135deg, #a855f7, #ec4899);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
   color: #fff;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -982,12 +977,12 @@ body.soul-app .enter-drop button { color: #fff; border-color: var(--soul-line); 
 .soul-rank .soul-row .pos {
   width: 22px;
   text-align: center;
-  font-weight: 900;
+  font-weight: 700;
   color: #fbbf24;
 }
 
 body.soul-app .usheet {
-  background: #1a0a2c;
+  background: #16161e;
   color: #fff;
 }
 
@@ -1009,7 +1004,7 @@ body.soul-app .soul-tabbar .bn-item {
   font-size: 10px;
   gap: 3px;
 }
-body.soul-app .soul-tabbar .bn-item.active { color: #f0abfc; }
+body.soul-app .soul-tabbar .bn-item.active { color: #e879f9; }
 body.soul-app .soul-ico {
   width: 24px;
   height: 24px;
@@ -1019,18 +1014,19 @@ body.soul-app .soul-ico {
 }
 body.soul-app .soul-ico svg { width: 22px; height: 22px; display: block; }
 body.soul-app .bn-item.bn-center {
-  transform: translateY(-14px);
+  transform: translateY(-6px);
 }
 body.soul-app .bn-item.bn-center .soul-star {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: linear-gradient(145deg, #c084fc, #db2777);
-  box-shadow: 0 8px 20px rgba(168, 85, 247, .55);
-  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: #e879f9;
+  filter: drop-shadow(0 0 10px rgba(232,121,249,.55));
 }
 body.soul-app .bn-item.bn-center .soul-star svg { width: 26px; height: 26px; }
-body.soul-app .bn-item.bn-center.active { color: #f5d0fe; }
+body.soul-app .bn-item.bn-center.active { color: #e879f9; }
 body.soul-app .bn-ava, body.soul-app #bnMenu .soul-ico.bn-ava {
   width: 24px; height: 24px; border-radius: 50%; overflow: hidden;
 }
@@ -1042,7 +1038,7 @@ body.soul-app #chatScreen.soul-voice .soul-dock {
   align-items: center;
   justify-content: space-around;
   padding: 8px 10px 10px;
-  background: linear-gradient(180deg, transparent, rgba(12, 4, 22, .95));
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, .95));
 }
 body.soul-app .soul-dock button {
   width: auto;
@@ -1050,14 +1046,14 @@ body.soul-app .soul-dock button {
   color: #f3e8ff;
 }
 body.soul-app .soul-dock .soul-ico {
-  width: 28px; height: 28px; color: #f5d0fe;
+  width: 28px; height: 28px; color: #eeeeee;
 }
 body.soul-app .soul-mic-main {
   width: 58px !important;
   height: 58px;
   border-radius: 50% !important;
-  background: linear-gradient(145deg, #c084fc, #db2777) !important;
-  box-shadow: 0 8px 18px rgba(168, 85, 247, .45);
+  background: linear-gradient(145deg, #c85cff, #ff4d9a) !important;
+  box-shadow: 0 8px 18px rgba(200, 92, 255, .45);
   color: #fff !important;
   flex: none !important;
 }
@@ -1072,7 +1068,7 @@ body.soul-app #chatScreen.soul-voice #liveBarMute { display: none !important; }
 body.soul-app .soul-seat.empty .soul-seat-ava {
   font-size: 26px;
   font-weight: 300;
-  color: #f5d0fe;
+  color: #eeeeee;
   line-height: 1;
 }
 
@@ -1090,9 +1086,9 @@ body.soul-app .soul-seat.empty .soul-seat-ava {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: #d8c6f0;
+  color: #c8c8d0;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   padding: 0 10px 6px;
 }
 .soul-speak-inbox {
@@ -1103,13 +1099,13 @@ body.soul-app .soul-seat.empty .soul-seat-ava {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(168, 85, 247, .2);
+  background: rgba(200, 92, 255, .2);
   border: 1px solid rgba(232, 121, 249, .35);
   border-radius: 14px;
   padding: 8px;
   margin-bottom: 6px;
   color: #fff;
-  font-weight: 800;
+  font-weight: 600;
   font-size: 12px;
 }
 .soul-ask img { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
@@ -1118,16 +1114,16 @@ body.soul-app .soul-seat.empty .soul-seat-ava {
   border: 0;
   border-radius: 999px;
   padding: 6px 10px;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
-.soul-ask .ok { background: linear-gradient(135deg, #a855f7, #db2777); color: #fff; }
-.soul-ask .no { background: rgba(255,255,255,.1); color: #f5d0fe; }
+.soul-ask .ok { background: linear-gradient(135deg, #c85cff, #ff4d9a); color: #fff; }
+.soul-ask .no { background: rgba(255,255,255,.1); color: #eeeeee; }
 .soul-lock-banner {
   text-align: center;
   color: #fda4af;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   padding: 4px 8px;
 }
 body.soul-app #bcastOv.is-audio { display: none !important; }
@@ -1136,23 +1132,23 @@ body.soul-app #bcastOv.is-audio { display: none !important; }
   margin: 6px 12px 2px;
   padding: 10px 12px;
   border-radius: 16px;
-  background: linear-gradient(135deg, rgba(168,85,247,.35), rgba(236,72,153,.25));
+  background: linear-gradient(135deg, rgba(200,92,255,.35), rgba(255,77,154,.25));
   color: #fff;
-  font-weight: 800;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
 }
-.soul-event-banner small { display: block; font-weight: 600; color: #f5d0fe; font-size: 11px; }
+.soul-event-banner small { display: block; font-weight: 600; color: #eeeeee; font-size: 11px; }
 .soul-mode-tag {
   position: absolute;
   top: 8px;
   left: 8px;
   background: rgba(12,4,22,.7);
-  color: #f5d0fe;
+  color: #eeeeee;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   border-radius: 8px;
   padding: 2px 6px;
 }
@@ -1168,31 +1164,31 @@ body.soul-app #bcastOv.is-audio { display: none !important; }
   color: #f3e8ff;
   border-radius: 12px;
   padding: 10px 8px;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
 .soul-mode-picks button.active {
-  background: linear-gradient(135deg, #a855f7, #db2777);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
   border-color: transparent;
   color: #fff;
 }
 .soul-live-stage {
   padding: 12px;
   text-align: center;
-  color: #f5d0fe;
+  color: #eeeeee;
 }
 .soul-live-stage button {
   border: 0;
   border-radius: 999px;
   padding: 12px 22px;
-  font-weight: 900;
+  font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #ef4444, #db2777);
+  background: linear-gradient(135deg, #ef4444, #ff4d9a);
   box-shadow: 0 8px 20px rgba(239,68,68,.35);
   cursor: pointer;
 }
 body.soul-app #chatScreen.soul-disco .soul-stage {
-  background: radial-gradient(600px 200px at 20% 0, rgba(236,72,153,.35), transparent),
+  background: radial-gradient(600px 200px at 20% 0, rgba(255,77,154,.35), transparent),
     radial-gradient(600px 200px at 80% 0, rgba(56,189,248,.28), transparent);
   animation: soulDisco 6s infinite alternate;
 }
@@ -1204,22 +1200,22 @@ body.soul-app #chatScreen.soul-disco .soul-stage {
 .soul-chips button {
   border: 1px solid rgba(232,121,249,.35);
   background: rgba(255,255,255,.06);
-  color: #f5d0fe;
+  color: #eeeeee;
   border-radius: 999px;
   padding: 8px 12px;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
-.soul-chips button.on { background: linear-gradient(135deg, #a855f7, #db2777); color: #fff; border-color: transparent; }
-.soul-lead { color: #d8c6f0; text-align: center; font-size: 13px; font-weight: 700; padding: 0 12px 8px; }
+.soul-chips button.on { background: linear-gradient(135deg, #c85cff, #ff4d9a); color: #fff; border-color: transparent; }
+.soul-lead { color: #c8c8d0; text-align: center; font-size: 13px; font-weight: 700; padding: 0 12px 8px; }
 .soul-ghost {
   display: block;
   width: calc(100% - 24px);
   margin: 8px auto;
   background: transparent;
   border: 0;
-  color: #c4b5fd;
-  font-weight: 800;
+  color: #b4b4bc;
+  font-weight: 600;
   cursor: pointer;
 }
 .soul-onboard { padding: 18px 12px; }
@@ -1227,7 +1223,7 @@ body.soul-app #chatScreen.soul-disco .soul-stage {
 .soul-q b { display: block; margin-bottom: 8px; }
 .soul-q button {
   display: block; width: 100%; margin: 6px 0; border: 0; border-radius: 12px;
-  padding: 10px; background: rgba(168,85,247,.18); color: #fff; font-weight: 800; cursor: pointer;
+  padding: 10px; background: rgba(200,92,255,.18); color: #fff; font-weight: 600; cursor: pointer;
 }
 .soul-planet-card {
   text-align: center; padding: 24px 12px; color: #fff;
@@ -1235,7 +1231,7 @@ body.soul-app #chatScreen.soul-disco .soul-stage {
 .soul-planet-card .emoji { font-size: 48px; }
 .soul-match-card {
   width: min(340px, 92vw);
-  background: #1b0a2e;
+  background: #0c0c12;
   border-radius: 22px;
   padding: 28px 18px 18px;
   text-align: center;
@@ -1244,22 +1240,22 @@ body.soul-app #chatScreen.soul-disco .soul-stage {
 }
 .soul-match-pulse {
   width: 86px; height: 86px; margin: 0 auto 14px; border-radius: 50%;
-  background: linear-gradient(145deg, #c084fc, #db2777);
+  background: linear-gradient(145deg, #c85cff, #ff4d9a);
   animation: soulPulse 1.2s infinite;
 }
 .soul-games { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .soul-games button {
-  border: 0; border-radius: 14px; padding: 16px 8px; font-weight: 800;
-  background: rgba(168,85,247,.18); color: #fff; cursor: pointer;
+  border: 0; border-radius: 14px; padding: 16px 8px; font-weight: 600;
+  background: rgba(200,92,255,.18); color: #fff; cursor: pointer;
 }
 .soul-game-out {
-  min-height: 48px; margin-top: 12px; text-align: center; color: #f5d0fe; font-weight: 800;
+  min-height: 48px; margin-top: 12px; text-align: center; color: #eeeeee; font-weight: 600;
 }
-body.soul-app #chatScreen.soul-live .soul-dock .soul-mic-main { background: linear-gradient(145deg, #ef4444, #db2777) !important; }
+body.soul-app #chatScreen.soul-live .soul-dock .soul-mic-main { background: linear-gradient(145deg, #ef4444, #ff4d9a) !important; }
 
 /* ===== SoulChill clone skin ===== */
 body.soul-app #loginOv.soul-gate {
-  background: #07010e url('/img/soul-login-bg.jpg') center/cover no-repeat;
+  background: #000000 url('/img/soul-login-bg.jpg') center/cover no-repeat;
 }
 body.soul-app .soul-brand {
   display: flex;
@@ -1269,12 +1265,12 @@ body.soul-app .soul-brand {
 }
 .soul-brand-star {
   width: 28px; height: 28px; display: flex;
-  filter: drop-shadow(0 0 8px rgba(236,72,153,.8));
+  filter: drop-shadow(0 0 8px rgba(255,77,154,.8));
 }
 .soul-brand-star svg { width: 28px; height: 28px; }
 .soul-wordmark {
   font-size: 22px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: -0.4px;
   color: #fff;
   text-shadow: 0 0 18px rgba(232,121,249,.45);
@@ -1282,23 +1278,23 @@ body.soul-app .soul-brand {
 body.soul-app #roomsScreen .r-search { display: none !important; }
 body.soul-app #headUserBox { display: none !important; }
 body.soul-app #headEnterBtn {
-  background: linear-gradient(135deg, #a855f7, #ec4899);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
   color: #fff; border: 0; border-radius: 999px;
-  font-weight: 900; padding: 6px 12px;
+  font-weight: 700; padding: 6px 12px;
 }
 body.soul-app #roomsScreen .soul-cats {
   justify-content: flex-start;
   gap: 18px;
   padding: 4px 16px 8px;
   overflow-x: auto;
-  direction: ltr;
+  direction: rtl;
 }
 body.soul-app #roomsScreen .soul-cats button {
   background: transparent;
   border: 0;
-  color: #8b769f;
+  color: #8e8e96;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 600;
   padding: 6px 0;
   border-radius: 0;
   position: relative;
@@ -1313,7 +1309,7 @@ body.soul-app #roomsScreen .soul-cats button.active::after {
   left: 20%; right: 20%; bottom: 0;
   height: 3px;
   border-radius: 3px;
-  background: linear-gradient(90deg, #ec4899, #a855f7);
+  background: linear-gradient(90deg, #ff4d9a, #c85cff);
 }
 .soul-room-card {
   background: transparent;
@@ -1325,7 +1321,7 @@ body.soul-app #roomsScreen .soul-cats button.active::after {
   height: 148px;
   border-radius: 18px;
   overflow: hidden;
-  background: #2a1444 center/cover no-repeat;
+  background: #1a1a22 center/cover no-repeat;
 }
 .soul-room-cover::after {
   content: "";
@@ -1366,12 +1362,12 @@ body.soul-app #roomsScreen .soul-cats button.active::after {
   height: 110px;
   border-radius: 16px;
   border: 1px dashed rgba(232,121,249,.45);
-  color: #e9d5ff;
-  font-weight: 800;
+  color: #e8e8ee;
+  font-weight: 600;
   background: rgba(255,255,255,.05) center/cover no-repeat;
 }
 .soul-own-room {
-  background: rgba(236,72,153,.16);
+  background: rgba(255,77,154,.16);
   border-radius: 12px;
   padding: 10px;
   margin-bottom: 10px;
@@ -1386,8 +1382,8 @@ body.soul-app #roomsScreen .soul-cats button.active::after {
   border: 0;
   border-radius: 10px;
   padding: 8px;
-  font-weight: 800;
-  background: #db2777;
+  font-weight: 600;
+  background: #ff4d9a;
   color: #fff;
   cursor: pointer;
 }
@@ -1399,12 +1395,14 @@ body.soul-app .soul-fab {
   left: auto; right: 16px;
 }
 .soul-planet-page {
-  background: radial-gradient(900px 420px at 50% -40px, rgba(124,58,237,.35), transparent 55%), #12061f;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,.82) 68%, #000 100%),
+    url('/img/soul-planet-bg.jpg') center top / cover no-repeat;
 }
 .soul-planet-page .soul-page-head {
   flex-direction: column; align-items: flex-start; gap: 2px;
 }
-.soul-planet-page .soul-page-head small { color: #c4b5fd; font-weight: 700; }
+.soul-planet-page .soul-page-head small { color: #b4b4bc; font-weight: 700; }
 .soul-galaxy {
   position: relative;
   height: min(52vh, 430px);
@@ -1424,15 +1422,15 @@ body.soul-app .soul-fab {
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid #e879f9;
-  box-shadow: 0 0 0 3px rgba(168,85,247,.25), 0 8px 16px rgba(0,0,0,.4);
+  box-shadow: 0 0 0 3px rgba(200,92,255,.25), 0 8px 16px rgba(0,0,0,.4);
 }
 .soul-orbit em {
   position: absolute; left: 50%; bottom: -2px; transform: translateX(-50%);
-  background: #7c3aed; color: #fff; font-size: 9px; font-weight: 900;
+  background: #7c3aed; color: #fff; font-size: 9px; font-weight: 700;
   border-radius: 8px; padding: 1px 5px;
 }
 .soul-orbit small {
-  display: block; margin-top: 4px; font-size: 10px; font-weight: 800;
+  display: block; margin-top: 4px; font-size: 10px; font-weight: 600;
   max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .soul-planet-page .soul-hero-actions {
@@ -1445,7 +1443,7 @@ body.soul-app .soul-fab {
   color: #fff; cursor: pointer;
 }
 .soul-planet-page .soul-hero-actions .voice {
-  background: linear-gradient(135deg, #6d28d9, #db2777);
+  background: linear-gradient(135deg, #6d28d9, #ff4d9a);
 }
 .soul-planet-page .soul-hero-actions .pk {
   background: linear-gradient(135deg, #1e1b4b, #7c3aed);
@@ -1455,7 +1453,7 @@ body.soul-app .soul-fab {
 
 body.soul-app #wallOv .wall-page,
 body.soul-app #wallOv {
-  background: #0b0514;
+  background: #000000;
 }
 body.soul-app .soul-moments-head {
   background: transparent;
@@ -1472,7 +1470,7 @@ body.soul-app .soul-moments-head b { font-size: 22px; }
   background: linear-gradient(90deg, #4c1d95, #9d174d);
   color: #fff;
   display: flex; align-items: center; gap: 10px;
-  font-weight: 800;
+  font-weight: 600;
   direction: ltr;
 }
 .soul-live-strip .pulse {
@@ -1480,15 +1478,19 @@ body.soul-app .soul-moments-head b { font-size: 22px; }
   background: #f472b6; box-shadow: 0 0 0 6px rgba(244,114,182,.25);
 }
 body.soul-app #wallOv .wall-create-trigger {
-  margin: 8px 12px 12px auto;
-  background: linear-gradient(135deg, #a855f7, #ec4899);
-  color: #fff; border-radius: 999px;
+  margin: 0;
+  background: transparent;
+  color: #fff;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  padding: 0;
 }
 
 body.soul-app #privOv .pvpage,
-body.soul-app #privOv { background: #140824; color: #fff; }
+body.soul-app #privOv { background: #0d0d12; color: #fff; }
 body.soul-app .soul-msg-head { direction: ltr; justify-content: space-between; color: #fff; background: transparent; }
-body.soul-app .soul-msg-head .pg-title { font-size: 22px; font-weight: 900; }
+body.soul-app .soul-msg-head .pg-title { font-size: 22px; font-weight: 700; }
 .soul-msg-follow {
   margin: 8px 12px 12px;
   background: #fff;
@@ -1497,7 +1499,7 @@ body.soul-app .soul-msg-head .pg-title { font-size: 22px; font-weight: 900; }
   padding: 10px 12px 12px;
   direction: ltr;
 }
-.soul-msg-follow-title { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
+.soul-msg-follow-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
 .soul-msg-follow-row { display: flex; gap: 12px; overflow-x: auto; }
 .soul-msg-follow-row button {
   border: 0; background: transparent; width: 64px; padding: 0; cursor: pointer;
@@ -1513,19 +1515,19 @@ body.soul-app #privList .pv-item,
 body.soul-app #privOv .pv-list { background: transparent; color: #fff; }
 
 body.soul-app #menuOv .pvpage,
-body.soul-app #menuOv { background: #140824; color: #fff; }
+body.soul-app #menuOv { background: #0d0d12; color: #fff; }
 body.soul-app .soul-me-head { direction: ltr; background: transparent; color: #fff; }
-body.soul-app .soul-me-head .pg-title { font-size: 22px; font-weight: 900; }
+body.soul-app .soul-me-head .pg-title { font-size: 22px; font-weight: 700; }
 body.soul-app #menuOv .mn-user {
-  background: linear-gradient(135deg, rgba(168,85,247,.25), rgba(236,72,153,.12));
+  background: linear-gradient(135deg, rgba(200,92,255,.25), rgba(255,77,154,.12));
   border: 1px solid rgba(232,121,249,.25);
   border-radius: 18px;
   margin: 8px 12px;
 }
-body.soul-app #menuOv .mn-item { color: #f5d0fe; }
+body.soul-app #menuOv .mn-item { color: #eeeeee; }
 
 body.soul-app #chatScreen .c-top {
-  background: linear-gradient(180deg, #1a0a2e, transparent);
+  background: linear-gradient(180deg, #16161e, transparent);
   color: #fff;
   border: 0;
 }
@@ -1539,11 +1541,11 @@ body.soul-app #chatScreen .c-room-name { color: #fff; }
   background: rgba(255,255,255,.06);
   border: 2px dashed rgba(232,121,249,.45);
   font-size: 28px;
-  color: #f5d0fe;
+  color: #eeeeee;
 }
 
 body.soul-app .soul-tabbar {
-  background: rgba(10, 4, 20, .96);
+  background: rgba(8, 8, 12, .96);
   border-top: 0;
 }
 body.soul-app #discoverOv,
@@ -1553,10 +1555,10 @@ body.soul-app #menuOv,
 body.soul-app #notifOv,
 body.soul-app #profOv,
 body.soul-app #friendsOv {
-  background: #12061f;
+  background: #000000;
 }
 body.soul-app #notifOv .pvpage,
-body.soul-app #profOv .pvpage { background: #140824; color: #fff; }
+body.soul-app #profOv .pvpage { background: #0d0d12; color: #fff; }
 body.soul-app #notifList .pv-item,
 body.soul-app #privList .pv-item {
   background: transparent;
@@ -1589,18 +1591,18 @@ body.soul-app .soul-me-stats div {
   border-radius: 12px;
   padding: 8px 4px;
   text-align: center;
-  color: #f5d0fe;
+  color: #eeeeee;
 }
 body.soul-app .soul-me-stats b { display: block; font-size: 15px; color: #fff; }
 body.soul-app .soul-me-stats span { font-size: 10px; }
 body.soul-app #menuOv .mn-balance {
   margin: 0 12px 10px;
-  background: linear-gradient(135deg, rgba(251,191,36,.2), rgba(168,85,247,.16));
+  background: linear-gradient(135deg, rgba(251,191,36,.2), rgba(200,92,255,.16));
   border-radius: 12px;
   color: #fde68a;
 }
 body.soul-app #profOv .prof-hero {
-  background: radial-gradient(500px 180px at 50% 0, rgba(168,85,247,.4), transparent);
+  background: radial-gradient(500px 180px at 50% 0, rgba(200,92,255,.4), transparent);
   padding: 18px 12px 10px;
   text-align: center;
   color: #fff;
@@ -1612,21 +1614,21 @@ body.soul-app .pill-tabs {
   border: 0;
 }
 body.soul-app .pill-tabs .pv-tab {
-  color: #c4b5fd;
+  color: #b4b4bc;
   background: rgba(255,255,255,.06);
   border-radius: 999px;
 }
 body.soul-app .pill-tabs .pv-tab.active {
-  background: linear-gradient(135deg, #a855f7, #db2777);
+  background: linear-gradient(135deg, #c85cff, #ff4d9a);
   color: #fff;
 }
 .soul-me-planet {
   margin: 8px 12px 0;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(168,85,247,.16);
-  color: #f5d0fe;
-  font-weight: 800;
+  background: rgba(200,92,255,.16);
+  color: #eeeeee;
+  font-weight: 600;
 }
 
 /* ===== Voice room interior (gold seats, overlay chat, dock) ===== */
@@ -1660,7 +1662,7 @@ body.soul-app #chatScreen.soul-voice .c-top {
   color: #fff;
 }
 body.soul-app #chatScreen.soul-voice .c-room-name {
-  font-weight: 900;
+  font-weight: 700;
   font-size: 15px;
   text-shadow: 0 2px 8px #000;
 }
@@ -1719,8 +1721,8 @@ body.soul-app #chatScreen.soul-voice .c-room-name {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #2a1444 center/cover no-repeat;
-  border: 2px solid #1a0a2e;
+  background: #1a1a22 center/cover no-repeat;
+  border: 2px solid #16161e;
   margin-inline-start: -8px;
   box-shadow: 0 2px 6px rgba(0,0,0,.4);
   cursor: pointer;
@@ -1730,7 +1732,7 @@ body.soul-app #chatScreen.soul-voice .c-room-name {
   margin-inline-start: 6px;
   color: #fde68a;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 body.soul-app #chatScreen.soul-voice .c-msgs {
@@ -1764,7 +1766,7 @@ body.soul-app #chatScreen.soul-voice .msg .mava { width: 28px; height: 28px; }
 body.soul-app #chatScreen.soul-voice .msg .mava img { width: 28px; height: 28px; border-radius: 50%; }
 body.soul-app #chatScreen.soul-voice .msg .mname {
   color: #f9a8d4 !important;
-  font-weight: 800 !important;
+  font-weight: 600 !important;
 }
 body.soul-app #chatScreen.soul-voice .msg .mtext { color: #fff !important; }
 body.soul-app #chatScreen.soul-voice .c-welcome { display: none; }
@@ -1807,7 +1809,7 @@ body.soul-app .soul-dock .soul-hello {
   background: linear-gradient(180deg, #fde68a, #f59e0b 55%, #b45309) !important;
   color: #3b2208 !important;
   border-radius: 12px !important;
-  font-weight: 900;
+  font-weight: 700;
   font-size: 14px;
   padding: 10px 8px;
   box-shadow: 0 6px 14px rgba(245,158,11,.4);
@@ -1820,7 +1822,7 @@ body.soul-app .soul-dock .soul-hello {
   border: 0;
   border-radius: 999px;
   padding: 10px 16px;
-  font-weight: 900;
+  font-weight: 700;
   color: #3b2208;
   background: linear-gradient(180deg, #fde68a, #f59e0b);
   cursor: pointer;
@@ -1829,8 +1831,8 @@ body.soul-app .soul-dock .soul-hello {
 
 .soul-online-n {
   text-align: center;
-  color: #e9d5ff;
-  font-weight: 800;
+  color: #e8e8ee;
+  font-weight: 600;
   font-size: 13px;
   padding: 2px 12px 8px;
 }
@@ -1849,7 +1851,7 @@ body.soul-app .soul-dock .soul-hello {
   filter: drop-shadow(0 4px 8px rgba(0,0,0,.35));
 }
 .soul-planet-page .soul-hero-actions .soul-card-soulmate {
-  background: linear-gradient(135deg, #7c3aed, #db2777) !important;
+  background: linear-gradient(135deg, #7c3aed, #ff4d9a) !important;
 }
 .soul-planet-page .soul-hero-actions #soulVoiceMatch {
   background: linear-gradient(135deg, #4c1d95, #6d28d9) !important;
@@ -1863,10 +1865,10 @@ body.soul-app .soul-dock .soul-hello {
 
 .soul-galaxy {
   background:
-    radial-gradient(circle at 50% 40%, rgba(168,85,247,.28), transparent 55%),
+    radial-gradient(circle at 50% 40%, rgba(200,92,255,.28), transparent 55%),
     radial-gradient(1px 1px at 20% 30%, #fff, transparent),
     radial-gradient(1px 1px at 70% 20%, #fff, transparent),
-    radial-gradient(1.5px 1.5px at 40% 70%, #e9d5ff, transparent),
+    radial-gradient(1.5px 1.5px at 40% 70%, #e8e8ee, transparent),
     radial-gradient(1px 1px at 85% 60%, #fff, transparent);
 }
 
@@ -1878,51 +1880,51 @@ body.soul-app .soul-dock .soul-hello {
 }
 .soul-soc {
   width: 44px; height: 44px; border-radius: 50%;
-  border: 0; font-weight: 900; font-size: 18px; cursor: pointer;
+  border: 0; font-weight: 700; font-size: 18px; cursor: pointer;
   color: #fff;
 }
 .soul-soc[data-soc="google"] { background: #ea4335; }
 .soul-soc[data-soc="apple"] { background: #111; }
 .soul-soc[data-soc="facebook"] { background: #1877f2; }
 .soul-soc[data-soc="phone"] { background: #059669; font-size: 16px; }
-.soul-login-hint { font-size: 11px; color: #c4b5fd; text-align: center; margin: 0 0 8px; font-weight: 700; }
+.soul-login-hint { font-size: 11px; color: #b4b4bc; text-align: center; margin: 0 0 8px; font-weight: 700; }
 
 .soul-seat-picks {
   display: flex; gap: 8px; margin: 0 0 12px;
 }
 .soul-seat-picks button {
   flex: 1; border: 1px solid rgba(232,121,249,.3);
-  background: rgba(255,255,255,.06); color: #f5d0fe;
-  border-radius: 12px; padding: 8px; font-weight: 800; cursor: pointer;
+  background: rgba(255,255,255,.06); color: #eeeeee;
+  border-radius: 12px; padding: 8px; font-weight: 600; cursor: pointer;
 }
 .soul-seat-picks button.active {
-  background: linear-gradient(135deg, #a855f7, #db2777); color: #fff; border-color: transparent;
+  background: linear-gradient(135deg, #c85cff, #ff4d9a); color: #fff; border-color: transparent;
 }
 .soul-seats.seats-12 { grid-template-columns: repeat(6, 1fr); }
 .soul-seats.seats-12 .soul-seat-ava { width: 48px; height: 48px; }
 .soul-seats.seats-2 { grid-template-columns: 1fr 1fr; max-width: 280px; margin: 0 auto; }
 .soul-role {
-  font-size: 9px; font-weight: 900; color: #fde68a; letter-spacing: .4px;
+  font-size: 9px; font-weight: 700; color: #fde68a; letter-spacing: .4px;
 }
 
-.soul-shop-page { background: #12061f; color: #fff; }
-.soul-shop-bal { padding: 4px 14px 10px; color: #fde68a; font-weight: 800; }
+.soul-shop-page { background: #000000; color: #fff; }
+.soul-shop-bal { padding: 4px 14px 10px; color: #fde68a; font-weight: 600; }
 .soul-shop-tabs {
   display: flex; gap: 6px; padding: 0 12px 10px;
 }
 .soul-shop-tabs button {
   flex: 1; border: 0; border-radius: 999px; padding: 8px 6px;
-  background: rgba(255,255,255,.06); color: #e9d5ff; font-weight: 800; cursor: pointer;
+  background: rgba(255,255,255,.06); color: #e8e8ee; font-weight: 600; cursor: pointer;
 }
-.soul-shop-tabs button.active { background: linear-gradient(135deg, #a855f7, #db2777); color: #fff; }
+.soul-shop-tabs button.active { background: linear-gradient(135deg, #c85cff, #ff4d9a); color: #fff; }
 .soul-shop-pane { padding: 4px 12px 90px; }
 .soul-pay-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .soul-pay {
-  border: 0; border-radius: 10px; padding: 8px 10px; font-weight: 800; cursor: pointer; color: #fff;
+  border: 0; border-radius: 10px; padding: 8px 10px; font-weight: 600; cursor: pointer; color: #fff;
   background: #6d28d9;
 }
 .soul-pay.dim { background: #334155; opacity: .85; }
-.soul-pay-note { color: #c4b5fd; font-size: 11px; margin-bottom: 10px; }
+.soul-pay-note { color: #b4b4bc; font-size: 11px; margin-bottom: 10px; }
 .soul-pkg {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
   background: rgba(255,255,255,.06); border: 1px solid rgba(232,121,249,.2);
@@ -1932,7 +1934,7 @@ body.soul-app .soul-dock .soul-hello {
 .soul-vip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .soul-vip-grid button {
   border: 0; border-radius: 16px; padding: 14px; text-align: right; color: #fff; cursor: pointer;
-  background: linear-gradient(135deg, #4c1d95, #db2777);
+  background: linear-gradient(135deg, #4c1d95, #ff4d9a);
 }
 .soul-vip-grid b { display: block; font-size: 16px; }
 .soul-vip-grid small, .soul-vip-grid em { display: block; opacity: .85; font-size: 11px; }
@@ -1946,12 +1948,12 @@ body.soul-app .soul-dock .soul-hello {
 .soul-look-preview { display: flex; justify-content: center; padding: 10px; }
 .soul-look-ava {
   width: 92px; height: 92px; border-radius: 50%;
-  background: radial-gradient(circle at 50% 30%, #c084fc, #6d28d9);
+  background: radial-gradient(circle at 50% 30%, #c85cff, #6d28d9);
   display: flex; align-items: center; justify-content: center; font-size: 40px; position: relative;
 }
 .soul-lucky-card, .soul-lucky-hero { text-align: center; color: #fff; padding: 18px; }
 .soul-lucky-card {
-  background: #1a0a2e; border-radius: 22px; min-width: 260px;
+  background: #16161e; border-radius: 22px; min-width: 260px;
 }
 .soul-lucky-box {
   font-size: 64px; margin: 8px auto 10px;
@@ -1959,7 +1961,7 @@ body.soul-app .soul-dock .soul-hello {
 .soul-lucky-box.spin { animation: soulPulse 0.4s infinite; }
 .soul-lucky-box.win { transform: scale(1.15); }
 
-body.soul-app #buyOv .pvpage { background: #140824; color: #fff; }
+body.soul-app #buyOv .pvpage { background: #0d0d12; color: #fff; }
 body.soul-app #buyOv .pg-head { background: transparent; color: #fff; border: 0; }
 body.soul-app #wallOv .wall-list { color: #fff; }
 
@@ -1973,14 +1975,14 @@ body.soul-app .usheet,
 body.soul-app .gsheet,
 body.soul-app .needreg,
 body.soul-app .upsheet {
-  background: #1a0a2e !important;
-  color: #f6edff !important;
+  background: #16161e !important;
+  color: #ffffff !important;
   border: 1px solid rgba(232, 121, 249, .22);
   border-radius: 22px 22px 0 0;
 }
 body.soul-app .pvpage {
-  background: #12061f !important;
-  color: #f6edff !important;
+  background: #000000 !important;
+  color: #ffffff !important;
 }
 body.soul-app .pg-head,
 body.soul-app .pg-title,
@@ -2007,17 +2009,17 @@ body.soul-app .lsheet input {
 body.soul-app .big-btn,
 body.soul-app .nr-link,
 body.soul-app .soul-gmail-btn {
-  background: linear-gradient(135deg, #a855f7, #db2777) !important;
+  background: linear-gradient(135deg, #c85cff, #ff4d9a) !important;
   color: #fff !important;
   border: 0 !important;
   border-radius: 999px !important;
-  font-weight: 900;
+  font-weight: 700;
 }
 body.soul-app .us-opt,
 body.soul-app .us-usercard,
 body.soul-app .us-cancel {
   background: rgba(255,255,255,.05) !important;
-  color: #f5d0fe !important;
+  color: #eeeeee !important;
   border-color: rgba(232,121,249,.15) !important;
 }
 body.soul-app #giftOv .gs-grid,
@@ -2028,19 +2030,19 @@ body.soul-app #giftOv .seg {
 }
 body.soul-app .gs-tab {
   background: rgba(255,255,255,.08) !important;
-  color: #e9d5ff !important;
+  color: #e8e8ee !important;
 }
 body.soul-app .gs-tab.active {
-  background: linear-gradient(135deg, #a855f7, #db2777) !important;
+  background: linear-gradient(135deg, #c85cff, #ff4d9a) !important;
   color: #fff !important;
 }
 body.soul-app .pm-call-card {
-  background: radial-gradient(600px 280px at 50% 0, rgba(168,85,247,.4), #140824) !important;
+  background: radial-gradient(600px 280px at 50% 0, rgba(200,92,255,.4), #0d0d12) !important;
   color: #fff !important;
   border-radius: 24px;
 }
 body.soul-app .soul-match-card {
-  background: radial-gradient(420px 220px at 50% 0, rgba(236,72,153,.35), #1a0a2e);
+  background: radial-gradient(420px 220px at 50% 0, rgba(255,77,154,.35), #16161e);
   color: #fff;
   border-radius: 24px;
   padding: 28px 22px;
@@ -2049,7 +2051,7 @@ body.soul-app .soul-match-card {
 }
 body.soul-app .mn-item,
 body.soul-app .mn-list {
-  color: #f5d0fe;
+  color: #eeeeee;
 }
 body.soul-app #upgradeOv .pvpage,
 body.soul-app #verifyOv .pvpage,
@@ -2058,22 +2060,22 @@ body.soul-app #forgotOv .sheet,
 body.soul-app #aliasesOv .pvpage,
 body.soul-app #myGiftsOv .pvpage,
 body.soul-app #blocksOv .pvpage {
-  background: #140824 !important;
+  background: #0d0d12 !important;
   color: #fff !important;
 }
-body.soul-app .lg-q, body.soul-app .lg-pill, body.soul-app .lg-terms { color: #d8c6f0 !important; }
+body.soul-app .lg-q, body.soul-app .lg-pill, body.soul-app .lg-terms { color: #c8c8d0 !important; }
 
 body.soul-app #topcmm-123flashchat { display: none !important; }
 
 body.soul-app #pmOv .pmpage,
-body.soul-app #pmOv { background: #12061f !important; color: #fff !important; }
+body.soul-app #pmOv { background: #000000 !important; color: #fff !important; }
 body.soul-app #pmOv .pm-head {
   background: transparent !important;
   color: #fff !important;
   border: 0 !important;
 }
 body.soul-app #pmOv .pm-bar {
-  background: rgba(16, 6, 28, .96) !important;
+  background: rgba(8, 8, 12, .96) !important;
   border-top: 1px solid rgba(232, 121, 249, .18) !important;
 }
 body.soul-app #pmOv #pmInput {
@@ -2086,17 +2088,17 @@ body.soul-app #setOv .pvpage,
 body.soul-app #avaOv .pvpage,
 body.soul-app #statusOv .pvpage,
 body.soul-app #verifyEmailOv .pvpage {
-  background: #12061f !important;
+  background: #000000 !important;
   color: #fff !important;
 }
 body.soul-app .set-row,
 body.soul-app .mn-title {
-  color: #f5d0fe !important;
+  color: #eeeeee !important;
   border-color: rgba(232, 121, 249, .12) !important;
 }
 body.soul-app .chpw-card,
 body.soul-app .pf-pop-card {
-  background: #1a0a2e !important;
+  background: #16161e !important;
   color: #fff !important;
   border: 1px solid rgba(232, 121, 249, .22);
   border-radius: 22px;
@@ -2108,7 +2110,7 @@ body.soul-app .chpw-inp {
 }
 body.soul-app .wall-composer,
 body.soul-app .wall-media-viewer-card {
-  background: #1a0a2e !important;
+  background: #16161e !important;
   color: #fff !important;
   border-color: rgba(232, 121, 249, .2) !important;
 }
@@ -2120,12 +2122,12 @@ body.soul-app #giftOv .gsheet h3,
 body.soul-app #giftOv .gs-name { color: #fff !important; }
 body.soul-app .status-page-head,
 body.soul-app .statuses-page {
-  background: #12061f !important;
+  background: #000000 !important;
   color: #fff !important;
 }
 body.soul-app #usersPanel,
 body.soul-app #roomsPanel {
-  background: #140824 !important;
+  background: #0d0d12 !important;
   color: #fff !important;
 }
-body.soul-app .legal-body { color: #e9d5ff !important; }
+body.soul-app .legal-body { color: #e8e8ee !important; }

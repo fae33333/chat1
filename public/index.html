@@ -16,15 +16,15 @@
 @font-face{font-family:"Noto Sans Arabic";src:url("/fonts/NotoSansArabic-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap;}
 @font-face{font-family:"Noto Sans Arabic";src:url("/fonts/NotoSansArabic-SemiBold.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap;}
 @font-face{font-family:"Noto Sans Arabic";src:url("/fonts/NotoSansArabic-Bold.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap;}
-html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic","SF Pro Text",Arial,sans-serif !important;}
+html,body,button,input,textarea,select{font-family:"SF Arabic","SF Pro Text","Noto Sans Arabic",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif !important;-webkit-font-smoothing:antialiased;letter-spacing:.01em;}
 </style>
 <link rel="preload" href="/icons/Framework7Icons-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/style.css?v=20260919-usort1">
-<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul14">
-<link rel="stylesheet" href="/css/soul-skin.css?v=20260926-soul14">
+<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul15">
+<link rel="stylesheet" href="/css/soul-skin.css?v=20260926-soul15">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body class="soul-app">
@@ -290,11 +290,11 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   <!-- ============ التنقل السفلي ============ -->
   <nav class="bottomnav show soul-tabbar">
     <button class="bn-item" data-nav="discover">
-      <span class="soul-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2c.7 2.4.9 4.9.9 7s-.2 4.6-.9 7c-.7-2.4-.9-4.9-.9-7s.2-4.6.9-7zm-6.3 9.2c2.2-.5 4.6-.7 7.3-.7s5.1.2 7.3.7A7 7 0 0 1 12 19a7 7 0 0 1-6.3-4.8zM12 5a7 7 0 0 1 6.3 4.8c-2.2.5-4.6.7-7.3.7s-5.1-.2-7.3-.7A7 7 0 0 1 12 5z"/></svg></span>
+      <span class="soul-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg></span>
       <span>الكوكب</span>
     </button>
     <button class="bn-item active" data-nav="rooms">
-      <span class="soul-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 3.2 3 11h2.2v8.5h5.1V14h3.4v5.5h5.1V11H21L12 3.2z"/></svg></span>
+      <span class="soul-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M4 11.2 12 4l8 7.2"/><path d="M6.2 10.4V20h4.2v-5.2h3.2V20h4.2V10.4"/></svg></span>
       <span>الحفلة</span>
     </button>
     <button class="bn-item bn-center" data-nav="wall">
@@ -302,12 +302,12 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <span>اللحظات</span>
     </button>
     <button class="bn-item" data-nav="private">
-      <span class="soul-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z"/></svg></span>
+      <span class="soul-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 3V8a2 2 0 0 1 2-2z"/></svg></span>
       <span>الرسائل</span>
       <em class="bn-badge" id="privBadge" style="display:none">0</em>
     </button>
     <button class="bn-item" data-nav="menu" id="bnMenu">
-      <span class="soul-ico" id="bnMenuIcon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 12a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4zM4.2 20.2c.6-3.4 3.8-5.6 7.8-5.6s7.2 2.2 7.8 5.6"/></svg></span>
+      <span class="soul-ico" id="bnMenuIcon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 19.2c.7-3.2 3.5-5 7-5s6.3 1.8 7 5"/></svg></span>
       <span>أنا</span>
     </button>
     <em class="bn-badge" id="notifBadge" style="display:none">0</em>
@@ -817,7 +817,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <div class="pg-head bar mid soul-msg-head">
         <span class="pg-title">الرسائل</span>
         <span class="pg-close back" data-close="privOv" style="display:none"><i class="f7-icons">chevron_left</i></span>
-        <i class="f7-icons ph-icon" id="privSettings">person_2_fill</i>
+        <button type="button" class="soul-icon-btn" id="privSettings" aria-label="الأصدقاء"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><circle cx="16.5" cy="9" r="2.4"/><path d="M3.8 19c.6-2.8 3-4.4 5.2-4.4s4.6 1.6 5.2 4.4"/><path d="M14.6 14.8c1.7 0 3.7 1.1 4.4 3.4"/></svg></button>
       </div>
       <div class="page-heading" style="display:none">
         <span class="ph-title">المحادثات الخاصة</span>
@@ -1278,8 +1278,9 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <div class="wall-head soul-moments-head">
         <b>اللحظات</b>
         <span class="soul-moments-tools">
-          <button class="wall-refresh" id="wallRefresh" type="button" aria-label="بحث"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.5 6.5 0 1 0 14 15.5l.27.28v.79l5 5 1.5-1.5-5-5zm-6 0C7 14 5 12 5 9.5S7 5 9.5 5 14 7 14 9.5 12 14 9.5 14z"/></svg></button>
-          <button class="soul-flag-btn" type="button" aria-label="فعاليات" id="soulMomentsFlag">⚑</button>
+          <button class="wall-refresh" id="wallRefresh" type="button" aria-label="بحث"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="M16.2 16.2 21 21"/></svg></button>
+          <button class="soul-flag-btn" type="button" aria-label="فعاليات" id="soulMomentsFlag"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 21V4h9l-1.2 4.2L18 8.4 16.6 13H5"/></svg></button>
+          <button class="wall-create-trigger" id="wallCreateTrigger" type="button" aria-label="نشر"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg></button>
           <button class="wall-back" data-close="wallOv" type="button" style="display:none"><i class="f7-icons">chevron_left</i></button>
         </span>
       </div>
@@ -1289,7 +1290,6 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <div><b id="soulMomentsLiveCount">0</b> روح في الحفلة الآن<br><small>ادخل البث مباشرة!</small></div>
           <span class="soul-live-faces" id="soulMomentsLiveFaces"></span>
         </div>
-        <button class="wall-create-trigger" id="wallCreateTrigger" type="button"><span>✈ نشر</span></button>
         <div class="wall-composer" id="wallComposer" hidden>
           <div class="wall-composer-title"><b>منشور جديد</b><button id="wallComposerClose" type="button"><i class="f7-icons">xmark</i></button></div>
           <div class="wall-compose-main">
@@ -1936,10 +1936,10 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
-<script src="/js/app.js?v=20260926-soul14" defer></script>
-<script src="/js/soulchill.js?v=20260926-soul14" defer></script>
-<script src="/js/soul-world.js?v=20260926-soul14" defer></script>
-<script src="/js/soul-complete.js?v=20260926-soul14" defer></script>
+<script src="/js/app.js?v=20260926-soul15" defer></script>
+<script src="/js/soulchill.js?v=20260926-soul15" defer></script>
+<script src="/js/soul-world.js?v=20260926-soul15" defer></script>
+<script src="/js/soul-complete.js?v=20260926-soul15" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
