@@ -23,7 +23,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/style.css?v=20260919-usort1">
-<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul3">
+<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul4">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body class="soul-app">
@@ -53,18 +53,20 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   <section id="roomsScreen" class="screen active">
     <header class="soul-home-head">
       <div class="soul-home-top">
-        <button class="soul-coins" id="soulCoinsBtn" type="button">
-          <img src="/img/gold.png" alt="">
-          <b id="soulCoinsVal">0</b>
-          <span class="soul-plus">+</span>
-        </button>
-        <div class="r-logo" id="siteLogo">
-          <span class="r-logo-ico"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2l2.2 6.8H21l-5.6 4.2 2.2 6.8L12 15.8 6.4 19.8 8.6 13 3 8.8h6.8z"/></svg></span>
-          <span class="r-logo-txt" id="siteName"></span>
+        <div class="soul-brand" id="siteLogo">
+          <span class="soul-brand-star" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="url(#soulGrad)" d="M12 1.4 14.2 9.2 22 12l-7.8 2.8L12 22.6 9.8 14.8 2 12l7.8-2.8z"/><defs><linearGradient id="soulGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff4dbe"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs></svg></span>
+          <b class="soul-wordmark">SoulChill</b>
+          <span class="r-logo-txt" id="siteName" hidden></span>
         </div>
         <div class="soul-home-tools">
+          <button class="soul-coins" id="soulCoinsBtn" type="button">
+            <img src="/img/gold.png" alt="">
+            <b id="soulCoinsVal">0</b>
+            <span class="soul-plus">+</span>
+          </button>
+          <button class="soul-icon-btn" id="soulShopBtn" type="button" aria-label="المتجر">🎁</button>
           <button class="soul-icon-btn" id="soulBellBtn" type="button" aria-label="الإشعارات">
-            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2h-4.4A2.2 2.2 0 0 0 12 22zm7-6V11a7 7 0 1 0-14 0v5L3 19v1h18v-1l-2-3z"/></svg>
+            <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2h-4.4A2.2 2.2 0 0 0 12 22zm7-6V11a7 7 0 1 0-14 0v5L3 19v1h18v-1l-2-3z"/></svg>
             <em class="bn-badge" id="soulBellBadge" style="display:none">0</em>
           </button>
           <button class="btn-enter" id="headEnterBtn">دخول</button>
@@ -76,12 +78,12 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       </div>
       <div class="soul-event-banner" id="soulEventBanner" hidden></div>
       <div class="soul-cats" id="soulRoomCats">
-        <button type="button" class="active" data-rcat="all">الحفلات</button>
-        <button type="button" data-rcat="live">بث</button>
-        <button type="button" data-rcat="partner">ثنائي</button>
-        <button type="button" data-rcat="disco">ديسكو</button>
+        <button type="button" class="active" data-rcat="hot">Popular</button>
+        <button type="button" data-rcat="all">New</button>
+        <button type="button" data-rcat="live">Live</button>
         <button type="button" data-rcat="pk">PK</button>
-        <button type="button" data-rcat="hot">ترند</button>
+        <button type="button" data-rcat="disco">Disco</button>
+        <button type="button" data-rcat="partner">Pair</button>
       </div>
     </header>
     <!-- القائمة المنسدلة لزر الدخول / الاسم -->
@@ -95,7 +97,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <textarea id="roomSearch" rows="1" placeholder="ابحث عن غرفة أو حفلة"></textarea>
     </div>
     <div class="r-list" id="roomsList"></div>
-    <button class="soul-fab" id="soulCreateRoomBtn" type="button"><i class="f7-icons">plus</i><span>إنشاء غرفة</span></button>
+    <button class="soul-fab" id="soulCreateRoomBtn" type="button" aria-label="إنشاء غرفة">+</button>
   </section>
 
   <!-- 🦁 الدخول الملكي خلف chatScreen بالكامل — مثل تيك توك -->
@@ -482,9 +484,9 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   <div class="overlay full soul-gate" id="loginOv">
     <div class="soul-login">
       <div class="soul-login-hero">
-        <div class="soul-login-mark">✦</div>
+        <div class="soul-login-mark"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 1.4 14.2 9.2 22 12l-7.8 2.8L12 22.6 9.8 14.8 2 12l7.8-2.8z"/></svg></div>
         <h2 id="soulLoginBrand">SoulChill</h2>
-        <p>غرف صوتية · لحظات · هدايا · PK</p>
+        <p>Voice Party · Moments · Gifts · PK</p>
       </div>
       <div class="soul-login-card lsheet">
       <h3 id="loginTitle">تسجيل الدخول بحساب Gmail</h3>
@@ -793,13 +795,17 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   <!-- المحادثات الخاصة -->
   <div class="overlay full withnav" id="privOv">
     <div class="pvpage">
-      <div class="pg-head bar mid">
-        <span class="pg-close back" data-close="privOv" style="display: flex;flex-direction: row-reverse;"><i class="f7-icons">chevron_left</i> عودة</span>
-        <span class="pg-title">المحادثات الخاصة</span>
+      <div class="pg-head bar mid soul-msg-head">
+        <span class="pg-title">Messages</span>
+        <span class="pg-close back" data-close="privOv" style="display:none"><i class="f7-icons">chevron_left</i></span>
+        <i class="f7-icons ph-icon" id="privSettings">person_2_fill</i>
       </div>
-      <div class="page-heading">
+      <div class="page-heading" style="display:none">
         <span class="ph-title">المحادثات الخاصة</span>
-        <i class="f7-icons ph-icon" id="privSettings">gear_alt_fill</i>
+      </div>
+      <div class="soul-msg-follow" id="soulMsgFollow">
+        <div class="soul-msg-follow-title">Soulers You Follow in Party</div>
+        <div class="soul-msg-follow-row" id="soulMsgFollowRow"></div>
       </div>
       <div class="pill-tabs">
         <button class="pv-tab active" data-ptab="members">الاعضاء المسجلين</button>
@@ -1052,9 +1058,9 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   <!-- القائمة الرئيسية -->
   <div class="overlay full withnav" id="menuOv">
     <div class="pvpage menupage">
-      <div class="pg-head bar">
-        <span class="pg-title">القائمة الرئيسية</span>
-        <span class="pg-close back" data-close="menuOv"><i class="f7-icons">chevron_left</i> عودة</span>
+      <div class="pg-head bar soul-me-head">
+        <span class="pg-title">Me</span>
+        <span class="pg-close back" data-close="menuOv" style="display:none"><i class="f7-icons">chevron_left</i></span>
       </div>
       <div class="mn-user" id="menuUserCard">
         <span class="mn-ava" id="menuAva"><span class="dot green" id="menuAvaDot"></span></span>
@@ -1246,13 +1252,19 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   <!-- الحائط -->
   <div class="overlay full withnav" id="wallOv">
     <div class="wall-page">
-      <div class="wall-head">
-        <button class="wall-back" data-close="wallOv" type="button"><i class="f7-icons">chevron_left</i><span>عودة</span></button>
-        <b>اللحظات</b>
-        <button class="wall-refresh" id="wallRefresh" type="button" aria-label="تحديث الحائط"><i class="f7-icons">arrow_clockwise</i></button>
+      <div class="wall-head soul-moments-head">
+        <b>Moments</b>
+        <span class="soul-moments-tools">
+          <button class="wall-refresh" id="wallRefresh" type="button" aria-label="تحديث"><i class="f7-icons">search</i></button>
+          <button class="wall-back" data-close="wallOv" type="button" style="display:none"><i class="f7-icons">chevron_left</i></button>
+        </span>
       </div>
       <div class="wall-scroll" id="wallScroll">
-        <button class="wall-create-trigger" id="wallCreateTrigger" type="button"><i class="f7-icons">plus_circle_fill</i><span>نشر</span></button>
+        <div class="soul-live-strip" id="soulMomentsLive">
+          <span class="pulse"></span>
+          <div><b id="soulMomentsLiveCount">0</b> Soulers are partying<br><small>Join LIVE now!</small></div>
+        </div>
+        <button class="wall-create-trigger" id="wallCreateTrigger" type="button"><i class="f7-icons">paperplane_fill</i><span>Post</span></button>
         <div class="wall-composer" id="wallComposer" hidden>
           <div class="wall-composer-title"><b>منشور جديد</b><button id="wallComposerClose" type="button"><i class="f7-icons">xmark</i></button></div>
           <div class="wall-compose-main">
@@ -1704,19 +1716,19 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </div>
   <!-- اكتشاف -->
   <div class="overlay full withnav" id="discoverOv">
-    <div class="soul-page">
-      <div class="soul-page-head"><b>اكتشاف</b><span class="pg-close" data-close="discoverOv" style="cursor:pointer;color:#e9d5ff">إغلاق</span></div>
+    <div class="soul-page soul-planet-page">
+      <div class="soul-page-head"><b>Planet</b><small id="soulOnlineSouls">Online Soulers</small><span class="pg-close" data-close="discoverOv" style="display:none">إغلاق</span></div>
+      <div class="soul-galaxy" id="soulPeople"></div>
+      <div class="soul-rank" id="soulRank" style="display:none"></div>
       <div class="soul-hero-actions">
-        <button class="voice" type="button" id="soulVoiceMatch"><b>تطابق صوتي</b><small>تعرّف على أرواح قريبة منك</small></button>
-        <button class="pk" type="button" id="soulPkWatch"><b>مشاهدة PK</b><small>تحدّيات الهدايا المباشرة</small></button>
+        <button class="voice" type="button" id="soulVoiceMatch"><b>Voice match</b><small>Voice lovers are always online</small></button>
+        <button class="pk" type="button" id="soulPkWatch"><b>PK</b><small>Challenge · Spectating</small></button>
       </div>
-      <div class="soul-tabs">
+      <div class="soul-tabs" style="display:none">
         <button type="button" class="active" data-dtab="people">أشخاص</button>
         <button type="button" data-dtab="moments">اللحظات</button>
         <button type="button" data-dtab="rank">الترتيب</button>
       </div>
-      <div class="soul-people" id="soulPeople"></div>
-      <div class="soul-rank" id="soulRank" style="display:none"></div>
     </div>
   </div>
 
@@ -1849,9 +1861,9 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
-<script src="/js/app.js?v=20260926-soul3" defer></script>
-<script src="/js/soulchill.js?v=20260926-soul3" defer></script>
-<script src="/js/soul-world.js?v=20260926-soul3" defer></script>
+<script src="/js/app.js?v=20260926-soul4" defer></script>
+<script src="/js/soulchill.js?v=20260926-soul4" defer></script>
+<script src="/js/soul-world.js?v=20260926-soul4" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

@@ -348,6 +348,51 @@
     if (typeof SOCKET !== 'undefined') bindSocket(SOCKET);
     paintEventBanner();
     if (typeof ME !== 'undefined' && ME) paintMePlanet();
+    paintMomentsLive();
+    if (typeof openPrivateList === 'function') {
+      const _opl = openPrivateList;
+      openPrivateList = function () {
+        _opl.apply(this, arguments);
+        paintFollowInParty();
+      };
+    }
+    if (typeof openWall === 'function') {
+      const _ow = openWall;
+      openWall = function () {
+        const r = _ow.apply(this, arguments);
+        paintMomentsLive();
+        return r;
+      };
+    }
+  }
+
+  function paintMomentsLive() {
+    const el = $('#soulMomentsLiveCount');
+    if (!el) return;
+    let n = 0;
+    if (typeof ROOM_COUNTS !== 'undefined' && ROOM_COUNTS) {
+      Object.values(ROOM_COUNTS).forEach(v => { n += +v || 0; });
+    }
+    el.textContent = n || 0;
+  }
+
+  async function paintFollowInParty() {
+    const row = $('#soulMsgFollowRow');
+    if (!row || typeof api !== 'function') return;
+    try {
+      const d = await api('/api/friends');
+      const list = (d.following || []).slice(0, 8);
+      row.innerHTML = list.length ? list.map(u => `<button type="button" data-id="${u.id}">
+        <img src="${u.avatar ? (u.avatar.startsWith('/') ? u.avatar : '/avatars/' + u.avatar) : '/avatars/default.png'}" alt="">
+        <small>${u.username}</small>
+      </button>`).join('') : '<small style="color:#9b87b5;padding:8px">تابع أرواحاً لتراهم هنا</small>';
+      $$('#soulMsgFollowRow [data-id]').forEach(b => {
+        b.onclick = () => {
+          const u = list.find(x => +x.id === +b.dataset.id);
+          if (u && typeof openPrivateWith === 'function') openPrivateWith(u);
+        };
+      });
+    } catch (e) { }
   }
 
   window.soulOpenTest = openSoulTest;

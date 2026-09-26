@@ -6,7 +6,7 @@
     return SEAT_COUNT;
   }
   const GMAIL_RE = /^[a-z0-9._%+-]+@gmail\.com$/i;
-  let ROOM_CAT = 'all';
+  let ROOM_CAT = 'hot';
   let PK_STATE = null;
   let PK_TIMER = null;
   let FOLLOW_SET = new Set();
@@ -85,14 +85,15 @@
     const name = typeof esc === 'function' ? esc(r.name) : r.name;
     const desc = typeof esc === 'function' ? esc(r.description || '') : (r.description || '');
     return `<article class="soul-room-card" data-id="${r.id}">
-      <div class="soul-room-cover" style="background-image:url('${safeImg}')">
-        ${live || r.type === 'live' ? '<span class="soul-live">LIVE</span>' : ''}
+      <div class="soul-room-avas">
+        <span class="ava a1" style="background-image:url('${safeImg}')"></span>
+        <span class="ava a2" style="background-image:url('${safeImg}')"></span>
+        <span class="ava a3" style="background-image:url('${safeImg}')"></span>
+        ${live || r.type === 'live' || online > 0 ? '<span class="soul-live">LIVE</span>' : ''}
         ${isPk || r.party_mode === 'pk' ? '<span class="soul-pk-tag">PK</span>' : ''}
-        ${r.party_mode === 'disco' ? '<span class="soul-mode-tag">ديسكو</span>' : ''}
-        ${r.party_mode === 'partner' ? '<span class="soul-mode-tag">ثنائي</span>' : ''}
-        <div class="soul-room-online"><i class="f7-icons">person_2_fill</i>${online}</div>
+        <div class="soul-room-online">${online}</div>
       </div>
-      <div class="soul-room-meta"><b class="room-name">${name}</b><small>${desc}</small></div>
+      <div class="soul-room-meta"><b class="room-name">${name}</b><small>${desc || (r.party_mode === 'disco' ? 'Disco' : 'Party')}</small></div>
     </article>`;
   }
 
@@ -442,23 +443,22 @@
       try {
         const d = await api('/api/discover');
         const list = (d && d.users) || [];
-        people.innerHTML = list.length ? list.map(u => {
+        const count = $('#soulOnlineSouls');
+        if (count) count.textContent = 'Online Soulers  ' + list.length;
+        people.innerHTML = list.length ? list.slice(0, 18).map((u, i) => {
           const name = typeof esc === 'function' ? esc(u.username) : u.username;
-          const on = FOLLOW_SET.has(+u.id);
-          return `<div class="soul-person" data-id="${u.id}">
-            <div class="ava"><img src="${avaUrl(u)}" alt=""><span class="match">${u.match || matchPercent(ME && ME.id, u.id)}%</span></div>
+          const pct = u.match || matchPercent(ME && ME.id, u.id);
+          const size = 54 + ((i * 13) % 28);
+          const left = 4 + ((i * 37) % 78);
+          const top = 4 + ((i * 53) % 68);
+          return `<button type="button" class="soul-orbit" data-id="${u.id}" style="width:${size}px;height:${size}px;left:${left}%;top:${top}%">
+            <img src="${avaUrl(u)}" alt="">
+            <em>${pct}%</em>
             <small>${name}</small>
-            <button class="soul-follow${on ? ' on' : ''}" data-follow="${u.id}">${on ? 'تتابع' : 'متابعة'}</button>
-          </div>`;
-        }).join('') : '<div class="soul-empty" style="grid-column:1/-1">لا يوجد أشخاص للعرض الآن</div>';
-        $$('#soulPeople .soul-person').forEach(el => {
-          el.onclick = (e) => {
-            if (e.target.closest('[data-follow]')) return;
-            if (typeof openProfile === 'function') openProfile(+el.dataset.id);
-          };
-        });
-        $$('#soulPeople [data-follow]').forEach(btn => {
-          btn.onclick = (e) => { e.stopPropagation(); soulToggleFollow(+btn.dataset.follow, btn); };
+          </button>`;
+        }).join('') : '<div class="soul-empty">لا يوجد أشخاص للعرض الآن</div>';
+        $$('#soulPeople .soul-orbit').forEach(el => {
+          el.onclick = () => { if (typeof openProfile === 'function') openProfile(+el.dataset.id); };
         });
       } catch (e) {
         people.innerHTML = '<div class="soul-empty" style="grid-column:1/-1">تعذر تحميل الاكتشاف</div>';
@@ -589,8 +589,8 @@
       soulRenderRooms();
     }
     const brand = $('#soulLoginBrand');
-    const site = (typeof SETTINGS !== 'undefined' && SETTINGS.site_name) || document.title || 'SoulChill';
-    if (brand) brand.textContent = site;
+    if (brand) brand.textContent = 'SoulChill';
+    document.title = 'SoulChill';
   }
 
   function wire() {
@@ -621,6 +621,11 @@
 
     const coins = $('#soulCoinsBtn');
     if (coins) coins.onclick = () => {
+      if (!needAuth()) return;
+      if (typeof openBuy === 'function') openBuy();
+    };
+    const shop = $('#soulShopBtn');
+    if (shop) shop.onclick = () => {
       if (!needAuth()) return;
       if (typeof openBuy === 'function') openBuy();
     };
