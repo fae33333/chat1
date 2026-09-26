@@ -130,6 +130,10 @@ db.serialize(() => {
   db.run(`ALTER TABLE users ADD COLUMN public_id TEXT DEFAULT ''`, () => { });
   db.run(`ALTER TABLE rooms ADD COLUMN owner_id INTEGER DEFAULT 0`, () => { });
   db.run(`ALTER TABLE rooms ADD COLUMN mic_locked INTEGER DEFAULT 0`, () => { });
+  db.run(`ALTER TABLE rooms ADD COLUMN party_mode TEXT DEFAULT 'chat'`, () => { });
+  db.run(`ALTER TABLE users ADD COLUMN soul_planet TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE users ADD COLUMN soul_interests TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE users ADD COLUMN soul_premium INTEGER DEFAULT 0`, () => { });
 
   db.run(`CREATE TABLE IF NOT EXISTS follows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

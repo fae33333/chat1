@@ -350,6 +350,7 @@ const userSockets = {};   // uid -> [socketId]
 const roomUsers = {};     // roomId -> Set(uid)
 const PK_LIVE = new Map();    // matchId -> match
 const PK_BY_ROOM = new Map(); // roomId -> matchId
+const MATCH_QUEUE = [];       // { uid, at }
 
 function isUserActiveInChat(userId) {
   const uid = +userId;
@@ -1680,7 +1681,10 @@ function pubUser(u) {
     created_at: +u.created_at || 0,        // تاريخ التسجيل — يُعرض «عضو منذ X يوم» في الملف الشخصي
     xp: Math.max(0, +u.xp || 0),
     level: Math.max(1, +u.level || 1),
-    public_id: String(u.public_id || '')
+    public_id: String(u.public_id || ''),
+    soul_planet: String(u.soul_planet || ''),
+    soul_interests: String(u.soul_interests || ''),
+    soul_premium: +u.soul_premium || 0
   };
 }
 function levelFromXp(xp) {
@@ -2328,7 +2332,8 @@ function mapFollowUser(u) {
     level: Math.max(1, +u.level || 1),
     xp: Math.max(0, +u.xp || 0),
     public_id: String(u.public_id || ''),
-    bio: String(u.bio || '')
+    bio: String(u.bio || ''),
+    soul_planet: String(u.soul_planet || '')
   };
 }
 
@@ -2430,15 +2435,20 @@ app.post('/api/rooms/create', requireUser, async (req, res) => {
   const name = String((req.body || {}).name || '').trim().slice(0, 24);
   const description = String((req.body || {}).description || '').trim().slice(0, 80);
   const password = String((req.body || {}).password || '').trim().slice(0, 20);
+  const partyMode = ['chat', 'partner', 'disco', 'pk', 'live'].includes(String((req.body || {}).party_mode || ''))
+    ? String((req.body || {}).party_mode)
+    : 'chat';
+  const roomType = partyMode === 'live' || String((req.body || {}).type || '') === 'live' ? 'live' : 'voice';
   if (!name) return res.status(400).json({ error: 'اكتب اسم الغرفة' });
   const owned = await q.get(`SELECT COUNT(*) c FROM rooms WHERE owner_id=?`, me.id);
   if (owned && +owned.c >= 5) return res.status(400).json({ error: 'وصلت للحد الأقصى (5 غرف)' });
   const clash = await q.get(`SELECT id FROM rooms WHERE name=?`, name);
   if (clash) return res.status(400).json({ error: 'اسم الغرفة مستخدم' });
+  const welcome = roomType === 'live' ? 'مرحباً في البث المباشر 📺' : (partyMode === 'disco' ? 'ديسكو الحفلة بدأ 🎶' : 'أهلاً بكم في الحفلة 🎤');
   const out = await q.run(
-    `INSERT INTO rooms (name, description, type, max_users, status, welcome, password, image, audience, owner_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    name, description || 'حفلة صوتية مباشرة ★', 'voice', 200, 'open', 'أهلاً بكم في الحفلة 🎤', password, '/img/room.png', 'all', me.id
+    `INSERT INTO rooms (name, description, type, max_users, status, welcome, password, image, audience, owner_id, party_mode)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    name, description || (roomType === 'live' ? 'بث مباشر ★' : 'حفلة صوتية مباشرة ★'), roomType, 200, 'open', welcome, password, '/img/room.png', 'all', me.id, partyMode === 'live' ? 'live' : partyMode
   );
   const roomId = out.lastID;
   try {
@@ -2461,6 +2471,145 @@ app.post('/api/rooms/:id/mic-lock', requireUser, (req, res, next) => {
   io.to('room_' + roomId).emit('room:mic_lock', { roomId, mic_locked: locked });
   io.emit('sync');
   res.json({ ok: true, mic_locked: locked });
+});
+
+const SOUL_PLANETS = [
+  { id: 'venus', name: 'الزهرة', tag: 'قلب دافئ', emoji: '💗' },
+  { id: 'mars', name: 'المريخ', tag: 'طاقة وحماس', emoji: '🔥' },
+  { id: 'neptune', name: 'نبتون', tag: 'حالم وهادئ', emoji: '🌊' },
+  { id: 'jupiter', name: 'المشتري', tag: 'قائد الحفلة', emoji: '👑' },
+  { id: 'mercury', name: 'عطارد', tag: 'سريع البديهة', emoji: '⚡' },
+  { id: 'saturn', name: 'زحل', tag: 'تشيل عميق', emoji: '🌙' }
+];
+function soulPlanetById(id) {
+  return SOUL_PLANETS.find(p => p.id === id) || null;
+}
+function soulWeekEvents() {
+  const week = Math.floor(Date.now() / 86400000 / 7);
+  const catalog = [
+    { id: 'gift-rain', title: 'مطر الهدايا', desc: 'أرسل هدايا واحصل على XP مضاعف طوال الأسبوع', reward: '×2 XP', emoji: '🎁' },
+    { id: 'pk-night', title: 'ليلة PK', desc: 'تحدّيات الغرف تمنح نقاط شهرة إضافية للفائز', reward: 'ترتيب المذيعين', emoji: '⚡' },
+    { id: 'soul-wave', title: 'موجة الأرواح', desc: 'أكمل اختبار الروح وتابع 3 أشخاص جدد', reward: 'كوكب حصري', emoji: '✦' }
+  ];
+  return { week, featured: catalog[week % catalog.length], list: catalog };
+}
+
+app.get('/api/soul/events', (req, res) => res.json(soulWeekEvents()));
+
+app.get('/api/soul/me', requireUser, async (req, res) => {
+  const u = await q.get(`SELECT soul_planet, soul_interests, soul_premium, balance, membership FROM users WHERE id=?`, req.authUid);
+  const until = +((u && u.soul_premium) || 0);
+  res.json({
+    planet: soulPlanetById(u && u.soul_planet),
+    planet_id: String((u && u.soul_planet) || ''),
+    interests: String((u && u.soul_interests) || '').split(',').filter(Boolean),
+    premium: until > Math.floor(Date.now() / 1000),
+    premium_until: until,
+    balance: +((u && u.balance) || 0),
+    membership: String((u && u.membership) || 'none')
+  });
+});
+
+app.post('/api/soul/profile', requireUser, async (req, res) => {
+  const planet = String((req.body || {}).planet || '').slice(0, 20);
+  const interests = Array.isArray((req.body || {}).interests) ? (req.body || {}).interests : [];
+  const cleanPlanet = SOUL_PLANETS.some(p => p.id === planet) ? planet : '';
+  const cleanInt = interests.map(x => String(x).slice(0, 24)).filter(Boolean).slice(0, 8).join(',');
+  const prev = await q.get(`SELECT soul_planet FROM users WHERE id=?`, req.authUid);
+  await q.run(`UPDATE users SET soul_planet=?, soul_interests=? WHERE id=?`, cleanPlanet || (prev && prev.soul_planet) || '', cleanInt, req.authUid);
+  const u = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
+  if (onlineUsers[req.authUid]) Object.assign(onlineUsers[req.authUid], pubUser(u));
+  addXp(req.authUid, 5).catch(() => { });
+  res.json({ ok: true, planet: soulPlanetById(u.soul_planet), interests: cleanInt.split(',').filter(Boolean) });
+});
+
+app.post('/api/soul/test', requireUser, async (req, res) => {
+  const answers = Array.isArray((req.body || {}).answers) ? (req.body || {}).answers.map(n => +n || 0) : [];
+  const score = answers.reduce((s, n, i) => s + (Math.abs(n) + i), 0);
+  const planet = SOUL_PLANETS[Math.abs(score) % SOUL_PLANETS.length];
+  await q.run(`UPDATE users SET soul_planet=? WHERE id=?`, planet.id, req.authUid);
+  const u = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
+  if (onlineUsers[req.authUid]) Object.assign(onlineUsers[req.authUid], pubUser(u));
+  addXp(req.authUid, 15).catch(() => { });
+  res.json({ ok: true, planet });
+});
+
+app.post('/api/soul/premium', requireUser, async (req, res) => {
+  const cost = 500;
+  const days = 30;
+  const u = await q.get(`SELECT id, balance, soul_premium FROM users WHERE id=?`, req.authUid);
+  if (!u) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  if (+u.balance < cost) return res.status(400).json({ error: 'رصيدك لا يكفي لشراء Soul Pass' });
+  const now = Math.floor(Date.now() / 1000);
+  const base = Math.max(now, +u.soul_premium || 0);
+  const until = base + days * 86400;
+  await q.run(`UPDATE users SET balance=balance-?, soul_premium=? WHERE id=?`, cost, until, req.authUid);
+  const fresh = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
+  if (onlineUsers[req.authUid]) Object.assign(onlineUsers[req.authUid], pubUser(fresh));
+  res.json({ ok: true, premium_until: until, balance: +fresh.balance });
+});
+
+app.post('/api/soul/invite', requireUser, async (req, res) => {
+  const targetId = +((req.body || {}).user_id);
+  const roomId = +((req.body || {}).room_id);
+  if (!targetId || !roomId) return res.status(400).json({ error: 'بيانات الدعوة ناقصة' });
+  const room = await q.get(`SELECT id, name, type, party_mode FROM rooms WHERE id=?`, roomId);
+  const me = await q.get(`SELECT username, avatar FROM users WHERE id=?`, req.authUid);
+  if (!room || !me) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+  createUserNotification(targetId, `${me.username} دعاك إلى ${room.name}`, 'mic_fill').catch(() => { });
+  io.to('user_' + targetId).emit('soul:invite', {
+    roomId: +room.id, name: room.name, type: room.type, party_mode: room.party_mode,
+    from: { id: req.authUid, username: me.username, avatar: me.avatar || '' }
+  });
+  addXp(req.authUid, 2).catch(() => { });
+  res.json({ ok: true });
+});
+
+function matchDrop(uid) {
+  const i = MATCH_QUEUE.findIndex(x => +x.uid === +uid);
+  if (i >= 0) MATCH_QUEUE.splice(i, 1);
+}
+
+app.post('/api/soul/match/cancel', requireUser, (req, res) => {
+  matchDrop(req.authUid);
+  res.json({ ok: true });
+});
+
+app.post('/api/soul/match', requireUser, async (req, res) => {
+  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
+  if (!me || !me.registered) return res.status(403).json({ error: 'التطابق للأعضاء المسجلين' });
+  matchDrop(req.authUid);
+  const peer = MATCH_QUEUE.shift();
+  if (!peer || +peer.uid === +me.id) {
+    MATCH_QUEUE.push({ uid: +me.id, at: Date.now() });
+    return res.json({ ok: true, waiting: true });
+  }
+  const other = await q.get(`SELECT * FROM users WHERE id=?`, peer.uid);
+  const name = ('تطابق ★ ' + String(me.username || '').slice(0, 8)).slice(0, 24);
+  let roomName = name;
+  let n = 1;
+  while (await q.get(`SELECT id FROM rooms WHERE name=?`, roomName)) {
+    roomName = (name.slice(0, 20) + '-' + n).slice(0, 24);
+    n += 1;
+  }
+  const out = await q.run(
+    `INSERT INTO rooms (name, description, type, max_users, status, welcome, password, image, audience, owner_id, party_mode)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    roomName, 'غرفة تطابق صوتي', 'voice', 8, 'open', 'تعارف صوتي — استمتعوا 🎤', '', '/img/room.png', 'all', me.id, 'partner'
+  );
+  const roomId = out.lastID;
+  try { await q.run(`INSERT OR IGNORE INTO room_admins (room_id, user_id, username) VALUES (?,?,?)`, roomId, me.id, me.username); } catch (e) { }
+  const payload = {
+    roomId,
+    name: roomName,
+    peer_a: mapFollowUser(me),
+    peer_b: other ? mapFollowUser(other) : { id: peer.uid, username: 'روح' }
+  };
+  io.to('user_' + me.id).emit('soul:match', payload);
+  io.to('user_' + peer.uid).emit('soul:match', payload);
+  io.emit('sync');
+  addXp(me.id, 8).catch(() => { });
+  res.json({ ok: true, waiting: false, ...payload });
 });
 
 app.get('/api/pk/current', requireUser, async (req, res) => {
@@ -2621,7 +2770,7 @@ app.post('/api/logout', (req, res) => {
 // =====================================================
 app.get('/api/rooms', async (req, res) => {
   // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً
-  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience, owner_id, mic_locked FROM rooms WHERE hidden=0 ORDER BY sort,id`);
+  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience, owner_id, mic_locked, party_mode FROM rooms WHERE hidden=0 ORDER BY sort,id`);
   const counts = {};
   Object.entries(roomUsers).forEach(([rid, set]) => counts[rid] = set.size);
   res.json(rooms.map(r => ({
@@ -2631,11 +2780,13 @@ app.get('/api/rooms', async (req, res) => {
     image: String(r.image || ''),
     sort: +r.sort || 0,
     type: String(r.type || 'default'),
+    party_mode: String(r.party_mode || 'chat'),
     max_users: +r.max_users || 1000,
     status: String(r.status || 'open'),
     online: counts[r.id] || 0,
     owner_id: +r.owner_id || 0,
     mic_locked: r.mic_locked ? 1 : 0,
+    live: String(r.type) === 'live' ? 1 : 0,
     audience: String(r.audience || 'all') === 'registered' ? 'registered' : 'all',
     locked: !!(r.password && String(r.password).trim().length > 0),
     pk: serializePk(pkForRoom(r.id))
@@ -9743,7 +9894,7 @@ io.on('connection', async (socket) => {
     emitRoomCounts();
     // بث صوتي قائم في غرفة صوتية: القادم الجديد يُوصل تلقائياً دون أي طلب — نُعلم كل مذيع لينشئ اتصال WebRTC نحوه.
     const activeBroadcast = roomBroadcast[roomId];
-    if (!enterHidden && activeBroadcast && activeBroadcast.mode === 'audio' && !activeBroadcast.hosts.has(uid)) {
+    if (!enterHidden && activeBroadcast && !activeBroadcast.hosts.has(uid) && (activeBroadcast.mode === 'audio' || (activeBroadcast.mode === 'video' && room.type === 'live'))) {
       activeBroadcast.viewers.add(uid);
       for (const hostId of activeBroadcast.hosts.keys()) io.to('user_' + hostId).emit('bcast:new_listener', { roomId, listenerId: uid });
     }
@@ -9780,9 +9931,9 @@ io.on('connection', async (socket) => {
     const room = await q.get(`SELECT * FROM rooms WHERE id=?`, roomId);
     if (!room) return ack({ ok: false, text: 'الغرفة غير موجودة' });
     // الغرف الافتراضية «كتابية فقط»: لا بث صوتي ولا فيديو فيها إطلاقاً
-    if (room.type !== 'voice') return ack({ ok: false, text: 'هذه الغرفة كتابية فقط — البث غير متاح فيها' });
+    if (room.type !== 'voice' && room.type !== 'live') return ack({ ok: false, text: 'هذه الغرفة كتابية فقط — البث غير متاح فيها' });
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
-    const mode = room.type === 'voice' ? 'audio' : 'video';
+    const mode = room.type === 'live' ? 'video' : 'audio';
     const allowed = mode === 'video' ? await canStartVideoBroadcast(me) : await canStartAudioBroadcast(me);
     if (!allowed) return ack({
       ok: false,
@@ -9808,7 +9959,7 @@ io.on('connection', async (socket) => {
       b = roomBroadcast[roomId] = { mode, hosts: new Map(), viewers: new Set(), pending: new Map(), speakPending: new Map(), viewerOf: new Map(), primaryHostId: uid, startedAt: Date.now() };
       // بث صوتي جديد: سجّل فوراً كل من هو موجود بالفعل في الغرفة كمستمع، ليتصل بهم المذيع من أول لحظة
       // بدل انتظار خروجهم ودخولهم من جديد ليُلتقطوا عبر معالج 'join'.
-      if (mode === 'audio' && roomUsers[roomId]) for (const existingUid of roomUsers[roomId]) if (existingUid !== uid) b.viewers.add(existingUid);
+      if ((mode === 'audio' || room.type === 'live') && roomUsers[roomId]) for (const existingUid of roomUsers[roomId]) if (existingUid !== uid) b.viewers.add(existingUid);
     }
     if (b.speakPending) b.speakPending.delete(uid); // تجاوز الإدارة لأي طلب تحدث معلّق سابق لنفس الشخص
     // [فيديو] البثوث مستقلة تماماً: مذيع جديد لا يُدمج تلقائياً مع المذيعين الحاليين ولا يُعرّف على مشاهديهم؛
@@ -10408,7 +10559,22 @@ io.on('connection', async (socket) => {
     }
   });
 
+  socket.on('soul:game', (roomId, data) => {
+    roomId = +roomId;
+    if (!socket.data.joinedRooms.has(roomId) || !data || typeof data !== 'object') return;
+    const kind = String(data.kind || '').slice(0, 24);
+    if (!['dice', 'bottle', 'card', 'ludo'].includes(kind)) return;
+    io.to('room_' + roomId).emit('soul:game', {
+      roomId, kind,
+      value: data.value,
+      prompt: String(data.prompt || '').slice(0, 160),
+      target: data.target || null,
+      user: { id: uid, username: me.username, avatar: me.avatar || '' }
+    });
+  });
+
   socket.on('disconnect', async () => {
+    try { matchDrop(uid); } catch (e) { }
     const activeCall = activePrivateCalls.get(uid);
     if (activeCall && (!userSockets[uid] || userSockets[uid].length <= 1)) {
       const targetId = activeCall.targetId;

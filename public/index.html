@@ -23,7 +23,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/style.css?v=20260919-usort1">
-<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul2">
+<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul3">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body class="soul-app">
@@ -74,11 +74,14 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           </button>
         </div>
       </div>
+      <div class="soul-event-banner" id="soulEventBanner" hidden></div>
       <div class="soul-cats" id="soulRoomCats">
         <button type="button" class="active" data-rcat="all">الحفلات</button>
-        <button type="button" data-rcat="voice">صوتية</button>
+        <button type="button" data-rcat="live">بث</button>
+        <button type="button" data-rcat="partner">ثنائي</button>
+        <button type="button" data-rcat="disco">ديسكو</button>
         <button type="button" data-rcat="pk">PK</button>
-        <button type="button" data-rcat="hot">الأكثر نشاطاً</button>
+        <button type="button" data-rcat="hot">ترند</button>
       </div>
     </header>
     <!-- القائمة المنسدلة لزر الدخول / الاسم -->
@@ -162,6 +165,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <button id="dropLeaveRoom">مغادرة الغرفة <i class="f7-icons">chevron_right</i></button>
       <button id="dropLockMics" style="display:none">إغلاق المايكات <i class="f7-icons">mic_slash_fill</i></button>
       <button id="dropStartPk">بدء PK <i class="f7-icons">flag_fill</i></button>
+      <button id="dropSoulGames">ألعاب الغرفة <i class="f7-icons">gamecontroller_fill</i></button>
+      <button id="dropSoulInvite">دعوة صديق <i class="f7-icons">person_badge_plus_fill</i></button>
       <button id="dropRefreshRooms">تحديث الغرف <i class="f7-icons">chevron_right</i></button>
       <button id="dropHideWelcome" title="حذف «العام» من شاشة أنت فقط — يظل ظاهراً لبقية المستخدمين">حذف العام لدي فقط <i class="f7-icons">chevron_right</i></button>
       <button id="dropWipeWelcome" style="display:none" title="حذف «العام» نهائياً من الغرفة لجميع المستخدمين">حذف العام للجميع <i class="f7-icons">chevron_right</i></button>
@@ -173,6 +178,10 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <div class="soul-stage" id="soulStage" hidden>
       <div class="soul-pk-bar" id="soulPkBar" hidden></div>
       <div class="soul-room-banner" id="soulRoomBanner"></div>
+      <div class="soul-live-stage" id="soulLiveStage" hidden>
+        <button type="button" id="soulLiveGo">ابدأ البث المباشر</button>
+        <p id="soulLiveHint">الجمهور يشاهد بث المضيف مباشرة</p>
+      </div>
       <div class="soul-seats" id="soulSeats"></div>
       <div class="soul-speak-inbox" id="soulSpeakInbox" hidden></div>
     </div>
@@ -1061,6 +1070,9 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       </div>
       <div class="mn-list">
         <button class="mn-item" id="mnAccount"><span class="mni"><i class="f7-icons">person_crop_circle</i></span> حسابي <i class="f7-icons mnc">chevron_right</i></button>
+        <button class="mn-item" id="mnSoulTest"><span class="mni">✦</span> اختبار الروح <i class="f7-icons mnc">chevron_right</i></button>
+        <button class="mn-item" id="mnSoulFriends"><span class="mni"><i class="f7-icons">person_2_fill</i></span> الأصدقاء <i class="f7-icons mnc">chevron_right</i></button>
+        <button class="mn-item" id="mnSoulPass"><span class="mni"><i class="f7-icons">star_fill</i></span> Soul Pass <i class="f7-icons mnc">chevron_right</i></button>
         <button class="mn-item" id="mnBuy"><span class="mni"><i class="f7-icons">creditcard_fill</i></span> شراء رصيد <i class="f7-icons mnc">chevron_right</i></button>
         <button class="mn-item" id="mnVerify"><span class="mni"><i class="f7-icons">checkmark_seal_fill</i></span> توثيق حسابي <i class="f7-icons mnc">chevron_right</i></button>
         <button class="mn-item" id="mnRoyal"><span class="mni" style="color:#f59e0b"><i class="f7-icons">crown_fill</i></span> <span style="color:#b45309;font-weight:900">الدخول الملكي 👑</span> <i class="f7-icons mnc">chevron_right</i></button>
@@ -1236,7 +1248,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <div class="wall-page">
       <div class="wall-head">
         <button class="wall-back" data-close="wallOv" type="button"><i class="f7-icons">chevron_left</i><span>عودة</span></button>
-        <b>الحائط</b>
+        <b>اللحظات</b>
         <button class="wall-refresh" id="wallRefresh" type="button" aria-label="تحديث الحائط"><i class="f7-icons">arrow_clockwise</i></button>
       </div>
       <div class="wall-scroll" id="wallScroll">
@@ -1725,7 +1737,13 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   <div class="overlay" id="createRoomOv">
     <div class="sheet soul-sheet">
       <div class="sh-handle"></div>
-      <h3>إنشاء غرفة صوتية</h3>
+      <h3>إنشاء غرفة</h3>
+      <div class="soul-mode-picks" id="soulModePicks">
+        <button type="button" class="active" data-mode="chat">حفلة</button>
+        <button type="button" data-mode="live">بث مباشر</button>
+        <button type="button" data-mode="partner">ثنائي</button>
+        <button type="button" data-mode="disco">ديسكو</button>
+      </div>
       <div class="soul-field"><input id="soulRoomName" maxlength="24" placeholder="اسم الغرفة"></div>
       <div class="soul-field"><input id="soulRoomDesc" maxlength="80" placeholder="وصف قصير (اختياري)"></div>
       <div class="soul-field"><input id="soulRoomPass" maxlength="20" placeholder="كلمة سر للغرفة الخاصة (اختياري)"></div>
@@ -1741,6 +1759,61 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <h3>تحدّي غرفة — PK</h3>
       <p style="text-align:center;color:#d8c6f0;font-size:12.5px;margin-bottom:10px">اختر غرفة للمواجهة بالهدايا لمدة 3 دقائق</p>
       <div id="soulPkRooms"></div>
+    </div>
+  </div>
+
+  <div class="gift-celebration-layer" id="giftCelebrationLayer" aria-hidden="true"></div>
+
+  <!-- مؤشر موحد لأي عملية تحتاج وقتاً قبل فتح القالب أو إتمام الطلب -->
+  <div class="global-operation-loading hidden" id="globalOperationLoading" role="status" aria-live="polite" aria-hidden="true">
+    <div class="global-operation-loading-card">
+      <span class="global-operation-spinner"><i class="f7-icons">arrow2_circlepath</i></span>
+      <span id="globalOperationLoadingText">جارٍ التحميل...</span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- إشعار الرسالة الخاصة الوارد من الأعلى -->
+  <div class="pm-banner" id="pmBanner" role="alert" aria-live="polite">
+    <img class="pmb-ava" id="pmBannerAva" src="/avatars/default.png" alt="" width="44" height="44" decoding="async">
+    <div class="pmb-body">
+      <div class="pmb-head">
+        <span class="pmb-name" id="pmBannerName">-</span>
+        <span class="pmb-time" id="pmBannerTime">الآن</span>
+      </div>
+      <div class="pmb-line" id="pmBannerLine">ارسل لك رسالة خاصة</div>
+      <div class="pmb-hint">انتقل إلى قائمة الرسائل الخاصة لقراءتها</div>
+    </div>
+  </div>
+</div>
+<script src="/socket.io/socket.io.js" defer></script>
+<script src="/js/skins.js?v=20260904-skins" defer></script>
+<script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
+<script src="/js/app.js?v=20260919-usort1" defer></script>
+<script src="/js/soulchill.js?v=20260926-soul3" defer></script>
+<script src="/js/soul-world.js?v=20260926-soul3" defer></script>
+<script src="/js/desktop.js?v=20260911-dsk7" defer></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+   document.addEventListener("contextmenu", e => e.preventDefault());
+   document.addEventListener("selectstart", e => e.preventDefault());
+
+});</script>
+</body>
+</html>
+      <h3>Soul Pass</h3>
+      <p class="soul-lead">وضع ليلي كامل، شارة كوكب، وتوهج مقعد حصري لمدة 30 يوماً مقابل 500 🪙</p>
+      <div id="soulPassStatus"></div>
+      <button class="soul-primary" type="button" id="soulPassBuy">اشترك الآن</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="soulInviteOv">
+    <div class="sheet soul-sheet">
+      <div class="sh-handle"></div>
+      <h3>دعوة إلى الحفلة</h3>
+      <div id="soulInviteList"></div>
     </div>
   </div>
 

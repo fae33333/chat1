@@ -3028,7 +3028,8 @@ function connectSocket() {
   });
   // مستمع جديد دخل الغرفة الصوتية أثناء بث صوتي قائم (لكل مذيع)
   SOCKET.on('bcast:new_listener', ({ listenerId }) => {
-    if (!BCAST || !BCAST.isHost || BCAST.mode !== 'audio') return;
+    if (!BCAST || !BCAST.isHost) return;
+    if (BCAST.mode !== 'audio' && !(BCAST.mode === 'video' && CUR_ROOM && CUR_ROOM.type === 'live')) return;
     bcastConnectToPeer(listenerId);
   });
   // إشارات WebRTC (عرض/رد/مرشحات ICE) — بين المذيعين مع بعضهم وبين كل مذيع والمشاهدين
@@ -3756,6 +3757,13 @@ function bcastViewerAutoConnectAudio(roomId, hosts) {
   // العروض (offers) ستصل من كل مذيع تلقائياً عبر bcast:signal — نطبّق أولاً أي عرض وصل مبكراً قبل التهيئة
   bcastFlushSignalQueue();
 }
+function bcastViewerAutoConnectVideo(roomId, hosts) {
+  BCAST = { roomId: +roomId, mode: 'video', isHost: false, isPrimary: false, hosts: new Map(), peers: new Map(), watching: new Set(), pendingTargets: new Set() };
+  bcastSetFloatingMode('video');
+  (hosts || []).forEach(h => { bcastRegisterHost(h); BCAST.watching.add(+h.id); });
+  if (typeof openOv === 'function') openOv('bcastOv');
+  bcastFlushSignalQueue();
+}
 
 // نافذة تأكيد بدء البث
 function bcastOpenStartConfirm(mode) {
@@ -3821,7 +3829,7 @@ async function bcastStart(mode) {
     // [صوت] أتصل بكل من انضم قبلي: المذيعون الحاليون (بث ثنائي الاتجاه بيننا) والمستمعون المسجلون بالفعل.
     // [فيديو] بثّي مستقل تماماً: لا اتصال بأي مذيع آخر ولا بأي مشاهد — كل مشاهد يصل بطلبٍ أوافقُ عليه بنفسي،
     // وإن أردتُ مشاهدة مذيع آخر فعليّ طلبُه هو والموافقة عليه.
-    if (res.mode === 'audio') {
+    if (res.mode === 'audio' || (res.mode === 'video' && CUR_ROOM && CUR_ROOM.type === 'live')) {
       (res.existingHosts || []).forEach(h => { bcastRegisterHost(h); bcastConnectToPeer(h.id); });
       (res.viewers || []).forEach(id => bcastConnectToPeer(+id));
     }
@@ -3950,6 +3958,7 @@ function bcastApplyJoinState(roomId, broadcastState) {
     ROOM_BCAST[roomId] = broadcastState;
     const iAmAlreadyHost = ME && broadcastState.hosts.some(h => h.id === ME.id);
     if (broadcastState.mode === 'audio' && !iAmAlreadyHost) bcastViewerAutoConnectAudio(roomId, broadcastState.hosts);
+    if (broadcastState.mode === 'video' && !iAmAlreadyHost && CUR_ROOM && CUR_ROOM.type === 'live') bcastViewerAutoConnectVideo(roomId, broadcastState.hosts);
   } else delete ROOM_BCAST[roomId];
   syncRoomUserBroadcastFlags(roomId);
   bcastRenderBar();
