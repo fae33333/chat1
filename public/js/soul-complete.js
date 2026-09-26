@@ -229,6 +229,8 @@
     if (shopBtn) shopBtn.onclick = () => openShop('coins');
     const mnShop = $('#mnSoulShop');
     if (mnShop) mnShop.onclick = () => { if (typeof closeOv === 'function') closeOv('menuOv'); openShop('coins'); };
+    const wallet = $('#soulMeWallet');
+    if (wallet) wallet.onclick = () => { if (typeof closeOv === 'function') closeOv('menuOv'); openShop('coins'); };
     const mnAv = $('#mnSoulAvatar');
     if (mnAv) mnAv.onclick = () => { if (typeof closeOv === 'function') closeOv('menuOv'); openShop('look'); };
     const mnEv = $('#mnSoulEvents');

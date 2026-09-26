@@ -23,8 +23,8 @@ html,body,button,input,textarea,select{font-family:"SF Arabic","SF Pro Text","No
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/style.css?v=20260919-usort1">
-<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul15">
-<link rel="stylesheet" href="/css/soul-skin.css?v=20260926-soul15">
+<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul16">
+<link rel="stylesheet" href="/css/soul-skin.css?v=20260926-soul16">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body class="soul-app">
@@ -841,8 +841,8 @@ html,body,button,input,textarea,select{font-family:"SF Arabic","SF Pro Text","No
         <span class="pg-close back" data-close="pmOv"><i class="f7-icons">chevron_left</i> عودة</span>
         <span class="pm-peer" id="pmPeer"></span>
         <span class="pm-head-actions">
-          <i class="f7-icons pm-call pm-call-video" id="pmVideoCall" title="مكالمة فيديو" aria-label="مكالمة فيديو">videocam_fill</i>
-          <i class="f7-icons pm-call" id="pmCall" title="مكالمة صوتية" aria-label="مكالمة صوتية">phone_fill</i>
+          <i class="f7-icons pm-call pm-call-video" id="pmVideoCall" title="مكالمة فيديو" aria-label="مكالمة فيديو" hidden>videocam_fill</i>
+          <i class="f7-icons pm-call" id="pmCall" title="مكالمة صوتية" aria-label="مكالمة صوتية" hidden>phone_fill</i>
         </span>
       </div>
       <div class="pm-body" id="pmBody"></div>
@@ -1079,45 +1079,44 @@ html,body,button,input,textarea,select{font-family:"SF Arabic","SF Pro Text","No
   <div class="overlay full withnav" id="menuOv">
     <div class="pvpage menupage">
       <div class="pg-head bar soul-me-head">
-        <span class="pg-title">حسابي</span>
+        <span class="pg-title">أنا</span>
         <span class="pg-close back" data-close="menuOv" style="display:none"><i class="f7-icons">chevron_left</i></span>
       </div>
       <div class="mn-user" id="menuUserCard">
         <span class="mn-ava" id="menuAva"><span class="dot green" id="menuAvaDot"></span></span>
         <span class="mn-uinfo"><b id="menuName">-</b><span id="menuStatus">متصل</span></span>
-        <i class="f7-icons mn-chev">chevron_right</i>
       </div>
-      <div class="mn-balance">رصيدك الحالي <b id="menuBal">0</b></div>
+      <button type="button" class="mn-balance" id="soulMeWallet">رصيدك <b id="menuBal">0</b></button>
       <div class="soul-me-stats">
         <div><b id="soulMeFollowers">0</b><span>متابعون</span></div>
         <div><b id="soulMeFollowing">0</b><span>أتابع</span></div>
         <div><b id="soulMeId">-</b><span>ID</span></div>
         <div><b id="soulMeLevel">1</b><span>المستوى</span></div>
       </div>
-      <div class="mn-list">
-        <button class="mn-item" id="mnAccount"><span class="mni"><i class="f7-icons">person_crop_circle</i></span> حسابي <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnSoulTest"><span class="mni">✦</span> اختبار الروح <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnSoulFriends"><span class="mni"><i class="f7-icons">person_2_fill</i></span> الأصدقاء <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnSoulPass"><span class="mni"><i class="f7-icons">star_fill</i></span> اشتراك مميز / VIP <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnSoulShop"><span class="mni">🎁</span> المتجر والصناديق <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnSoulAvatar"><span class="mni">🎭</span> محرر الأفاتار <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnSoulEvents"><span class="mni">📅</span> مركز الفعاليات <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnBuy"><span class="mni"><i class="f7-icons">creditcard_fill</i></span> شراء رصيد <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnVerify"><span class="mni"><i class="f7-icons">checkmark_seal_fill</i></span> توثيق حسابي <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnRoyal"><span class="mni" style="color:#f59e0b"><i class="f7-icons">crown_fill</i></span> <span style="color:#b45309;font-weight:900">الدخول الملكي 👑</span> <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnUpgrade"><span class="mni"><i class="f7-icons">chart_bar_fill</i></span> ترقية حسابي <i class="f7-icons mnc">chevron_right</i></button>
+      <div class="mn-list soul-me-main">
+        <button class="mn-item" id="mnSoulShop" type="button"><span class="mni"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 8h14l-1.2 11H6.2L5 8z"/><path d="M8 8V7a4 4 0 0 1 8 0v1"/></svg></span> المتجر</button>
+        <button class="mn-item" id="mnSoulFriends" type="button"><span class="mni"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><circle cx="16.5" cy="9" r="2.3"/><path d="M4 19c.6-2.8 3-4.4 5-4.4s4.4 1.6 5 4.4"/><path d="M14.4 14.8c1.6 0 3.6 1.1 4.3 3.4"/></svg></span> الأصدقاء</button>
+        <button class="mn-item" id="mnSettings" type="button"><span class="mni"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3V20.5M4.9 6.4l1.6 1.6M17.5 16l1.6 1.6M3.5 12h2.2M18.3 12H20.5M4.9 17.6l1.6-1.6M17.5 8l1.6-1.6"/></svg></span> الإعدادات</button>
+        <button class="mn-item" id="mnLogout" type="button"><span class="mni"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 5H6v14h4"/><path d="M10 12h9M16 8l4 4-4 4"/></svg></span> تسجيل الخروج</button>
       </div>
       <div class="mn-list" id="menuAdminSection" style="display:none">
-        <button class="mn-item" id="mnAdminPanel" style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(168,85,247,.12));border:1.5px solid #c7d2fe"><span class="mni" style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff"><i class="f7-icons">shield_fill</i></span> لوحة التحكم الإدارية <i class="f7-icons mnc">chevron_right</i></button>
+        <button class="mn-item" id="mnAdminPanel" type="button"><span class="mni">⌘</span> لوحة التحكم</button>
       </div>
-      <div class="mn-list">
-        <button class="mn-item" id="mnStatuses"><span class="mni"><i class="f7-icons">circle_grid_hex_fill</i></span> الحالات <em class="bn-badge mn-badge" id="mnStatusBadge" style="display:none">0</em> <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnAvatar"><span class="mni"><i class="f7-icons">photo_on_rectangle</i></span> تغيير الصورة <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnMyGifts"><span class="mni"><i class="f7-icons">gift_fill</i></span> هدايا حسابي <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnBlocks"><span class="mni"><i class="f7-icons">slash_circle_fill</i></span> قوائم الحظر <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnSettings"><span class="mni"><i class="f7-icons">gear_alt_fill</i></span> الاعدادات <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnPrivateSettings" style="display:none"><span class="mni"><i class="f7-icons">lock_fill</i></span> <span id="mnPrivateSettingsText">إيقاف الرسائل الخاصة لحسابك</span> <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnLogout"><span class="mni"><i class="f7-icons">power</i></span> تسجيل الخروج <i class="f7-icons mnc">chevron_right</i></button>
+      <div class="soul-me-hidden" hidden>
+        <button class="mn-item" id="mnAccount" type="button">حسابي</button>
+        <button class="mn-item" id="mnSoulTest" type="button">اختبار الروح</button>
+        <button class="mn-item" id="mnSoulPass" type="button">اشتراك مميز</button>
+        <button class="mn-item" id="mnSoulAvatar" type="button">محرر الأفاتار</button>
+        <button class="mn-item" id="mnSoulEvents" type="button">مركز الفعاليات</button>
+        <button class="mn-item" id="mnBuy" type="button">شراء رصيد</button>
+        <button class="mn-item" id="mnVerify" type="button">توثيق حسابي</button>
+        <button class="mn-item" id="mnRoyal" type="button">الدخول الملكي</button>
+        <button class="mn-item" id="mnUpgrade" type="button">ترقية حسابي</button>
+        <button class="mn-item" id="mnStatuses" type="button">الحالات <em class="bn-badge mn-badge" id="mnStatusBadge" style="display:none">0</em></button>
+        <button class="mn-item" id="mnAvatar" type="button">تغيير الصورة</button>
+        <button class="mn-item" id="mnMyGifts" type="button">هدايا حسابي</button>
+        <button class="mn-item" id="mnBlocks" type="button">قوائم الحظر</button>
+        <button class="mn-item" id="mnPrivateSettings" type="button" style="display:none"><span id="mnPrivateSettingsText">إيقاف الرسائل الخاصة لحسابك</span></button>
       </div>
     </div>
   </div>
@@ -1840,7 +1839,7 @@ html,body,button,input,textarea,select{font-family:"SF Arabic","SF Pro Text","No
     <div class="soul-match-card">
       <div class="soul-match-pulse"></div>
       <b id="soulMatchTitle">تطابق صوتي</b>
-      <small id="soulMatchSub">نبحث عن صوت قريب — مكالمة 5 دقائق بدون غرفة</small>
+      <small id="soulMatchSub">نبحث عن شخص طلب التطابق وبنفس اهتماماتك — المكالمة تبدأ مباشرة دون إرسال أو قبول</small>
       <button class="soul-ghost" type="button" id="soulMatchCancel">إلغاء</button>
     </div>
   </div>
@@ -1936,10 +1935,10 @@ html,body,button,input,textarea,select{font-family:"SF Arabic","SF Pro Text","No
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
-<script src="/js/app.js?v=20260926-soul15" defer></script>
-<script src="/js/soulchill.js?v=20260926-soul15" defer></script>
-<script src="/js/soul-world.js?v=20260926-soul15" defer></script>
-<script src="/js/soul-complete.js?v=20260926-soul15" defer></script>
+<script src="/js/app.js?v=20260926-soul16" defer></script>
+<script src="/js/soulchill.js?v=20260926-soul16" defer></script>
+<script src="/js/soul-world.js?v=20260926-soul16" defer></script>
+<script src="/js/soul-complete.js?v=20260926-soul16" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

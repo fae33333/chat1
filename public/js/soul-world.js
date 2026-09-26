@@ -55,26 +55,14 @@
   }
 
   function paintMePlanet() {
-    const card = $('#menuUserCard');
-    if (!card || typeof api !== 'function' || typeof ME === 'undefined' || !ME) return;
+    if (typeof api !== 'function' || typeof ME === 'undefined' || !ME) return;
     api('/api/soul/me').then(d => {
-      let el = $('#soulMePlanet');
-      if (!el) {
-        el = document.createElement('div');
-        el.id = 'soulMePlanet';
-        el.className = 'soul-me-planet';
-        const stats = document.querySelector('.soul-me-stats');
-        if (stats) stats.after(el);
-        else card.after(el);
-      }
-      const p = d && d.planet;
-      el.textContent = p ? (p.emoji + ' كوكبك: ' + p.name + ' — ' + p.tag) : '✦ لم تختبر روحك بعد — ابدأ اختبار الروح';
-      el.onclick = openSoulTest;
       if (typeof ME !== 'undefined' && ME) {
-        ME.soul_planet = d.planet_id || '';
-        ME.soul_premium = d.premium ? 1 : 0;
+        ME.soul_planet = (d && d.planet_id) || '';
+        ME.soul_premium = d && d.premium ? 1 : 0;
       }
-      if (!d.planet_id && ME.registered) maybeOnboard();
+      const el = $('#soulMePlanet');
+      if (el) el.remove();
     }).catch(() => { });
   }
 
@@ -99,7 +87,6 @@
     } catch (e) { }
     sessionStorage.setItem('soulOnboarded', '1');
     if (typeof closeOv === 'function') closeOv('soulOnboardOv');
-    if (!skip) openSoulTest();
   }
 
   function openSoulTest() {
@@ -150,6 +137,11 @@
     window.SOUL_PRESTREAM = null;
   }
 
+  function forceOnboard() {
+    sessionStorage.removeItem('soulOnboarded');
+    maybeOnboard();
+  }
+
   async function startMatch() {
     if (startMatch._busy || MATCHING) return;
     if (!needAuth()) return;
@@ -161,6 +153,14 @@
       if (typeof toast === 'function') toast('أنت في مكالمة حالياً', false);
       return;
     }
+    try {
+      const meInfo = await api('/api/soul/me');
+      if (!meInfo || !(meInfo.interests || []).length) {
+        if (typeof toast === 'function') toast('اختر اهتماماتك أولاً ليتم التطابق مع من يشبهك', false);
+        forceOnboard();
+        return;
+      }
+    } catch (e) { }
     startMatch._busy = true;
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -174,9 +174,20 @@
     MATCHING = true;
     if (typeof openOv === 'function') openOv('soulMatchOv');
     const title = $('#soulMatchTitle');
+    const sub = $('#soulMatchSub');
     if (title) title.textContent = 'تطابق صوتي — جارٍ البحث…';
+    if (sub) sub.textContent = 'نبحث عن شخص طلب التطابق وبنفس اهتماماتك — مكالمة مباشرة 5 دقائق';
     const tryOnce = async () => {
       const d = await api('/api/soul/match', 'POST', {});
+      if (d && d.need_interests) {
+        MATCHING = false;
+        startMatch._busy = false;
+        stopPrestream();
+        closeOv('soulMatchOv');
+        if (typeof toast === 'function') toast('اختر اهتماماتك أولاً ليتم التطابق', false);
+        forceOnboard();
+        return 'stop';
+      }
       if (!d || d.waiting) return null;
       if (d.roomId) return null;
       if (d.call || d.peer_a || d.peer_b) return d;
@@ -184,6 +195,7 @@
     };
     try {
       const first = await tryOnce();
+      if (first === 'stop') return;
       if (first) {
         startMatch._busy = false;
         return joinMatch(first);
@@ -192,6 +204,7 @@
         if (!MATCHING) { clearInterval(poll); startMatch._busy = false; return; }
         try {
           const n = await tryOnce();
+          if (n === 'stop') { clearInterval(poll); return; }
           if (n) { clearInterval(poll); startMatch._busy = false; joinMatch(n); }
         } catch (e) { }
       }, 3000);
@@ -223,10 +236,11 @@
     const key = [d.caller_id, d.peer_a && d.peer_a.id, d.peer_b && d.peer_b.id].join('-');
     if (joinMatch._k === key) return;
     joinMatch._k = key;
-    if (typeof toast === 'function') toast('تطابق صوتي — مكالمة 5 دقائق');
+    if (typeof toast === 'function') toast('تم التطابق — المكالمة تبدأ مباشرة');
     const meId = (typeof ME !== 'undefined' && ME) ? +ME.id : 0;
     const peer = (d.peer_a && +d.peer_a.id === meId) ? d.peer_b : d.peer_a;
     if (!peer || !peer.id) return;
+    window.SOUL_EXPECT_MATCH = +peer.id;
     if (+d.caller_id === meId && typeof window.soulStartMatchCall === 'function') {
       window.soulStartMatchCall(peer);
     }

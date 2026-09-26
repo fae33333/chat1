@@ -2633,18 +2633,28 @@ app.post('/api/soul/match/cancel', requireUser, (req, res) => {
   res.json({ ok: true });
 });
 
+function soulInterestList(u) {
+  return String((u && u.soul_interests) || '').split(',').map(x => x.trim()).filter(Boolean);
+}
+
+function soulSharedInterests(me, other) {
+  const a = soulInterestList(me);
+  const b = soulInterestList(other);
+  if (!a.length || !b.length) return [];
+  return a.filter(x => b.includes(x));
+}
+
 function soulMatchScore(me, other) {
   if (!other || +other.id === +me.id) return -1;
-  let s = 1;
+  const shared = soulSharedInterests(me, other);
+  if (!shared.length) return -1;
+  let s = 20 + shared.length * 16;
   const g1 = String(me.gender || 'secret');
   const g2 = String(other.gender || 'secret');
   if ((g1 === 'boy' && g2 === 'girl') || (g1 === 'girl' && g2 === 'boy')) s += 60;
   else if (g1 === 'secret' || g2 === 'secret') s += 18;
   else if (g1 && g2 && g1 === g2) s += 10;
-  if (me.soul_planet && other.soul_planet && me.soul_planet === other.soul_planet) s += 35;
-  const a = String(me.soul_interests || '').split(',').map(x => x.trim()).filter(Boolean);
-  const b = String(other.soul_interests || '').split(',').map(x => x.trim()).filter(Boolean);
-  s += a.filter(x => b.includes(x)).length * 12;
+  if (me.soul_planet && other.soul_planet && me.soul_planet === other.soul_planet) s += 25;
   return s;
 }
 
@@ -2659,6 +2669,7 @@ function matchCallPayload(a, b, callerId) {
 }
 
 async function findSoulCallPeer(me) {
+  // Only people who also tapped Voice Match, and only with shared interests.
   let best = null;
   let bestScore = -1;
   for (const item of MATCH_QUEUE.slice()) {
@@ -2666,20 +2677,9 @@ async function findSoulCallPeer(me) {
     if (activePrivateCalls.has(+item.uid)) { matchDrop(item.uid); continue; }
     const other = await q.get(`SELECT * FROM users WHERE id=?`, item.uid);
     if (!other || +other.is_bot || +other.banned) { matchDrop(item.uid); continue; }
-    const sc = soulMatchScore(me, other) + 50;
+    const sc = soulMatchScore(me, other);
+    if (sc < 0) continue;
     if (sc > bestScore) { bestScore = sc; best = other; }
-  }
-  if (best) return best;
-  for (const uid of Object.keys(onlineUsers)) {
-    if (+uid === +me.id) continue;
-    if (activePrivateCalls.has(+uid)) continue;
-    const row = await q.get(
-      `SELECT * FROM users WHERE id=? AND COALESCE(is_bot,0)=0 AND COALESCE(banned,0)=0`,
-      +uid
-    );
-    if (!row) continue;
-    const sc = soulMatchScore(me, row);
-    if (sc > bestScore) { bestScore = sc; best = row; }
   }
   return best;
 }
@@ -2689,17 +2689,28 @@ app.post('/api/soul/match', requireUser, async (req, res) => {
   const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
   if (!me || !me.registered) return res.status(403).json({ error: 'التطابق للأعضاء المسجلين' });
   if (activePrivateCalls.has(+me.id)) return res.status(409).json({ error: 'أنت في مكالمة حالياً' });
+  if (!soulInterestList(me).length) {
+    return res.json({ ok: true, waiting: true, call: false, need_interests: true });
+  }
   matchDrop(req.authUid);
   const best = await findSoulCallPeer(me);
   if (best) {
     matchDrop(best.id);
     const payload = matchCallPayload(me, best, me.id);
+    payload.auto = true;
+    payload.interests = soulSharedInterests(me, best);
     io.to('user_' + me.id).emit('soul:match', payload);
     io.to('user_' + best.id).emit('soul:match', payload);
     addXp(me.id, 6).catch(() => { });
     return res.json({ ok: true, waiting: false, ...payload });
   }
-  MATCH_QUEUE.push({ uid: +me.id, at: Date.now(), gender: me.gender, planet: me.soul_planet || '' });
+  MATCH_QUEUE.push({
+    uid: +me.id,
+    at: Date.now(),
+    gender: me.gender,
+    planet: me.soul_planet || '',
+    interests: soulInterestList(me)
+  });
   return res.json({ ok: true, waiting: true, call: false });
 });
 
@@ -10647,6 +10658,13 @@ io.on('connection', async (socket) => {
     // نوع المكالمة: audio (الافتراضي) | video — تُدار الصلاحيات والتكلفة لكل نوع بشكل مستقل من لوحة الإدارة.
     const callType = type === 'video' ? 'video' : 'audio';
     const isSoulMatch = !!soul;
+    if (!isSoulMatch) {
+      return socket.emit('call:rejected', {
+        fromId: toId,
+        reason: 'disabled',
+        error: 'المكالمات من الدردشة غير متاحة — استخدم التطابق الصوتي'
+      });
+    }
     const callMembershipKey = callType === 'video' ? 'video_call_allowed_memberships' : 'private_call_allowed_memberships';
     if (!isSoulMatch && !await canUseMembershipFeature(uid, callMembershipKey)) {
       return socket.emit('call:rejected', { fromId: toId, reason: 'not_allowed', error: callType === 'video' ? 'عضويتك غير مسموح لها بإجراء مكالمات الفيديو الخاصة' : 'عضويتك غير مسموح لها بإجراء المكالمات الخاصة' });

@@ -7441,6 +7441,9 @@ window.soulRevealMatch = function () {
   if (typeof toast === 'function') toast('تم كشف الهوية — المكالمة بلا حد زمني');
 };
 function beginPrivateCallFlow(callType) {
+  if (!(typeof window !== 'undefined' && window.SOUL_MATCH_CALL)) {
+    return toast('المكالمات من الدردشة غير متاحة — استخدم التطابق الصوتي', false);
+  }
   if (!PM_WITH) return toast('اختر مستخدماً للاتصال به', false);
   if (PM_CALL) return toast('أنت في مكالمة حالياً', false);
   if (IGNORED_USERS.has(+PM_WITH.id)) return toast('لا يمكن الاتصال بمستخدم متجاهل', false);
@@ -7754,10 +7757,18 @@ async function executePrivateCall(callType = 'audio') {
   // جلب TURN من الخادم (إن كان مضبوطاً) قبل إنشاء الاتصال — يرفع نسبة نجاح الربط
   if (isVideo) { try { await fetchServerIceServers(); } catch (e) {} }
   try {
-    const media = await acquireProCallMedia(isVideo);
-    const stream = media.stream;
-    const noCamera = isVideo && !media.hasVideo;
     const soulCall = !!(typeof window !== 'undefined' && window.SOUL_MATCH_CALL);
+    let stream = null;
+    let noCamera = isVideo;
+    if (soulCall && window.SOUL_PRESTREAM && window.SOUL_PRESTREAM.getTracks) {
+      stream = window.SOUL_PRESTREAM;
+      window.SOUL_PRESTREAM = null;
+      noCamera = true;
+    } else {
+      const media = await acquireProCallMedia(isVideo);
+      stream = media.stream;
+      noCamera = isVideo && !media.hasVideo;
+    }
     PM_CALL = {
       peerId: +PM_WITH.id,
       peerName: soulCall ? 'روح قريبة' : PM_WITH.username,
@@ -7785,9 +7796,8 @@ async function executePrivateCall(callType = 'audio') {
       lastNetLabel: ''
     };
     if (isVideo) showVideoCallUI('calling');
-    if (noCamera) toast('لا توجد كاميرا متاحة — ستتحدث بالصوت وتشاهد فيديو الطرف الآخر 📹');
     else showCallActiveModal();
-    playCallRingback();
+    if (!soulCall) playCallRingback();
     SOCKET.emit('call:request', { toId: PM_WITH.id, type: callType, soul: !!(soulCall || (PM_CALL && PM_CALL.soulMatch)) });
   } catch (err) {
     toast(isVideo
@@ -7797,6 +7807,9 @@ async function executePrivateCall(callType = 'audio') {
 }
 
 function handleIncomingPrivateCall(from, type, soul) {
+  if (!soul) {
+    return SOCKET.emit('call:reject', { toId: from.id, reason: 'disabled' });
+  }
   if (PM_CALL) {
     return SOCKET.emit('call:reject', { toId: from.id, reason: 'busy' });
   }
@@ -7827,7 +7840,11 @@ function handleIncomingPrivateCall(from, type, soul) {
       netScore: 4,
       lastNetLabel: ''
     };
-    showCallIncomingModal();
+  if (soul) {
+    acceptPrivateCall();
+    return;
+  }
+  showCallIncomingModal();
   playCallRingtone();
 }
 
@@ -7839,16 +7856,27 @@ async function acceptPrivateCall() {
   if (isVideo) { try { ensureRemoteAudioCtx(); } catch (e) {} }
   if (isVideo) { try { await fetchServerIceServers(); } catch (e) {} }
   try {
-    const media = await acquireProCallMedia(isVideo);
-    const stream = media.stream;
-    PM_CALL.noCamera = isVideo && !media.hasVideo;
-    if (PM_CALL.noCamera) PM_CALL.camOff = true;
+    let stream = null;
+    if (PM_CALL.soulMatch && window.SOUL_PRESTREAM && window.SOUL_PRESTREAM.getTracks) {
+      stream = window.SOUL_PRESTREAM;
+      window.SOUL_PRESTREAM = null;
+      PM_CALL.noCamera = true;
+      PM_CALL.camOff = true;
+    } else {
+      const media = await acquireProCallMedia(isVideo);
+      stream = media.stream;
+      PM_CALL.noCamera = isVideo && !media.hasVideo;
+      if (PM_CALL.noCamera) PM_CALL.camOff = true;
+    }
     PM_CALL.localStream = stream;
     PM_CALL.state = 'connected';
     closeCallIncomingModal();
-    if (isVideo) showVideoCallUI('connecting');
-    if (PM_CALL.noCamera) toast('لا توجد كاميرا متاحة — ستتحدث بالصوت وتشاهد فيديو الطرف الآخر 📹');
-    else showCallActiveModal();
+    if (isVideo) {
+      showVideoCallUI('connecting');
+      if (PM_CALL.noCamera) toast('لا توجد كاميرا متاحة — ستتحدث بالصوت وتشاهد فيديو الطرف الآخر 📹');
+    } else {
+      showCallActiveModal();
+    }
     const status = $('#pmCallStatus');
     if (status) status.textContent = 'جاري التوصيل...';
     SOCKET.emit('call:accept', { toId: PM_CALL.peerId });

@@ -421,6 +421,27 @@ body.soul-app .soul-msg-head #privSettings {
 }
 body.soul-app .soul-msg-head .pg-title,
 body.soul-app .soul-me-head .pg-title { font-size: 24px; font-weight: 700; }
+body.soul-app #pmCall,
+body.soul-app #pmVideoCall { display: none !important; }
+body.soul-app .soul-me-hidden { display: none !important; }
+body.soul-app #menuOv .mn-user { cursor: pointer; }
+body.soul-app #soulMeWallet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: calc(100% - 32px);
+  border: 0;
+  cursor: pointer;
+  text-align: right;
+}
+body.soul-app .soul-me-main .mn-item .mni {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e879f9;
+}
 body.soul-app .soul-msg-follow {
   margin: 4px 16px 12px;
   background: #fff !important;
