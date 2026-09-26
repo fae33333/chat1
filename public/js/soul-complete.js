@@ -63,9 +63,9 @@
       });
     } else if (SHOP_TAB === 'vip') {
       pane.innerHTML = `<div class="soul-vip-grid">
-        <button type="button" data-plan="plus"><b>PLUS</b><small>إطار واسم مميز</small><em>10 🪙 / شهر</em></button>
-        <button type="button" data-plan="premium"><b>PREMIUM</b><small>هدايا ودخول أوضح</small><em>20 🪙 / شهر</em></button>
-        <button type="button" data-plan="vip"><b>VIP / SVIP</b><small>شارة · إطار · إخفاء اختياري</small><em>30 🪙 / شهر</em></button>
+        <button type="button" data-plan="plus"><b>بلس</b><small>إطار واسم مميز</small><em>10 🪙 / شهر</em></button>
+        <button type="button" data-plan="premium"><b>بريميوم</b><small>هدايا ودخول أوضح</small><em>20 🪙 / شهر</em></button>
+        <button type="button" data-plan="vip"><b>مميز / VIP</b><small>شارة · إطار · إخفاء اختياري</small><em>30 🪙 / شهر</em></button>
         <button type="button" data-plan="pass"><b>Soul Pass</b><small>توهج مقعد 30 يوماً</small><em>500 🪙</em></button>
       </div>`;
       $$('#soulShopPane [data-plan]').forEach(b => {
@@ -100,7 +100,7 @@
       const look = SHOP.look || {};
       pane.innerHTML = `<div class="soul-look-preview" id="soulLookPrev">${lookPreview(look)}</div>
         <div class="soul-look-grid">${items.map(it => `<button type="button" class="soul-look-item${it.owned ? ' owned' : ''}${look[it.kind] === it.id ? ' on' : ''}" data-id="${it.id}" data-kind="${it.kind}" data-owned="${it.owned ? 1 : 0}" data-cost="${it.cost}">
-          <span>${it.emoji}</span><b>${it.name}</b><small>${it.owned ? ' equip' : it.cost + ' 🪙'}</small>
+          <span>${it.emoji}</span><b>${it.name}</b><small>${it.owned ? 'ارتداء' : it.cost + ' 🪙'}</small>
         </button>`).join('')}</div>`;
       $$('#soulShopPane .soul-look-item').forEach(btn => {
         btn.onclick = () => onLookItem(btn);

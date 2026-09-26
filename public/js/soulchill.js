@@ -98,7 +98,7 @@
     const faceHtml = faces.map((u, i) => `<span class="face f${i}" style="background-image:url('${soulFaceSrc(u)}')"></span>`).join('');
     return `<article class="soul-room-card" data-id="${r.id}">
       <div class="soul-room-cover" style="background-image:url('${cover}')">
-        ${live ? '<span class="soul-live">LIVE</span>' : ''}
+        ${live ? '<span class="soul-live">مباشر</span>' : ''}
         ${isPk || r.party_mode === 'pk' ? '<span class="soul-pk-tag">PK</span>' : ''}
         <div class="soul-room-faces">${faceHtml}</div>
         <div class="soul-room-online">${online}</div>
@@ -341,7 +341,7 @@
       }
       const isOwner = CUR_ROOM && +CUR_ROOM.owner_id === +u.id;
       const isMod = !isOwner && (u.rank === 'roomadmin' || u.badge === 'roomadmin.png');
-      const role = isOwner ? 'HOST' : (isMod ? 'MOD' : 'MIC');
+      const role = isOwner ? 'مضيف' : (isMod ? 'مشرف' : 'مايك');
       const name = typeof esc === 'function' ? esc(u.username) : u.username;
       const lvl = u.level || 1;
       return `<button type="button" class="soul-seat host" data-uid="${u.id}">
@@ -483,7 +483,7 @@
         const d = await api('/api/discover');
         const list = (d && d.users) || [];
         const count = $('#soulOnlineSouls');
-        if (count) count.textContent = list.length + ' Soulers are partying';
+        if (count) count.textContent = list.length + ' روح متصلة';
         const nEl = $('#soulOnlineN');
         if (nEl) nEl.textContent = list.length;
         people.innerHTML = list.length ? list.slice(0, 18).map((u, i) => {
@@ -913,7 +913,7 @@
         _ol();
         const bm = $('#bnMenu');
         if (bm && typeof ME !== 'undefined' && ME && typeof avatarHtml === 'function') {
-          bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar, '', typeof frameOf === 'function' ? frameOf(ME) : '')}</span><span>Me</span>`;
+          bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar, '', typeof frameOf === 'function' ? frameOf(ME) : '')}</span><span>أنا</span>`;
         }
         soulPaintMe();
         soulShowHomeNav(true);

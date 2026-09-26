@@ -550,3 +550,105 @@ body.soul-app #toast {
   color: #fff !important;
   border: 1px solid rgba(232,121,249,.25);
 }
+
+/* ---------- سلاسة الحركة ---------- */
+html { scroll-behavior: smooth; }
+body.soul-app, body.soul-app * {
+  -webkit-tap-highlight-color: transparent;
+}
+body.soul-app .r-list,
+body.soul-app .pv-list,
+body.soul-app .wall-scroll,
+body.soul-app .soul-galaxy,
+body.soul-app #msgArea,
+body.soul-app .c-msgs {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+body.soul-app .soul-room-card,
+body.soul-app .soul-p-card,
+body.soul-app .soul-p-mini,
+body.soul-app .soul-seat,
+body.soul-app .soul-cats button,
+body.soul-app .bn-item,
+body.soul-app .soul-fab,
+body.soul-app .soul-icon-btn,
+body.soul-app .soul-coins,
+body.soul-app .soul-dock button,
+body.soul-app .mn-item,
+body.soul-app .wall-post,
+body.soul-app .soul-follow {
+  transition: transform .22s cubic-bezier(.22,1,.36,1), background .22s ease, color .22s ease, box-shadow .22s ease, opacity .22s ease;
+}
+body.soul-app .soul-room-card:active,
+body.soul-app .soul-p-card:active,
+body.soul-app .soul-p-mini:active,
+body.soul-app .soul-seat:active,
+body.soul-app .bn-item:active,
+body.soul-app .soul-fab:active,
+body.soul-app .soul-dock button:active {
+  transform: scale(.96);
+}
+body.soul-app .overlay.open {
+  animation: soulFadeIn .28s ease;
+}
+body.soul-app .overlay.open .soul-page,
+body.soul-app .overlay.open .pvpage,
+body.soul-app .overlay.full.open .wall-page {
+  animation: soulRise .4s cubic-bezier(.22,1,.36,1);
+}
+body.soul-app .overlay.open .sheet,
+body.soul-app .overlay.open .soul-sheet,
+body.soul-app .overlay.open .soul-match-card {
+  animation: soulSheet .36s cubic-bezier(.22,1,.36,1);
+}
+body.soul-app #roomsScreen.screen,
+body.soul-app #chatScreen.screen {
+  transition: opacity .28s ease, transform .32s cubic-bezier(.22,1,.36,1);
+}
+@keyframes soulFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes soulRise {
+  from { opacity: .55; transform: translateY(22px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes soulSheet {
+  from { transform: translateY(40px); opacity: .7; }
+  to { transform: none; opacity: 1; }
+}
+body.soul-app .soul-p-card,
+body.soul-app .soul-p-mini,
+body.soul-app .soul-p-copy {
+  direction: rtl;
+  text-align: right;
+}
+body.soul-app .soul-moments-head,
+body.soul-app .soul-msg-head,
+body.soul-app .soul-me-head,
+body.soul-app .soul-live-strip,
+body.soul-app .soul-msg-follow {
+  direction: rtl;
+}
+body.soul-app .soul-orbit {
+  will-change: transform;
+  animation: soulFloat 7s ease-in-out infinite;
+}
+body.soul-app .soul-seat-ava {
+  transition: box-shadow .25s ease, transform .25s ease;
+}
+body.soul-app .soul-seat.host .soul-seat-ava {
+  animation: soulGlow 2.4s ease-in-out infinite;
+}
+@keyframes soulGlow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.12); }
+}
+body.soul-app .soul-match-pulse {
+  animation: soulPulse 1.4s ease-in-out infinite;
+}
+@keyframes soulPulse {
+  0%, 100% { transform: scale(1); opacity: .55; }
+  50% { transform: scale(1.18); opacity: 1; }
+}

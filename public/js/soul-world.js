@@ -168,13 +168,13 @@
       }
     } catch (e) {
       startMatch._busy = false;
-      if (typeof toast === 'function') toast('اسمح بالميكروفون لبدء Voice match', false);
+      if (typeof toast === 'function') toast('اسمح بالميكروفون لبدء التطابق الصوتي', false);
       return;
     }
     MATCHING = true;
     if (typeof openOv === 'function') openOv('soulMatchOv');
     const title = $('#soulMatchTitle');
-    if (title) title.textContent = 'Voice match — searching…';
+    if (title) title.textContent = 'تطابق صوتي — جارٍ البحث…';
     const tryOnce = async () => {
       const d = await api('/api/soul/match', 'POST', {});
       if (!d || d.waiting) return null;
@@ -202,7 +202,7 @@
         api('/api/soul/match/cancel', 'POST', {}).catch(() => { });
         MATCHING = false;
         stopPrestream();
-        if (title) title.textContent = 'No one now — try again';
+        if (title) title.textContent = 'لا أحد الآن — حاول مرة أخرى';
         setTimeout(() => { closeOv('soulMatchOv'); }, 900);
       }, 20000);
     } catch (e) {
@@ -223,7 +223,7 @@
     const key = [d.caller_id, d.peer_a && d.peer_a.id, d.peer_b && d.peer_b.id].join('-');
     if (joinMatch._k === key) return;
     joinMatch._k = key;
-    if (typeof toast === 'function') toast('Voice match — 5 min audio');
+    if (typeof toast === 'function') toast('تطابق صوتي — مكالمة 5 دقائق');
     const meId = (typeof ME !== 'undefined' && ME) ? +ME.id : 0;
     const peer = (d.peer_a && +d.peer_a.id === meId) ? d.peer_b : d.peer_a;
     if (!peer || !peer.id) return;
