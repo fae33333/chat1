@@ -139,6 +139,7 @@ const canModerateRank = () => {
   if (!ME) return false;
   if (['superadmin', 'admin', 'supermaster'].includes(ME.rank)) return true;
   if (CUR_ROOM) {
+    if (+CUR_ROOM.owner_id && +CUR_ROOM.owner_id === +ME.id) return true;
     const meInRoom = (ROOM_USERS || []).find(u => u.id === ME.id);
     if (meInRoom && meInRoom.rank === 'roomadmin') return true;
   }
@@ -3060,7 +3061,7 @@ function connectSocket() {
     bcastSetFloatingMode('audio');
     AUDIO_BCAST_HOST_MUTED = false;
     bcastUpdateHostMuteButton();
-    openOv('bcastOv');
+    if (typeof closeOv === 'function') closeOv('bcastOv');
     try {
       bcastRegisterHost({ id: ME.id, username: ME.username, avatar: ME.avatar || '', badge: badgeOf(ME) }, true);
       (existingHosts || []).forEach(h => { bcastRegisterHost(h); bcastConnectToPeer(h.id); });
@@ -3814,8 +3815,9 @@ async function bcastStart(mode) {
     $('#bcastEndBtn').hidden = false;
     $('#bcastLeaveBtn').hidden = true;
     $('#bcastWaitMsg').hidden = true;
-    openOv('bcastOv');
-    if (res.mode !== 'video') toast(res.isNewBroadcast ? 'بدأ البث الصوتي — يسمعك جميع من في الغرفة الآن مباشرة' : 'انضممت للبث الصوتي');
+    if (res.mode === 'video') openOv('bcastOv');
+    else if (typeof closeOv === 'function') closeOv('bcastOv');
+    if (res.mode !== 'video') toast(res.isNewBroadcast ? 'أخذت مقعد المضيف' : 'صعدت إلى المقعد');
     // [صوت] أتصل بكل من انضم قبلي: المذيعون الحاليون (بث ثنائي الاتجاه بيننا) والمستمعون المسجلون بالفعل.
     // [فيديو] بثّي مستقل تماماً: لا اتصال بأي مذيع آخر ولا بأي مشاهد — كل مشاهد يصل بطلبٍ أوافقُ عليه بنفسي،
     // وإن أردتُ مشاهدة مذيع آخر فعليّ طلبُه هو والموافقة عليه.
@@ -12852,6 +12854,7 @@ $('#btnMic').onclick = () => {
 // زر «تحدث» بجانب زر الميكروفون: في الغرفة الصوتية يصعد بي كمذيع (بث صوتي).
 // إن كنت مذيعاً بالفعل يفتح شاشة بثي العائمة، تماماً كما كان يفعل زر «بث صوتي» العلوي.
 $('#btnTalkLive').onclick = () => {
+  if (typeof soulHandleMic === 'function') return soulHandleMic();
   if (!ME) return openLogin();
   if (!CUR_ROOM || CUR_ROOM.type !== 'voice') return;
   if (BCAST && BCAST.isHost && BCAST.roomId === CUR_ROOM.id) return openOv('bcastOv');

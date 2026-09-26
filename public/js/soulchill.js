@@ -6,6 +6,7 @@
   let PK_STATE = null;
   let PK_TIMER = null;
   let FOLLOW_SET = new Set();
+  let OWNER_SEAT_TIMER = null;
   let SOCIAL = { followers: 0, following: 0, xp: 0, level: 1, public_id: '' };
 
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -111,6 +112,114 @@
     }
   }
 
+  function soulIsRoomOwner() {
+    return !!(typeof ME !== 'undefined' && ME && typeof CUR_ROOM !== 'undefined' && CUR_ROOM && +CUR_ROOM.owner_id === +ME.id);
+  }
+  function soulCanHostMic() {
+    if (soulIsRoomOwner()) return true;
+    return typeof canModerateRank === 'function' && canModerateRank();
+  }
+  function soulMicsLocked() {
+    return !!(typeof CUR_ROOM !== 'undefined' && CUR_ROOM && +CUR_ROOM.mic_locked);
+  }
+  function soulIsOnMic() {
+    return !!(typeof BCAST !== 'undefined' && BCAST && BCAST.isHost && CUR_ROOM && BCAST.roomId === CUR_ROOM.id);
+  }
+  function soulPaintMicBtn() {
+    const btn = $('#soulDockMic');
+    if (!btn) return;
+    btn.classList.toggle('is-on', soulIsOnMic() && !(typeof AUDIO_BCAST_HOST_MUTED !== 'undefined' && AUDIO_BCAST_HOST_MUTED));
+    btn.classList.toggle('is-muted', soulIsOnMic() && !!(typeof AUDIO_BCAST_HOST_MUTED !== 'undefined' && AUDIO_BCAST_HOST_MUTED));
+    btn.classList.toggle('is-pending', !!(typeof SPEAK_REQUEST_PENDING !== 'undefined' && SPEAK_REQUEST_PENDING));
+    btn.title = soulIsOnMic() ? (AUDIO_BCAST_HOST_MUTED ? 'إلغاء كتم المايك' : 'كتم المايك') : (soulCanHostMic() ? 'أخذ المقعد' : 'طلب مقعد من المضيف');
+  }
+  function soulHandleMic() {
+    if (typeof ME === 'undefined' || !ME) { if (typeof openLogin === 'function') openLogin(); return; }
+    if (!CUR_ROOM || CUR_ROOM.type !== 'voice') return;
+    if (soulIsOnMic()) {
+      if (ME.muted) { if (typeof toast === 'function') toast('تم كتمك من المضيف — لا يمكنك فتح المايك', false); return; }
+      if (typeof AUDIO_BCAST_HOST_MUTED === 'undefined' || !BCAST.localStream) return;
+      AUDIO_BCAST_HOST_MUTED = !AUDIO_BCAST_HOST_MUTED;
+      BCAST.localStream.getAudioTracks().forEach(t => { t.enabled = !AUDIO_BCAST_HOST_MUTED; });
+      if (typeof bcastUpdateHostMuteButton === 'function') bcastUpdateHostMuteButton();
+      soulPaintMicBtn();
+      if (typeof toast === 'function') toast(AUDIO_BCAST_HOST_MUTED ? 'المايك مكتوم' : 'المايك مفتوح');
+      return;
+    }
+    if (soulMicsLocked() && !soulCanHostMic()) {
+      if (typeof toast === 'function') toast('المايكات مغلقة من مضيف الغرفة', false);
+      return;
+    }
+    if (soulCanHostMic()) {
+      if (typeof bcastStart === 'function') bcastStart('audio');
+      return;
+    }
+    soulRequestSeat();
+  }
+  function soulRequestSeat() {
+    if (!CUR_ROOM || typeof SOCKET === 'undefined' || !SOCKET) return;
+    if (typeof SPEAK_REQUEST_PENDING !== 'undefined' && SPEAK_REQUEST_PENDING) {
+      if (typeof toast === 'function') toast('طلبك قيد الانتظار عند المضيف');
+      return;
+    }
+    const state = typeof ROOM_BCAST !== 'undefined' ? ROOM_BCAST[CUR_ROOM.id] : null;
+    if (!state) {
+      if (typeof toast === 'function') toast('انتظر المضيف ليبدأ الحفلة ثم اطلب مقعداً', false);
+      return;
+    }
+    SOCKET.emit('bcast:speak_request', CUR_ROOM.id, (res) => {
+      if (!res || !res.ok) {
+        if (typeof toast === 'function') toast((res && res.text) || 'تعذر طلب المقعد', false);
+        return;
+      }
+      if (typeof SPEAK_REQUEST_PENDING !== 'undefined') SPEAK_REQUEST_PENDING = true;
+      if (typeof toast === 'function') toast('تم إرسال طلب المقعد إلى مضيف الغرفة 🎤');
+      soulPaintMicBtn();
+      soulRenderSeats();
+    });
+  }
+  window.soulHandleMic = soulHandleMic;
+
+  async function soulToggleMicLock() {
+    if (!CUR_ROOM || !soulCanHostMic()) return;
+    const next = soulMicsLocked() ? 0 : 1;
+    try {
+      const r = await api('/api/rooms/' + CUR_ROOM.id + '/mic-lock', 'POST', { locked: next });
+      CUR_ROOM.mic_locked = r.mic_locked;
+      const lockBtn = $('#dropLockMics');
+      if (lockBtn) lockBtn.innerHTML = (soulMicsLocked() ? 'فتح المايكات' : 'إغلاق المايكات') + ' <i class="f7-icons">' + (soulMicsLocked() ? 'mic_fill' : 'mic_slash_fill') + '</i>';
+      if (typeof toast === 'function') toast(soulMicsLocked() ? 'أُغلقت المايكات — الجمهور لا يصعد' : 'فُتحت المايكات');
+      soulRenderSeats();
+    } catch (e) {
+      if (typeof toast === 'function') toast(e.message || 'تعذر تغيير قفل المايكات', false);
+    }
+  }
+
+  function soulShowSpeakAsk(user) {
+    if (!user || !soulCanHostMic()) return;
+    const box = $('#soulSpeakInbox');
+    if (!box) return;
+    if (box.querySelector('[data-uid="' + user.id + '"]')) return;
+    box.hidden = false;
+    const row = document.createElement('div');
+    row.className = 'soul-ask';
+    row.dataset.uid = user.id;
+    const ava = user.avatar ? `<img src="${avaUrl(user)}" alt="">` : '<span class="soul-ico">🎤</span>';
+    row.innerHTML = `${ava}<span>${typeof esc === 'function' ? esc(user.username) : user.username} يطلب مقعداً</span>
+      <span class="ask-btns"><button type="button" class="no">رفض</button><button type="button" class="ok">قبول</button></span>`;
+    row.querySelector('.ok').onclick = () => {
+      row.remove();
+      if (!box.children.length) box.hidden = true;
+      if (typeof SOCKET !== 'undefined' && SOCKET) SOCKET.emit('bcast:speak_response', CUR_ROOM.id, user.id, true);
+    };
+    row.querySelector('.no').onclick = () => {
+      row.remove();
+      if (!box.children.length) box.hidden = true;
+      if (typeof SOCKET !== 'undefined' && SOCKET) SOCKET.emit('bcast:speak_response', CUR_ROOM.id, user.id, false);
+    };
+    box.appendChild(row);
+  }
+
   function soulPrepareRoom() {
     const chat = $('#chatScreen');
     const voice = !!(typeof CUR_ROOM !== 'undefined' && CUR_ROOM && CUR_ROOM.type === 'voice');
@@ -124,8 +233,21 @@
       banner.style.backgroundImage = `url('${CUR_ROOM.image || '/img/room.png'}')`;
       banner.innerHTML = `<span>${CUR_ROOM.name || ''}</span>`;
     }
+    const lockBtn = $('#dropLockMics');
+    if (lockBtn) {
+      lockBtn.style.display = soulCanHostMic() ? '' : 'none';
+      lockBtn.innerHTML = (soulMicsLocked() ? 'فتح المايكات' : 'إغلاق المايكات') + ' <i class="f7-icons">' + (soulMicsLocked() ? 'mic_fill' : 'mic_slash_fill') + '</i>';
+    }
     soulRenderSeats();
     soulFetchPk();
+    soulPaintMicBtn();
+    if (voice && soulIsRoomOwner() && !soulIsOnMic()) {
+      if (OWNER_SEAT_TIMER) clearTimeout(OWNER_SEAT_TIMER);
+      OWNER_SEAT_TIMER = setTimeout(() => {
+        OWNER_SEAT_TIMER = null;
+        if (CUR_ROOM && soulIsRoomOwner() && !soulIsOnMic() && typeof bcastStart === 'function') bcastStart('audio');
+      }, 500);
+    }
   }
 
   function soulResetRoomUi() {
@@ -136,6 +258,8 @@
     PK_STATE = null;
     const bar = $('#soulPkBar'); if (bar) bar.hidden = true;
     if (PK_TIMER) { clearInterval(PK_TIMER); PK_TIMER = null; }
+    const inbox = $('#soulSpeakInbox'); if (inbox) { inbox.hidden = true; inbox.innerHTML = ''; }
+    const aud = $('#soulAudience'); if (aud) aud.textContent = '';
   }
 
   function soulRenderSeats() {
@@ -145,34 +269,45 @@
     if (!voice) { box.innerHTML = ''; return; }
     const hosts = (typeof liveBroadcastHostIds === 'function') ? liveBroadcastHostIds() : new Set();
     const users = (typeof ROOM_USERS !== 'undefined' ? ROOM_USERS : []).slice();
-    users.sort((a, b) => (hosts.has(+b.id) ? 1 : 0) - (hosts.has(+a.id) ? 1 : 0));
+    const speakers = users.filter(u => hosts.has(+u.id));
+    if (soulIsOnMic() && ME && !speakers.some(u => +u.id === +ME.id)) {
+      speakers.unshift(ME);
+    }
     const seats = [];
-    for (let i = 0; i < SEAT_COUNT; i++) seats.push(users[i] || null);
+    for (let i = 0; i < SEAT_COUNT; i++) seats.push(speakers[i] || null);
+    const locked = soulMicsLocked();
+    const pending = !!(typeof SPEAK_REQUEST_PENDING !== 'undefined' && SPEAK_REQUEST_PENDING);
     box.innerHTML = seats.map((u, i) => {
       if (!u) {
-        return `<button type="button" class="soul-seat empty" data-empty="1">
-          <span class="soul-seat-ava"><i class="f7-icons">plus</i></span>
-          <small>مقعد ${i + 1}</small>
+        return `<button type="button" class="soul-seat empty${locked ? ' locked' : ''}${pending && i === speakers.length ? ' pending' : ''}" data-empty="1">
+          <span class="soul-seat-ava">${locked ? '<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M17 8h-1V6a4 4 0 1 0-8 0v2H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zm-7-2a2 2 0 1 1 4 0v2h-4V6z"/></svg>' : '+'}</span>
+          <small>${locked ? 'مغلق' : (pending && i === speakers.length ? 'بانتظار الموافقة' : 'مقعد')}</small>
         </button>`;
       }
-      const host = hosts.has(+u.id);
+      const isOwner = CUR_ROOM && +CUR_ROOM.owner_id === +u.id;
       const name = typeof esc === 'function' ? esc(u.username) : u.username;
       const lvl = u.level || 1;
-      return `<button type="button" class="soul-seat${host ? ' host' : ''}" data-uid="${u.id}">
-        <span class="soul-seat-ava">${u.avatar ? `<img src="${avaUrl(u)}" alt="">` : '<i class="f7-icons">person_fill</i>'}<em class="lv">${lvl}</em></span>
+      return `<button type="button" class="soul-seat host" data-uid="${u.id}">
+        <span class="soul-seat-ava">${u.avatar ? `<img src="${avaUrl(u)}" alt="">` : '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>'}${isOwner ? '<span class="soul-crown">♛</span>' : ''}<em class="lv">${lvl}</em></span>
         <small>${name}</small>
       </button>`;
     }).join('');
+    const audienceCount = Math.max(0, users.length - speakers.length);
+    let audBox = $('#soulAudience');
+    if (!audBox) {
+      audBox = document.createElement('div');
+      audBox.id = 'soulAudience';
+      box.after(audBox);
+    }
+    audBox.className = 'soul-audience';
+    audBox.textContent = 'الجمهور ' + audienceCount;
     $$('#soulSeats .soul-seat').forEach(btn => {
       btn.onclick = () => {
-        if (btn.dataset.empty) {
-          const talk = $('#btnTalkLive');
-          if (talk && !talk.hidden) talk.click();
-          return;
-        }
+        if (btn.dataset.empty) { if (!soulIsOnMic()) soulHandleMic(); return; }
         if (typeof openUserSheet === 'function') openUserSheet(+btn.dataset.uid, null, btn);
       };
     });
+    soulPaintMicBtn();
   }
 
   function soulPkSecondsLeft(pk) {
@@ -225,6 +360,17 @@
       if (typeof toast === 'function') toast(win ? ('انتهت الجولة — فازت غرفة ' + win + ' 🏆') : 'انتهت جولة PK بالتعادل');
     });
     s.on('follow:notify', () => soulLoadSocial());
+    s.on('bcast:speak_request', ({ user }) => soulShowSpeakAsk(user));
+    s.on('room:mic_lock', (d) => {
+      if (!CUR_ROOM || !d || +d.roomId !== +CUR_ROOM.id) return;
+      CUR_ROOM.mic_locked = d.mic_locked;
+      soulPrepareRoom();
+    });
+    s.on('bcast:speak_response', () => { soulPaintMicBtn(); soulRenderSeats(); });
+    s.on('bcast:started', () => { soulPaintMicBtn(); soulRenderSeats(); });
+    s.on('bcast:ended', () => { soulPaintMicBtn(); soulRenderSeats(); });
+    s.on('bcast:host_joined', () => { soulPaintMicBtn(); soulRenderSeats(); });
+    s.on('bcast:host_left', () => { soulPaintMicBtn(); soulRenderSeats(); });
   }
 
   async function soulToggleFollow(uid, btn) {
@@ -473,9 +619,15 @@
     const dockEmoji = $('#soulDockEmoji');
     if (dockEmoji) dockEmoji.onclick = () => { const b = $('#btnEmoji'); if (b) b.click(); };
     const dockMic = $('#soulDockMic');
-    if (dockMic) dockMic.onclick = () => { const b = $('#btnTalkLive'); if (b) b.click(); };
+    if (dockMic) dockMic.onclick = soulHandleMic;
+    const dockMore = $('#soulDockMore');
+    if (dockMore) dockMore.onclick = () => { const b = $('#btnApps'); if (b) b.click(); };
     const dockChat = $('#soulDockChat');
     if (dockChat) dockChat.onclick = () => { const i = $('#msgInput'); if (i) i.focus(); };
+    const lockBtn = $('#dropLockMics');
+    if (lockBtn) lockBtn.onclick = soulToggleMicLock;
+    const folStat = $('#soulMeFollowers');
+    if (folStat && folStat.parentElement) folStat.parentElement.onclick = () => soulOpenFriends('followers');
 
     const voiceMatch = $('#soulVoiceMatch');
     if (voiceMatch) voiceMatch.onclick = () => soulRenderDiscover('people');
@@ -518,6 +670,12 @@
           soulSetNavActive('rooms');
           soulShowHomeNav(true);
         } else if (nav === 'discover') soulOpenDiscover();
+        else if (nav === 'wall') {
+          if (!needAuth()) return;
+          soulCloseNav('wallOv');
+          if (typeof openWall === 'function') openWall();
+          soulSetNavActive('wall');
+        }
         else if (nav === 'friends') soulOpenFriends('followers');
         else if (nav === 'private') {
           if (!needAuth()) return;
@@ -547,7 +705,7 @@
     }
     if (typeof bcastRenderBar === 'function') {
       const _br = bcastRenderBar;
-      bcastRenderBar = function () { _br(); soulRenderSeats(); };
+      bcastRenderBar = function () { _br(); soulRenderSeats(); soulPaintMicBtn(); };
     }
     if (typeof bcastApplySpeaking === 'function') {
       const _sp = bcastApplySpeaking;

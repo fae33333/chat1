@@ -23,7 +23,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/style.css?v=20260919-usort1">
-<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul1">
+<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul2">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body class="soul-app">
@@ -59,12 +59,12 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <span class="soul-plus">+</span>
         </button>
         <div class="r-logo" id="siteLogo">
-          <span class="r-logo-ico"><i class="f7-icons">smiley_fill</i></span>
+          <span class="r-logo-ico"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2l2.2 6.8H21l-5.6 4.2 2.2 6.8L12 15.8 6.4 19.8 8.6 13 3 8.8h6.8z"/></svg></span>
           <span class="r-logo-txt" id="siteName"></span>
         </div>
         <div class="soul-home-tools">
           <button class="soul-icon-btn" id="soulBellBtn" type="button" aria-label="الإشعارات">
-            <i class="f7-icons">bell_fill</i>
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2h-4.4A2.2 2.2 0 0 0 12 22zm7-6V11a7 7 0 1 0-14 0v5L3 19v1h18v-1l-2-3z"/></svg>
             <em class="bn-badge" id="soulBellBadge" style="display:none">0</em>
           </button>
           <button class="btn-enter" id="headEnterBtn">دخول</button>
@@ -160,6 +160,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <div class="drop-backdrop" id="roomDropBg" style="display:none"></div>
     <div class="enter-drop chat-drop" id="roomDrop">
       <button id="dropLeaveRoom">مغادرة الغرفة <i class="f7-icons">chevron_right</i></button>
+      <button id="dropLockMics" style="display:none">إغلاق المايكات <i class="f7-icons">mic_slash_fill</i></button>
       <button id="dropStartPk">بدء PK <i class="f7-icons">flag_fill</i></button>
       <button id="dropRefreshRooms">تحديث الغرف <i class="f7-icons">chevron_right</i></button>
       <button id="dropHideWelcome" title="حذف «العام» من شاشة أنت فقط — يظل ظاهراً لبقية المستخدمين">حذف العام لدي فقط <i class="f7-icons">chevron_right</i></button>
@@ -173,6 +174,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <div class="soul-pk-bar" id="soulPkBar" hidden></div>
       <div class="soul-room-banner" id="soulRoomBanner"></div>
       <div class="soul-seats" id="soulSeats"></div>
+      <div class="soul-speak-inbox" id="soulSpeakInbox" hidden></div>
     </div>
     <div class="c-msgs" id="msgArea"></div>
 
@@ -234,10 +236,21 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <span class="rb-x" id="rbClose"><i class="f7-icons">xmark_circle_fill</i></span>
     </div>
     <div class="soul-dock" id="soulDock" hidden>
-      <button type="button" id="soulDockGift"><i class="f7-icons">gift_fill</i><span>هدية</span></button>
-      <button type="button" id="soulDockEmoji"><i class="f7-icons">smiley_fill</i><span>إيموجي</span></button>
-      <button type="button" id="soulDockMic"><i class="f7-icons">mic_fill</i><span>مايك</span></button>
-      <button type="button" id="soulDockChat"><i class="f7-icons">chat_bubble_fill</i><span>دردشة</span></button>
+      <button type="button" id="soulDockGift" title="هدية">
+        <span class="soul-ico"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M20 7h-2.1A3 3 0 0 0 13 3.2L12 4l-1-0.8A3 3 0 0 0 6.1 7H4v4h16V7zM4 13v8h7v-8H4zm9 8h7v-8h-7v8z"/></svg></span>
+        <span>هدية</span>
+      </button>
+      <button type="button" id="soulDockEmoji" title="إيموجي">
+        <span class="soul-ico"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 1 0 .01 20.01A10 10 0 0 0 12 2zm-3.2 8.2a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4zm6.4 0a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4zM12 17.4c-2.4 0-4.4-1.4-5.2-3.4h10.4c-.8 2-2.8 3.4-5.2 3.4z"/></svg></span>
+        <span>إيموجي</span>
+      </button>
+      <button type="button" id="soulDockMore" title="المزيد">
+        <span class="soul-ico"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z"/></svg></span>
+        <span>المزيد</span>
+      </button>
+      <button type="button" id="soulDockMic" class="soul-mic-main" title="طلب مقعد">
+        <span class="soul-ico"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm7-3a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.9V20H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-2.1A7 7 0 0 0 19 11z"/></svg></span>
+      </button>
     </div>
     <!-- شريط الإدخال -->
     <div class="c-input dots-bg" id="inputBar">
@@ -257,12 +270,28 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </section>
 
   <!-- ============ التنقل السفلي ============ -->
-  <nav class="bottomnav show">
-    <button class="bn-item active" data-nav="rooms"><i class="f7-icons">house_fill</i><span>الغرف</span></button>
-    <button class="bn-item" data-nav="discover"><i class="f7-icons">compass_fill</i><span>اكتشاف</span></button>
-    <button class="bn-item bn-center" data-nav="friends"><i class="f7-icons">person_2_fill</i><span>الأصدقاء</span></button>
-    <button class="bn-item" data-nav="private"><i class="f7-icons">chat_bubble_fill</i><span>الرسائل</span><em class="bn-badge" id="privBadge" style="display:none">0</em></button>
-    <button class="bn-item" data-nav="menu" id="bnMenu"><i class="f7-icons" id="bnMenuIcon">person_crop_circle_fill</i><span>أنا</span></button>
+  <nav class="bottomnav show soul-tabbar">
+    <button class="bn-item" data-nav="discover">
+      <span class="soul-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2c.7 2.4.9 4.9.9 7s-.2 4.6-.9 7c-.7-2.4-.9-4.9-.9-7s.2-4.6.9-7zm-6.3 9.2c2.2-.5 4.6-.7 7.3-.7s5.1.2 7.3.7A7 7 0 0 1 12 19a7 7 0 0 1-6.3-4.8zM12 5a7 7 0 0 1 6.3 4.8c-2.2.5-4.6.7-7.3.7s-5.1-.2-7.3-.7A7 7 0 0 1 12 5z"/></svg></span>
+      <span>الكوكب</span>
+    </button>
+    <button class="bn-item active" data-nav="rooms">
+      <span class="soul-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 3.2 3 11h2.2v8.5h5.1V14h3.4v5.5h5.1V11H21L12 3.2z"/></svg></span>
+      <span>الحفلة</span>
+    </button>
+    <button class="bn-item bn-center" data-nav="wall">
+      <span class="soul-ico soul-star" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 1.6 14.1 9 22 12l-7.9 3L12 22.4 9.9 15 2 12l7.9-3L12 1.6z"/></svg></span>
+      <span>اللحظات</span>
+    </button>
+    <button class="bn-item" data-nav="private">
+      <span class="soul-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z"/></svg></span>
+      <span>الرسائل</span>
+      <em class="bn-badge" id="privBadge" style="display:none">0</em>
+    </button>
+    <button class="bn-item" data-nav="menu" id="bnMenu">
+      <span class="soul-ico" id="bnMenuIcon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 12a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4zM4.2 20.2c.6-3.4 3.8-5.6 7.8-5.6s7.2 2.2 7.8 5.6"/></svg></span>
+      <span>أنا</span>
+    </button>
     <em class="bn-badge" id="notifBadge" style="display:none">0</em>
   </nav>
   </main>
@@ -1744,7 +1773,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <script src="/js/skins.js?v=20260904-skins" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
 <script src="/js/app.js?v=20260919-usort1" defer></script>
-<script src="/js/soulchill.js?v=20260926-soul1" defer></script>
+<script src="/js/soulchill.js?v=20260926-soul2" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

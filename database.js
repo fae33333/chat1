@@ -129,6 +129,7 @@ db.serialize(() => {
   db.run(`ALTER TABLE users ADD COLUMN level INTEGER DEFAULT 1`, () => { });
   db.run(`ALTER TABLE users ADD COLUMN public_id TEXT DEFAULT ''`, () => { });
   db.run(`ALTER TABLE rooms ADD COLUMN owner_id INTEGER DEFAULT 0`, () => { });
+  db.run(`ALTER TABLE rooms ADD COLUMN mic_locked INTEGER DEFAULT 0`, () => { });
 
   db.run(`CREATE TABLE IF NOT EXISTS follows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

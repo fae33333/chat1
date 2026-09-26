@@ -1849,6 +1849,8 @@ async function requireModerator(req, res, next) {
     const isGlobalStaff = ['admin', 'superadmin', 'supermaster'].includes(moderator.rank);
     let isRoomAdminHere = false;
     if (roomId) {
+      const roomOwn = await q.get(`SELECT owner_id FROM rooms WHERE id=?`, roomId);
+      if (roomOwn && +roomOwn.owner_id === +moderator.id) isRoomAdminHere = true;
       const ra = await q.get(`SELECT id FROM room_admins WHERE room_id=? AND user_id=?`, roomId, moderator.id);
       if (ra) isRoomAdminHere = true;
     }
@@ -2447,6 +2449,20 @@ app.post('/api/rooms/create', requireUser, async (req, res) => {
   res.json({ ok: true, id: roomId });
 });
 
+app.post('/api/rooms/:id/mic-lock', requireUser, (req, res, next) => {
+  req.body = Object.assign({}, req.body || {}, { room_id: +req.params.id });
+  next();
+}, requireModerator, async (req, res) => {
+  const roomId = +req.params.id;
+  const room = await q.get(`SELECT id, owner_id, mic_locked FROM rooms WHERE id=?`, roomId);
+  if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+  const locked = String((req.body || {}).locked) === '1' || (req.body || {}).locked === true ? 1 : 0;
+  await q.run(`UPDATE rooms SET mic_locked=? WHERE id=?`, locked, roomId);
+  io.to('room_' + roomId).emit('room:mic_lock', { roomId, mic_locked: locked });
+  io.emit('sync');
+  res.json({ ok: true, mic_locked: locked });
+});
+
 app.get('/api/pk/current', requireUser, async (req, res) => {
   const roomId = +(req.query && req.query.room_id);
   res.json({ pk: serializePk(pkForRoom(roomId)) });
@@ -2605,7 +2621,7 @@ app.post('/api/logout', (req, res) => {
 // =====================================================
 app.get('/api/rooms', async (req, res) => {
   // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً
-  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience, owner_id FROM rooms WHERE hidden=0 ORDER BY sort,id`);
+  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience, owner_id, mic_locked FROM rooms WHERE hidden=0 ORDER BY sort,id`);
   const counts = {};
   Object.entries(roomUsers).forEach(([rid, set]) => counts[rid] = set.size);
   res.json(rooms.map(r => ({
@@ -2619,6 +2635,7 @@ app.get('/api/rooms', async (req, res) => {
     status: String(r.status || 'open'),
     online: counts[r.id] || 0,
     owner_id: +r.owner_id || 0,
+    mic_locked: r.mic_locked ? 1 : 0,
     audience: String(r.audience || 'all') === 'registered' ? 'registered' : 'all',
     locked: !!(r.password && String(r.password).trim().length > 0),
     pk: serializePk(pkForRoom(r.id))
@@ -9683,6 +9700,9 @@ io.on('connection', async (socket) => {
     socket.data.joinedRooms.add(roomId);
     if (enterHidden) socket.data.hiddenRooms.add(roomId);
     else (roomUsers[roomId] = roomUsers[roomId] || new Set()).add(uid);
+    if (+room.owner_id === +uid) {
+      try { await q.run(`INSERT OR IGNORE INTO room_admins (room_id, user_id, username) VALUES (?,?,?)`, roomId, uid, me.username); } catch (e) { }
+    }
 
     // عند استعادة اتصال منقطع لا نرسل دخولاً أو ترحيباً جديداً؛ الجلسة نفسها مستمرة.
     if (!enterHidden && !restoredConnection) {
@@ -9768,16 +9788,20 @@ io.on('connection', async (socket) => {
       ok: false,
       text: me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (mutedActive(me) ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع')
     });
+    const isStaff = ['admin', 'superadmin', 'supermaster'].includes(me.rank);
+    const isOwner = +room.owner_id === +uid;
+    const isRoomAdm = !!(await q.get(`SELECT id FROM room_admins WHERE room_id=? AND user_id=?`, roomId, uid));
+    const canTakeMicDirect = isStaff || isOwner || isRoomAdm;
+    if (room.mic_locked && !canTakeMicDirect) return ack({ ok: false, text: 'المايكات مغلقة من مضيف الغرفة' });
+    if (!canTakeMicDirect) return ack({ ok: false, need_request: true, text: 'لا يمكن الصعود مباشرة — اطلب مقعداً من مضيف الغرفة' });
     let b = roomBroadcast[roomId];
     if (b && b.hosts.has(uid)) return ack({ ok: false, text: 'أنت تبث بالفعل في هذه الغرفة' });
     // حد المذيعين المتزامنين (الميكروفونات) المُعيَّن من لوحة الإدارة
     if (b) {
       const bs = await getSettings();
-      const maxSpeakers = Math.max(1, Math.min(10, parseInt(bs.max_live_speakers) || 4));
+      const maxSpeakers = Math.max(1, Math.min(10, parseInt(bs.max_live_speakers) || 8));
       if (b.hosts.size >= maxSpeakers) return ack({ ok: false, text: 'الميكروفونات ممتلئة الآن — لا يمكن الصعود كمذيع' });
     }
-    // أي عضو مؤهل (تحقق منه أعلاه عبر canStartAudioBroadcast) ينضم كمذيع مباشرة لبث صوتي قائم دون طلب/موافقة —
-    // يسمعهم بعضهم البعض فوراً ويسمعهم كل من في الغرفة الصوتية مباشرة.
     const hostInfo = { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me) };
     const isNewBroadcast = !b;
     if (isNewBroadcast) {
@@ -9815,16 +9839,18 @@ io.on('connection', async (socket) => {
   socket.on('bcast:speak_request', async (roomId, cb) => {
     const ack = typeof cb === 'function' ? cb : () => { };
     roomId = +roomId;
+    const roomRow = await q.get(`SELECT owner_id, mic_locked FROM rooms WHERE id=?`, roomId);
+    if (roomRow && roomRow.mic_locked) return ack({ ok: false, text: 'المايكات مغلقة من مضيف الغرفة' });
     const b = roomBroadcast[roomId];
-    if (!b || b.mode !== 'audio') return ack({ ok: false, text: 'لا يوجد بث صوتي حالياً في هذه الغرفة' });
+    if (!b || b.mode !== 'audio') return ack({ ok: false, text: 'انتظر المضيف ليبدأ الحفلة ثم اطلب مقعداً' });
     if (b.hosts.has(uid)) return ack({ ok: false, text: 'أنت أحد المذيعين بالفعل' });
     if (b.speakPending.has(uid)) return ack({ ok: true, pending: true });
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
     if (!await canStartAudioBroadcast(me)) return ack({ ok: false, text: mutedActive(me) ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع' });
     b.speakPending.set(uid, { username: me.username, avatar: me.avatar || '' });
-    io.to('user_' + b.primaryHostId).emit('bcast:speak_request', {
-      roomId, user: { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me) }
-    });
+    const payload = { roomId, user: { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me) } };
+    io.to('user_' + b.primaryHostId).emit('bcast:speak_request', payload);
+    if (roomRow && +roomRow.owner_id && +roomRow.owner_id !== +b.primaryHostId) io.to('user_' + roomRow.owner_id).emit('bcast:speak_request', payload);
     ack({ ok: true, pending: true });
   });
 
@@ -10434,12 +10460,14 @@ async function emitRoomUsers(roomId) {
   const list = [];
   const roomAdmins = await q.all(`SELECT user_id FROM room_admins WHERE room_id=?`, roomId);
   const roomAdminIds = new Set(roomAdmins.map(ra => +ra.user_id));
+  const roomMeta = await q.get(`SELECT owner_id FROM rooms WHERE id=?`, roomId);
+  const ownerId = roomMeta ? +roomMeta.owner_id : 0;
 
   for (const id of set) {
     const u = await q.get(`SELECT * FROM users WHERE id=?`, id);
     if (u && u.rank !== 'supermaster') {
       const isGlobalStaff = ['admin', 'superadmin', 'supermaster'].includes(u.rank);
-      const isRoomAdminHere = !isGlobalStaff && roomAdminIds.has(+u.id);
+      const isRoomAdminHere = !isGlobalStaff && (roomAdminIds.has(+u.id) || (ownerId && ownerId === +u.id));
 
       const p = pubUser(u);
       p.status = (onlineUsers[id] || {}).status || u.status;
