@@ -348,6 +348,8 @@ app.use((req, res, next) => {
 const onlineUsers = {};   // uid -> pubUser(+badge)
 const userSockets = {};   // uid -> [socketId]
 const roomUsers = {};     // roomId -> Set(uid)
+const PK_LIVE = new Map();    // matchId -> match
+const PK_BY_ROOM = new Map(); // roomId -> matchId
 
 function isUserActiveInChat(userId) {
   const uid = +userId;
@@ -1675,8 +1677,91 @@ function pubUser(u) {
     royal: ROYAL_MAP.has(u.username) ? 1 : 0,
     royal_animal: ROYAL_MAP.get(u.username) || '',
     royal_expired: ROYAL_MAP.has(u.username) ? expiredNow(ROYAL_EXPIRES.get(u.username)) : 0,
-    created_at: +u.created_at || 0        // تاريخ التسجيل — يُعرض «عضو منذ X يوم» في الملف الشخصي
+    created_at: +u.created_at || 0,        // تاريخ التسجيل — يُعرض «عضو منذ X يوم» في الملف الشخصي
+    xp: Math.max(0, +u.xp || 0),
+    level: Math.max(1, +u.level || 1),
+    public_id: String(u.public_id || '')
   };
+}
+function levelFromXp(xp) {
+  return Math.min(99, Math.floor(Math.sqrt(Math.max(0, +xp || 0) / 20)) + 1);
+}
+async function addXp(userId, amount) {
+  const uid = +userId;
+  const add = Math.max(0, Math.floor(+amount || 0));
+  if (!uid || !add) return;
+  await q.run(`UPDATE users SET xp = COALESCE(xp,0) + ? WHERE id=?`, add, uid);
+  const row = await q.get(`SELECT xp FROM users WHERE id=?`, uid);
+  const level = levelFromXp(row && row.xp);
+  await q.run(`UPDATE users SET level=? WHERE id=?`, level, uid);
+  if (onlineUsers[uid]) {
+    onlineUsers[uid].xp = Math.max(0, +(row && row.xp) || 0);
+    onlineUsers[uid].level = level;
+  }
+}
+async function ensurePublicId(user) {
+  if (!user) return '';
+  if (user.public_id) return String(user.public_id);
+  let pid = '';
+  for (let i = 0; i < 12; i++) {
+    pid = String(10000000 + crypto.randomInt(0, 90000000));
+    const clash = await q.get(`SELECT id FROM users WHERE public_id=?`, pid);
+    if (!clash) break;
+  }
+  await q.run(`UPDATE users SET public_id=? WHERE id=?`, pid, user.id);
+  user.public_id = pid;
+  return pid;
+}
+function serializePk(pk) {
+  if (!pk) return null;
+  return {
+    id: +pk.id,
+    room_a: +pk.room_a,
+    room_b: +pk.room_b,
+    room_a_name: pk.room_a_name || '',
+    room_b_name: pk.room_b_name || '',
+    score_a: +pk.score_a || 0,
+    score_b: +pk.score_b || 0,
+    status: String(pk.status || 'live'),
+    started_at: +pk.started_at || 0,
+    ends_at: +pk.ends_at || 0,
+    winner_room: +pk.winner_room || 0
+  };
+}
+function pkForRoom(roomId) {
+  const id = PK_BY_ROOM.get(+roomId);
+  return id ? PK_LIVE.get(id) : null;
+}
+async function finishPk(matchId) {
+  const pk = PK_LIVE.get(+matchId);
+  if (!pk || pk.status !== 'live') return;
+  let winner = 0;
+  if (pk.score_a > pk.score_b) winner = +pk.room_a;
+  else if (pk.score_b > pk.score_a) winner = +pk.room_b;
+  pk.status = 'ended';
+  pk.winner_room = winner;
+  await q.run(`UPDATE pk_matches SET status='ended', winner_room=? WHERE id=?`, winner, pk.id);
+  PK_LIVE.delete(+pk.id);
+  PK_BY_ROOM.delete(+pk.room_a);
+  PK_BY_ROOM.delete(+pk.room_b);
+  const payload = serializePk(pk);
+  io.to('room_' + pk.room_a).emit('pk:end', payload);
+  io.to('room_' + pk.room_b).emit('pk:end', payload);
+}
+function schedulePkEnd(pk) {
+  const ms = Math.max(1000, (+pk.ends_at * 1000) - Date.now());
+  setTimeout(() => finishPk(pk.id).catch(() => { }), ms);
+}
+async function applyPkGift(roomId, amount) {
+  const pk = pkForRoom(+roomId);
+  if (!pk || pk.status !== 'live') return;
+  if (+pk.room_a === +roomId) pk.score_a += amount;
+  else if (+pk.room_b === +roomId) pk.score_b += amount;
+  else return;
+  await q.run(`UPDATE pk_matches SET score_a=?, score_b=? WHERE id=?`, pk.score_a, pk.score_b, pk.id);
+  const payload = serializePk(pk);
+  io.to('room_' + pk.room_a).emit('pk:update', payload);
+  io.to('room_' + pk.room_b).emit('pk:update', payload);
 }
 function requireUser(req, res, next) {
   const auth = resolveRequestAuth(req);
@@ -2045,6 +2130,7 @@ async function finishAuthentication(req, res, user, extraPayload = {}) {
     }
     fresh = await q.get(`SELECT * FROM users WHERE id=?`, user.id);
   }
+  if (fresh) await ensurePublicId(fresh);
   // سجل الدخول (اسم + وقت + IP + دولة + مصدر الزيارة) يُستخدم في «كشف النكات»
   // و«تتبع المستخدمين» — لا يسجل للسوبر ماستر نهائياً للحفاظ على السرية التامة
   if (fresh && fresh.rank !== 'supermaster') {
@@ -2094,9 +2180,12 @@ app.post('/api/login', async (req, res) => {
   const limit = checkRateLimit('login:' + ip, 8, 60000);
   if (!limit.ok) return res.status(429).json({ error: 'تم تجاوز الحد الأقصى لمحاولات تسجيل الدخول، يرجى المحاولة بعد قليل' });
   const { username, password } = req.body || {};
-  if (!username || !password) return res.status(400).json({ error: 'أدخل اسم المستخدم وكلمة المرور' });
+  if (!username || !password) return res.status(400).json({ error: 'أدخل بريد Gmail أو اسم المستخدم وكلمة المرور' });
   const cleanUsername = String(username).trim();
-  const u = await q.get(`SELECT * FROM users WHERE username=?`, cleanUsername);
+  const ident = cleanUsername.toLowerCase();
+  const u = ident.includes('@')
+    ? await q.get(`SELECT * FROM users WHERE email=?`, ident)
+    : await q.get(`SELECT * FROM users WHERE username=?`, cleanUsername);
   if (!u || !u.password || !bcrypt.compareSync(String(password), u.password))
     return res.status(400).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
   const activeBan = await persistentBanForRequest(req, u);
@@ -2227,6 +2316,198 @@ app.post('/api/register', async (req, res) => {
   return finishAuthentication(req, res, u, { needs_verification: true, email: cleanEmail, verify_sent: issued.sent, verify_reason: issued.reason || '' });
 });
 
+function mapFollowUser(u) {
+  return {
+    id: +u.id,
+    username: String(u.username || ''),
+    avatar: String(u.avatar || ''),
+    avatar_frame: String(u.avatar_frame || ''),
+    gender: String(u.gender || 'secret'),
+    level: Math.max(1, +u.level || 1),
+    xp: Math.max(0, +u.xp || 0),
+    public_id: String(u.public_id || ''),
+    bio: String(u.bio || '')
+  };
+}
+
+app.get('/api/me/social', requireUser, async (req, res) => {
+  const me = await q.get(`SELECT id, xp, level, public_id FROM users WHERE id=?`, req.authUid);
+  if (me) await ensurePublicId(me);
+  const followers = await q.get(`SELECT COUNT(*) c FROM follows WHERE following_id=?`, req.authUid);
+  const following = await q.get(`SELECT COUNT(*) c FROM follows WHERE follower_id=?`, req.authUid);
+  const ids = await q.all(`SELECT following_id FROM follows WHERE follower_id=?`, req.authUid);
+  res.json({
+    xp: Math.max(0, +(me && me.xp) || 0),
+    level: Math.max(1, +(me && me.level) || 1),
+    public_id: String((me && me.public_id) || ''),
+    followers: +((followers && followers.c) || 0),
+    following: +((following && following.c) || 0),
+    following_ids: (ids || []).map(r => +r.following_id)
+  });
+});
+
+app.post('/api/follow', requireUser, async (req, res) => {
+  const targetId = +((req.body || {}).user_id);
+  if (!targetId || targetId === +req.authUid) return res.status(400).json({ error: 'لا يمكن متابعة هذا الحساب' });
+  const target = await q.get(`SELECT id, username FROM users WHERE id=?`, targetId);
+  if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  const existing = await q.get(`SELECT id FROM follows WHERE follower_id=? AND following_id=?`, req.authUid, targetId);
+  if (existing) {
+    await q.run(`DELETE FROM follows WHERE follower_id=? AND following_id=?`, req.authUid, targetId);
+    return res.json({ ok: true, following: false });
+  }
+  await q.run(`INSERT OR IGNORE INTO follows (follower_id, following_id) VALUES (?,?)`, req.authUid, targetId);
+  const me = await q.get(`SELECT username FROM users WHERE id=?`, req.authUid);
+  createUserNotification(targetId, `${(me && me.username) || 'شخص'} تابعك`, 'person_badge_plus_fill').catch(() => { });
+  addXp(req.authUid, 3).catch(() => { });
+  io.to('user_' + targetId).emit('follow:notify', { from: req.authUid });
+  res.json({ ok: true, following: true });
+});
+
+app.get('/api/friends', requireUser, async (req, res) => {
+  const followers = await q.all(`SELECT u.id, u.username, u.avatar, u.avatar_frame, u.gender, u.level, u.xp, u.public_id, u.bio
+    FROM follows f JOIN users u ON u.id = f.follower_id WHERE f.following_id=? ORDER BY f.id DESC LIMIT 200`, req.authUid);
+  const following = await q.all(`SELECT u.id, u.username, u.avatar, u.avatar_frame, u.gender, u.level, u.xp, u.public_id, u.bio
+    FROM follows f JOIN users u ON u.id = f.following_id WHERE f.follower_id=? ORDER BY f.id DESC LIMIT 200`, req.authUid);
+  const followSet = new Set((following || []).map(u => +u.id));
+  const friends = (followers || []).filter(u => followSet.has(+u.id));
+  res.json({
+    followers: (followers || []).map(mapFollowUser),
+    following: (following || []).map(mapFollowUser),
+    friends: friends.map(mapFollowUser)
+  });
+});
+
+app.get('/api/discover', requireUser, async (req, res) => {
+  const me = +req.authUid;
+  const follows = await q.all(`SELECT following_id FROM follows WHERE follower_id=?`, me);
+  const following = new Set((follows || []).map(f => +f.following_id));
+  const seen = new Set([me]);
+  const users = [];
+  Object.values(onlineUsers).forEach(u => {
+    if (!u || seen.has(+u.id) || !u.registered) return;
+    seen.add(+u.id);
+    users.push({ ...mapFollowUser(u), match: 59 + ((+u.id * 17 + me * 31) % 41), following: following.has(+u.id) });
+  });
+  if (users.length < 24) {
+    const extra = await q.all(`SELECT id, username, avatar, avatar_frame, gender, level, xp, public_id, bio, registered
+      FROM users WHERE registered=1 AND id<>? ORDER BY id DESC LIMIT 40`, me);
+    (extra || []).forEach(u => {
+      if (seen.has(+u.id)) return;
+      seen.add(+u.id);
+      users.push({ ...mapFollowUser(u), match: 59 + ((+u.id * 17 + me * 31) % 41), following: following.has(+u.id) });
+    });
+  }
+  res.json({ users: users.slice(0, 36) });
+});
+
+app.get('/api/leaderboard', requireUser, async (req, res) => {
+  const kind = String((req.query && req.query.kind) || 'senders');
+  const since = Math.floor(Date.now() / 1000) - 7 * 86400;
+  let rows = [];
+  if (kind === 'receivers') {
+    rows = await q.all(`SELECT u.id, u.username, u.avatar, u.avatar_frame, u.level, u.public_id,
+      COALESCE(SUM(g.price * g.qty),0) gold
+      FROM gifts_log g JOIN users u ON u.id = g.to_id
+      WHERE g.created_at >= ? GROUP BY g.to_id ORDER BY gold DESC LIMIT 30`, since);
+  } else if (kind === 'levels') {
+    rows = await q.all(`SELECT id, username, avatar, avatar_frame, level, xp, public_id, xp AS gold
+      FROM users WHERE registered=1 ORDER BY xp DESC, id ASC LIMIT 30`);
+  } else {
+    rows = await q.all(`SELECT u.id, u.username, u.avatar, u.avatar_frame, u.level, u.public_id,
+      COALESCE(SUM(g.price * g.qty),0) gold
+      FROM gifts_log g JOIN users u ON u.id = g.from_id
+      WHERE g.created_at >= ? GROUP BY g.from_id ORDER BY gold DESC LIMIT 30`, since);
+  }
+  res.json({ rows: (rows || []).map(u => ({ ...mapFollowUser(u), gold: +u.gold || 0 })) });
+});
+
+app.post('/api/rooms/create', requireUser, async (req, res) => {
+  const me = await q.get(`SELECT id, username, registered FROM users WHERE id=?`, req.authUid);
+  if (!me || !me.registered) return res.status(403).json({ error: 'إنشاء الغرف للأعضاء المسجلين فقط' });
+  const name = String((req.body || {}).name || '').trim().slice(0, 24);
+  const description = String((req.body || {}).description || '').trim().slice(0, 80);
+  const password = String((req.body || {}).password || '').trim().slice(0, 20);
+  if (!name) return res.status(400).json({ error: 'اكتب اسم الغرفة' });
+  const owned = await q.get(`SELECT COUNT(*) c FROM rooms WHERE owner_id=?`, me.id);
+  if (owned && +owned.c >= 5) return res.status(400).json({ error: 'وصلت للحد الأقصى (5 غرف)' });
+  const clash = await q.get(`SELECT id FROM rooms WHERE name=?`, name);
+  if (clash) return res.status(400).json({ error: 'اسم الغرفة مستخدم' });
+  const out = await q.run(
+    `INSERT INTO rooms (name, description, type, max_users, status, welcome, password, image, audience, owner_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    name, description || 'حفلة صوتية مباشرة ★', 'voice', 200, 'open', 'أهلاً بكم في الحفلة 🎤', password, '/img/room.png', 'all', me.id
+  );
+  const roomId = out.lastID;
+  try {
+    await q.run(`INSERT OR IGNORE INTO room_admins (room_id, user_id, username) VALUES (?,?,?)`, roomId, me.id, me.username);
+  } catch (e) { }
+  addXp(me.id, 10).catch(() => { });
+  io.emit('sync');
+  res.json({ ok: true, id: roomId });
+});
+
+app.get('/api/pk/current', requireUser, async (req, res) => {
+  const roomId = +(req.query && req.query.room_id);
+  res.json({ pk: serializePk(pkForRoom(roomId)) });
+});
+
+app.post('/api/pk/start', requireUser, async (req, res) => {
+  const roomId = +((req.body || {}).room_id);
+  const opponent = +((req.body || {}).opponent_room_id);
+  if (!roomId || !opponent || roomId === opponent) return res.status(400).json({ error: 'اختر غرفة خصم صحيحة' });
+  const a = await q.get(`SELECT id, name, type, owner_id FROM rooms WHERE id=?`, roomId);
+  const b = await q.get(`SELECT id, name, type FROM rooms WHERE id=?`, opponent);
+  if (!a || !b) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+  if (a.type !== 'voice' || b.type !== 'voice') return res.status(400).json({ error: 'PK متاح للغرف الصوتية فقط' });
+  if (pkForRoom(roomId) || pkForRoom(opponent)) return res.status(400).json({ error: 'إحدى الغرف داخل PK حالياً' });
+  const isStaff = ['admin', 'superadmin', 'supermaster', 'roomadmin'].includes(String(req.authRank || ''));
+  const isOwner = +a.owner_id === +req.authUid;
+  const isAdminHere = await q.get(`SELECT id FROM room_admins WHERE room_id=? AND user_id=?`, roomId, req.authUid);
+  if (!isStaff && !isOwner && !isAdminHere) return res.status(403).json({ error: 'بدء PK لمشرف أو مالك الغرفة' });
+  const now = Math.floor(Date.now() / 1000);
+  const ends = now + 180;
+  const ins = await q.run(
+    `INSERT INTO pk_matches (room_a, room_b, score_a, score_b, status, started_by, started_at, ends_at) VALUES (?,?,0,0,'live',?,?,?)`,
+    roomId, opponent, req.authUid, now, ends
+  );
+  const pk = {
+    id: ins.lastID, room_a: roomId, room_b: opponent, room_a_name: a.name, room_b_name: b.name,
+    score_a: 0, score_b: 0, status: 'live', started_at: now, ends_at: ends, winner_room: 0
+  };
+  PK_LIVE.set(+pk.id, pk);
+  PK_BY_ROOM.set(+roomId, +pk.id);
+  PK_BY_ROOM.set(+opponent, +pk.id);
+  schedulePkEnd(pk);
+  const payload = serializePk(pk);
+  io.to('room_' + roomId).emit('pk:start', payload);
+  io.to('room_' + opponent).emit('pk:start', payload);
+  res.json({ ok: true, pk: payload });
+});
+
+(async () => {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    await q.run(`UPDATE pk_matches SET status='ended' WHERE status='live' AND ends_at>0 AND ends_at<?`, now);
+    const live = await q.all(`SELECT p.*, a.name AS room_a_name, b.name AS room_b_name
+      FROM pk_matches p LEFT JOIN rooms a ON a.id=p.room_a LEFT JOIN rooms b ON b.id=p.room_b
+      WHERE p.status='live'`);
+    (live || []).forEach(row => {
+      const pk = {
+        id: +row.id, room_a: +row.room_a, room_b: +row.room_b,
+        room_a_name: row.room_a_name || '', room_b_name: row.room_b_name || '',
+        score_a: +row.score_a || 0, score_b: +row.score_b || 0,
+        status: 'live', started_at: +row.started_at || now, ends_at: +row.ends_at || now,
+        winner_room: 0
+      };
+      PK_LIVE.set(pk.id, pk);
+      PK_BY_ROOM.set(pk.room_a, pk.id);
+      PK_BY_ROOM.set(pk.room_b, pk.id);
+      schedulePkEnd(pk);
+    });
+  } catch (e) { }
+})();
+
 // لوحة الإدارة تستخدم جلسة الكوكي أو الرمز الديناميكي
 app.get('/api/me', async (req, res) => {
   const adminAuth = resolveAdminAuth(req);
@@ -2324,7 +2605,7 @@ app.post('/api/logout', (req, res) => {
 // =====================================================
 app.get('/api/rooms', async (req, res) => {
   // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً
-  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience FROM rooms WHERE hidden=0 ORDER BY sort,id`);
+  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience, owner_id FROM rooms WHERE hidden=0 ORDER BY sort,id`);
   const counts = {};
   Object.entries(roomUsers).forEach(([rid, set]) => counts[rid] = set.size);
   res.json(rooms.map(r => ({
@@ -2337,8 +2618,10 @@ app.get('/api/rooms', async (req, res) => {
     max_users: +r.max_users || 1000,
     status: String(r.status || 'open'),
     online: counts[r.id] || 0,
+    owner_id: +r.owner_id || 0,
     audience: String(r.audience || 'all') === 'registered' ? 'registered' : 'all',
-    locked: !!(r.password && String(r.password).trim().length > 0)
+    locked: !!(r.password && String(r.password).trim().length > 0),
+    pk: serializePk(pkForRoom(r.id))
   })));
 });
 
@@ -2806,9 +3089,12 @@ app.post('/api/gifts/send', requireUser, async (req, res) => {
       user: { ...pubUser(me), badge: badgeOf(me) }
     });
     io.to('room_' + room_id).emit('gift:sent', celebration);
+    applyPkGift(+room_id, amount).catch(() => { });
   } else {
     io.to('user_' + me.id).emit('gift:sent', celebration);
   }
+  addXp(me.id, Math.max(1, amount)).catch(() => { });
+  addXp(to.id, Math.max(1, gain)).catch(() => { });
 
   const vis = gift.img && !gift.img.startsWith('/') ? gift.img + ' ' : '';
   const toFresh = await q.get(`SELECT balance FROM users WHERE id=?`, to_id);

@@ -125,6 +125,34 @@ db.serialize(() => {
   db.run(`UPDATE rooms SET type='default' WHERE type IS NULL OR (type != 'voice' AND type != 'default')`, () => { });
   // ترقية: الحساب غير المفعَّل (فُك بريدُه أو أُهمل قبل التوثيق) يبقى «محتاجاً للتفعيل»
   db.run(`ALTER TABLE users ADD COLUMN pending_activation INTEGER DEFAULT 0`, () => { });
+  db.run(`ALTER TABLE users ADD COLUMN xp INTEGER DEFAULT 0`, () => { });
+  db.run(`ALTER TABLE users ADD COLUMN level INTEGER DEFAULT 1`, () => { });
+  db.run(`ALTER TABLE users ADD COLUMN public_id TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE rooms ADD COLUMN owner_id INTEGER DEFAULT 0`, () => { });
+
+  db.run(`CREATE TABLE IF NOT EXISTS follows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    follower_id INTEGER NOT NULL,
+    following_id INTEGER NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(follower_id, following_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows (follower_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_follows_following ON follows (following_id)`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS pk_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_a INTEGER NOT NULL,
+    room_b INTEGER NOT NULL,
+    score_a INTEGER DEFAULT 0,
+    score_b INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'live',
+    started_by INTEGER DEFAULT 0,
+    started_at INTEGER DEFAULT (strftime('%s','now')),
+    ends_at INTEGER DEFAULT 0,
+    winner_room INTEGER DEFAULT 0
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_pk_status ON pk_matches (status, ends_at)`);
 
   // ---------- روبوتات المستخدمين الافتراضيون داخل الغرف ----------
   db.run(`CREATE TABLE IF NOT EXISTS room_bots (

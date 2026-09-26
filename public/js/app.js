@@ -1550,6 +1550,7 @@ const SILENT_LOADING_PATTERNS = [
   '/api/statuses', '/api/private', '/api/notifications', '/api/wall',
   '/api/my-avatars', '/api/avatars', '/api/profile', '/api/user/',
   '/api/public-settings', '/api/gifts', '/api/emojis', '/api/rooms',
+  '/api/me/social', '/api/discover', '/api/friends', '/api/follow', '/api/leaderboard', '/api/pk/',
   // حفظ تسجيل المكالمة (فيديو/صوت) يتم بالسر — بلا أي مؤشر للمستخدم
   '/api/chat/save-call-recording'
 ];
@@ -2093,6 +2094,7 @@ function parseClientSettings(res) {
     ME = d.user; MYBADGE = d.badge; onLoggedIn(); connectSocketRetry();
   }
   await loadRooms();
+  if (typeof soulAfterBoot === 'function') soulAfterBoot();
 })();
 
 // متغيرات CSS الخاصة بالجلد — تُضبط ديناميكياً عند اختيار لون مخصص.
@@ -4057,10 +4059,19 @@ function openAnnouncementPopup(announcement) {
 $('#announcementOk').onclick = () => closeOv('announcementOverlay');
 function updateNotifBadge() {
   const badge = $('#notifBadge');
-  if (NOTIF_UNREAD > 0) {
-    badge.textContent = NOTIF_UNREAD > 99 ? '99+' : NOTIF_UNREAD;
-    badge.style.display = 'flex';
-  } else badge.style.display = 'none';
+  if (badge) {
+    if (NOTIF_UNREAD > 0) {
+      badge.textContent = NOTIF_UNREAD > 99 ? '99+' : NOTIF_UNREAD;
+      badge.style.display = 'flex';
+    } else badge.style.display = 'none';
+  }
+  const soulBadge = $('#soulBellBadge');
+  if (soulBadge) {
+    if (NOTIF_UNREAD > 0) {
+      soulBadge.textContent = NOTIF_UNREAD > 99 ? '99+' : NOTIF_UNREAD;
+      soulBadge.style.display = 'flex';
+    } else soulBadge.style.display = 'none';
+  }
   syncBadgeMirror('#dskNotifBadge', NOTIF_UNREAD);
   updateUnreadTitle();
 }
@@ -11449,7 +11460,7 @@ async function openNotifs() {
 // =====================================================
 function openLogin() {
   $('#loginErr').textContent = '';
-  showLoginTab('guest');   // الافتراضي: دخول كزائر (مثل المرجع)
+  showLoginTab('member');
   openOv('loginOv');
 }
 function showLoginTab(t) {

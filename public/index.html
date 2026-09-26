@@ -23,9 +23,10 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/style.css?v=20260919-usort1">
+<link rel="stylesheet" href="/css/soulchill.css?v=20260926-soul1">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
-<body>
+<body class="soul-app">
 <div id="frame">
 
   <div class="top-strip"></div>
@@ -50,16 +51,35 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 
   <!-- ============ شاشة الغرف ============ -->
   <section id="roomsScreen" class="screen active">
-    <header class="r-head dots-bg">
-      <div class="r-logo" id="siteLogo">
-        <span class="r-logo-ico"><i class="f7-icons">smiley_fill</i></span>
-        <span class="r-logo-txt" id="siteName"></span>
+    <header class="soul-home-head">
+      <div class="soul-home-top">
+        <button class="soul-coins" id="soulCoinsBtn" type="button">
+          <img src="/img/gold.png" alt="">
+          <b id="soulCoinsVal">0</b>
+          <span class="soul-plus">+</span>
+        </button>
+        <div class="r-logo" id="siteLogo">
+          <span class="r-logo-ico"><i class="f7-icons">smiley_fill</i></span>
+          <span class="r-logo-txt" id="siteName"></span>
+        </div>
+        <div class="soul-home-tools">
+          <button class="soul-icon-btn" id="soulBellBtn" type="button" aria-label="الإشعارات">
+            <i class="f7-icons">bell_fill</i>
+            <em class="bn-badge" id="soulBellBadge" style="display:none">0</em>
+          </button>
+          <button class="btn-enter" id="headEnterBtn">دخول</button>
+          <button class="head-user" id="headUserBox" style="display:none" aria-label="حسابي">
+            <span class="head-ava" id="headAva"></span>
+            <span class="head-name" id="headName">-</span>
+          </button>
+        </div>
       </div>
-      <button class="btn-enter" id="headEnterBtn">دخول</button>
-      <button class="head-user" id="headUserBox" style="display:none" aria-label="حسابي">
-        <span class="head-ava" id="headAva"></span>
-        <span class="head-name" id="headName">-</span>
-      </button>
+      <div class="soul-cats" id="soulRoomCats">
+        <button type="button" class="active" data-rcat="all">الحفلات</button>
+        <button type="button" data-rcat="voice">صوتية</button>
+        <button type="button" data-rcat="pk">PK</button>
+        <button type="button" data-rcat="hot">الأكثر نشاطاً</button>
+      </div>
     </header>
     <!-- القائمة المنسدلة لزر الدخول / الاسم -->
     <div class="drop-backdrop" id="enterDropBg" style="display:none"></div>
@@ -67,10 +87,12 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <button id="dropRegister">إنشاء حساب <i class="f7-icons">chevron_right</i></button>
       <button id="dropLogout">الخروج <i class="f7-icons">chevron_right</i></button>
     </div>
-    <div class="r-search dots-bg">
-      <textarea id="roomSearch" rows="1" placeholder="ابحث عن غرفك"></textarea>
+    <div class="r-search soul-search dots-bg">
+      <i class="f7-icons">search</i>
+      <textarea id="roomSearch" rows="1" placeholder="ابحث عن غرفة أو حفلة"></textarea>
     </div>
     <div class="r-list" id="roomsList"></div>
+    <button class="soul-fab" id="soulCreateRoomBtn" type="button"><i class="f7-icons">plus</i><span>إنشاء غرفة</span></button>
   </section>
 
   <!-- 🦁 الدخول الملكي خلف chatScreen بالكامل — مثل تيك توك -->
@@ -138,6 +160,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <div class="drop-backdrop" id="roomDropBg" style="display:none"></div>
     <div class="enter-drop chat-drop" id="roomDrop">
       <button id="dropLeaveRoom">مغادرة الغرفة <i class="f7-icons">chevron_right</i></button>
+      <button id="dropStartPk">بدء PK <i class="f7-icons">flag_fill</i></button>
       <button id="dropRefreshRooms">تحديث الغرف <i class="f7-icons">chevron_right</i></button>
       <button id="dropHideWelcome" title="حذف «العام» من شاشة أنت فقط — يظل ظاهراً لبقية المستخدمين">حذف العام لدي فقط <i class="f7-icons">chevron_right</i></button>
       <button id="dropWipeWelcome" style="display:none" title="حذف «العام» نهائياً من الغرفة لجميع المستخدمين">حذف العام للجميع <i class="f7-icons">chevron_right</i></button>
@@ -145,6 +168,11 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <!-- طبقة العلامة المائية الثابتة في خلفية الدردشة العامة خلف كل الرسائل -->
     <div class="chat-bg-watermark" id="chatBgWatermark" aria-hidden="true">
       <div class="pm-water">الدردشة العربية</div>
+    </div>
+    <div class="soul-stage" id="soulStage" hidden>
+      <div class="soul-pk-bar" id="soulPkBar" hidden></div>
+      <div class="soul-room-banner" id="soulRoomBanner"></div>
+      <div class="soul-seats" id="soulSeats"></div>
     </div>
     <div class="c-msgs" id="msgArea"></div>
 
@@ -205,6 +233,12 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       </div>
       <span class="rb-x" id="rbClose"><i class="f7-icons">xmark_circle_fill</i></span>
     </div>
+    <div class="soul-dock" id="soulDock" hidden>
+      <button type="button" id="soulDockGift"><i class="f7-icons">gift_fill</i><span>هدية</span></button>
+      <button type="button" id="soulDockEmoji"><i class="f7-icons">smiley_fill</i><span>إيموجي</span></button>
+      <button type="button" id="soulDockMic"><i class="f7-icons">mic_fill</i><span>مايك</span></button>
+      <button type="button" id="soulDockChat"><i class="f7-icons">chat_bubble_fill</i><span>دردشة</span></button>
+    </div>
     <!-- شريط الإدخال -->
     <div class="c-input dots-bg" id="inputBar">
       <button class="ci-circle" id="btnEmoji" style="background: #9c1e4600;"><i class="f7-icons btnEmojiGG">smiley_fill</i></button>
@@ -223,12 +257,13 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </section>
 
   <!-- ============ التنقل السفلي ============ -->
-  <nav class="bottomnav">
+  <nav class="bottomnav show">
     <button class="bn-item active" data-nav="rooms"><i class="f7-icons">house_fill</i><span>الغرف</span></button>
-    <button class="bn-item" data-nav="private"><i class="f7-icons">bubble_left_fill</i><span>الخاص</span><em class="bn-badge" id="privBadge" style="display:none">0</em></button>
-    <button class="bn-item" data-nav="notifs"><i class="f7-icons">bell_fill</i><span>الإشعارات</span><em class="bn-badge" id="notifBadge" style="display:none">0</em></button>
-    <button class="bn-item" data-nav="wall"><i class="f7-icons">doc_text_fill</i><span>الحائط</span></button>
-    <button class="bn-item" data-nav="menu" id="bnMenu"><i class="f7-icons" id="bnMenuIcon">square_grid2x2_fill</i><span>القائمة</span></button>
+    <button class="bn-item" data-nav="discover"><i class="f7-icons">compass_fill</i><span>اكتشاف</span></button>
+    <button class="bn-item bn-center" data-nav="friends"><i class="f7-icons">person_2_fill</i><span>الأصدقاء</span></button>
+    <button class="bn-item" data-nav="private"><i class="f7-icons">chat_bubble_fill</i><span>الرسائل</span><em class="bn-badge" id="privBadge" style="display:none">0</em></button>
+    <button class="bn-item" data-nav="menu" id="bnMenu"><i class="f7-icons" id="bnMenuIcon">person_crop_circle_fill</i><span>أنا</span></button>
+    <em class="bn-badge" id="notifBadge" style="display:none">0</em>
   </nav>
   </main>
 
@@ -406,32 +441,39 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </div>
 
   <!-- ============ تسجيل الدخول ============ -->
-  <div class="overlay" id="loginOv">
-    <div class="sheet lsheet">
-      <div class="sh-handle"></div>
-      <h3 id="loginTitle">تسجيل الدخول</h3>
-      <div class="lg-switchrow">
-        <span>دخول كزائر/ة</span>
-        <label class="switch on" id="guestSwitch"><span class="knob"></span></label>
+  <div class="overlay full soul-gate" id="loginOv">
+    <div class="soul-login">
+      <div class="soul-login-hero">
+        <div class="soul-login-mark">✦</div>
+        <h2 id="soulLoginBrand">SoulChill</h2>
+        <p>غرف صوتية · لحظات · هدايا · PK</p>
       </div>
-      <div id="memberBox" style="display:none">
+      <div class="soul-login-card lsheet">
+      <h3 id="loginTitle">تسجيل الدخول بحساب Gmail</h3>
+      <button type="button" class="soul-gmail-btn" id="soulGmailBtn">المتابعة بحساب Gmail</button>
+      <div class="lg-switchrow" style="display:none">
+        <span>دخول كزائر/ة</span>
+        <label class="switch" id="guestSwitch"><span class="knob"></span></label>
+      </div>
+      <div id="memberBox">
         <div class="lf-field">
-          <i class="f7-icons lf-ic">person_fill</i>
-          <input id="lUser" placeholder="الأسم المستعار">
+          <i class="f7-icons lf-ic">envelope_fill</i>
+          <input id="lUser" placeholder="بريد Gmail أو اسم المستخدم" inputmode="email" autocomplete="username">
         </div>
         <div class="lf-field">
           <i class="f7-icons lf-ic">lock_fill</i>
-          <input id="lPass" type="password" placeholder="الرقم السري">
+          <input id="lPass" type="password" placeholder="الرقم السري" autocomplete="current-password">
         </div>
         <button class="big-btn" id="doLogin">دخول</button>
         <div class="lg-links">
           <div class="lg-q">نسيت كلمة السر؟</div>
           <span class="lg-pill" id="goForgot">استعادة كلمة السر</span>
           <div class="lg-q" style="margin-top:16px">لا يوجد لديك عضوية؟</div>
-          <span class="lg-pill" id="goRegister">إنشاء حساب مجانًا</span>
+          <span class="lg-pill" id="goRegister">إنشاء حساب Gmail مجانًا</span>
         </div>
       </div>
-      <div id="guestBox">
+      <button type="button" class="soul-guest-link" id="soulGuestToggle">دخول سريع كزائر</button>
+      <div id="guestBox" style="display:none">
         <div class="lf-field">
           <i class="f7-icons lf-ic">person_fill</i>
           <input id="gName" placeholder="الأسم المستعار">
@@ -457,6 +499,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       </div>
       <div class="cl-err" id="loginErr"></div>
       <div class="lg-terms">الرجاء قراءة <b id="openTerms">شروط الاستخدام</b> <span>-</span> وقراءة <b id="openPrivacy">سياسة الخصوصية</b></div>
+      </div>
     </div>
   </div>
 
@@ -574,6 +617,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <button class="us-opt" id="usStatus" type="button" hidden><i class="f7-icons us-icon status">play_fill</i><span>عرض الحالة</span><i class="f7-icons us-chevron">chevron_right</i></button>
         <button class="us-opt" id="usReply" type="button"><i class="f7-icons us-icon reply">arrowshape_turn_up_left_fill</i><span>الرد على الرسالة</span><i class="f7-icons us-chevron">chevron_right</i></button>
         <button class="us-opt" id="usPrivate" type="button"><i class="f7-icons us-icon private">chat_bubble_fill</i><span>دردشة خاصة</span><i class="f7-icons us-chevron">chevron_right</i></button>
+        <button class="us-opt" id="usFollow" type="button"><i class="f7-icons us-icon private">person_badge_plus_fill</i><span id="usFollowLabel">متابعة</span><i class="f7-icons us-chevron">chevron_right</i></button>
         <button class="us-opt" id="usGift" type="button"><i class="f7-icons us-icon gift">gift_fill</i><span>ارسل هدية</span><i class="f7-icons us-chevron">chevron_right</i></button>
         <button class="us-opt" id="usUpgrade" type="button"><i class="f7-icons us-icon upgrade">chart_bar_fill</i><span>ترقية هذا المستخدم</span><i class="f7-icons us-chevron">chevron_right</i></button>
         <button class="us-opt" id="usIgnore" type="button"><i class="f7-icons us-icon ignore">exclamationmark_circle_fill</i><span id="usIgnoreLabel">تجاهل</span><i class="f7-icons us-chevron">chevron_right</i></button>
@@ -980,6 +1024,12 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <i class="f7-icons mn-chev">chevron_right</i>
       </div>
       <div class="mn-balance">رصيدك الحالي <b id="menuBal">0</b></div>
+      <div class="soul-me-stats">
+        <div><b id="soulMeLevel">1</b><span>المستوى</span></div>
+        <div><b id="soulMeId">-</b><span>ID</span></div>
+        <div><b id="soulMeFollowers">0</b><span>متابعون</span></div>
+        <div><b id="soulMeXp">0</b><span>XP</span></div>
+      </div>
       <div class="mn-list">
         <button class="mn-item" id="mnAccount"><span class="mni"><i class="f7-icons">person_crop_circle</i></span> حسابي <i class="f7-icons mnc">chevron_right</i></button>
         <button class="mn-item" id="mnBuy"><span class="mni"><i class="f7-icons">creditcard_fill</i></span> شراء رصيد <i class="f7-icons mnc">chevron_right</i></button>
@@ -1611,6 +1661,60 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <button type="button" id="reconnectBtn"><i class="f7-icons">arrow_clockwise</i><span>اتصال</span></button>
     </div>
   </div>
+  <!-- اكتشاف -->
+  <div class="overlay full withnav" id="discoverOv">
+    <div class="soul-page">
+      <div class="soul-page-head"><b>اكتشاف</b><span class="pg-close" data-close="discoverOv" style="cursor:pointer;color:#e9d5ff">إغلاق</span></div>
+      <div class="soul-hero-actions">
+        <button class="voice" type="button" id="soulVoiceMatch"><b>تطابق صوتي</b><small>تعرّف على أرواح قريبة منك</small></button>
+        <button class="pk" type="button" id="soulPkWatch"><b>مشاهدة PK</b><small>تحدّيات الهدايا المباشرة</small></button>
+      </div>
+      <div class="soul-tabs">
+        <button type="button" class="active" data-dtab="people">أشخاص</button>
+        <button type="button" data-dtab="moments">اللحظات</button>
+        <button type="button" data-dtab="rank">الترتيب</button>
+      </div>
+      <div class="soul-people" id="soulPeople"></div>
+      <div class="soul-rank" id="soulRank" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- المتابعون / الأصدقاء -->
+  <div class="overlay full withnav" id="friendsOv">
+    <div class="soul-page">
+      <div class="soul-page-head"><b>الأصدقاء</b><span class="pg-close" data-close="friendsOv" style="cursor:pointer;color:#e9d5ff">إغلاق</span></div>
+      <div class="soul-tabs">
+        <button type="button" class="active" data-ftab="followers">المتابعون</button>
+        <button type="button" data-ftab="following">أتابع</button>
+        <button type="button" data-ftab="friends">أصدقاء</button>
+      </div>
+      <div class="soul-list" id="soulFriendsList"></div>
+    </div>
+  </div>
+
+  <!-- إنشاء غرفة -->
+  <div class="overlay" id="createRoomOv">
+    <div class="sheet soul-sheet">
+      <div class="sh-handle"></div>
+      <h3>إنشاء غرفة صوتية</h3>
+      <div class="soul-field"><input id="soulRoomName" maxlength="24" placeholder="اسم الغرفة"></div>
+      <div class="soul-field"><input id="soulRoomDesc" maxlength="80" placeholder="وصف قصير (اختياري)"></div>
+      <div class="soul-field"><input id="soulRoomPass" maxlength="20" placeholder="كلمة سر للغرفة الخاصة (اختياري)"></div>
+      <div class="cl-err" id="soulRoomErr"></div>
+      <button class="soul-primary" id="soulCreateGo" type="button">إنشاء ودخول</button>
+    </div>
+  </div>
+
+  <!-- اختيار غرفة PK -->
+  <div class="overlay" id="pkPickOv">
+    <div class="sheet soul-sheet">
+      <div class="sh-handle"></div>
+      <h3>تحدّي غرفة — PK</h3>
+      <p style="text-align:center;color:#d8c6f0;font-size:12.5px;margin-bottom:10px">اختر غرفة للمواجهة بالهدايا لمدة 3 دقائق</p>
+      <div id="soulPkRooms"></div>
+    </div>
+  </div>
+
   <div class="gift-celebration-layer" id="giftCelebrationLayer" aria-hidden="true"></div>
 
   <!-- مؤشر موحد لأي عملية تحتاج وقتاً قبل فتح القالب أو إتمام الطلب -->
@@ -1640,6 +1744,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <script src="/js/skins.js?v=20260904-skins" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
 <script src="/js/app.js?v=20260919-usort1" defer></script>
+<script src="/js/soulchill.js?v=20260926-soul1" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
