@@ -1762,46 +1762,50 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     </div>
   </div>
 
-  <div class="gift-celebration-layer" id="giftCelebrationLayer" aria-hidden="true"></div>
 
-  <!-- مؤشر موحد لأي عملية تحتاج وقتاً قبل فتح القالب أو إتمام الطلب -->
-  <div class="global-operation-loading hidden" id="globalOperationLoading" role="status" aria-live="polite" aria-hidden="true">
-    <div class="global-operation-loading-card">
-      <span class="global-operation-spinner"><i class="f7-icons">arrow2_circlepath</i></span>
-      <span id="globalOperationLoadingText">جارٍ التحميل...</span>
+  <div class="overlay full" id="soulOnboardOv">
+    <div class="soul-page soul-onboard">
+      <div class="soul-page-head"><b>اختر اهتماماتك</b></div>
+      <p class="soul-lead">لنقترح لك حفلات وأرواحاً أقرب إليك</p>
+      <div class="soul-chips" id="soulInterestChips"></div>
+      <button class="soul-primary" type="button" id="soulOnboardGo">متابعة</button>
+      <button class="soul-ghost" type="button" id="soulOnboardSkip">تخطي</button>
     </div>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div class="overlay full" id="soulTestOv">
+    <div class="soul-page">
+      <div class="soul-page-head"><b>اختبار الروح</b><span class="pg-close" data-close="soulTestOv" style="cursor:pointer;color:#e9d5ff">إغلاق</span></div>
+      <div id="soulTestBody"></div>
+    </div>
+  </div>
 
-  <!-- إشعار الرسالة الخاصة الوارد من الأعلى -->
-  <div class="pm-banner" id="pmBanner" role="alert" aria-live="polite">
-    <img class="pmb-ava" id="pmBannerAva" src="/avatars/default.png" alt="" width="44" height="44" decoding="async">
-    <div class="pmb-body">
-      <div class="pmb-head">
-        <span class="pmb-name" id="pmBannerName">-</span>
-        <span class="pmb-time" id="pmBannerTime">الآن</span>
+  <div class="overlay center" id="soulMatchOv">
+    <div class="soul-match-card">
+      <div class="soul-match-pulse"></div>
+      <b id="soulMatchTitle">جارٍ البحث عن روح قريبة...</b>
+      <small id="soulMatchSub">تطابق صوتي لمرة واحدة — اضغط إلغاء في أي وقت</small>
+      <button class="soul-ghost" type="button" id="soulMatchCancel">إلغاء</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="soulGameOv">
+    <div class="sheet soul-sheet">
+      <div class="sh-handle"></div>
+      <h3>ألعاب الغرفة</h3>
+      <div class="soul-games">
+        <button type="button" data-game="dice">🎲 نرد الحظ</button>
+        <button type="button" data-game="bottle">🍾 قنينة الحفلة</button>
+        <button type="button" data-game="card">🃏 حقيقة أو تحدّي</button>
+        <button type="button" data-game="ludo">♟️ لودو سريع</button>
       </div>
-      <div class="pmb-line" id="pmBannerLine">ارسل لك رسالة خاصة</div>
-      <div class="pmb-hint">انتقل إلى قائمة الرسائل الخاصة لقراءتها</div>
+      <div class="soul-game-out" id="soulGameOut"></div>
     </div>
   </div>
-</div>
-<script src="/socket.io/socket.io.js" defer></script>
-<script src="/js/skins.js?v=20260904-skins" defer></script>
-<script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
-<script src="/js/app.js?v=20260919-usort1" defer></script>
-<script src="/js/soulchill.js?v=20260926-soul3" defer></script>
-<script src="/js/soul-world.js?v=20260926-soul3" defer></script>
-<script src="/js/desktop.js?v=20260911-dsk7" defer></script>
-<script>
-    document.addEventListener("DOMContentLoaded", function () {
-   document.addEventListener("contextmenu", e => e.preventDefault());
-   document.addEventListener("selectstart", e => e.preventDefault());
 
-});</script>
-</body>
-</html>
+  <div class="overlay" id="soulPassOv">
+    <div class="sheet soul-sheet">
+      <div class="sh-handle"></div>
       <h3>Soul Pass</h3>
       <p class="soul-lead">وضع ليلي كامل، شارة كوكب، وتوهج مقعد حصري لمدة 30 يوماً مقابل 500 🪙</p>
       <div id="soulPassStatus"></div>
@@ -1845,8 +1849,9 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
-<script src="/js/app.js?v=20260919-usort1" defer></script>
-<script src="/js/soulchill.js?v=20260926-soul2" defer></script>
+<script src="/js/app.js?v=20260926-soul3" defer></script>
+<script src="/js/soulchill.js?v=20260926-soul3" defer></script>
+<script src="/js/soul-world.js?v=20260926-soul3" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
