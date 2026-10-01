@@ -116,6 +116,9 @@ db.serialize(() => {
   )`);
   // ترقية: كلمة مرور الغرفة (تُضاف للقواعد القديمة فقط)
   db.run(`ALTER TABLE rooms ADD COLUMN password TEXT DEFAULT ''`, () => { });
+  // ثيم الغرفة (خلفية بصرية) + دولة الغرفة (غرف حسب الدول مثل SoulChill)
+  db.run(`ALTER TABLE rooms ADD COLUMN country TEXT DEFAULT ''`, () => { });
+  db.run(`ALTER TABLE rooms ADD COLUMN theme TEXT DEFAULT ''`, () => { });
   // ترقية: جمهور الغرفة — 'all' = للجميع (الزوار والأعضاء)، 'registered' = للأعضاء المسجلين فقط
   db.run(`ALTER TABLE rooms ADD COLUMN audience TEXT DEFAULT 'all'`, () => { });
   db.run(`UPDATE rooms SET audience='all' WHERE audience IS NULL OR audience NOT IN ('all','registered')`, () => { });

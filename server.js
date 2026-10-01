@@ -2324,7 +2324,7 @@ app.post('/api/logout', (req, res) => {
 // =====================================================
 app.get('/api/rooms', async (req, res) => {
   // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً
-  const rooms = await q.all(`SELECT r.id, r.name, r.description, r.image, r.type, r.max_users, r.sort, r.status, r.password, r.audience, r.owner_id, u.username AS owner_name
+  const rooms = await q.all(`SELECT r.id, r.name, r.description, r.image, r.type, r.max_users, r.sort, r.status, r.password, r.audience, r.owner_id, r.country, r.theme, u.username AS owner_name, u.country AS owner_country
     FROM rooms r LEFT JOIN users u ON u.id = r.owner_id
     WHERE r.hidden=0 ORDER BY r.sort,r.id`);
   const counts = {};
@@ -2342,7 +2342,9 @@ app.get('/api/rooms', async (req, res) => {
     audience: String(r.audience || 'all') === 'registered' ? 'registered' : 'all',
     locked: !!(r.password && String(r.password).trim().length > 0),
     owner_id: +r.owner_id || 0,
-    owner_name: String(r.owner_name || '')
+    owner_name: String(r.owner_name || ''),
+    country: String(r.country || r.owner_country || ''),
+    theme: String(r.theme || '')
   })));
 });
 
@@ -2468,10 +2470,13 @@ app.post('/api/rooms', requireUser, async (req, res) => {
     const password = String(req.body.password || '').slice(0, 40);
     const image = String(req.body.image || '').slice(0, 200);
     const maxUsers = Math.min(1000, Math.max(2, +req.body.max_users || 100));
+    // ثيم الغرفة (خلفية بصرية) + الدولة (غرف حسب الدول مثل SoulChill)
+    const theme = String(req.body.theme || '').replace(/[^a-z0-9-]/gi, '').slice(0, 20);
+    const country = String(req.body.country || '').replace(/[^a-zA-Z\u0600-\u06FF _-]/g, '').slice(0, 30);
 
     const out = await q.run(
-      `INSERT INTO rooms (name,description,type,max_users,status,image,password,audience,owner_id) VALUES (?,?,?,?,?,?,?,?,?)`,
-      name, description || `أهلا وسهلا بكم في غرفة ${name} ★`, roomType, maxUsers, 'open', image, password, roomAudience, me.id
+      `INSERT INTO rooms (name,description,type,max_users,status,image,password,audience,owner_id,country,theme) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      name, description || `أهلا وسهلا بكم في غرفة ${name} ★`, roomType, maxUsers, 'open', image, password, roomAudience, me.id, country, theme
     );
     const roomId = +out.lastID;
     // صاحب الغرفة أدمن لها تلقائياً: يطرد ويكتم ويسحب المايك داخل غرفته

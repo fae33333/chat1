@@ -75,6 +75,28 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <i class="f7-icons r-search-ic">search</i>
       <textarea id="roomSearch" rows="1" placeholder="ابحث عن غرفك"></textarea>
     </div>
+    <!-- بانر الحفلات الحيّة (SoulChill) -->
+    <button class="party-live-banner" id="partyLiveBanner" type="button">
+      <span class="plb-ic">🎉</span>
+      <div class="plb-txt"><b id="plbCount">0</b> مستخدماً في الحفلات الآن<br><small>انضم للبث المباشر! 🔥</small></div>
+      <div class="plb-avas" id="plbAvas"></div>
+      <i class="f7-icons plb-arrow">chevron_left</i>
+    </button>
+    <!-- بطاقتا التوافق الصوتي والروحي (SoulChill) -->
+    <div class="match-cards">
+      <button class="match-card-btn voice" id="mcVoice" type="button">
+        <div class="mcb-txt"><b>التوافق الصوتي</b><span>Voice match — عشاق الصوت دائماً متصلون</span></div>
+        <span class="mcb-launch">ابدأ ▶</span>
+        <span class="mcb-orb">🎙️</span>
+      </button>
+      <button class="match-card-btn soul" id="mcSoul" type="button">
+        <div class="mcb-txt"><b>التوافق الروحي</b><span>Soul match — اكتشف روحاً متوافقة</span></div>
+        <span class="mcb-launch">ابدأ ▶</span>
+        <span class="mcb-orb">💞</span>
+      </button>
+    </div>
+    <!-- الغرف حسب الدول -->
+    <div class="country-strip" id="countryStrip"></div>
     <!-- شريط غرفتي: زر الإنشاء أو بطاقة غرفتي مع الإدارة -->
     <div class="myroom-strip" id="myRoomStrip"></div>
     <div class="r-list" id="roomsList"></div>
@@ -91,6 +113,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <header class="c-top dots-bg">
       <i class="f7-icons c-back" id="chatBack">chevron_left</i>
       <span class="c-room-name" id="chatRoomName">-</span>
+      <span class="c-room-id" id="chatRoomId" hidden>ID 0</span>
       <span class="c-top-mid">
         <!-- كبسولة الراديو (بنفس شكل زر المايك): زر تشغيل/إيقاف + اسم الراديو -->
         <button class="c-mic radio-pill" id="radioPill" type="button" hidden title="تشغيل الراديو">
@@ -255,11 +278,11 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 
   <!-- ============ التنقل السفلي ============ -->
   <nav class="bottomnav">
-    <button class="bn-item active" data-nav="rooms"><i class="f7-icons">house_fill</i><span>الغرف</span></button>
-    <button class="bn-item" data-nav="private"><i class="f7-icons">bubble_left_fill</i><span>الخاص</span><em class="bn-badge" id="privBadge" style="display:none">0</em></button>
+    <button class="bn-item active" data-nav="rooms"><i class="f7-icons">house_fill</i><span>الحفلات</span></button>
+    <button class="bn-item" data-nav="private"><i class="f7-icons">bubble_left_fill</i><span>الرسائل</span><em class="bn-badge" id="privBadge" style="display:none">0</em></button>
+    <button class="bn-item bn-center" data-nav="wall"><i class="f7-icons">star_fill</i><span>اللحظات</span></button>
     <button class="bn-item" data-nav="notifs"><i class="f7-icons">bell_fill</i><span>الإشعارات</span><em class="bn-badge" id="notifBadge" style="display:none">0</em></button>
-    <button class="bn-item" data-nav="wall"><i class="f7-icons">doc_text_fill</i><span>الحائط</span></button>
-    <button class="bn-item" data-nav="menu" id="bnMenu"><i class="f7-icons" id="bnMenuIcon">square_grid2x2_fill</i><span>القائمة</span></button>
+    <button class="bn-item" data-nav="menu" id="bnMenu"><i class="f7-icons" id="bnMenuIcon">person_fill</i><span>حسابي</span></button>
   </nav>
   </main>
 
@@ -443,9 +466,13 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <i class="f7-icons sheet-x blue" data-close="loginOv">xmark</i>
 
       <div class="lg-hero">
-        <div class="lg-hero-ava" id="lgHeroAva"><i class="f7-icons">person_fill</i></div>
+        <div class="sc-stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="sc-logo-orb">
+          <div class="lg-hero-ava" id="lgHeroAva"><i class="f7-icons">mic_fill</i></div>
+          <span class="sc-orb o1">🌙</span><span class="sc-orb o2">✨</span><span class="sc-orb o3">🪐</span>
+        </div>
         <h2 class="lg-hero-title" id="loginTitle">تسجيل الدخول</h2>
-        <p class="lg-hero-sub">اكتب اسمك واستمتع بالدردشة 💬</p>
+        <p class="lg-hero-sub">SoulChill — تواصل بصوتك وروحك 💬</p>
       </div>
 
       <div class="lg-switchrow">
@@ -541,6 +568,45 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <div class="cr-type-pills" id="crAudPills">
           <button type="button" class="cr-pill active" data-aud="all">الجميع</button>
           <button type="button" class="cr-pill" data-aud="registered">الأعضاء المسجلون</button>
+        </div>
+      </div>
+      <div class="cr-type-row">
+        <small>ثيم الغرفة (الخلفية)</small>
+        <div class="cr-theme-pills" id="crThemePills">
+          <button type="button" class="cr-theme t1 active" data-theme="">🌟 كوني</button>
+          <button type="button" class="cr-theme t2" data-theme="sunset">🌅 غروب</button>
+          <button type="button" class="cr-theme t3" data-theme="ocean">🌊 محيط</button>
+          <button type="button" class="cr-theme t4" data-theme="rose">🌹 وردي</button>
+          <button type="button" class="cr-theme t5" data-theme="gold">👑 ذهبي</button>
+          <button type="button" class="cr-theme t6" data-theme="night">🌙 ليلي</button>
+        </div>
+      </div>
+      <div class="cr-type-row">
+        <small>الدولة</small>
+        <div class="lf-field" style="margin-top:6px">
+          <i class="f7-icons lf-ic">globe</i>
+          <select id="crCountry">
+            <option value="">🌍 جميع الدول</option>
+            <option value="SA">🇸🇦 السعودية</option>
+            <option value="EG">🇪🇬 مصر</option>
+            <option value="JO">🇯🇴 الأردن</option>
+            <option value="SY">🇸🇾 سوريا</option>
+            <option value="IQ">🇮🇶 العراق</option>
+            <option value="PS">🇵🇸 فلسطين</option>
+            <option value="LB">🇱🇧 لبنان</option>
+            <option value="YE">🇾🇪 اليمن</option>
+            <option value="SD">🇸🇩 السودان</option>
+            <option value="MA">🇲🇦 المغرب</option>
+            <option value="DZ">🇩🇿 الجزائر</option>
+            <option value="TN">🇹🇳 تونس</option>
+            <option value="LY">🇱🇾 ليبيا</option>
+            <option value="AE">🇦🇪 الإمارات</option>
+            <option value="KW">🇰🇼 الكويت</option>
+            <option value="QA">🇶🇦 قطر</option>
+            <option value="BH">🇧🇭 البحرين</option>
+            <option value="OM">🇴🇲 عُمان</option>
+            <option value="TR">🇹🇷 تركيا</option>
+          </select>
         </div>
       </div>
       <button class="big-btn" id="crSubmit"><i class="f7-icons">plus_circle_fill</i> <span id="crSubmitTxt">إنشاء الغرفة</span></button>
@@ -1314,8 +1380,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <div class="wall-page">
       <div class="wall-head">
         <button class="wall-back" data-close="wallOv" type="button"><i class="f7-icons">chevron_left</i><span>عودة</span></button>
-        <b>الحائط</b>
-        <button class="wall-refresh" id="wallRefresh" type="button" aria-label="تحديث الحائط"><i class="f7-icons">arrow_clockwise</i></button>
+        <b>اللحظات ✨</b>
+        <button class="wall-refresh" id="wallRefresh" type="button" aria-label="تحديث اللحظات"><i class="f7-icons">arrow_clockwise</i></button>
       </div>
       <div class="wall-scroll" id="wallScroll">
         <button class="wall-create-trigger" id="wallCreateTrigger" type="button"><i class="f7-icons">plus_circle_fill</i><span>نشر</span></button>

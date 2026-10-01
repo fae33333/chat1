@@ -3196,6 +3196,8 @@ function renderSeats() {
   const voiceRoom = !!(CUR_ROOM && CUR_ROOM.type === 'voice');
   stage.hidden = !voiceRoom;
   if (!voiceRoom) return;
+  // ثيم الغرفة (خلفية بصرية من اختيار صاحبها — SoulChill)
+  stage.dataset.theme = String((CUR_ROOM && CUR_ROOM.theme) || '');
   const bySeat = seatEntriesByIndex();
   const closed = ROOM_CLOSED[CUR_ROOM.id] || [];
   const seatHtml = (seatNo) => {
@@ -4552,14 +4554,22 @@ function myOwnedRoom() {
   if (!ME || !ME.registered) return null;
   return ROOMS.find(r => +r.owner_id === +ME.id) || null;
 }
+// أعلام وأسماء الدول (SoulChill — الغرف حسب الدول)
+const CC_FLAG = { SA:'🇸🇦', EG:'🇪🇬', JO:'🇯🇴', SY:'🇸🇾', IQ:'🇮🇶', PS:'🇵🇸', LB:'🇱🇧', YE:'🇾🇪', SD:'🇸🇩', MA:'🇲🇦', DZ:'🇩🇿', TN:'🇹🇳', LY:'🇱🇾', AE:'🇦🇪', KW:'🇰🇼', QA:'🇶🇦', BH:'🇧🇭', OM:'🇴🇲', TR:'🇹🇷', US:'🇺🇸', GB:'🇬🇧', FR:'🇫🇷', DE:'🇩🇪' };
+const CC_NAME = { SA:'السعودية', EG:'مصر', JO:'الأردن', SY:'سوريا', IQ:'العراق', PS:'فلسطين', LB:'لبنان', YE:'اليمن', SD:'السودان', MA:'المغرب', DZ:'الجزائر', TN:'تونس', LY:'ليبيا', AE:'الإمارات', KW:'الكويت', QA:'قطر', BH:'البحرين', OM:'عُمان', TR:'تركيا', US:'أمريكا', GB:'بريطانيا', FR:'فرنسا', DE:'ألمانيا' };
+function roomFlagOf(r) {
+  const c = String((r && r.country) || '').trim();
+  if (!c) return '';
+  return CC_FLAG[c] || (/^[A-Za-z]{2}$/.test(c) ? '' : '🌍');
+}
 function roomRowHtml(r) {
   const online = ROOM_COUNTS[r.id] || 0;
   const mine = isMyRoom(r);
   return `
-  <div class="room-row" data-id="${r.id}">
+  <div class="room-row room-theme-${esc(r.theme || 'default')}" data-id="${r.id}">
     ${roomImgHtml(r)}
     <div class="room-info">
-      <div class="room-name">${esc(r.name)}${mine ? '<span class="room-mine-tag">غرفتي ⭐</span>' : ''}</div>
+      <div class="room-name">${roomFlagOf(r) ? `<span class="room-flag">${roomFlagOf(r)}</span>` : ''}${esc(r.name)}${mine ? '<span class="room-mine-tag">غرفتي ⭐</span>' : ''}</div>
       <div class="room-desc">${esc(r.description || `أهلاً وسهلاً بكم في ${SETTINGS.site_name || 'الدردشة'} ★`)}</div>
       ${+r.owner_id ? `<div class="room-owner-tag"><i class="f7-icons">person_crop_circle_badge_checkmark</i> غرفة ${esc(r.owner_name || 'مستخدم')}</div>` : ''}
     </div>
@@ -4596,14 +4606,45 @@ function renderRoomsPanel() {
     attemptRoomSwitch(+row.dataset.id);
   });
 }
+let COUNTRY_FILTER = 'all';   // فلتر «الغرف حسب الدول» (SoulChill)
 function renderRooms() {
   const q1 = ($('#roomSearch').value || '').trim();
-  // جميع الغرف صوتية الآن — لا يوجد تقسيم إلى أقسام.
-  const list = ROOMS.filter(r => (!q1 || r.name.includes(q1)));
+  // جميع الغرف صوتية الآن — مع فلتر الدولة وفلتر البحث
+  let list = ROOMS.filter(r => (!q1 || r.name.includes(q1)));
+  if (COUNTRY_FILTER !== 'all') list = list.filter(r => String(r.country || '') === COUNTRY_FILTER);
   $('#roomsList').innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
   $$('#roomsList .room-row').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
+  renderCountryStrip();
+  renderPartyBanner();
   renderMyRoomStrip();
   renderRoomsPanel();
+}
+// شريط الدول (SoulChill): أعلام فقاعية تفلتر الغرف حسب الدولة
+function renderCountryStrip() {
+  const strip = $('#countryStrip');
+  if (!strip) return;
+  const counts = {};
+  ROOMS.forEach(r => { const c = String(r.country || ''); if (c) counts[c] = (counts[c] || 0) + 1; });
+  const codes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  strip.innerHTML =
+    `<button class="ct-chip${COUNTRY_FILTER === 'all' ? ' active' : ''}" data-cc="all">🌍 الكل</button>` +
+    codes.map(c => `<button class="ct-chip${COUNTRY_FILTER === c ? ' active' : ''}" data-cc="${esc(c)}" title="${esc(CC_NAME[c] || c)}"><span>${CC_FLAG[c] || '🌍'}</span><b>${counts[c]}</b></button>`).join('');
+  strip.querySelectorAll('.ct-chip').forEach(b => b.onclick = () => {
+    COUNTRY_FILTER = b.dataset.cc;
+    renderRooms();
+    beep(720, .06);
+  });
+}
+// بانر الحفلات الحيّة (SoulChill): عدد الموجودين الآن + صور غرف متحركة
+function renderPartyBanner() {
+  const total = ROOMS.reduce((s, r) => s + (+ROOM_COUNTS[r.id] || 0), 0);
+  const cnt = $('#plbCount');
+  if (cnt) cnt.textContent = total;
+  const avas = $('#plbAvas');
+  if (avas) {
+    const hot = ROOMS.slice().sort((a, b) => (+ROOM_COUNTS[b.id] || 0) - (+ROOM_COUNTS[a.id] || 0)).slice(0, 4);
+    avas.innerHTML = hot.map(r => roomImgHtml(r, 'plb-ava')).join('');
+  }
 }
 
 // =====================================================
@@ -4686,6 +4727,11 @@ function openCreateRoomSheet(mode, room) {
   const a = CR_ROOM ? (CR_ROOM.audience || 'all') : 'all';
   $$('#crTypePills .cr-pill').forEach(b => b.classList.toggle('active', b.dataset.type === t));
   $$('#crAudPills .cr-pill').forEach(b => b.classList.toggle('active', b.dataset.aud === a));
+  // ثيم الغرفة + الدولة (SoulChill)
+  const th = CR_ROOM ? String(CR_ROOM.theme || '') : '';
+  $$('#crThemePills .cr-theme').forEach(b => b.classList.toggle('active', b.dataset.theme === th));
+  const ccSel = $('#crCountry');
+  if (ccSel) ccSel.value = CR_ROOM ? String(CR_ROOM.country || '') : '';
   openOv('createRoomOv');
   setTimeout(() => $('#crName').focus(), 80);
 }
@@ -4696,6 +4742,13 @@ if (crClearBtn) crClearBtn.onclick = () => {
   $('#crPass').value = '';
   crClearBtn.innerHTML = '<i class="f7-icons">checkmark_circle_fill</i> ستُزال كلمة المرور عند الحفظ';
 };
+// حبات ثيم الغرفة (SoulChill)
+if ($('#crThemePills')) $('#crThemePills').addEventListener('click', (e) => {
+  const b = e.target.closest('.cr-theme');
+  if (!b) return;
+  $$('#crThemePills .cr-theme').forEach(x => x.classList.toggle('active', x === b));
+  beep(720, .06);
+});
 // حبات النوع/الجمهور في نموذج الغرفة
 ['#crTypePills', '#crAudPills'].forEach(sel => {
   const box = $(sel);
@@ -4716,6 +4769,8 @@ $('#crSubmit').onclick = async () => {
   const password = $('#crPass').value;
   const type = ($('#crTypePills .cr-pill.active') || {}).dataset ? $('#crTypePills .cr-pill.active').dataset.type : 'voice';
   const audience = ($('#crAudPills .cr-pill.active') || {}).dataset ? $('#crAudPills .cr-pill.active').dataset.aud : 'all';
+  const theme = ($('#crThemePills .cr-theme.active') || {}).dataset ? $('#crThemePills .cr-theme.active').dataset.theme : '';
+  const country = $('#crCountry') ? $('#crCountry').value : '';
   if (name.length < 2) return err('اكتب اسم الغرفة (حرفان على الأقل)');
   err('');
   btn.disabled = true;
@@ -4733,7 +4788,7 @@ $('#crSubmit').onclick = async () => {
       closeOv('createRoomOv');
       await loadRooms();
     } else {
-      const d = await api('/api/rooms', 'POST', { name, description, password, type, audience });
+      const d = await api('/api/rooms', 'POST', { name, description, password, type, audience, theme, country });
       toast('🎉 تم إنشاء غرفتك بنجاح — أنت الآن أدمنها');
       closeOv('createRoomOv');
       // أدخل غرفتك الجديدة بعد تحديث القائمة حتى تتوفر بيانات الغرفة محلياً
@@ -4795,6 +4850,12 @@ function enterRoom(id, pwd, hiddenChoice) {
   CUR_ROOM = r;
   updateVoiceRoomBarUI();
   $('#chatRoomName').textContent = r.name;
+  // شارة ID الغرفة (SoulChill) + ثيم خلفية الغرفة
+  const idChip = $('#chatRoomId');
+  if (idChip) {
+    idChip.hidden = false;
+    idChip.textContent = (roomFlagOf(r) ? roomFlagOf(r) + ' ' : '') + 'ID ' + r.id;
+  }
   renderIdleRoomNotice();
   const currentSiteName = (window.SEO_PAGE_CONFIG && window.SEO_PAGE_CONFIG.site_name) || SETTINGS.site_name || 'الدردشة العربية';
   const bgWater = $('#chatBgWatermark .pm-water');
@@ -13649,7 +13710,12 @@ if ($('#ricJoin')) $('#ricJoin').onclick = () => {
 if ($('#ricClose')) $('#ricClose').onclick = hideRoomInviteCard;
 
 // ---------- المطابقة الفورية (Instant Match) ----------
-let MATCH_USER = null, MATCH_SEEN = [];
+let MATCH_USER = null, MATCH_SEEN = [], MATCH_MODE = 'soul'; // 'soul' توافق روحي | 'voice' توافق صوتي
+function matchPercentOf(u) {
+  // نسبة توافق ممتعة وثابتة لكل زوج من المستخدمين (لأغراض العرض مثل SoulChill)
+  const a = +(ME && ME.id) || 1, b = +u.id || 2;
+  return 72 + ((a * 31 + b * 17) % 27); // 72% .. 98%
+}
 function matchIdle() {
   const v = $('#matchVisual'), r = $('#matchResult');
   if (v) v.hidden = false;
@@ -13661,7 +13727,7 @@ function matchIdle() {
 async function matchSeek() {
   MATCH_USER = null;
   matchIdle();
-  $('#matchText').textContent = 'جارٍ البحث عن روح متوافقة…';
+  $('#matchText').textContent = MATCH_MODE === 'voice' ? 'جارٍ البحث عن صوت متوافق 🎙️…' : 'جارٍ البحث عن روح متوافقة 💞…';
   beep(660, .08);
   try {
     const d = await api('/api/match', 'POST', { exclude: MATCH_SEEN.slice(-60) });
@@ -13677,8 +13743,8 @@ async function matchSeek() {
     $('#mrAva').innerHTML = avatarHtml(u.avatar || '');
     $('#mrName').textContent = u.username;
     const memTxt = u.rank && u.rank !== 'user' ? (RANK_NAMES[u.rank] || u.rank) : (u.membership && u.membership !== 'none' ? (MEM_NAMES[u.membership] || '') : (u.registered ? 'عضو مسجل' : 'زائر'));
-    $('#mrMeta').innerHTML = `<img src="/badges/${badgeOf(u)}" alt=""> <span>${memTxt}</span>`;
-    $('#matchText').textContent = 'وجدنا لك روحاً متوافقة ✨';
+    $('#mrMeta').innerHTML = `<img src="/badges/${badgeOf(u)}" alt=""> <span>${memTxt}</span><span class="mr-percent">${matchPercentOf(u)}% توافق</span>`;
+    $('#matchText').textContent = MATCH_MODE === 'voice' ? 'وجدنا لك صوتاً متوافقاً 🎙️' : 'وجدنا لك روحاً متوافقة 💞';
     $('#matchGo').hidden = false;
     $('#matchSkip').hidden = false;
     $('#matchStop').hidden = true;
@@ -13693,7 +13759,15 @@ function openMatchOv() {
   openOv('matchOv');
   matchSeek();
 }
-if ($('#headMatchBtn')) $('#headMatchBtn').onclick = openMatchOv;
+if ($('#headMatchBtn')) $('#headMatchBtn').onclick = () => { MATCH_MODE = 'soul'; openMatchOv(); };
+if ($('#mcVoice')) $('#mcVoice').onclick = () => { MATCH_MODE = 'voice'; openMatchOv(); };
+if ($('#mcSoul')) $('#mcSoul').onclick = () => { MATCH_MODE = 'soul'; openMatchOv(); };
+if ($('#partyLiveBanner')) $('#partyLiveBanner').onclick = () => {
+  // أنشط غرفة الآن — ادخلها مباشرة
+  const hot = ROOMS.slice().sort((a, b) => (+ROOM_COUNTS[b.id] || 0) - (+ROOM_COUNTS[a.id] || 0))[0];
+  if (hot && +ROOM_COUNTS[hot.id] > 0) enterRoom(+hot.id);
+  else toast('لا توجد حفلات نشطة الآن — أنشئ غرفتك وابدأ الحفلة! 🎉');
+};
 if ($('#matchSkip')) $('#matchSkip').onclick = matchSeek;
 if ($('#matchGo')) $('#matchGo').onclick = () => {
   if (!MATCH_USER) return;
