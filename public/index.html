@@ -58,6 +58,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <span class="r-logo-tag">مرحباً بك في عالم الدردشة ✨</span>
         </span>
       </div>
+      <button class="head-match" id="headMatchBtn" type="button" title="المطابقة الفورية"><i class="f7-icons">sparkles</i><span>مطابقة</span></button>
       <button class="btn-enter" id="headEnterBtn">دخول</button>
       <button class="head-user" id="headUserBox" style="display:none" aria-label="حسابي">
         <span class="head-ava" id="headAva"></span>
@@ -109,7 +110,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <em class="status-unread-badge" id="statusUnreadBadge" style="display:none">0</em>
         </button>
         <button class="cbtn" id="btnHome"><i class="f7-icons">house_fill</i></button>
-        <button class="cbtn" id="btnRoomUsers"><i class="f7-icons">person_3_fill</i></button>
+        <button class="cbtn" id="btnRoomUsers" title="الحاضرون"><i class="f7-icons">person_3_fill</i><em class="room-aud-count" id="roomAudCount" hidden>0</em></button>
         <button class="cbtn ghost" id="btnRoomMore"><i class="f7-icons">ellipsis_vertical</i></button>
       </span>
     </header>
@@ -142,6 +143,11 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <div class="seats-glow" aria-hidden="true"></div>
       <div class="seats-host-row" id="seatsHostRow"></div>
       <div class="seats-grid" id="seatsGrid"></div>
+      <!-- شريط أفضل المُهدِين (مثل SoulChill) -->
+      <div class="top-gifters" id="topGiftersBar" hidden>
+        <span class="tg-label">👑 أعلى المُهدِين</span>
+        <div class="tg-list" id="topGiftersList"></div>
+      </div>
     </div>
 
     <!-- زر كتم مستقل بجانب الشاشة: يظهر عندما أكون مذيعاً (حتى لو مذيعاً وحيداً) أو عند تعدد المذيعين — لكتم صوت المذيعين -->
@@ -230,6 +236,12 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <span class="ci-ava" id="ciAva" role="button" tabindex="0" title="تغيير الصورة الشخصية" aria-label="تغيير الصورة الشخصية"></span>
       <textarea type="text" class="ci-field" id="msgInput" onfocus="activeresize()" placeholder="رسالة عامة" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
       <button class="ci-plain" id="btnMic"><i class="f7-icons">mic_fill</i></button>
+      <button class="ci-plain sc-invite" id="btnRoomInvite" type="button" title="دعوة أصدقاءك للغرفة">
+        <i class="f7-icons">person_2_badge_plus_fill</i>
+      </button>
+      <button class="ci-plain sc-gift" id="btnRoomGift" type="button" title="إرسال هدية">
+        <i class="f7-icons">gift_fill</i>
+      </button>
       <button class="ci-plain talk-live" id="btnTalkLive" type="button" title="تحدث — الصعود كمذيع" hidden>
        <span>تحدث</span>
       </button>
@@ -658,6 +670,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       </button>
       <div class="us-actions">
         <button class="us-opt" id="usStatus" type="button" hidden><i class="f7-icons us-icon status">play_fill</i><span>عرض الحالة</span><i class="f7-icons us-chevron">chevron_right</i></button>
+        <button class="us-opt" id="usFollow" type="button"><i class="f7-icons us-icon follow">star_fill</i><span id="usFollowLabel">متابعة</span><i class="f7-icons us-chevron">chevron_right</i></button>
         <button class="us-opt" id="usReply" type="button"><i class="f7-icons us-icon reply">arrowshape_turn_up_left_fill</i><span>الرد على الرسالة</span><i class="f7-icons us-chevron">chevron_right</i></button>
         <button class="us-opt" id="usPrivate" type="button"><i class="f7-icons us-icon private">chat_bubble_fill</i><span>دردشة خاصة</span><i class="f7-icons us-chevron">chevron_right</i></button>
         <button class="us-opt" id="usGift" type="button"><i class="f7-icons us-icon gift">gift_fill</i><span>ارسل هدية</span><i class="f7-icons us-chevron">chevron_right</i></button>
@@ -711,6 +724,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <button class="gs-tab" data-gcat="جواهر">مجوهرات</button>
         <button class="gs-tab active" data-gcat="افتراضي">افتراضي</button>
       </div>
+      <!-- اختيار مستلم الهدية من أعضاء المقاعد -->
+      <div class="gift-recip-strip" id="giftRecipStrip" hidden></div>
       <div class="gs-grid" id="giftGrid"></div>
       <div class="gs-pick" id="giftPick">
         <!-- بطاقة التفاصيل: معاينة الهدية يساراً وبيانات الإرسال يميناً -->
@@ -735,6 +750,59 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- دعوة الأصدقاء إلى الغرفة -->
+  <div class="overlay" id="inviteOv">
+    <div class="sheet invite-sheet">
+      <div class="pg-head">
+        <span class="pg-title">ادعُ أصدقاءك 🎉</span>
+        <span class="pg-close" data-close="inviteOv">إغلاق</span>
+      </div>
+      <div class="iv-sub" id="ivRoomName">-</div>
+      <div class="iv-tools">
+        <button class="iv-selectall" id="ivSelectAll" type="button">تحديد الكل</button>
+        <span class="iv-count" id="ivSelCount">0 محدد</span>
+      </div>
+      <div class="iv-list" id="ivList"></div>
+      <div class="gs-btns">
+        <button class="btn-cancel" data-close="inviteOv">إلغاء</button>
+        <button class="btn-send" id="ivSendBtn"><i class="f7-icons">paperplane_fill</i> إرسال الدعوات</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- المطابقة الفورية -->
+  <div class="overlay center" id="matchOv">
+    <div class="match-card">
+      <button class="match-x" data-close="matchOv" type="button" aria-label="إغلاق"><i class="f7-icons">xmark_circle_fill</i></button>
+      <div class="match-visual" id="matchVisual">
+        <div class="match-orbit"><div class="match-orb o1"></div><div class="match-orb o2"></div><div class="match-orb o3"></div></div>
+        <div class="match-searching-ava" id="matchSearchAva"><i class="f7-icons">sparkles</i></div>
+      </div>
+      <div class="match-result" id="matchResult" hidden>
+        <div class="mr-ava" id="mrAva"></div>
+        <div class="mr-name" id="mrName">-</div>
+        <div class="mr-meta" id="mrMeta"></div>
+      </div>
+      <div class="match-text" id="matchText">جارٍ البحث عن روح متوافقة…</div>
+      <div class="match-btns">
+        <button class="btn-cancel" id="matchSkip" type="button" hidden>التالي</button>
+        <button class="btn-send" id="matchGo" type="button" hidden><i class="f7-icons">chat_bubble_fill</i> ابدأ الدردشة</button>
+        <button class="btn-cancel" data-close="matchOv" id="matchStop" type="button">إيقاف</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- بطاقة دعوة غرفة عائمة -->
+  <div class="room-invite-card" id="roomInviteCard" hidden>
+    <div class="ric-ic">🎉</div>
+    <div class="ric-txt">
+      <b id="ricFrom">-</b>
+      <span id="ricText">-</span>
+    </div>
+    <button class="ric-join" id="ricJoin" type="button">انضم الآن</button>
+    <button class="ric-x" id="ricClose" type="button" aria-label="إغلاق"><i class="f7-icons">xmark_circle_fill</i></button>
   </div>
 
   <!-- الترقية -->

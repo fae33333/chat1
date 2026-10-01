@@ -2935,15 +2935,16 @@ app.post('/api/gifts/send', requireUser, async (req, res) => {
 
   await q.run(`UPDATE users SET balance=balance-? WHERE id=?`, amount, me.id);
   await q.run(`UPDATE users SET balance=balance+? WHERE id=?`, gain, to.id);
-  await q.run(`INSERT INTO gifts_log (from_id,from_name,to_id,to_name,gift_name,gift_img,gift_audio,price,qty,usd_value) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    me.id, me.username, to.id, to.username, gift.name, gift.img, gift.audio || '', gift.price, qtyN, gift.usd_value || 0);
+  await q.run(`INSERT INTO gifts_log (from_id,from_name,to_id,to_name,gift_name,gift_img,gift_audio,price,qty,usd_value,room_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    me.id, me.username, to.id, to.username, gift.name, gift.img, gift.audio || '', gift.price, qtyN, gift.usd_value || 0, +room_id || 0);
 
   // بث مشهد الهدية (بدون بطاقة رسالة في الدردشة) لكل الموجودين في الغرفة.
   // المتلقي والمرسل وغيرهما يشاهدون المشهد نفسه: عادي = صندوق الهدية، ملكي = مشهد ملكي.
   const celebration = {
     gift_id: gift.id, name: gift.name, img: gift.img, audio: gift.audio || '',
     price: gift.price, payout: gift.payout || 0, qty: qtyN,
-    from: me.username, to: to.username, style
+    from: me.username, to: to.username, style,
+    from_id: me.id, to_id: to.id, room_id: +room_id || 0
   };
   // رسالة الهدية في العام (كما كانت): «قام فلان بإرسال هدية كذا إلى فلان» — تظهر ببطاقة
   // النظام في الدردشة، والمشهد البصري يأتي عبر حدث gift:sent منفصلاً حتى لا يتكرر.
@@ -2957,6 +2958,8 @@ app.post('/api/gifts/send', requireUser, async (req, res) => {
       user: { ...pubUser(me), badge: badgeOf(me) }
     });
     io.to('room_' + room_id).emit('gift:sent', celebration);
+    // تحديث فوري لقائمة «أفضل المُهدِين» في الغرفة (مثل SoulChill)
+    io.to('room_' + room_id).emit('room:top_gifters', await roomTopGifters(+room_id));
   } else {
     io.to('user_' + me.id).emit('gift:sent', celebration);
   }
@@ -2966,6 +2969,116 @@ app.post('/api/gifts/send', requireUser, async (req, res) => {
   const notification = await createUserNotification(to_id, `وصلتك هدية ${vis}${gift.name} من ${me.username} وربحت ${gain} ذهب`, 'gift_fill');
   io.to('user_' + to_id).emit('notify', { ...notification, text: notification.text + ' 🪙', balance: toFresh.balance });
   res.json({ ok: true, balance: me.balance - amount, style });
+});
+
+// =====================================================
+//  سيناريوهات SoulChill: المتابعة — دعوة الأصدقاء — أفضل المُهدِين — المطابقة الفورية
+// =====================================================
+// هل المستخدم متصلاً الآن؟ (غرفته الخاصة user_<id> تفتح عند الاتصال)
+function isUserOnline(uid) {
+  try { return io.sockets.adapter.rooms.has('user_' + uid); } catch (e) { return false; }
+}
+// أفضل المُهدِين في غرفة ما (أعلى 8 حسب مجموع الذهب المُرسل)
+async function roomTopGifters(roomId) {
+  try {
+    const rows = await q.all(`SELECT gl.from_id AS id, gl.from_name AS username, u.avatar AS avatar,
+      SUM(gl.price*gl.qty) AS gold, COUNT(*) AS gifts
+      FROM gifts_log gl LEFT JOIN users u ON u.id = gl.from_id
+      WHERE gl.room_id=? GROUP BY gl.from_id ORDER BY gold DESC LIMIT 8`, +roomId || 0);
+    return rows.map(r => ({ id: +r.id, username: r.username, avatar: r.avatar || '', gold: +r.gold || 0, gifts: +r.gifts || 0 }));
+  } catch (e) { return []; }
+}
+app.get('/api/rooms/:id/top-gifters', requireUser, async (req, res) => {
+  res.json({ ok: true, list: await roomTopGifters(+req.params.id) });
+});
+
+// ---------- المتابعة (Follow) ----------
+app.post('/api/follow/:uid', requireUser, async (req, res) => {
+  const uid = +req.params.uid;
+  if (!uid || uid === req.authUid) return res.status(400).json({ error: 'لا يمكنك متابعة نفسك' });
+  const to = await q.get(`SELECT id,username,registered FROM users WHERE id=?`, uid);
+  if (!to) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  const me = await q.get(`SELECT username FROM users WHERE id=?`, req.authUid);
+  const exists = await q.get(`SELECT id FROM follows WHERE follower_id=? AND followee_id=?`, req.authUid, uid);
+  if (exists) return res.json({ ok: true, following: true, already: true });
+  await q.run(`INSERT INTO follows (follower_id, followee_id) VALUES (?,?)`, req.authUid, uid);
+  // إشعار المُتابَع + بث فوري
+  const notification = await createUserNotification(uid, `بدأ ${me.username} بمتابعتك ⭐`, 'person_2_fill');
+  io.to('user_' + uid).emit('notify', notification);
+  io.to('user_' + uid).emit('follow:new', { by_id: req.authUid, by_name: me.username });
+  res.json({ ok: true, following: true });
+});
+app.delete('/api/follow/:uid', requireUser, async (req, res) => {
+  await q.run(`DELETE FROM follows WHERE follower_id=? AND followee_id=?`, req.authUid, +req.params.uid);
+  res.json({ ok: true, following: false });
+});
+// حالة المتابعة + العدادات (مُتابَعون / يتابع)
+app.get('/api/follow/:uid', requireUser, async (req, res) => {
+  const uid = +req.params.uid;
+  const f = await q.get(`SELECT id FROM follows WHERE follower_id=? AND followee_id=?`, req.authUid, uid);
+  const followers = await q.get(`SELECT COUNT(*) c FROM follows WHERE followee_id=?`, uid);
+  const following = await q.get(`SELECT COUNT(*) c FROM follows WHERE follower_id=?`, uid);
+  res.json({ ok: true, following: !!f, followers: +followers.c || 0, following_count: +following.c || 0 });
+});
+// قائمة من أتابعهم (قائمة الأصدقاء للدعوة إلى الغرف) مع حالة الاتصال
+app.get('/api/following', requireUser, async (req, res) => {
+  const rows = await q.all(`SELECT u.id, u.username, u.avatar, u.rank, u.membership, u.registered, f.created_at
+    FROM follows f JOIN users u ON u.id = f.followee_id WHERE f.follower_id=? ORDER BY f.created_at DESC LIMIT 200`, req.authUid);
+  res.json({
+    ok: true,
+    list: rows.map(u => ({ id: +u.id, username: u.username, avatar: u.avatar, rank: u.rank, membership: u.membership, registered: +u.registered, online: isUserOnline(u.id) }))
+  });
+});
+
+// ---------- دعوة الأصدقاء إلى الغرفة (بضغطة واحدة للجميع) ----------
+app.post('/api/rooms/:id/invite', requireUser, async (req, res) => {
+  const roomId = +req.params.id;
+  const room = await q.get(`SELECT * FROM rooms WHERE id=?`, roomId);
+  if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+  let ids = Array.isArray(req.body.to_ids) ? req.body.to_ids.map(x => +x).filter(Boolean) : [];
+  if (!ids.length) return res.status(400).json({ error: 'حدد الأصدقاء المدعوين' });
+  if (ids.length > 200) ids = ids.slice(0, 200);
+  const me = await q.get(`SELECT username FROM users WHERE id=?`, req.authUid);
+  const inRoom = io.sockets.adapter.rooms.get('room_' + roomId);
+  const audience = inRoom ? inRoom.size : 0;
+  let sent = 0;
+  for (const tid of ids) {
+    if (tid === req.authUid) continue;
+    const to = await q.get(`SELECT id FROM users WHERE id=?`, tid);
+    if (!to) continue;
+    // بطاقة الدعوة الفورية — تنقر فيدخل الغرفة مباشرة
+    io.to('user_' + tid).emit('room:invited', {
+      room_id: roomId, room_name: room.name, room_type: room.type,
+      from_id: req.authUid, from_name: me.username, audience
+    });
+    const notification = await createUserNotification(tid, `يدعوك ${me.username} للانضمام إلى غرفة «${room.name}» 🎉`, 'person_2_fill');
+    io.to('user_' + tid).emit('notify', notification);
+    sent++;
+  }
+  res.json({ ok: true, sent });
+});
+
+// ---------- المطابقة الفورية (Instant Match مثل SoulChill) ----------
+// يختار مستخدماً متصلاً عشوائياً (مسجلاً، غير مكتوم/محظور) لبدء محادثة سريعة.
+app.post('/api/match', requireUser, async (req, res) => {
+  const exclude = new Set([req.authUid, ...(Array.isArray(req.body.exclude) ? req.body.exclude.map(x => +x) : [])]);
+  // المرشحون: المسجلون المتصلون الآن
+  const roomsMap = io.sockets.adapter.rooms;
+  const onlineIds = [];
+  for (const [name, set] of roomsMap) {
+    if (/^user_\d+$/.test(name)) {
+      const uid = +name.slice(5);
+      if (!exclude.has(uid) && set.size > 0) onlineIds.push(uid);
+    }
+  }
+  if (!onlineIds.length) return res.json({ ok: false, text: 'لا يوجد أحد متاح للمطابقة الآن — حاول لاحقاً 💫' });
+  const placeholders = onlineIds.map(() => '?').join(',');
+  const candidates = await q.all(`SELECT id,username,avatar,rank,membership,registered,gender,country,muted,muted_until,broadcast_banned
+    FROM users WHERE id IN (${placeholders}) AND registered=1 AND (banned_until=0 OR banned_until<strftime('%s','now'))`, ...onlineIds);
+  const usable = candidates.filter(u => u && !mutedActive(u) && !u.broadcast_banned && +u.id !== req.authUid);
+  if (!usable.length) return res.json({ ok: false, text: 'لا يوجد أحد متاح للمطابقة الآن — حاول لاحقاً 💫' });
+  const pick = usable[Math.floor(Math.random() * usable.length)];
+  res.json({ ok: true, user: { ...pubUser(pick), badge: badgeOf(pick) } });
 });
 
 // =====================================================

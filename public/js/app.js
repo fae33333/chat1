@@ -2735,6 +2735,15 @@ function connectSocket() {
     if (!payload || !payload.name) return;
     if (payload.style === 'royal') triggerRoyalGiftCelebration(payload);
     else triggerGiftCelebration(payload);
+    // أثر الهدية على مقعد المستلم داخل الغرفة (وميض + قلوب طائرة مثل SoulChill)
+    if (payload.to_id) seatGiftBurst(+payload.to_id);
+  });
+  // ===== سيناريوهات SoulChill: أفضل المُهدِين / دعوة الغرفة / المتابعة =====
+  SOCKET.on('room:top_gifters', (list) => renderTopGifters(list || []));
+  SOCKET.on('room:invited', (d) => showRoomInviteCard(d));
+  SOCKET.on('follow:new', (d) => {
+    if (!d) return;
+    toast(`⭐ ${d.by_name || 'عضو'} بدأ بمتابعتك`);
   });
   SOCKET.on('royal_animals_changed', () => { loadRoyalAnimals(); });
   SOCKET.on('royal_granted', ({ animal }) => {
@@ -4113,6 +4122,8 @@ function bcastApplyJoinState(roomId, broadcastState) {
   } else { delete ROOM_BCAST[roomId]; delete ROOM_SEATS[roomId]; }
   syncRoomUserBroadcastFlags(roomId);
   bcastRenderBar();
+  // قائمة «أفضل المُهدِين» في الغرفة (سيناريو SoulChill)
+  loadTopGifters(roomId);
 }
 $('#bcastClose').onclick = () => {
   // زر X ينهي بث المذيع، أما المشاهد فيغادر المشاهدة فعلياً (أو يلغي طلبه المعلّق).
@@ -5741,6 +5752,12 @@ function renderUsers() {
   const q = ($('#userSearch').value || '').trim();
   const hostIds = liveBroadcastHostIds();
   $('#onlineCount').textContent = ROOM_USERS.length;
+  // شارة عدد الحاضرين في أعلى الغرفة (مثل SoulChill)
+  const audBadge = $('#roomAudCount');
+  if (audBadge) {
+    audBadge.textContent = ROOM_USERS.length;
+    audBadge.hidden = !CUR_ROOM;
+  }
   const list = ROOM_USERS.filter(usersSortMatches)
     .filter(u => !q || u.username.includes(q))
     .sort((a, b) => rankWeight(b) - rankWeight(a) || String(a.username).localeCompare(String(b.username), 'ar'));
@@ -5842,6 +5859,7 @@ function syncUserActionSheet() {
   $('#usIgnoreLabel').textContent = IGNORED_USERS.has(+CUR_TARGET.id) ? 'إلغاء التجاهل' : 'تجاهل';
   $('#usMuteLabel').textContent = CUR_TARGET.muted ? 'إلغاء الكتم' : 'كتم المستخدم';
   $('#usMuteIcon').textContent = CUR_TARGET.muted ? 'mic_fill' : 'mic_slash_fill';
+  refreshFollowAction(+CUR_TARGET.id);
   const privateBtn = $('#usPrivate');
   if (privateBtn) {
     const myRank = String((ME && ME.rank) || 'user');
@@ -6232,6 +6250,7 @@ async function openGifts(target) {
   $('#gBal').textContent = ME.balance;
   if (!GIFTS.length) GIFTS = await api('/api/gifts');
   SEL_GIFT = null;
+  renderGiftRecipStrip();
   renderGiftGrid('افتراضي');
   updateGiftPick();
   openOv('giftOv');
@@ -6616,6 +6635,7 @@ function renderVisitorProfile(u, d) {
           </div>
         </div>
         <div class="vp-acts profile-actions" id="vpActs">
+          <button class="va" id="vaFollow"><span class="va-ic"><i class="f7-icons">star_fill</i></span><span class="va-label" id="vaFollowLabel">متابعة</span></button>
           <button class="va" id="vaIgnore"><span class="va-ic"><i class="f7-icons">exclamationmark_circle_fill</i></span><span class="va-label">تجاهل</span></button>
           ${ME && ME.registered ? `<button class="va" id="vaReport"><span class="va-ic"><i class="f7-icons">exclamationmark_triangle_fill</i></span><span class="va-label">الإبلاغ</span></button>` : ''}
           <button class="va" id="vaUpgrade"><span class="va-ic"><i class="f7-icons">chart_bar_fill</i></span><span class="va-label">ارسل ترقية</span></button>
@@ -6634,6 +6654,7 @@ function renderVisitorProfile(u, d) {
               <span class="vp-like-label">${d.liked ? 'أعجبني' : 'إعجاب'}</span>
             </button>
             <span class="vp-like-count" id="vpLikeCount"><b>${d.likes || 0}</b> إعجاب</span>
+            <span class="vp-follow-count" id="vpFollowCount"><b>0</b> متابع · <b>0</b> يتابع</span>
             <span class="vp-member-chip">مسجّل منذ <b>${esc(memberDaysText(d.member_days != null ? d.member_days : memberDaysOf(u)))}</b></span>
           </div>` : ''}
           </div>
@@ -6719,6 +6740,8 @@ function renderVisitorProfile(u, d) {
     };
     paintLike();
   }
+  // ===== المتابعة (SoulChill): زر + عدادات المُتابَعين =====
+  initVisitorFollow(u);
   $('#vaChat').onclick = () => { closeOv('profOv'); openPrivateWith(u); };
   $('#vaGift').onclick = () => { closeOv('profOv'); if (!ME.registered) return openOv('needRegOv'); openGifts(u); };
   $('#vaUpgrade').onclick = () => { closeOv('profOv'); openUpgrade(u); };
@@ -12567,6 +12590,11 @@ function leaveRoom() {
   closeOv('usersPanel');
   setRoomsPanel(false);
   $('#roomsVeil').style.display = 'none';
+  // تنظيف واجهات سيناريوهات SoulChill المرتبطة بالغرفة
+  const tgBar = $('#topGiftersBar'); if (tgBar) tgBar.hidden = true;
+  const tgList = $('#topGiftersList'); if (tgList) tgList.innerHTML = '';
+  const audBadge = $('#roomAudCount'); if (audBadge) audBadge.hidden = true;
+  const recip = $('#giftRecipStrip'); if (recip) recip.hidden = true;
 }
 $('#btnRoomUsers').onclick = () => setUsersPanel(!$('#usersPanel').classList.contains('open'));
 // زر النقاط: قائمة خيارات الغرفة — نفس القالب على الهاتف والكمبيوتر
@@ -13294,3 +13322,297 @@ function activeresize() {
 }
 }
 
+
+// =====================================================
+//  سيناريوهات SoulChill — المتابعة · دعوة الأصدقاء · أفضل المُهدِين · المطابقة الفورية
+// =====================================================
+
+// ---------- أثر الهدية على مقعد المستلم (وميض + قلوب طائرة) ----------
+function seatGiftBurst(toId) {
+  try {
+    const item = document.querySelector('.seat-item[data-hid="' + toId + '"]');
+    if (!item) return;
+    item.classList.remove('gift-hit');
+    void item.offsetWidth;               // إعادة تشغيل الحركة
+    item.classList.add('gift-hit');
+    const burst = document.createElement('span');
+    burst.className = 'seat-gift-hearts';
+    burst.innerHTML = '<i>🎁</i><i>❤</i><i>✨</i><i>💜</i><i>🎁</i>';
+    item.appendChild(burst);
+    setTimeout(() => { try { burst.remove(); item.classList.remove('gift-hit'); } catch (e) { } }, 2100);
+    beep(880, .09);
+    setTimeout(() => beep(1170, .1), 110);
+  } catch (e) { }
+}
+
+// ---------- شريط «أفضل المُهدِين» في الغرفة ----------
+function renderTopGifters(list) {
+  const bar = $('#topGiftersBar'), box = $('#topGiftersList');
+  if (!bar || !box) return;
+  if (!CUR_ROOM || !Array.isArray(list) || !list.length) { bar.hidden = true; return; }
+  bar.hidden = false;
+  box.innerHTML = list.slice(0, 8).map((g, i) => `
+    <button class="tg-chip${i === 0 ? ' tg-gold' : ''}" data-uid="${g.id}" type="button" title="${esc(g.username)} — ${g.gold} 🪙">
+      <em class="tg-rank">${i + 1}</em>${avatarHtml(g.avatar || '')}
+      <b>${esc(g.username)}</b><i class="tg-gold-n">${g.gold} 🪙</i>
+    </button>`).join('');
+  box.querySelectorAll('.tg-chip').forEach(ch => ch.onclick = () => {
+    const uid = +ch.dataset.uid;
+    if (uid && CUR_ROOM) openUserSheet(uid, null, ch);
+  });
+}
+async function loadTopGifters(roomId) {
+  if (!roomId) return;
+  try {
+    const d = await api('/api/rooms/' + roomId + '/top-gifters');
+    renderTopGifters(d.list || []);
+  } catch (e) { }
+}
+
+// ---------- شريط اختيار مستلم الهدية من أعضاء المقاعد ----------
+function renderGiftRecipStrip() {
+  const strip = $('#giftRecipStrip');
+  if (!strip) return;
+  const seats = (CUR_ROOM && ROOM_SEATS[CUR_ROOM.id]) || [];
+  const people = seats.filter(s => s && s.user).map(s => ({ ...s.user, seat: s.seat }));
+  if (!CUR_ROOM || !people.length) { strip.hidden = true; strip.innerHTML = ''; return; }
+  strip.hidden = false;
+  strip.innerHTML = people.map(p => `
+    <button class="gr-chip${CUR_TARGET && +p.id === +CUR_TARGET.id ? ' sel' : ''}" data-uid="${p.id}" type="button">
+      ${avatarHtml(p.avatar || '')}<span>${esc(p.username)}</span>
+    </button>`).join('');
+  strip.querySelectorAll('.gr-chip').forEach(ch => ch.onclick = () => {
+    const u = people.find(x => +x.id === +ch.dataset.uid);
+    if (!u) return;
+    CUR_TARGET = u;
+    $('#giftToName').textContent = u.username;
+    strip.querySelectorAll('.gr-chip').forEach(c => c.classList.toggle('sel', c === ch));
+    beep(720, .07);
+  });
+}
+
+// ---------- المتابعة (Follow) ----------
+const FOLLOW_STATE = {};   // uid -> هل أتابعه؟
+async function refreshFollowAction(uid) {
+  const lab = $('#usFollowLabel');
+  if (!uid) return;
+  if (lab) lab.textContent = FOLLOW_STATE[uid] ? 'إلغاء المتابعة' : 'متابعة';
+  try {
+    const d = await api('/api/follow/' + uid);
+    FOLLOW_STATE[uid] = !!d.following;
+    if (lab && CUR_TARGET && +CUR_TARGET.id === +uid) lab.textContent = d.following ? 'إلغاء المتابعة' : 'متابعة';
+  } catch (e) { }
+}
+function toggleFollow(uid, username) {
+  const state = !!FOLLOW_STATE[uid];
+  return api('/api/follow/' + uid, state ? 'DELETE' : 'POST').then(r => {
+    FOLLOW_STATE[uid] = !!r.following;
+    toast(r.following ? `تمت متابعة ${username} ⭐` : `تم إلغاء متابعة ${username}`);
+    return r;
+  });
+}
+if ($('#usFollow')) {
+  $('#usFollow').onclick = async () => {
+    if (!CUR_TARGET) return;
+    if (!ME || !ME.registered) return openOv('needRegOv');
+    const uid = +CUR_TARGET.id, name = CUR_TARGET.username;
+    closeOv('userSheet');
+    try { await toggleFollow(uid, name); } catch (e) { toast(e.error || 'تعذر تحديث المتابعة', false); }
+  };
+}
+async function initVisitorFollow(u) {
+  const btn = $('#vaFollow'); if (!btn) return;
+  const lab = $('#vaFollowLabel');
+  const cnt = $('#vpFollowCount');
+  let state = !!FOLLOW_STATE[u.id];
+  const paint = () => {
+    if (lab) lab.textContent = state ? 'إلغاء المتابعة' : 'متابعة';
+    btn.classList.toggle('following', state);
+  };
+  paint();
+  try {
+    const d = await api('/api/follow/' + u.id);
+    state = !!d.following; FOLLOW_STATE[u.id] = state; paint();
+    if (cnt) cnt.innerHTML = `<b>${d.followers || 0}</b> متابع · <b>${d.following_count || 0}</b> يتابع`;
+  } catch (e) { }
+  btn.onclick = async () => {
+    if (!ME || !ME.registered) return openOv('needRegOv');
+    try {
+      const r = await toggleFollow(u.id, u.username);
+      state = !!r.following;
+      paint();
+      const d = await api('/api/follow/' + u.id);
+      if (cnt) cnt.innerHTML = `<b>${d.followers || 0}</b> متابع · <b>${d.following_count || 0}</b> يتابع`;
+    } catch (e) { toast(e.error || 'تعذر تحديث المتابعة', false); }
+  };
+}
+
+// ---------- دعوة الأصدقاء إلى الغرفة ----------
+let IV_LIST = [], IV_SEL = new Set();
+function updateIvCount() {
+  const el = $('#ivSelCount');
+  if (el) el.textContent = `${IV_SEL.size} محدد`;
+}
+function renderIvList() {
+  const box = $('#ivList');
+  if (!box) return;
+  if (!IV_LIST.length) {
+    box.innerHTML = '<div class="iv-empty">لا توجد متابعات بعد — تابع أصدقاءك من ملفاتهم الشخصية ليظهروا هنا ⭐</div>';
+    return;
+  }
+  box.innerHTML = IV_LIST.map(u => `
+    <label class="iv-row" data-uid="${u.id}">
+      <input type="checkbox" ${IV_SEL.has(+u.id) ? 'checked' : ''}>
+      ${avatarHtml(u.avatar || '')}
+      <span class="iv-name">${esc(u.username)}</span>
+      <span class="iv-dot ${u.online ? 'on' : ''}">${u.online ? 'متصل الآن' : 'غير متصل'}</span>
+    </label>`).join('');
+  box.querySelectorAll('.iv-row').forEach(row => {
+    const cb = row.querySelector('input');
+    const uid = +row.dataset.uid;
+    cb.onclick = (e) => e.stopPropagation();
+    cb.onchange = () => { if (cb.checked) IV_SEL.add(uid); else IV_SEL.delete(uid); updateIvCount(); };
+    row.onclick = (e) => {
+      if (e.target !== cb) { cb.checked = !cb.checked; }
+      if (cb.checked) IV_SEL.add(uid); else IV_SEL.delete(uid);
+      updateIvCount();
+    };
+  });
+}
+async function openInviteOv() {
+  if (!CUR_ROOM) return;
+  if (!ME || !ME.registered) return openOv('needRegOv');
+  $('#ivRoomName').textContent = 'إلى غرفة: ' + (CUR_ROOM.name || '');
+  IV_SEL = new Set();
+  updateIvCount();
+  const box = $('#ivList');
+  if (box) box.innerHTML = '<div class="iv-empty">جارٍ تحميل قائمة أصدقائك…</div>';
+  openOv('inviteOv');
+  try {
+    const d = await api('/api/following');
+    IV_LIST = (d.list || []).slice().sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
+  } catch (e) { IV_LIST = []; }
+  renderIvList();
+}
+if ($('#btnRoomInvite')) $('#btnRoomInvite').onclick = openInviteOv;
+if ($('#ivSelectAll')) $('#ivSelectAll').onclick = () => {
+  if (!IV_LIST.length) return;
+  const all = IV_SEL.size >= IV_LIST.length;
+  IV_SEL = all ? new Set() : new Set(IV_LIST.map(u => +u.id));
+  renderIvList();
+  $('#ivSelectAll').textContent = all ? 'تحديد الكل' : 'إلغاء التحديد';
+  updateIvCount();
+};
+if ($('#ivSendBtn')) $('#ivSendBtn').onclick = async () => {
+  if (!CUR_ROOM) return;
+  if (!IV_SEL.size) return toast('حدد الأصدقاء المدعوين أولاً', false);
+  const btn = $('#ivSendBtn');
+  btn.disabled = true;
+  try {
+    const d = await api('/api/rooms/' + CUR_ROOM.id + '/invite', 'POST', { to_ids: [...IV_SEL] });
+    toast(`تم إرسال ${d.sent || 0} دعوة بنجاح 🎉`, true);
+    beep(990, .1);
+    closeOv('inviteOv');
+  } catch (e) { toast(e.error || 'تعذر إرسال الدعوات', false); }
+  btn.disabled = false;
+};
+
+// ---------- بطاقة دعوة الغرفة العائمة ----------
+let RIC_TIMER = null;
+function showRoomInviteCard(d) {
+  if (!d) return;
+  const card = $('#roomInviteCard');
+  if (!card) return;
+  $('#ricFrom').textContent = (d.from_name || 'صديق') + ' يدعوك!';
+  $('#ricText').textContent = `للانضمام إلى غرفة «${d.room_name || ''}»`;
+  card.dataset.room = d.room_id;
+  card.hidden = false;
+  requestAnimationFrame(() => card.classList.add('show'));
+  beep(880, .1);
+  setTimeout(() => beep(1170, .1), 130);
+  if (RIC_TIMER) clearTimeout(RIC_TIMER);
+  RIC_TIMER = setTimeout(hideRoomInviteCard, 30000);
+}
+function hideRoomInviteCard() {
+  const card = $('#roomInviteCard');
+  if (!card) return;
+  card.classList.remove('show');
+  setTimeout(() => { card.hidden = true; }, 350);
+  if (RIC_TIMER) { clearTimeout(RIC_TIMER); RIC_TIMER = null; }
+}
+if ($('#ricJoin')) $('#ricJoin').onclick = () => {
+  const rid = +$('#roomInviteCard').dataset.room;
+  hideRoomInviteCard();
+  if (rid) {
+    // إن كنت داخل غرفة أخرى اخرج أولاً
+    if (CUR_ROOM && +CUR_ROOM.id !== rid) { leaveRoom(); }
+    if (!CUR_ROOM) { showScreen('chat'); enterRoom(rid, ''); }
+  }
+};
+if ($('#ricClose')) $('#ricClose').onclick = hideRoomInviteCard;
+
+// ---------- المطابقة الفورية (Instant Match) ----------
+let MATCH_USER = null, MATCH_SEEN = [];
+function matchIdle() {
+  const v = $('#matchVisual'), r = $('#matchResult');
+  if (v) v.hidden = false;
+  if (r) r.hidden = true;
+  const go = $('#matchGo'); if (go) go.hidden = true;
+  const skip = $('#matchSkip'); if (skip) skip.hidden = true;
+  const stop = $('#matchStop'); if (stop) stop.hidden = false;
+}
+async function matchSeek() {
+  MATCH_USER = null;
+  matchIdle();
+  $('#matchText').textContent = 'جارٍ البحث عن روح متوافقة…';
+  beep(660, .08);
+  try {
+    const d = await api('/api/match', 'POST', { exclude: MATCH_SEEN.slice(-60) });
+    if (!d.ok) {
+      $('#matchText').textContent = d.text || 'لا يوجد أحد متاح للمطابقة الآن';
+      return;
+    }
+    const u = d.user;
+    MATCH_USER = u;
+    MATCH_SEEN.push(+u.id);
+    $('#matchVisual').hidden = true;
+    $('#matchResult').hidden = false;
+    $('#mrAva').innerHTML = avatarHtml(u.avatar || '');
+    $('#mrName').textContent = u.username;
+    const memTxt = u.rank && u.rank !== 'user' ? (RANK_NAMES[u.rank] || u.rank) : (u.membership && u.membership !== 'none' ? (MEM_NAMES[u.membership] || '') : (u.registered ? 'عضو مسجل' : 'زائر'));
+    $('#mrMeta').innerHTML = `<img src="/badges/${badgeOf(u)}" alt=""> <span>${memTxt}</span>`;
+    $('#matchText').textContent = 'وجدنا لك روحاً متوافقة ✨';
+    $('#matchGo').hidden = false;
+    $('#matchSkip').hidden = false;
+    $('#matchStop').hidden = true;
+    beep(990, .12);
+    setTimeout(() => beep(1320, .12), 140);
+  } catch (e) {
+    $('#matchText').textContent = 'تعذر المطابقة الآن — حاول لاحقاً 💫';
+  }
+}
+function openMatchOv() {
+  if (!ME || !ME.registered) return openOv('needRegOv');
+  openOv('matchOv');
+  matchSeek();
+}
+if ($('#headMatchBtn')) $('#headMatchBtn').onclick = openMatchOv;
+if ($('#matchSkip')) $('#matchSkip').onclick = matchSeek;
+if ($('#matchGo')) $('#matchGo').onclick = () => {
+  if (!MATCH_USER) return;
+  closeOv('matchOv');
+  openPrivateWith(MATCH_USER);
+};
+if ($('#matchStop')) $('#matchStop').onclick = () => closeOv('matchOv');
+
+// ---------- زر الهدية السريع في الغرفة ----------
+if ($('#btnRoomGift')) $('#btnRoomGift').onclick = () => {
+  if (!ME || !ME.registered) return openOv('needRegOv');
+  // الهدف: آخر من نقرت على مقعده/صورته، وإلا أول عضو على مقعد
+  let target = CUR_TARGET;
+  const seats = (CUR_ROOM && ROOM_SEATS[CUR_ROOM.id]) || [];
+  const seated = seats.filter(s => s && s.user).map(s => s.user);
+  if (!target || !seated.some(s => +s.id === +target.id)) target = seated[0] || null;
+  if (!target) return toast('لا يوجد أحد على المقاعد الآن — اختر مستلماً من ورقة المستخدم', false);
+  openGifts(target);
+};

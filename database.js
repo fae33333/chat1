@@ -277,6 +277,18 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_profile_likes_profile ON profile_likes (profile_id, created_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_profile_likes_user ON profile_likes (user_id)`);
 
+  // ---------- نظام المتابعة (مثل SoulChill) ----------
+  // كل عضو يتابع أعضاء آخرين؛ قائمة المتابَعين هي «الأصدقاء» الذين يُدعون إلى الغرف.
+  db.run(`CREATE TABLE IF NOT EXISTS follows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    follower_id INTEGER NOT NULL,          -- من يتابع
+    followee_id INTEGER NOT NULL,          -- من يُتابَع
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(follower_id, followee_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows (follower_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_follows_followee ON follows (followee_id)`);
+
   // ---------- سجل مشاهدات الملفات الشخصية ----------
   // كل من يفتح ملفاً شخصياً لغيره يُسجَّل هنا (صف واحد لكل زائر مع عدد مرات الفتح
   // وآخر لحظة فتح) — يشاهدها صاحب الملف فقط بقائمة منسّقة داخل ملفه الشخصي.
@@ -327,6 +339,8 @@ db.serialize(() => {
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
   db.run(`ALTER TABLE gifts_log ADD COLUMN gift_audio TEXT DEFAULT ''`, () => { });
+  // ربط كل هدية بالغرفة التي أُرسلت فيها — أساس لوحة «أفضل المُهدِين» في الغرفة
+  db.run(`ALTER TABLE gifts_log ADD COLUMN room_id INTEGER DEFAULT 0`, () => { });
   // لقطة من قيمة الهدية بالدولار عند الإرسال — أساس احتساب قيمة التسكير
   db.run(`ALTER TABLE gifts_log ADD COLUMN usd_value REAL DEFAULT 0`, () => { });
 
