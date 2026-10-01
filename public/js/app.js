@@ -53,7 +53,7 @@ function refreshSocketHandshakeKey(socket) {
   return key;
 }
 
-let SETTINGS = { site_name: 'نجوم العرب', skin: 'default', font_size: '14', msg_max: 500, public_message_spacing_px: 4, public_message_name_size_px: 14, public_message_body_width: 'fit', msg_badge_superadmin_size: 24, msg_badge_admin_size: 24, msg_badge_roomadmin_size: 24, msg_badge_mmez_size: 24, msg_badge_vip_size: 24, msg_badge_premium_size: 24, msg_badge_plus_size: 24, msg_badge_register_size: 24, msg_badge_guest_size: 24, msg_badge_hidden_admin_size: 28, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wave_enabled: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_settings_allowed_memberships: 'mmez', private_call_allowed_memberships: 'mmez,plus,premium,vip', video_call_cost: 5, video_call_allowed_memberships: 'mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', name_color_supermaster: '#000000', name_color_superadmin: '#000000', name_color_admin: '#000000', name_color_roomadmin: '#e03131', name_color_vip: '#1479f2', name_color_premium: '#38b6ff', name_color_plus: '#2e9e44', name_color_mmez: '#e91e8c', name_color_registered: '#795548', name_color_guest: '#000000' };
+let SETTINGS = { site_name: 'نجوم العرب', skin: 'soulchill', font_size: '14', msg_max: 500, public_message_spacing_px: 4, public_message_name_size_px: 14, public_message_body_width: 'fit', msg_badge_superadmin_size: 24, msg_badge_admin_size: 24, msg_badge_roomadmin_size: 24, msg_badge_mmez_size: 24, msg_badge_vip_size: 24, msg_badge_premium_size: 24, msg_badge_plus_size: 24, msg_badge_register_size: 24, msg_badge_guest_size: 24, msg_badge_hidden_admin_size: 28, vip_cost: 30, premium_cost: 20, plus_cost: 10, show_smiles: '1', show_voice: '1', show_image: '1', hidden_super: '1', snd_join: '1', snd_msg: '0', snd_leave: '1', show_time: '1', wave_enabled: '1', wall_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', status_allowed_memberships: 'registered,mmez,plus,premium,vip', voice_allowed_memberships: 'mmez,plus,premium,vip', broadcast_allowed_memberships: 'mmez,plus,premium,vip', public_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_message_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', private_settings_allowed_memberships: 'mmez', private_call_allowed_memberships: 'mmez,plus,premium,vip', video_call_cost: 5, video_call_allowed_memberships: 'mmez,plus,premium,vip', public_image_allowed_memberships: 'guest,registered,mmez,plus,premium,vip', name_color_supermaster: '#000000', name_color_superadmin: '#000000', name_color_admin: '#000000', name_color_roomadmin: '#e03131', name_color_vip: '#1479f2', name_color_premium: '#38b6ff', name_color_plus: '#2e9e44', name_color_mmez: '#e91e8c', name_color_registered: '#795548', name_color_guest: '#000000' };
 let PREFS = { snd_all: 1, snd_msg: 1, snd_join: 1, snd_leave: 1, show_time: 1, pm_recv: 1, dsk_ntf: 1 };
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
@@ -117,6 +117,8 @@ function rtcPrivateCallConfig() {
 let ROOM_BCAST = {};        // roomId -> {mode, hosts:[{id,username,avatar,badge},...], viewers} آخر حالة معروفة للبث بكل غرفة
 let BCAST = null;           // الحالة الحية للبث الجاري (فيديو أو صوت) في الغرفة الحالية، أو null
 let ROOM_SEATS = {};        // roomId -> [{seat, user}] حالة المقاعد الصوتية (0=المضيف، 1..8 مرقّمة)
+let ROOM_CLOSED = {};       // roomId -> [seatNo] مقاعد مقفلة يتحكم بها صاحب الغرفة
+let ROOM_PK = {};           // roomId -> حالة تحدي PK الجارية
 let SEAT_REQUESTS = new Map(); // طلبات الصعود إلى المقاعد المعلقة (userId -> {username,avatar,roomId}) — لإدارة الغرفة
 let SEAT_INVITE = null;     // دعوة المقعد الحالية الواردة إليّ {roomId, seatNo, by}
 let BCAST_SIGNAL_QUEUE = []; // إشارات وصلت قبل تهيئة BCAST (سباق زمني عند الدخول لغرفة فيها بث نشط) — تُطبَّق فور التهيئة
@@ -2128,7 +2130,7 @@ function applySettings() {
   document.querySelectorAll('#msgArea .mwave').forEach(el => { el.style.display = waveOn ? '' : 'none'; });
   const isLtr = APP_LANG !== 'ar';
   // أيقونة زر قائمة الألوان + لون الجلد: ندعم الآن أي لون HEX أو ثيم جاهز.
-  applySkinToBody(SETTINGS.skin || 'default');
+  applySkinToBody(SETTINGS.skin || 'soulchill');
   if (document.body && isLtr) {
     document.body.classList.add('lang-' + APP_LANG, 'lang-ltr');
   }
@@ -3084,42 +3086,30 @@ function connectSocket() {
     setTimeout(() => { try { bcastRenderBar(); } catch (e) {} }, 150);
   });
 
-  // ===== نظام المقاعد الصوتية (الإدارة تحدد المقاعد) =====
-  SOCKET.on('roomSeats', ({ roomId, seats }) => {
+  // ===== نظام المقاعد الصوتية (SoulChill): جلوس ذاتي + قفل/فتح =====
+  SOCKET.on('roomSeats', ({ roomId, seats, closed }) => {
     ROOM_SEATS[+roomId] = Array.isArray(seats) ? seats : [];
+    if (Array.isArray(closed)) ROOM_CLOSED[+roomId] = closed;
     if (CUR_ROOM && +roomId === CUR_ROOM.id) renderSeats();
   });
-  // [المدعو] دعوة جلوس على مقعد من الإدارة
-  SOCKET.on('seat:invite', ({ roomId, seatNo, by, seatLabel }) => {
-    if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
-    SEAT_INVITE = { roomId: +roomId, seatNo: +seatNo, by };
-    $('#seatInviteSeat').textContent = seatLabel || seatLabelOf(+seatNo);
-    $('#seatInviteBy').textContent = 'بواسطة ' + ((by && by.username) || 'الإدارة');
-    $('#seatInviteAva').innerHTML = avatarHtml(by && by.avatar);
-    openOv('seatInviteOv');
-    beep(880, .15);
+  // ===== تحدي PK: الحالة اللحظية والنتيجة النهائية =====
+  SOCKET.on('pk:state', (st) => {
+    if (!st || !CUR_ROOM || +st.roomId !== +CUR_ROOM.id) return;
+    ROOM_PK[CUR_ROOM.id] = st;
+    renderPK();
   });
-  SOCKET.on('seat:invite_expired', ({ roomId }) => {
-    if (SEAT_INVITE && +SEAT_INVITE.roomId === +roomId) { SEAT_INVITE = null; closeOv('seatInviteOv'); }
-    toast('انتهت دعوة المقعد أو أُلغيت', false);
+  SOCKET.on('pk:end', (res) => {
+    if (!res || !CUR_ROOM || +res.roomId !== +CUR_ROOM.id) return;
+    delete ROOM_PK[CUR_ROOM.id];
+    renderPK();
+    const txt = res.winner
+      ? `🏆 انتهت معركة PK — الفائز: ${res.winnerName} (${res.scoreA} × ${res.scoreB})`
+      : `🤝 انتهت معركة PK بالتعادل (${res.scoreA} × ${res.scoreB})`;
+    renderMsg({ type: 'bot', text: txt, created_at: Math.floor(Date.now() / 1000) });
+    toast(txt);
+    beep(660, .15); setTimeout(() => beep(880, .15), 180); setTimeout(() => beep(1100, .25), 360);
   });
-  // [الإدارة] الموافقة/الرفض على دعوتي للمقعد
-  SOCKET.on('seat:accepted', ({ seatNo, username }) => {
-    toast(`وافق ${username} على الصعود إلى ${seatLabelOf(+seatNo)} 🎤`);
-  });
-  SOCKET.on('seat:declined', ({ username }) => {
-    toast(`رفض ${username} دعوة الصعود إلى المقعد`, false);
-  });
-  // [الإدارة] طلب صعود مستخدم إلى المايك
-  SOCKET.on('seat:request', ({ roomId, user }) => {
-    if (!user) return;
-    SEAT_REQUESTS.set(+user.id, { ...user, roomId: +roomId });
-    if (canModerateRank()) {
-      toast(`يريد ${user.username} الصعود إلى المايك 🎤 — اضغط على مقعد فارغ لاختياره`);
-      renderSeatPickerListIfOpen();
-    }
-  });
-  // [للمتحدث الذي أُزيل] أعادني المضيف الأساسي/المشرف إلى وضع الاستماع
+  // [للمتحدث الذي أُزيل أو نزل بنفسه] أُعيد إلى وضع الاستماع
   SOCKET.on('bcast:speaker_removed', ({ roomId }) => {
     if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
     toast('أنهيت من البث — أُعدت إلى وضع المستمع', false);
@@ -3171,25 +3161,35 @@ function renderIdleRoomNotice() {
 }
 
 // =====================================================
-//  🎤 مسرح المقاعد الصوتية — مقعد «المضيف» + ٨ مقاعد مرقّمة
-//  المقاعد تُحدد حصراً من إدارة الغرفة: دعوة للمقعد + موافقة المستخدم
+//  🎤 مسرح المقاعد الصوتية بأسلوب SoulChill
+//  • أي مستخدم يجلس بنفسه على مقعد شاغر مفتوح بضغطة واحدة
+//  • صاحب الغرفة يقفل المقاعد التي يريدها ويفتحها متى شاء
+//  • مقعد «المضيف» (0) لصاحب الغرفة والمقاعد 1..8 مرقّمة
 // =====================================================
 const SEAT_CHAIR_SVG = '<svg class="seat-chair" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4C3.3 4 2 5.3 2 7v6c0 .6.4 1 1 1h1v3c0 .6.4 1 1 1h12c.6 0 1-.4 1-1v-3h1c.6 0 1-.4 1-1V7c0-1.7-1.3-3-3-3H5zm0 2h14c.6 0 1 .4 1 1v5h-2v-2c0-.6-.4-1-1-1H7c-.6 0-1 .4-1 1v2H4V7c0-.6.4-1 1-1zm1 8h12v3H6v-3z"/></svg>';
+const SEAT_LOCK_SVG = '<svg class="seat-lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3H9zm3 4a2 2 0 0 1 1 3.73V19a1 1 0 1 1-2 0v-1.27A2 2 0 0 1 12 14z"/></svg>';
+const SEAT_SIT_SVG = '<svg class="seat-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>';
 function seatEntriesByIndex() {
   const map = {};
   if (!CUR_ROOM) return map;
   (ROOM_SEATS[CUR_ROOM.id] || []).forEach(e => { if (+e.seat >= 0 && +e.seat <= 8 && e.user) map[+e.seat] = e.user; });
-  // أي مذيع بلا مقعد مُسجَّل (حالات الترقية السريعة) يُوضع تلقائياً على أول مقعد شاغر
+  // أي مذيع بلا مقعد مُسجَّل (حالات الترقية السريعة) يُوضع تلقائياً على أول مقعد شاغر مفتوح
   const state = ROOM_BCAST[CUR_ROOM.id];
   const hosts = (state && state.hosts) || [];
   const placed = new Set(Object.values(map).map(u => +u.id));
-  const freeSeats = [0, 1, 2, 3, 4, 5, 6, 7, 8].filter(s => !map[s]);
+  const closed = ROOM_CLOSED[CUR_ROOM.id] || [];
+  const freeSeats = [0, 1, 2, 3, 4, 5, 6, 7, 8].filter(s => !map[s] && !closed.includes(s));
   hosts.forEach(h => {
     if (!placed.has(+h.id) && freeSeats.length) map[freeSeats.shift()] = h;
   });
   return map;
 }
 function seatLabelOf(seatNo) { return seatNo === 0 ? 'المضيف' : 'رقم ' + seatNo; }
+function iAmSeatOwner() { return !!(ME && CUR_ROOM && +CUR_ROOM.owner_id === +ME.id); }
+function iAmSeated() {
+  if (!CUR_ROOM || !ME) return false;
+  return (ROOM_SEATS[CUR_ROOM.id] || []).some(e => e.user && +e.user.id === +ME.id);
+}
 function renderSeats() {
   const stage = $('#seatsStage');
   if (!stage) return;
@@ -3197,8 +3197,10 @@ function renderSeats() {
   stage.hidden = !voiceRoom;
   if (!voiceRoom) return;
   const bySeat = seatEntriesByIndex();
+  const closed = ROOM_CLOSED[CUR_ROOM.id] || [];
   const seatHtml = (seatNo) => {
     const u = bySeat[seatNo];
+    const isClosed = closed.includes(seatNo);
     if (u) {
       const isMe = ME && +u.id === +ME.id;
       return `<div class="seat-item occupied${isMe ? ' is-me' : ''}" data-hid="${u.id}" data-seat="${seatNo}" role="button" tabindex="0" title="${esc(u.username)}">
@@ -3206,8 +3208,14 @@ function renderSeats() {
         <div class="seat-name">${esc(u.username)}${isMe ? ' ⭐' : ''}</div>
       </div>`;
     }
-    return `<div class="seat-item empty" data-seat="${seatNo}" role="button" tabindex="0" title="${seatNo === 0 ? 'مقعد المضيف' : 'المقعد رقم ' + seatNo}">
-      <div class="seat-circle">${SEAT_CHAIR_SVG}</div>
+    if (isClosed) {
+      return `<div class="seat-item empty closed" data-seat="${seatNo}" role="button" tabindex="0" title="مقعد مقفل — اضغط لفتحه إن كنت صاحب الغرفة">
+        <div class="seat-circle">${SEAT_LOCK_SVG}</div>
+        <div class="seat-label">${seatLabelOf(seatNo)} · مقفل 🔒</div>
+      </div>`;
+    }
+    return `<div class="seat-item empty" data-seat="${seatNo}" role="button" tabindex="0" title="اضغط للجلوس على ${seatLabelOf(seatNo)}">
+      <div class="seat-circle">${SEAT_CHAIR_SVG}${SEAT_SIT_SVG}</div>
       <div class="seat-label">${seatLabelOf(seatNo)}</div>
     </div>`;
   };
@@ -3217,79 +3225,144 @@ function renderSeats() {
   $$('#seatsStage .seat-item').forEach(el => el.onclick = () => onSeatClick(+el.dataset.seat, el.dataset.hid ? +el.dataset.hid : 0));
   try { bcastApplySpeaking(); } catch (e) { }
 }
+// ---- منطق النقر على المقعد (SoulChill): جلوس / نزول / قفل / فتح ----
 function onSeatClick(seatNo, hostId) {
   if (!CUR_ROOM) return;
   if (hostId) {
-    // مقعد مشغول: أنا → شاشة بثي/ورقتي، غيري → ورقة المستخدم (فيها سحب المايك/الكتم للإدارة)
-    if (ME && hostId === ME.id && BCAST && BCAST.isHost && BCAST.roomId === CUR_ROOM.id) return openOv('bcastOv');
+    // مقعد مشغول: أنا → قائمة المقعد (النزول)، غيري → ورقة المستخدم (سحب المايك/الكتم للإدارة)
+    if (ME && hostId === ME.id) return openSeatMenu(seatNo, hostId);
     return openUserSheet(hostId);
   }
   if (!ME) return openLogin();
-  if (canModerateRank()) return openSeatPicker(seatNo);
-  toast('المقاعد تُحدد بواسطة إدارة الغرفة — اطلب الصعود من الإدارة', false);
+  const closed = ROOM_CLOSED[CUR_ROOM.id] || [];
+  if (closed.includes(seatNo)) {
+    // مقعد مقفل: صاحب الغرفة/الإدارة يفتحونه، والبقية يرون التنبيه
+    if (iAmSeatOwner() || canModerateRank()) return openSeatMenu(seatNo, 0);
+    return toast('هذا المقعد مقفل من قبل صاحب الغرفة 🔒', false);
+  }
+  if (iAmSeated()) return toast('أنت على مقعد بالفعل — اضغط على مقعدك للنزول أولاً', false);
+  // جلوس فوري على المقعد المفتوح الشاغر — لصاحب الغرفة/الإدارة قائمة (جلوس أو قفل)
+  if (iAmSeatOwner() || canModerateRank()) return openSeatMenu(seatNo, 0);
+  seatSit(seatNo);
 }
-// ---- تثبيت مستخدم على مقعد (للإدارة فقط) ----
-let SEAT_PICK_SEAT = 0;
-function openSeatPicker(seatNo) {
-  if (!CUR_ROOM) return;
-  SEAT_PICK_SEAT = seatNo;
-  $('#seatPickerTitle').textContent = seatNo === 0 ? 'تثبيت المضيف' : `تثبيت مستخدم على المقعد ${seatLabelOf(seatNo)}`;
-  renderSeatPickerList();
-  openOv('seatPickerOv');
-}
-function renderSeatPickerList() {
-  if (!CUR_ROOM) return;
-  const busy = new Set(Object.values(seatEntriesByIndex()).map(u => +u.id));
-  const list = (ROOM_USERS || [])
-    .filter(u => !busy.has(+u.id) && !(u.rank === 'supermaster'))
-    .sort((a, b) => {
-      const ra = SEAT_REQUESTS.has(+a.id) ? 0 : 1, rb = SEAT_REQUESTS.has(+b.id) ? 0 : 1;
-      return ra - rb || String(a.username).localeCompare(String(b.username), 'ar');
-    });
-  $('#seatPickerCount').textContent = list.length;
-  $('#seatPickerList').innerHTML = list.length ? list.map(u => {
-    const req = SEAT_REQUESTS.has(+u.id);
-    return `
-    <div class="users-row${u.muted ? ' muted-user' : ''}" data-id="${u.id}">
-      <img class="ubadge" src="/badges/${badgeOf(u)}" alt="">
-      <div class="uava${statusRingClass(u.id)}">${liveAvatarHtml(u.avatar, false, frameOf(u))}<span class="dot ${statusDot(u.status)}"></span></div>
-      <div class="uname" style="color:${userColor(u)};font-weight:${userWeight(u)}">${esc(u.username)}${u.muted ? ' <i class="f7-icons muted-user-mark">mic_slash_fill</i>' : ''}</div>
-      ${req ? '<span class="seat-req-tag">طلب صعود 🎤</span>' : ''}
-    </div>`;
-  }).join('') : '<div class="pv-empty"><div>لا يوجد مستخدمون متاحون الآن</div></div>';
-  $$('#seatPickerList .users-row').forEach(r => r.onclick = () => sendSeatInvite(+r.dataset.id));
-}
-function sendSeatInvite(targetId) {
-  const seatNo = SEAT_PICK_SEAT;
-  if (!CUR_ROOM || !SOCKET) return;
-  SOCKET.emit('seat:invite', CUR_ROOM.id, seatNo, targetId, (res) => {
-    if (!res || !res.ok) return toast((res && res.text) || 'تعذر إرسال دعوة المقعد', false);
-    SEAT_REQUESTS.delete(targetId);
-    closeOv('seatPickerOv');
-    toast('أُرسلت دعوة المقعد — بانتظار موافقة المستخدم 🎤');
-  });
-}
-function renderSeatPickerListIfOpen() {
-  const ov = $('#seatPickerOv');
-  if (ov && ov.classList.contains('open')) renderSeatPickerList();
-}
-// قبول/رفض دعوة المقعد الواردة إليّ
-$('#seatInviteYes').onclick = () => {
-  const inv = SEAT_INVITE; SEAT_INVITE = null;
-  closeOv('seatInviteOv');
-  if (!inv || !SOCKET) return;
-  SOCKET.emit('seat:accept', inv.roomId, (res) => {
-    if (!res || !res.ok) return toast((res && res.text) || 'تعذر قبول دعوة المقعد', false);
-    // الصعود الفعلي كمذيع — المقعد محجوز لي في الخادم حتى أصعد
+function seatSit(seatNo) {
+  if (!SOCKET || !CUR_ROOM) return;
+  SOCKET.emit('seat:sit', CUR_ROOM.id, seatNo, (res) => {
+    if (!res || !res.ok) return toast((res && res.text) || 'تعذر الجلوس على المقعد', false);
+    beep(720, .1);
+    toast('جلست على ' + seatLabelOf(seatNo) + ' 🎤');
+    // الصعود الفعلي كمذيع — المقعد محجوز لي في الخادم حتى أبدأ البث
     bcastStart('audio');
   });
+}
+function seatStand() {
+  if (!SOCKET || !CUR_ROOM) return;
+  SOCKET.emit('seat:stand', CUR_ROOM.id, (res) => {
+    if (!res || !res.ok) return toast((res && res.text) || 'تعذر النزول من المقعد', false);
+    if (BCAST && BCAST.isHost && BCAST.roomId === CUR_ROOM.id) {
+      SOCKET.emit('bcast:leave', CUR_ROOM.id);
+      bcastResetState();
+      bcastRenderBar();
+    }
+    toast('نُزِلت من المقعد — أنت الآن مستمع 👂');
+    renderSeats();
+  });
+}
+function seatToggle(seatNo) {
+  if (!SOCKET || !CUR_ROOM) return;
+  SOCKET.emit('seat:toggle', CUR_ROOM.id, seatNo, (res) => {
+    if (!res || !res.ok) return toast((res && res.text) || 'تعذر تغيير حالة المقعد', false);
+    toast(res.closed ? 'أُغلق ' + seatLabelOf(seatNo) + ' 🔒' : 'فُتح ' + seatLabelOf(seatNo) + ' 🔓', !res.closed);
+    renderSeats();
+  });
+}
+// ---- قائمة المقعد السريعة (جلوس/نزول/قفل/فتح) ----
+let SEAT_MENU_SEAT = 0;
+function openSeatMenu(seatNo, hostId) {
+  const ov = $('#seatMenuOv'); if (!ov) return;
+  SEAT_MENU_SEAT = seatNo;
+  $('#seatMenuTitle').textContent = seatLabelOf(seatNo);
+  const closed = (ROOM_CLOSED[CUR_ROOM.id] || []).includes(seatNo);
+  const isMine = ME && hostId && +hostId === +ME.id;
+  const canControl = iAmSeatOwner() || canModerateRank();
+  $('#seatMenuSit').style.display = (!hostId && !closed && !iAmSeated()) ? 'flex' : 'none';
+  $('#seatMenuStand').style.display = isMine ? 'flex' : 'none';
+  $('#seatMenuLock').style.display = (canControl && !hostId && !closed && seatNo !== 0) ? 'flex' : 'none';
+  $('#seatMenuUnlock').style.display = (canControl && closed) ? 'flex' : 'none';
+  openOv('seatMenuOv');
+}
+if ($('#seatMenuSit')) $('#seatMenuSit').onclick = () => { closeOv('seatMenuOv'); seatSit(SEAT_MENU_SEAT); };
+if ($('#seatMenuStand')) $('#seatMenuStand').onclick = () => { closeOv('seatMenuOv'); seatStand(); };
+if ($('#seatMenuLock')) $('#seatMenuLock').onclick = () => { closeOv('seatMenuOv'); seatToggle(SEAT_MENU_SEAT); };
+if ($('#seatMenuUnlock')) $('#seatMenuUnlock').onclick = () => { closeOv('seatMenuOv'); seatToggle(SEAT_MENU_SEAT); };
+// =====================================================
+//  ⚔️ تحدي PK بأسلوب SoulChill
+// =====================================================
+function renderPK() {
+  const bar = $('#pkBar');
+  if (!bar) return;
+  const st = CUR_ROOM && ROOM_PK[CUR_ROOM.id];
+  if (!st) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const total = Math.max(1, +st.scoreA + +st.scoreB);
+  const pctA = Math.round((+st.scoreA / total) * 100);
+  const remain = Math.max(0, (+st.endsAt) - Math.floor(Date.now() / 1000));
+  const mm = String(Math.floor(remain / 60)).padStart(2, '0');
+  const ss = String(remain % 60).padStart(2, '0');
+  bar.innerHTML = `
+    <div class="pk-side pk-a">
+      <span class="pk-ava">${avatarHtml(st.a.avatar || '')}</span>
+      <b class="pk-name">${esc(st.a.username)}</b>
+      <em class="pk-score">${st.scoreA}</em>
+    </div>
+    <div class="pk-mid">
+      <span class="pk-vs">VS</span>
+      <span class="pk-timer">${mm}:${ss}</span>
+    </div>
+    <div class="pk-side pk-b">
+      <span class="pk-ava">${avatarHtml(st.b.avatar || '')}</span>
+      <b class="pk-name">${esc(st.b.username)}</b>
+      <em class="pk-score">${st.scoreB}</em>
+    </div>
+    <div class="pk-gauge"><span class="pk-gauge-a" style="width:${pctA}%"></span></div>`;
+}
+// عدّاد التحدي يتحدث كل ثانية
+setInterval(() => { if (CUR_ROOM && ROOM_PK[CUR_ROOM.id]) renderPK(); }, 1000);
+function openPkPicker() {
+  if (!CUR_ROOM) return;
+  if (!BCAST || !BCAST.isHost || BCAST.roomId !== CUR_ROOM.id) return toast('كن على المقعد أولاً لبدء تحدي PK', false);
+  if (ROOM_PK[CUR_ROOM.id]) return toast('يوجد تحدي جارٍ بالفعل', false);
+  const bySeat = seatEntriesByIndex();
+  const rivals = Object.entries(bySeat)
+    .map(([s, u]) => ({ seat: +s, ...u }))
+    .filter(u => ME && +u.id !== +ME.id);
+  const box = $('#pkPickList');
+  if (!box) return;
+  if (!rivals.length) {
+    box.innerHTML = '<div class="pv-empty"><div>لا يوجد مذيعون آخرون على المقاعد الآن</div></div>';
+  } else {
+    box.innerHTML = rivals.map(u => `
+      <div class="users-row" data-id="${u.id}">
+        <div class="uava">${liveAvatarHtml(u.avatar, false, '')}</div>
+        <div class="uname">${esc(u.username)}</div>
+        <span class="seat-req-tag">${seatLabelOf(u.seat)}</span>
+      </div>`).join('');
+    $$('#pkPickList .users-row').forEach(r => r.onclick = () => {
+      closeOv('pkPickOv');
+      SOCKET.emit('pk:start', CUR_ROOM.id, +r.dataset.id, (res) => {
+        if (!res || !res.ok) return toast((res && res.text) || 'تعذر بدء التحدي', false);
+        toast('⚔️ بدأ تحدي PK — أرسل الهدايا لدعم مفضّلك!');
+      });
+    });
+  }
+  openOv('pkPickOv');
+}
+if ($('#pkStopBtn')) $('#pkStopBtn').onclick = () => {
+  if (!SOCKET || !CUR_ROOM) return;
+  SOCKET.emit('pk:stop', CUR_ROOM.id, (res) => {
+    if (!res || !res.ok) return toast((res && res.text) || 'تعذر إنهاء التحدي', false);
+  });
 };
-$('#seatInviteNo').onclick = () => {
-  const inv = SEAT_INVITE; SEAT_INVITE = null;
-  closeOv('seatInviteOv');
-  if (inv && SOCKET) SOCKET.emit('seat:decline', inv.roomId);
-};
-// ردود دعوات المقاعد (قبول/رفض) — تُربط مع بقية أحداث السوكيت
 
 // يحدّث شريط البث أعلى شاشة الدردشة حسب حالة الغرفة الحالية
 function bcastRenderBar() {
@@ -4113,15 +4186,23 @@ function bcastLeaveAsViewer() {
   bcastResetState();
 }
 // يُستدعى عند دخول غرفة (من ack الانضمام) لضبط حالة البث الحالية للغرفة
-function bcastApplyJoinState(roomId, broadcastState) {
+function bcastApplyJoinState(roomId, broadcastState, joinExtras) {
+  const extras = joinExtras || (broadcastState || {});
   if (broadcastState) {
     if (Array.isArray(broadcastState.seats)) ROOM_SEATS[roomId] = broadcastState.seats;
+    if (Array.isArray(broadcastState.closed)) ROOM_CLOSED[roomId] = broadcastState.closed;
+    if (broadcastState.pk) ROOM_PK[roomId] = broadcastState.pk;
     ROOM_BCAST[roomId] = broadcastState;
     const iAmAlreadyHost = ME && broadcastState.hosts.some(h => h.id === ME.id);
     if (broadcastState.mode === 'audio' && !iAmAlreadyHost) bcastViewerAutoConnectAudio(roomId, broadcastState.hosts);
   } else { delete ROOM_BCAST[roomId]; delete ROOM_SEATS[roomId]; }
+  // المقاعد المقفلة وحالة PK تصل حتى بدون بث جارٍ
+  if (Array.isArray(extras.seats) && (!broadcastState || !Array.isArray(broadcastState.seats))) ROOM_SEATS[roomId] = extras.seats;
+  if (Array.isArray(extras.closed)) ROOM_CLOSED[roomId] = extras.closed;
+  if (extras.pk) ROOM_PK[roomId] = extras.pk; else delete ROOM_PK[roomId];
   syncRoomUserBroadcastFlags(roomId);
   bcastRenderBar();
+  renderPK();
   // قائمة «أفضل المُهدِين» في الغرفة (سيناريو SoulChill)
   loadTopGifters(roomId);
 }
@@ -4738,7 +4819,7 @@ function enterRoom(id, pwd, hiddenChoice) {
       ROOM_HIDDEN[id] = !!res.hidden;
       // مرجع المزامنة: آخر رسالة موجودة عند الدخول — لا نجلب تاريخاً أقدم منها لاحقاً.
       if (res.lastMsgId) ROOM_SYNC_BASE[id] = +res.lastMsgId;
-      bcastApplyJoinState(id, res.broadcast || null);
+      bcastApplyJoinState(id, res.broadcast || null, res);
       // لا نحمّل سجل الرسائل القديم؛ العام يبدأ فارغاً ويظهر فقط ترحيب الغرفة من الإدارة.
       api('/api/rooms/' + id + '/users').then(u => { ROOM_USERS = u; renderUsers(); });
       if (res.hidden && !(ME && ME.rank === 'supermaster')) toast('تم الدخول إلى الغرفة بشكل مخفي');
@@ -4984,7 +5065,8 @@ function renderMsg(m) {
     const showBadge = !!badge && !['guest.png', 'register.png'].includes(badge);
     // الموجة المتحركة على القالب كامل: زهري للمميز، أسود للأدمن والسوبر أدمن.
     const waveKind = badgeKind === 'superadmin' ? 'superadmin' : (badgeKind === 'admin' ? 'admin' : (badgeKind === 'mmez' ? 'mmez' : ''));
-    el.className = 'msg' + (hiddenAdmin ? ' hidden-admin-msg' : '');
+    el.className = 'msg' + (hiddenAdmin ? ' hidden-admin-msg' : '')
+    + (m.type === 'msg' && ME && senderId === +ME.id ? ' is-me' : '');
     // معرّف المرسل على القالب: يتيح تحديث دائرة الحالة لاحقاً بلا إعادة رسم الرسالة.
     if (senderId) el.dataset.uid = senderId;
     el.innerHTML = `
@@ -12581,6 +12663,9 @@ function leaveRoom() {
     }
     delete ROOM_BCAST[CUR_ROOM.id];
     delete ROOM_SEATS[CUR_ROOM.id];
+    delete ROOM_CLOSED[CUR_ROOM.id];
+    delete ROOM_PK[CUR_ROOM.id];
+    renderPK();
     SOCKET.emit('leave', CUR_ROOM.id);
     delete ROOM_HIDDEN[CUR_ROOM.id];
   }
@@ -12606,6 +12691,13 @@ $('#btnRoomMore').onclick = (e) => {
   const manageBtn = $('#dropManageRoom'), delBtn = $('#dropDeleteRoom');
   if (manageBtn) manageBtn.style.display = isOwner ? 'flex' : 'none';
   if (delBtn) delBtn.style.display = isOwner ? 'flex' : 'none';
+  // زر تحدي PK: يظهر لمن هم على المقعد في غرفة صوتية بلا تحدي جارٍ
+  const pkBtn = $('#dropPk');
+  if (pkBtn) {
+    const onMic = !!(BCAST && BCAST.isHost && CUR_ROOM && BCAST.roomId === CUR_ROOM.id);
+    const pkRunning = !!(CUR_ROOM && ROOM_PK[CUR_ROOM.id]);
+    pkBtn.style.display = (CUR_ROOM && CUR_ROOM.type === 'voice' && onMic && !pkRunning) ? 'flex' : 'none';
+  }
   const wipe = $('#dropWipeWelcome');
   if (canModerateRank()) {
     if (!wipe && window.__wipeWipeClone) {
@@ -12634,6 +12726,8 @@ $('#btnRoomMore').onclick = (e) => {
 };
 // حفظ نسخة من زر «حذف العام للجميع» لإعادة إدراجها عند إعادة الصلاحية
 if ($('#dropWipeWelcome')) window.__wipeWipeClone = $('#dropWipeWelcome').cloneNode(true);
+// ⚔️ تحدي PK من قائمة خيارات الغرفة
+if ($('#dropPk')) $('#dropPk').onclick = () => { closeRoomDrop(); openPkPicker(); };
 // «حذف العام لدي فقط»: تختفي الرسالة منه هو فقط (تُحفظ في حسابه)
 $('#dropHideWelcome').onclick = async (e) => {
   e.stopPropagation();
@@ -13238,18 +13332,21 @@ $('#btnMic').onclick = () => {
   CHAT_MEDIA_DESTINATION = 'public';
   startVoiceRecording();
 };
-// زر «تحدث» بجانب زر الميكروفون: في الغرفة الصوتية يصعد بي كمذيع (بث صوتي).
-// المقاعد تُحدد من إدارة الغرفة: الإدارة تختار بنفسها، وباقي المستخدمين يرسلون طلب صعود.
+// زر «تحدث» بجانب زر الميكروفون: جلوس فوري على أول مقعد شاغر مفتوح (SoulChill).
+// المقاعد ذاتية بالكامل — أي مستخدم يجلس بنفسه، وصاحب الغرفة يقفل المقاعد التي يريدها.
 $('#btnTalkLive').onclick = () => {
   if (!ME) return openLogin();
   if (!CUR_ROOM || CUR_ROOM.type !== 'voice') return;
   if (BCAST && BCAST.isHost && BCAST.roomId === CUR_ROOM.id) return openOv('bcastOv');
-  if (canModerateRank()) return bcastOpenStartConfirm('audio');
   if (!SOCKET) return toast('لا يوجد اتصال بالدردشة', false);
-  SOCKET.emit('seat:request', CUR_ROOM.id, (res) => {
-    if (!res || !res.ok) return toast((res && res.text) || 'تعذر إرسال طلب الصعود', false);
-    toast('أُرسل طلبك إلى إدارة الغرفة — بانتظار تحديد مقعد لك 🎤');
-  });
+  if (iAmSeated()) return toast('أنت على مقعد بالفعل', false);
+  const bySeat = seatEntriesByIndex();
+  const closed = ROOM_CLOSED[CUR_ROOM.id] || [];
+  let seatNo = -1;
+  for (let s = 1; s <= 8; s++) if (!bySeat[s] && !closed.includes(s)) { seatNo = s; break; }
+  if (seatNo < 0 && iAmSeatOwner() && !bySeat[0]) seatNo = 0;
+  if (seatNo < 0) return toast('لا توجد مقاعد شاغرة الآن — حاول لاحقاً', false);
+  seatSit(seatNo);
 };
 $('#pmMic').onclick = () => {
   if (!PM_WITH) return toast('المحادثة الخاصة غير مفتوحة', false);

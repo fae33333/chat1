@@ -37,7 +37,8 @@
     grape:     { primary: '#6d28d9', secondary: '#c026d3', label: 'عنبة' },
     sky:       { primary: '#0284c7', secondary: '#38bdf8', label: 'سماء صافية' },
     rosegold:  { primary: '#be185d', secondary: '#fb7185', label: 'وردي ذهبي' },
-    emerald:   { primary: '#047857', secondary: '#34d399', label: 'زمردي' }
+    emerald:   { primary: '#047857', secondary: '#34d399', label: 'زمردي' },
+    soulchill: { primary: '#7c3aed', secondary: '#c026d3', label: 'SoulChill كوني', dark: true }
   };
 
   function hexToRgb(hex) {
@@ -70,6 +71,19 @@
     } else {
       primary = /^#[0-9a-f]{6}$/i.test(sel) ? sel : '#9c1e46';
       secondary = mix(primary, '#ffffff', 0.22);
+    }
+    // ثيم SoulChill: أرضية كونية داكنة (ليست فاتحة كبقية الثيمات)
+    if (sel === 'soulchill') {
+      return {
+        '--main': primary,
+        '--main2': secondary,
+        '--skin-primary': primary,
+        '--skin-secondary': secondary,
+        '--skin-glow': 'rgba(167,139,250,0.45)',
+        '--skin-bg-light': '#150a33',
+        '--skin-border': '#3b2a6b',
+        '--skin-btn': 'linear-gradient(135deg, #7c3aed, #c026d3)'
+      };
     }
     return {
       '--main': primary,

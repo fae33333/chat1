@@ -149,6 +149,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <div class="tg-list" id="topGiftersList"></div>
       </div>
     </div>
+    <!-- ⚔️ شريط تحدي PK -->
+    <div class="pk-bar" id="pkBar" hidden></div>
 
     <!-- زر كتم مستقل بجانب الشاشة: يظهر عندما أكون مذيعاً (حتى لو مذيعاً وحيداً) أو عند تعدد المذيعين — لكتم صوت المذيعين -->
     <button class="live-mute-float" id="liveBarMute" type="button" title="كتم/إلغاء كتم صوت المذيعين" hidden><i class="f7-icons" id="liveBarMuteIcon">speaker_2_fill</i></button>
@@ -161,6 +163,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <button id="dropDeleteRoom" style="display:none" title="حذف غرفتي نهائياً">حذف غرفتي <i class="f7-icons" style="color:#dc2626">trash_fill</i></button>
       <button id="dropLeaveRoom">مغادرة الغرفة <i class="f7-icons">chevron_right</i></button>
       <button id="dropRefreshRooms">تحديث الغرف <i class="f7-icons">chevron_right</i></button>
+      <button id="dropPk" style="display:none" title="بدء تحدي PK بين مذيعين على المقاعد">⚔️ تحدي PK <i class="f7-icons">chevron_right</i></button>
       <button id="dropHideWelcome" title="حذف «العام» من شاشة أنت فقط — يظل ظاهراً لبقية المستخدمين">حذف العام لدي فقط <i class="f7-icons">chevron_right</i></button>
       <button id="dropWipeWelcome" style="display:none" title="حذف «العام» نهائياً من الغرفة لجميع المستخدمين">حذف العام للجميع <i class="f7-icons">chevron_right</i></button>
     </div>
@@ -1538,31 +1541,29 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     </div>
   </div>
 
-  <!-- 🎤 تثبيت مستخدم على مقعد (للإدارة) — المقاعد تُحدد حصراً من الإدارة -->
-  <div class="overlay full" id="seatPickerOv">
-    <div class="pvpage">
-      <div class="pg-head bar mid">
-        <span class="pg-close back" data-close="seatPickerOv" style="flex-direction: row-reverse;"><i class="f7-icons">chevron_left</i> عودة</span>
-        <span class="pg-title" id="seatPickerTitle">تثبيت مستخدم على المقعد</span>
+  <!-- 🎤 قائمة المقعد (SoulChill): جلوس / نزول / قفل / فتح -->
+  <div class="overlay center" id="seatMenuOv">
+    <div class="dialog seat-menu-dialog">
+      <div class="dlg-title"><i class="f7-icons" style="font-size:19px;vertical-align:-3px;color:var(--main)">chair_fill</i> المقعد <span id="seatMenuTitle">-</span></div>
+      <div class="dlg-body seat-menu-body">
+        <button class="seat-menu-btn" id="seatMenuSit" type="button"><i class="f7-icons">mic_fill</i> جلوس هنا 🎤</button>
+        <button class="seat-menu-btn" id="seatMenuStand" type="button"><i class="f7-icons">arrow_down_circle_fill</i> النزول من المقعد 👂</button>
+        <button class="seat-menu-btn danger" id="seatMenuLock" type="button"><i class="f7-icons">lock_fill</i> قفل المقعد 🔒</button>
+        <button class="seat-menu-btn ok" id="seatMenuUnlock" type="button"><i class="f7-icons">lock_open_fill</i> فتح المقعد 🔓</button>
       </div>
-      <div class="sp-count">متصل الان <b id="seatPickerCount">0</b> — اختر من يجلس على هذا المقعد</div>
-      <div class="sp-body" id="seatPickerList"></div>
+      <div class="dlg-btns"><button data-close="seatMenuOv">إلغاء</button></div>
     </div>
   </div>
 
-  <!-- 🎤 دعوة صعود إلى مقعد (تصل للمستخدم المختار من الإدارة) -->
-  <div class="overlay center" id="seatInviteOv">
-    <div class="dialog seat-invite-dialog">
-      <div class="dlg-title"><i class="f7-icons" style="font-size:19px;vertical-align:-3px;color:var(--main)">mic_fill</i> دعوة صعود إلى المايك</div>
-      <div class="dlg-body" style="text-align:center">
-        <div class="si-ava" id="seatInviteAva"></div>
-        <p style="font-weight:900;color:var(--navy);margin:8px 0 4px">رشّحتك إدارة الغرفة للجلوس على المقعد <b id="seatInviteSeat" style="color:var(--main)">-</b></p>
-        <p class="si-by" id="seatInviteBy">-</p>
+  <!-- ⚔️ اختيار منافس تحدي PK -->
+  <div class="overlay" id="pkPickOv">
+    <div class="sheet">
+      <div class="pg-head">
+        <span class="pg-title">⚔️ ابدأ تحدي PK</span>
+        <span class="pg-close" data-close="pkPickOv">إغلاق</span>
       </div>
-      <div class="dlg-btns">
-        <button id="seatInviteNo">لاحقاً</button>
-        <button id="seatInviteYes">قبول والصعود 🎤</button>
-      </div>
+      <div class="sp-count">اختر المذيع المنافس على المقاعد</div>
+      <div class="sp-body" id="pkPickList"></div>
     </div>
   </div>
 

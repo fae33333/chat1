@@ -2960,6 +2960,8 @@ app.post('/api/gifts/send', requireUser, async (req, res) => {
     io.to('room_' + room_id).emit('gift:sent', celebration);
     // تحديث فوري لقائمة «أفضل المُهدِين» في الغرفة (مثل SoulChill)
     io.to('room_' + room_id).emit('room:top_gifters', await roomTopGifters(+room_id));
+    // الهدايا خلال تحدي PK تُضاف إلى نتيجة المستلم
+    pkAddScore(+room_id, to.id, amount);
   } else {
     io.to('user_' + me.id).emit('gift:sent', celebration);
   }
@@ -8352,7 +8354,7 @@ app.get('/api/public-settings', async (req, res) => {
   const sanitized = {
     site_name: s.site_name || 'الدردشة',
     logo_url: s.logo_url || '',
-    skin: s.skin || 'default',
+    skin: s.skin || 'soulchill',
     font_size: s.font_size || '14',
     show_smiles: s.show_smiles !== undefined ? s.show_smiles : '1',
     show_voice: s.show_voice !== undefined ? s.show_voice : '1',
@@ -8969,26 +8971,33 @@ function broadcastPublicState(roomId) {
   const b = roomBroadcast[roomId];
   if (!b) return null;
   const viewersCount = b.mode === 'video' ? (b.viewerOf ? b.viewerOf.size : 0) : b.viewers.size;
-  return { mode: b.mode, hosts: [...b.hosts.values()], primaryHostId: b.primaryHostId, startedAt: b.startedAt, viewers: viewersCount, seats: seatPublicList(roomId) };
+  return {
+    mode: b.mode, hosts: [...b.hosts.values()], primaryHostId: b.primaryHostId, startedAt: b.startedAt, viewers: viewersCount,
+    seats: seatPublicList(roomId), closed: [...closedSet(roomId)], pk: pkPublic(roomId)
+  };
 }
 
 // =====================================================
-//  نظام المقاعد الصوتية (تصميم الغرفة)
-//  • المقعد 0 = «المضيف»، والمقاعد 1..8 مرقّمة «رقم ١..رقم ٨»
-//  • الإدارة فقط تحدد من يجلس على كل مقعد (دعوة + موافقة المستخدم)
+//  نظام المقاعد الصوتية (تصميم SoulChill)
+//  • المقعد 0 = «المضيف» (صاحب الغرفة)، والمقاعد 1..8 مرقّمة «رقم ١..رقم ٨»
+//  • أي مستخدم يجلس بنفسه على أي مقعد شاغر مفتوح (بدون تعيين من الإدارة)
+//  • صاحب الغرفة يقفل المقاعد التي يريدها ويفتحها متى شاء
 //  • مقاعد المذيعين تُستخلص من حالة البث الحالية وتُزامَن معها
 // =====================================================
 const roomSeats = {};        // roomId -> Map(hostId -> seatNo)
 const seatReservations = new Map(); // 'roomId:uid' -> seatNo (محجوز بانتظار صعود صاحبه)
-const seatInvites = new Map();      // 'roomId:targetId' -> {roomId, targetId, seatNo, byUid, byName, timer}
+const seatInvites = new Map();      // (غير مستخدم الآن — القيادة الذاتية للمقاعد)
+const roomSeatClosed = {};   // roomId -> Set(seatNo) — مقاعد مقفلة يتحكم بها صاحب الغرفة
 const SEAT_MAX = 8;          // المقاعد المرقّمة (المضيف خارج هذا العد — مقعده 0)
 
 function seatsMap(roomId) { return roomSeats[roomId] || (roomSeats[roomId] = new Map()); }
+function closedSet(roomId) { return roomSeatClosed[roomId] || (roomSeatClosed[roomId] = new Set()); }
 function seatTakenBy(seats, seatNo) { for (const [hid, s] of seats) if (+s === +seatNo) return hid; return 0; }
-function nextFreeSeat(seats, preferHost) {
-  if (preferHost && !seatTakenBy(seats, 0)) return 0;
-  for (let s = 1; s <= SEAT_MAX; s++) if (!seatTakenBy(seats, s)) return s;
-  return !seatTakenBy(seats, 0) ? 0 : SEAT_MAX + 1; // احتياطي خارج المسرح عند الامتلاء
+function nextFreeSeat(seats, preferHost, closed) {
+  const c = closed || new Set();
+  if (preferHost && !seatTakenBy(seats, 0) && !c.has(0)) return 0;
+  for (let s = 1; s <= SEAT_MAX; s++) if (!seatTakenBy(seats, s) && !c.has(s)) return s;
+  return !seatTakenBy(seats, 0) && !c.has(0) ? 0 : SEAT_MAX + 1; // احتياطي خارج المسرح عند الامتلاء
 }
 function seatPublicList(roomId) {
   const seats = roomSeats[roomId] || new Map();
@@ -9001,7 +9010,11 @@ function seatPublicList(roomId) {
   return list;
 }
 function emitRoomSeats(roomId) {
-  io.to('room_' + roomId).emit('roomSeats', { roomId: +roomId, seats: seatPublicList(roomId) });
+  io.to('room_' + roomId).emit('roomSeats', {
+    roomId: +roomId,
+    seats: seatPublicList(roomId),
+    closed: [...closedSet(roomId)]
+  });
 }
 // مزامنة المقاعد مع قائمة المذيعين الحقيقية: من غادر يُفرَّغ مقعده، والمذيع الجديد
 // يأخذ مقعده المحجوز (من دعوة الإدارة) أو أدنى مقعد شاغر — والمضيف الأساسي على مقعد «المضيف».
@@ -9016,10 +9029,11 @@ function syncRoomSeats(roomId) {
     for (const [hostId] of [...seats]) if (!b.hosts.has(hostId)) { seats.delete(hostId); changed = true; }
     for (const hostId of b.hosts.keys()) {
       if (seats.has(hostId)) continue;
+      const closed = closedSet(roomId);
       const reserved = seatReservations.get(roomId + ':' + hostId);
       let seat;
-      if (reserved !== undefined && !seatTakenBy(seats, reserved)) seat = +reserved;
-      else seat = nextFreeSeat(seats, hostId === b.primaryHostId);
+      if (reserved !== undefined && reserved <= SEAT_MAX && !seatTakenBy(seats, reserved) && !closed.has(reserved)) seat = +reserved;
+      else seat = nextFreeSeat(seats, hostId === b.primaryHostId, closed);
       seats.set(hostId, seat);
       seatReservations.delete(roomId + ':' + hostId);
       changed = true;
@@ -9041,6 +9055,51 @@ function clearSeatInvite(roomId, targetId) {
   seatReservations.delete(key);
 }
 
+// ---------- حالة تحدي PK داخل الغرفة ----------
+const roomPK = {};           // roomId -> { a, b, scoreA, scoreB, endsAt, timer, startedBy }
+function pkPublic(roomId) {
+  const st = roomPK[roomId];
+  if (!st) return null;
+  return {
+    roomId: +roomId,
+    a: st.a, b: st.b, scoreA: st.scoreA, scoreB: st.scoreB,
+    endsAt: st.endsAt, startedBy: st.startedBy
+  };
+}
+function emitPK(roomId) {
+  const pub = pkPublic(roomId);
+  if (pub) io.to('room_' + roomId).emit('pk:state', pub);
+}
+function pkFinish(roomId) {
+  const st = roomPK[roomId];
+  if (!st) return;
+  if (st.timer) clearTimeout(st.timer);
+  delete roomPK[roomId];
+  let winner = 0; // 0 = تعادل
+  if (st.scoreA > st.scoreB) winner = st.a.id;
+  else if (st.scoreB > st.scoreA) winner = st.b.id;
+  io.to('room_' + roomId).emit('pk:end', {
+    roomId: +roomId,
+    a: st.a, b: st.b, scoreA: st.scoreA, scoreB: st.scoreB,
+    winner, winnerName: winner === st.a.id ? st.a.username : (winner === st.b.id ? st.b.username : '')
+  });
+}
+// إضافة قيمة هدية إلى نتيجة أحد طرفي التحدي
+function pkAddScore(roomId, toId, amount) {
+  const st = roomPK[roomId];
+  if (!st || amount <= 0) return;
+  if (+toId === st.a.id) st.scoreA += amount;
+  else if (+toId === st.b.id) st.scoreB += amount;
+  else return;
+  emitPK(roomId);
+}
+// إنهاء التحدي فوراً إن نزل أحد طرفيه من المقعد
+function pkCheckParticipant(roomId, uidValue) {
+  const st = roomPK[roomId];
+  if (!st) return;
+  if (st.a.id === +uidValue || st.b.id === +uidValue) pkFinish(roomId);
+}
+
 // صلاحية الصعود للبث تُدار حسب العضوية من لوحة الإدارة؛ الشخص المكتوم مستمع فقط.
 async function canStartVideoBroadcast(user) {
   if (!user || mutedActive(user) || user.broadcast_banned) return false;
@@ -9055,6 +9114,7 @@ function endBroadcast(roomId, reason = 'ended') {
   if (!roomBroadcast[roomId]) return;
   delete roomBroadcast[roomId];
   syncRoomSeats(roomId);
+  pkFinish(roomId); // التحدي لا يستمر بدون مذيعين
   io.to('room_' + roomId).emit('bcast:stopped', { roomId, reason });
 }
 // هل يملك مستخدمٌ ما صلاحية إشراف في الغرفة المحددة؟ (إدارة عامة أو مشرف غرفة)
@@ -9073,6 +9133,7 @@ function removeHostFromBroadcast(roomId, uid, reason = 'host_left') {
   if (!b || !b.hosts.has(uid)) return false;
   b.hosts.delete(uid);
   clearSeatInvite(roomId, uid);
+  pkCheckParticipant(roomId, uid); // إن كان في تحدي PK ينتهي التحدي
   if (b.hosts.size === 0) { endBroadcast(roomId, reason); return true; }
   io.to('room_' + roomId).emit('bcast:host_left', { roomId, hostId: uid, reason });
   // إن غادر المضيف الأساسي وبقي مذيعون آخرون، يُرقّى أقدمهم مضيفاً أساسياً جديداً تلقائياً
@@ -9733,7 +9794,7 @@ io.on('connection', async (socket) => {
     cancelPendingBroadcastCleanup(uid, roomId);
     if (socket.data.joinedRooms.has(roomId)) {
       const lastMsgRow = await q.get(`SELECT COALESCE(MAX(id),0) lastId FROM messages WHERE room_id=?`, roomId);
-      return done({ ok: true, hidden: socket.data.hiddenRooms.has(roomId), restored: restoredConnection, broadcast: broadcastPublicState(roomId), lastMsgId: +lastMsgRow.lastId || 0 });
+      return done({ ok: true, hidden: socket.data.hiddenRooms.has(roomId), restored: restoredConnection, broadcast: broadcastPublicState(roomId), seats: seatPublicList(roomId), closed: [...closedSet(roomId)], pk: pkPublic(roomId), lastMsgId: +lastMsgRow.lastId || 0 });
     }
     socket.join('room_' + roomId);
     socket.data.joinedRooms.add(roomId);
@@ -9784,7 +9845,7 @@ io.on('connection', async (socket) => {
       for (const hostId of activeBroadcast.hosts.keys()) io.to('user_' + hostId).emit('bcast:new_listener', { roomId, listenerId: uid });
     }
     const lastMsgRow = await q.get(`SELECT COALESCE(MAX(id),0) lastId FROM messages WHERE room_id=?`, roomId);
-    done({ ok: true, hidden: enterHidden, restored: restoredConnection, broadcast: broadcastPublicState(roomId), lastMsgId: +lastMsgRow.lastId || 0 });
+    done({ ok: true, hidden: enterHidden, restored: restoredConnection, broadcast: broadcastPublicState(roomId), seats: seatPublicList(roomId), closed: [...closedSet(roomId)], pk: pkPublic(roomId), lastMsgId: +lastMsgRow.lastId || 0 });
   });
 
   // مغادرة غرفة
@@ -9918,114 +9979,114 @@ io.on('connection', async (socket) => {
     io.to('user_' + targetUserId).emit('bcast:speak_response', { roomId, accept: true, existingHosts, viewers: currentViewers });
   });
 
-  // ===== إدارة المقاعد الصوتية (الإدارة تحدد من يجلس على كل مقعد) =====
-  // [إدارة] دعوة مستخدم للجلوس على مقعد محدد — يُحجز المقعد له حتى يوافق أو تنتهي المهلة
-  socket.on('seat:invite', async (roomId, seatNo, targetId, cb) => {
+  // ===== المقاعد الصوتية بأسلوب SoulChill: جلوس ذاتي فوري + قفل/فتح لصاحب الغرفة =====
+  // [أي مستخدم] الجلوس على مقعد شاغر مفتوح — بدون أي تعيين أو موافقة
+  socket.on('seat:sit', async (roomId, seatNo, cb) => {
     const ack = typeof cb === 'function' ? cb : () => { };
-    roomId = +roomId; seatNo = +seatNo; targetId = +targetId;
-    if (!(await socketCanModerate(uid, roomId))) return ack({ ok: false, text: 'تُدار المقاعد بواسطة إدارة الغرفة فقط' });
-    if (seatNo < 0 || seatNo > SEAT_MAX) return ack({ ok: false, text: 'رقم المقعد غير صالح' });
-    if (!targetId || targetId === uid) return ack({ ok: false, text: 'اختر مستخدماً آخر' });
-    if (!roomUsers[roomId] || !roomUsers[roomId].has(targetId)) return ack({ ok: false, text: 'هذا المستخدم غير موجود في الغرفة الآن' });
-    const b = roomBroadcast[roomId];
-    if (b && b.hosts.has(targetId)) return ack({ ok: false, text: 'هذا المستخدم على المايك بالفعل' });
-    const seats = seatsMap(roomId);
-    if (seatTakenBy(seats, seatNo)) return ack({ ok: false, text: 'هذا المقعد محجوز بالفعل' });
-    // المقعد غير محجوز لدعوة أخرى معلقة
-    for (const [key, inv] of seatInvites) {
-      if (inv.roomId === roomId && inv.seatNo === seatNo && inv.targetId !== targetId) return ack({ ok: false, text: 'هناك دعوة معلقة لهذا المقعد' });
-    }
-    const target = await q.get(`SELECT id,username,avatar,rank,membership,registered,muted,muted_until,broadcast_banned FROM users WHERE id=?`, targetId);
-    if (!target) return ack({ ok: false, text: 'المستخدم غير موجود' });
-    if (mutedActive(target) || target.broadcast_banned) return ack({ ok: false, text: 'هذا المستخدم مكتوم أو ممنوع من الصعود — لا يمكن دعوته للمقعد' });
-    clearSeatInvite(roomId, targetId);
-    const key = roomId + ':' + targetId;
-    const invite = {
-      roomId, targetId, seatNo,
-      byUid: uid, byName: me.username,
-      timer: setTimeout(() => {
-        seatInvites.delete(key);
-        seatReservations.delete(key);
-        io.to('user_' + targetId).emit('seat:invite_expired', { roomId, seatNo });
-      }, 90000)
-    };
-    seatInvites.set(key, invite);
-    seatReservations.set(key, seatNo); // حجز المقعد فوراً حتى لا يأخذه أحد بينما الطلب معلق
-    io.to('user_' + targetId).emit('seat:invite', {
-      roomId, seatNo,
-      by: { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me) },
-      seatLabel: seatNo === 0 ? 'المضيف' : 'رقم ' + seatNo
-    });
-    ack({ ok: true });
-  });
-
-  // [مدعو] قبول دعوة المقعد — يحجز مقعده ثم يصعد المذيع عبر المسار المعتاد (bcast:start من العميل)
-  socket.on('seat:accept', (roomId, cb) => {
-    const ack = typeof cb === 'function' ? cb : () => { };
-    roomId = +roomId;
-    const key = roomId + ':' + uid;
-    const inv = seatInvites.get(key);
-    if (!inv) return ack({ ok: false, text: 'انتهت دعوة المقعد أو أُلغيت' });
-    if (inv.timer) clearTimeout(inv.timer);
-    seatInvites.delete(key);
-    // يبقى الحجز قائماً حتى يستهلكه الصعود الفعلي (syncRoomSeats)
-    seatReservations.set(key, inv.seatNo);
-    io.to('user_' + inv.byUid).emit('seat:accepted', { roomId, seatNo: inv.seatNo, username: me.username });
-    ack({ ok: true, seatNo: inv.seatNo });
-  });
-
-  // [مدعو] رفض دعوة المقعد
-  socket.on('seat:decline', (roomId) => {
-    roomId = +roomId;
-    const key = roomId + ':' + uid;
-    const inv = seatInvites.get(key);
-    clearSeatInvite(roomId, uid);
-    if (inv) io.to('user_' + inv.byUid).emit('seat:declined', { roomId, seatNo: inv.seatNo, username: me.username });
-  });
-
-  // [إدارة] إلغاء دعوة مقعد معلقة
-  socket.on('seat:cancel', async (roomId, targetId, cb) => {
-    const ack = typeof cb === 'function' ? cb : () => { };
-    roomId = +roomId; targetId = +targetId;
-    if (!(await socketCanModerate(uid, roomId))) return ack({ ok: false, text: 'تُدار المقاعد بواسطة إدارة الغرفة فقط' });
-    clearSeatInvite(roomId, targetId);
-    io.to('user_' + targetId).emit('seat:invite_expired', { roomId });
-    ack({ ok: true });
-  });
-
-  // [مستخدم] طلب الصعود إلى المقعد — يصل لإدارة الغرفة المتصلة ليقرروا إعطاؤه مقعداً
-  socket.on('seat:request', async (roomId, cb) => {
-    const ack = typeof cb === 'function' ? cb : () => { };
-    roomId = +roomId;
+    roomId = +roomId; seatNo = +seatNo;
     if (!socket.data.joinedRooms.has(roomId)) return ack({ ok: false, text: 'ادخل الغرفة أولاً' });
+    if (!(seatNo >= 0 && seatNo <= SEAT_MAX)) return ack({ ok: false, text: 'رقم المقعد غير صالح' });
     const b = roomBroadcast[roomId];
     if (b && b.hosts.has(uid)) return ack({ ok: false, text: 'أنت على المايك بالفعل' });
+    // مقعد «المضيف» (0) مخصص لصاحب الغرفة
+    const room = await q.get(`SELECT owner_id FROM rooms WHERE id=?`, roomId);
+    if (seatNo === 0 && (!room || +room.owner_id !== +uid)) return ack({ ok: false, text: 'مقعد المضيف مخصص لصاحب الغرفة' });
+    if (closedSet(roomId).has(seatNo)) return ack({ ok: false, text: 'هذا المقعد مقفل من قبل صاحب الغرفة' });
+    const seats = seatsMap(roomId);
+    if (seatTakenBy(seats, seatNo)) return ack({ ok: false, text: 'هذا المقعد محجوز بالفعل — اختر مقعداً آخر' });
+    // مقعد محجوز لحظياً لصعود مستخدم آخر
+    const myKey = roomId + ':' + uid;
+    for (const [key, s] of seatReservations) {
+      if (+s === seatNo && key !== myKey) return ack({ ok: false, text: 'أحدهم يجلس على هذا المقعد الآن' });
+    }
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
     if (!await canStartAudioBroadcast(me)) return ack({
       ok: false,
-      text: me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (mutedActive(me) ? 'أنت مكتوم ولا يمكنك طلب الصعود' : 'عضويتك غير مسموح لها بالصعود كمذيع')
+      text: me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (mutedActive(me) ? 'أنت مكتوم ولا يمكنك الصعود إلى المقعد' : 'عضويتك غير مسموح لها بالصعود إلى المقاعد')
     });
-    // أرسل الطلب لكل مشرفي الغرفة المتصلين (أدمن الغرفة + الإدارة العامة)
-    const raRows = await q.all(`SELECT user_id FROM room_admins WHERE room_id=?`, roomId);
-    const modIds = new Set(raRows.map(r => +r.user_id));
-    for (const mid of roomUsers[roomId] || []) {
-      const mu = await q.get(`SELECT rank FROM users WHERE id=?`, mid).catch(() => null);
-      if (mu && ['admin', 'superadmin', 'supermaster'].includes(mu.rank)) modIds.add(+mid);
+    seatReservations.set(myKey, seatNo); // يُستهلك عند بدء البث (syncRoomSeats)
+    ack({ ok: true, seatNo });
+  });
+
+  // [الجالس] النزول من المقعد والرجوع مستمعاً
+  socket.on('seat:stand', (roomId, cb) => {
+    const ack = typeof cb === 'function' ? cb : () => { };
+    roomId = +roomId;
+    const b = roomBroadcast[roomId];
+    if (!b || !b.hosts.has(uid)) {
+      seatReservations.delete(roomId + ':' + uid);
+      return ack({ ok: true });
     }
-    modIds.delete(uid);
-    const payload = {
-      roomId,
-      user: { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me) }
+    const wasPrimary = b.primaryHostId === uid;
+    const othersRemain = b.hosts.size > 1;
+    removeHostFromBroadcast(roomId, uid, 'stood_up');
+    if (othersRemain) io.to('user_' + uid).emit('bcast:speaker_removed', { roomId, reason: 'stood_up' });
+    ack({ ok: true, wasPrimary });
+  });
+
+  // [صاحب الغرفة / إدارة] قفل مقعد أو فتحه — المقفل لا يجلس عليه أحد
+  socket.on('seat:toggle', async (roomId, seatNo, cb) => {
+    const ack = typeof cb === 'function' ? cb : () => { };
+    roomId = +roomId; seatNo = +seatNo;
+    if (!(seatNo >= 1 && seatNo <= SEAT_MAX)) return ack({ ok: false, text: 'رقم المقعد غير صالح' });
+    const room = await q.get(`SELECT owner_id FROM rooms WHERE id=?`, roomId);
+    const isOwner = room && +room.owner_id === +uid;
+    if (!isOwner && !(await socketCanModerate(uid, roomId))) return ack({ ok: false, text: 'قفل/فتح المقاعد متاح لصاحب الغرفة والإدارة فقط' });
+    const closed = closedSet(roomId);
+    const seats = seatsMap(roomId);
+    if (closed.has(seatNo)) {
+      closed.delete(seatNo);
+      emitRoomSeats(roomId);
+      return ack({ ok: true, closed: false, seatNo });
+    }
+    // قفل المقعد: إن كان محجوزاً يُنزَل صاحبه فوراً (كما في SoulChill)
+    const occupant = seatTakenBy(seats, seatNo);
+    if (occupant) {
+      const ob = roomBroadcast[roomId];
+      const othersRemain = ob && ob.hosts.size > 1;
+      removeHostFromBroadcast(roomId, occupant, 'seat_closed');
+      if (othersRemain) io.to('user_' + occupant).emit('bcast:speaker_removed', { roomId, reason: 'seat_closed' });
+      io.to('user_' + occupant).emit('notify', await createUserNotification(occupant, 'أُغلق مقعدك من قبل صاحب الغرفة ونُزِلت من المايك 🔒', 'lock_fill'));
+    }
+    closed.add(seatNo);
+    // أي حجز معلق على هذا المقعد يُلغى
+    for (const [key, s] of [...seatReservations]) if (+s === seatNo) seatReservations.delete(key);
+    emitRoomSeats(roomId);
+    ack({ ok: true, closed: true, seatNo });
+  });
+
+  // ===== تحدي PK بأسلوب SoulChill: مذيعان على المقعد يتنافسان بالهدايا =====
+  socket.on('pk:start', async (roomId, rivalId, cb) => {
+    const ack = typeof cb === 'function' ? cb : () => { };
+    roomId = +roomId; rivalId = +rivalId;
+    const b = roomBroadcast[roomId];
+    if (!b || b.mode !== 'audio' || !b.hosts.has(uid)) return ack({ ok: false, text: 'كن على المقعد أولاً لبدء التحدي' });
+    if (!b.hosts.has(rivalId) || rivalId === uid) return ack({ ok: false, text: 'اختر مذيعاً آخر على مقعد للتحدي معه' });
+    if (roomPK[roomId]) return ack({ ok: false, text: 'يوجد تحدي جارٍ بالفعل' });
+    const A = await q.get(`SELECT id,username,avatar FROM users WHERE id=?`, uid);
+    const B = await q.get(`SELECT id,username,avatar FROM users WHERE id=?`, rivalId);
+    const state = {
+      a: { id: uid, username: A.username, avatar: A.avatar || '' },
+      b: { id: rivalId, username: B.username, avatar: B.avatar || '' },
+      scoreA: 0, scoreB: 0,
+      endsAt: Math.floor(Date.now() / 1000) + 180,
+      startedBy: uid
     };
-    let delivered = 0;
-    for (const mid of modIds) {
-      if (roomUsers[roomId] && roomUsers[roomId].has(mid)) {
-        io.to('user_' + mid).emit('seat:request', payload);
-        delivered++;
-      }
-    }
-    if (!delivered) return ack({ ok: false, text: 'لا يوجد أحد من إدارة الغرفة متصل الآن — حاول لاحقاً' });
-    ack({ ok: true, pending: true });
+    state.timer = setTimeout(() => pkFinish(roomId), 181000);
+    roomPK[roomId] = state;
+    io.to('room_' + roomId).emit('pk:state', pkPublic(roomId));
+    ack({ ok: true });
+  });
+  socket.on('pk:stop', async (roomId, cb) => {
+    const ack = typeof cb === 'function' ? cb : () => { };
+    roomId = +roomId;
+    const st = roomPK[roomId];
+    if (!st) return ack({ ok: false, text: 'لا يوجد تحدي جارٍ' });
+    const room = await q.get(`SELECT owner_id FROM rooms WHERE id=?`, roomId);
+    const isOwner = room && +room.owner_id === +uid;
+    if (st.startedBy !== uid && !isOwner && !(await socketCanModerate(uid, roomId))) return ack({ ok: false, text: 'لا يمكنك إنهاء هذا التحدي' });
+    pkFinish(roomId);
+    ack({ ok: true });
   });
 
   // إزالة مذيع وإعادته مستمعاً — للمضيف الأساسي فقط
