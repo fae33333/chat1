@@ -53,7 +53,10 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <header class="r-head dots-bg">
       <div class="r-logo" id="siteLogo">
         <span class="r-logo-ico"><i class="f7-icons">smiley_fill</i></span>
-        <span class="r-logo-txt" id="siteName"></span>
+        <span class="r-logo-wrap">
+          <span class="r-logo-txt" id="siteName"></span>
+          <span class="r-logo-tag">مرحباً بك في عالم الدردشة ✨</span>
+        </span>
       </div>
       <button class="btn-enter" id="headEnterBtn">دخول</button>
       <button class="head-user" id="headUserBox" style="display:none" aria-label="حسابي">
@@ -68,8 +71,11 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <button id="dropLogout">الخروج <i class="f7-icons">chevron_right</i></button>
     </div>
     <div class="r-search dots-bg">
+      <i class="f7-icons r-search-ic">search</i>
       <textarea id="roomSearch" rows="1" placeholder="ابحث عن غرفك"></textarea>
     </div>
+    <!-- شريط غرفتي: زر الإنشاء أو بطاقة غرفتي مع الإدارة -->
+    <div class="myroom-strip" id="myRoomStrip"></div>
     <div class="r-list" id="roomsList"></div>
   </section>
 
@@ -137,6 +143,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <!-- قائمة خيارات الغرفة -->
     <div class="drop-backdrop" id="roomDropBg" style="display:none"></div>
     <div class="enter-drop chat-drop" id="roomDrop">
+      <button id="dropManageRoom" style="display:none" title="تعديل اسم وإعدادات غرفتي">إدارة غرفتي <i class="f7-icons">gear_fill</i></button>
+      <button id="dropDeleteRoom" style="display:none" title="حذف غرفتي نهائياً">حذف غرفتي <i class="f7-icons" style="color:#dc2626">trash_fill</i></button>
       <button id="dropLeaveRoom">مغادرة الغرفة <i class="f7-icons">chevron_right</i></button>
       <button id="dropRefreshRooms">تحديث الغرف <i class="f7-icons">chevron_right</i></button>
       <button id="dropHideWelcome" title="حذف «العام» من شاشة أنت فقط — يظل ظاهراً لبقية المستخدمين">حذف العام لدي فقط <i class="f7-icons">chevron_right</i></button>
@@ -405,25 +413,33 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     </div>
   </div>
 
-  <!-- ============ تسجيل الدخول ============ -->
+  <!-- ============ تسجيل الدخول (شاشة الدخول بالاسم) ============ -->
   <div class="overlay" id="loginOv">
-    <div class="sheet lsheet">
+    <div class="sheet lsheet login-hero">
       <div class="sh-handle"></div>
-      <h3 id="loginTitle">تسجيل الدخول</h3>
+      <i class="f7-icons sheet-x blue" data-close="loginOv">xmark</i>
+
+      <div class="lg-hero">
+        <div class="lg-hero-ava" id="lgHeroAva"><i class="f7-icons">person_fill</i></div>
+        <h2 class="lg-hero-title" id="loginTitle">تسجيل الدخول</h2>
+        <p class="lg-hero-sub">اكتب اسمك واستمتع بالدردشة 💬</p>
+      </div>
+
       <div class="lg-switchrow">
         <span>دخول كزائر/ة</span>
         <label class="switch on" id="guestSwitch"><span class="knob"></span></label>
       </div>
+
       <div id="memberBox" style="display:none">
         <div class="lf-field">
           <i class="f7-icons lf-ic">person_fill</i>
-          <input id="lUser" placeholder="الأسم المستعار">
+          <input id="lUser" placeholder="الأسم المستعار" autocomplete="off">
         </div>
         <div class="lf-field">
           <i class="f7-icons lf-ic">lock_fill</i>
-          <input id="lPass" type="password" placeholder="الرقم السري">
+          <input id="lPass" type="password" placeholder="الرقم السري" autocomplete="off">
         </div>
-        <button class="big-btn" id="doLogin">دخول</button>
+        <button class="big-btn" id="doLogin"><i class="f7-icons">person_fill"></i> دخول</button>
         <div class="lg-links">
           <div class="lg-q">نسيت كلمة السر؟</div>
           <span class="lg-pill" id="goForgot">استعادة كلمة السر</span>
@@ -431,10 +447,11 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <span class="lg-pill" id="goRegister">إنشاء حساب مجانًا</span>
         </div>
       </div>
+
       <div id="guestBox">
-        <div class="lf-field">
+        <div class="lf-field lf-name-field">
           <i class="f7-icons lf-ic">person_fill</i>
-          <input id="gName" placeholder="الأسم المستعار">
+          <input id="gName" placeholder="الأسم المستعار" maxlength="20" autocomplete="off">
         </div>
         <div class="lf-field lf-gender" id="gGenderBox">
           <small>النوع</small>
@@ -449,14 +466,75 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
             </select>
           </div>
         </div>
-        <button class="big-btn" id="doGuest">دخول</button>
+        <div class="lf-gender-pills" id="gGenderPills">
+          <button type="button" class="g-pill active" data-g="boy"><i class="f7-icons">person_fill</i> ذكر</button>
+          <button type="button" class="g-pill" data-g="girl"><i class="f7-icons">person_fill</i> أنثى</button>
+          <button type="button" class="g-pill" data-g="secret"><i class="f7-icons">question</i> مجهول</button>
+        </div>
+        <button class="big-btn" id="doGuest"><i class="f7-icons">chevron_left_circle_fill</i> دخول الدردشة</button>
         <div class="lg-links">
-          <div class="lg-q">لا يوجد لديك عضوية؟</div>
+          <div class="lg-q">لديك حساب؟ <span class="lg-inline-pill" id="goMemberLogin">دخول العضو</span></div>
+          <div class="lg-q" style="margin-top:10px">لا يوجد لديك عضوية؟</div>
           <span class="lg-pill" id="goRegister2">إنشاء حساب مجانًا</span>
         </div>
       </div>
+
       <div class="cl-err" id="loginErr"></div>
       <div class="lg-terms">الرجاء قراءة <b id="openTerms">شروط الاستخدام</b> <span>-</span> وقراءة <b id="openPrivacy">سياسة الخصوصية</b></div>
+    </div>
+  </div>
+
+  <!-- ============ إنشاء / تعديل غرفتي ============ -->
+  <div class="overlay" id="createRoomOv">
+    <div class="sheet lsheet roomform-sheet">
+      <div class="sh-handle"></div>
+      <i class="f7-icons sheet-x blue" data-close="createRoomOv">xmark</i>
+      <h3 id="crTitle">إنشاء غرفتي 🏠</h3>
+      <p class="cr-sub" id="crSub">كل حساب له غرفة واحدة — يمكنك حذفها وإنشاء غيرها في أي وقت</p>
+      <div class="lf-field">
+        <i class="f7-icons lf-ic">house_fill</i>
+        <input id="crName" placeholder="اسم الغرفة" maxlength="40">
+      </div>
+      <div class="lf-field">
+        <i class="f7-icons lf-ic">text_quote</i>
+        <input id="crDesc" placeholder="وصف الغرفة (اختياري)" maxlength="120">
+      </div>
+      <div class="lf-field">
+        <i class="f7-icons lf-ic">lock_fill</i>
+        <input id="crPass" type="password" placeholder="كلمة مرور الغرفة (اختياري)" maxlength="40" autocomplete="off">
+      </div>
+      <div class="cr-pass-row">
+        <button type="button" class="cr-clear-pass" id="crClearPass" style="display:none"><i class="f7-icons">lock_open_fill</i> إزالة كلمة المرور</button>
+      </div>
+      <div class="cr-type-row">
+        <small>نوع الغرفة</small>
+        <div class="cr-type-pills" id="crTypePills">
+          <button type="button" class="cr-pill active" data-type="voice"><i class="f7-icons">mic_fill</i> صوتية (مايك)</button>
+          <button type="button" class="cr-pill" data-type="default"><i class="f7-icons">bubble_left_bubble_right_fill</i> كتابية</button>
+        </div>
+      </div>
+      <div class="cr-type-row">
+        <small>الجمهور</small>
+        <div class="cr-type-pills" id="crAudPills">
+          <button type="button" class="cr-pill active" data-aud="all">الجميع</button>
+          <button type="button" class="cr-pill" data-aud="registered">الأعضاء المسجلون</button>
+        </div>
+      </div>
+      <button class="big-btn" id="crSubmit"><i class="f7-icons">plus_circle_fill</i> <span id="crSubmitTxt">إنشاء الغرفة</span></button>
+      <div class="cl-err" id="crErr"></div>
+    </div>
+  </div>
+
+  <!-- ============ تأكيد حذف الغرفة ============ -->
+  <div class="overlay" id="delRoomOv">
+    <div class="sheet needreg">
+      <div class="nr-title">حذف الغرفة</div>
+      <div class="nr-ico" style="background:linear-gradient(150deg,#ef4444,#b91c1c)"><i class="f7-icons">trash_fill</i></div>
+      <p>هل أنت متأكد من حذف غرفتك «<b id="delRoomName">-</b>»؟<br><small style="color:#9aa0b5">سيتم حذف الرسائل وبطرد الموجودين، وبعدها يمكنك إنشاء غرفة جديدة.</small></p>
+      <div class="nr-btns">
+        <button class="nr-link" id="delRoomYes" style="background:linear-gradient(135deg,#ef4444,#b91c1c)">نعم، احذف الغرفة</button>
+        <button class="nr-later" data-close="delRoomOv">إلغاء</button>
+      </div>
     </div>
   </div>
 

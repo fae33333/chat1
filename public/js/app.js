@@ -4290,17 +4290,25 @@ function roomFeaturesHtml(r) {
   if (r.audience === 'registered') icons.push('<i class="f7-icons" title="للأعضاء المسجلين فقط" style="color:#0ea5e9">person_badge_plus_fill</i>');
   return `<div class="room-feats">${icons.join('')}</div>`;
 }
+// هل هذه الغرفة غرفتي الشخصية (أنا صاحبها)؟
+function isMyRoom(r) { return !!(ME && r && +r.owner_id === +ME.id && +r.owner_id !== 0); }
+function myOwnedRoom() {
+  if (!ME || !ME.registered) return null;
+  return ROOMS.find(r => +r.owner_id === +ME.id) || null;
+}
 function roomRowHtml(r) {
   const online = ROOM_COUNTS[r.id] || 0;
+  const mine = isMyRoom(r);
   return `
   <div class="room-row" data-id="${r.id}">
     ${roomImgHtml(r)}
     <div class="room-info">
-      <div class="room-name">${esc(r.name)}</div>
+      <div class="room-name">${esc(r.name)}${mine ? '<span class="room-mine-tag">غرفتي ⭐</span>' : ''}</div>
       <div class="room-desc">${esc(r.description || `أهلاً وسهلاً بكم في ${SETTINGS.site_name || 'الدردشة'} ★`)}</div>
+      ${+r.owner_id ? `<div class="room-owner-tag"><i class="f7-icons">person_crop_circle_badge_checkmark</i> غرفة ${esc(r.owner_name || 'مستخدم')}</div>` : ''}
     </div>
     <div class="room-side">
-      <div class="room-count"><i class="f7-icons">person_2_fill</i><b>${online}</b>/${r.max_users || 1000}</div>
+      <div class="room-online-pill${online ? '' : ' off'}"><i class="f7-icons">person_2_fill</i><b>${online}</b></div>
       <i class="f7-icons room-chev">chevron_right</i>
       ${roomFeaturesHtml(r)}
     </div>
@@ -4314,7 +4322,7 @@ function roomMiniHtml(r) {
     ${roomImgHtml(r, 'rm-img')}
     <div class="rm-info">
       <div class="rm-name">${esc(r.name)} ${r.locked ? '<i class="f7-icons" style="font-size:12px;color:#d946a6">lock_fill</i>' : ''}${r.status !== 'open' ? ' <span style="font-size:10px;color:#dc2626;font-weight:800">مغلقة 🔒</span>' : ''}</div>
-      <div class="rm-desc">${esc(r.description || ('غرفة مستخدمين ' + r.owner_name))}</div>
+      <div class="rm-desc">${esc(r.description || (r.owner_name ? ('غرفة ' + r.owner_name) : ('غرفة مستخدمين ' + (r.owner_name || ''))))}</div>
     </div>
     <div class="rm-side">
       ${isCur ? '<span class="rm-here">أنت هنا</span>' : `<span class="rm-count"><i class="f7-icons">person_2_fill</i>${online}/${r.max_users || 1000}</span>`}
@@ -4338,8 +4346,173 @@ function renderRooms() {
   const list = ROOMS.filter(r => (!q1 || r.name.includes(q1)));
   $('#roomsList').innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
   $$('#roomsList .room-row').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
+  renderMyRoomStrip();
   renderRoomsPanel();
 }
+
+// =====================================================
+//  شريط «غرفتي» — غرفة واحدة لكل حساب مسجل
+//  • بدون غرفة: زر «أنشئ غرفتك»
+//  • بغرفة: بطاقة إدارة (دخول / تعديل / حذف) — لا يمكن إنشاء ثانية قبل الحذف
+// =====================================================
+function renderMyRoomStrip() {
+  const strip = $('#myRoomStrip');
+  if (!strip) return;
+  const mine = myOwnedRoom();
+  if (!ME) {
+    strip.innerHTML = `
+      <button class="btn-create-room" id="btnCreateRoom"><i class="f7-icons">plus_circle_fill</i> أنشئ غرفتك 🏠</button>
+      <div class="myroom-note">سجّل دخولك أولاً ثم افتح غرفتك الخاصة</div>`;
+  } else if (!ME.registered) {
+    strip.innerHTML = `
+      <button class="btn-create-room" id="btnCreateRoom"><i class="f7-icons">plus_circle_fill</i> أنشئ غرفتك 🏠</button>
+      <div class="myroom-note">إنشاء الغرفة متاح للأعضاء المسجلين — أنشئ حسابك المجاني الآن</div>`;
+  } else if (mine) {
+    const online = ROOM_COUNTS[mine.id] || 0;
+    strip.innerHTML = `
+      <div class="myroom-card">
+        <div class="myroom-ico"><i class="f7-icons">${mine.type === 'voice' ? 'mic_fill' : 'house_fill'}</i></div>
+        <div class="myroom-info">
+          <b>${esc(mine.name)}</b>
+          <small>غرفتك ⭐ · ${online} متصل الآن${mine.type === 'voice' ? ' · صوتية' : ''}</small>
+        </div>
+        <div class="myroom-actions">
+          <button class="myroom-enter" id="myRoomEnter"><i class="f7-icons">chevron_left_circle_fill</i> دخول</button>
+          <button class="myroom-edit" id="myRoomEdit"><i class="f7-icons">gear_fill</i></button>
+          <button class="myroom-del" id="myRoomDel"><i class="f7-icons">trash_fill</i></button>
+        </div>
+      </div>
+      <div class="myroom-note">يمكنك إنشاء غرفة جديدة بعد حذف غرفتك الحالية</div>`;
+  } else {
+    strip.innerHTML = `
+      <button class="btn-create-room" id="btnCreateRoom"><i class="f7-icons">plus_circle_fill</i> أنشئ غرفتك 🏠</button>
+      <div class="myroom-note">لكل حساب غرفة واحدة — احذفها متى شئت لتُنشئ غيرها</div>`;
+  }
+  const createBtn = $('#btnCreateRoom');
+  if (createBtn) createBtn.onclick = () => {
+    if (!ME) return openLogin();
+    if (!ME.registered) { openOv('needRegOv'); return; }
+    openCreateRoomSheet('create');
+  };
+  const enterBtn = $('#myRoomEnter');
+  if (enterBtn) enterBtn.onclick = () => { if (mine) enterRoom(mine.id); };
+  const editBtn = $('#myRoomEdit');
+  if (editBtn) editBtn.onclick = () => { if (mine) openCreateRoomSheet('edit', mine); };
+  const delBtn = $('#myRoomDel');
+  if (delBtn) delBtn.onclick = () => { if (mine) askDeleteRoom(mine); };
+}
+
+// =====================================================
+//  إنشاء / تعديل / حذف الغرفة الشخصية
+// =====================================================
+let CR_MODE = 'create';   // 'create' | 'edit'
+let CR_ROOM = null;       // الغرفة المُعدَّلة
+let CR_CLEAR_PASS = false; // تفعيل «إزالة كلمة المرور» عند التعديل
+function openCreateRoomSheet(mode, room) {
+  CR_MODE = mode || 'create';
+  CR_ROOM = room || null;
+  CR_CLEAR_PASS = false;
+  $('#crErr').textContent = '';
+  $('#crTitle').textContent = CR_MODE === 'edit' ? 'إدارة غرفتي ⚙️' : 'إنشاء غرفتي 🏠';
+  $('#crSub').textContent = CR_MODE === 'edit'
+    ? 'عدّل اسم غرفتك وإعداداتها — أنت أدمنها وتتحكم بها'
+    : 'كل حساب له غرفة واحدة — يمكنك حذفها وإنشاء غيرها في أي وقت';
+  $('#crSubmitTxt').textContent = CR_MODE === 'edit' ? 'حفظ التعديلات' : 'إنشاء الغرفة';
+  $('#crName').value = CR_ROOM ? (CR_ROOM.name || '') : '';
+  $('#crDesc').value = CR_ROOM ? (CR_ROOM.description || '') : '';
+  $('#crPass').value = '';
+  $('#crPass').placeholder = (CR_MODE === 'edit' && CR_ROOM && CR_ROOM.locked)
+    ? 'كلمة مرور جديدة (فارغة = بلا تغيير)'
+    : 'كلمة مرور الغرفة (اختياري)';
+  const clearBtn = $('#crClearPass');
+  if (clearBtn) clearBtn.style.display = (CR_MODE === 'edit' && CR_ROOM && CR_ROOM.locked) ? 'inline-flex' : 'none';
+  const t = CR_ROOM ? (CR_ROOM.type || 'voice') : 'voice';
+  const a = CR_ROOM ? (CR_ROOM.audience || 'all') : 'all';
+  $$('#crTypePills .cr-pill').forEach(b => b.classList.toggle('active', b.dataset.type === t));
+  $$('#crAudPills .cr-pill').forEach(b => b.classList.toggle('active', b.dataset.aud === a));
+  openOv('createRoomOv');
+  setTimeout(() => $('#crName').focus(), 80);
+}
+// إزالة كلمة المرور الحالية عند التعديل
+const crClearBtn = $('#crClearPass');
+if (crClearBtn) crClearBtn.onclick = () => {
+  CR_CLEAR_PASS = true;
+  $('#crPass').value = '';
+  crClearBtn.innerHTML = '<i class="f7-icons">checkmark_circle_fill</i> ستُزال كلمة المرور عند الحفظ';
+};
+// حبات النوع/الجمهور في نموذج الغرفة
+['#crTypePills', '#crAudPills'].forEach(sel => {
+  const box = $(sel);
+  if (!box) return;
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('.cr-pill');
+    if (!b) return;
+    $$(sel + ' .cr-pill').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+  });
+});
+$('#crSubmit').onclick = async () => {
+  const btn = $('#crSubmit');
+  if (btn.disabled) return;
+  const err = (m) => { $('#crErr').textContent = m || ''; };
+  const name = $('#crName').value.trim();
+  const description = $('#crDesc').value.trim();
+  const password = $('#crPass').value;
+  const type = ($('#crTypePills .cr-pill.active') || {}).dataset ? $('#crTypePills .cr-pill.active').dataset.type : 'voice';
+  const audience = ($('#crAudPills .cr-pill.active') || {}).dataset ? $('#crAudPills .cr-pill.active').dataset.aud : 'all';
+  if (name.length < 2) return err('اكتب اسم الغرفة (حرفان على الأقل)');
+  err('');
+  btn.disabled = true;
+  const oldHtml = btn.innerHTML;
+  btn.innerHTML = '<i class="f7-icons">arrow2_circlepath</i> جارٍ الحفظ...';
+  try {
+    if (CR_MODE === 'edit' && CR_ROOM) {
+      // كلمة المرور: الحقل الفارغ = الإبقاء على الحالية؛ «إزالة كلمة المرور» ترسل فارغة صراحة
+      const body = { name, description, type, audience };
+      if (password) body.password = password;
+      else if (CR_CLEAR_PASS) body.password = '';
+      CR_CLEAR_PASS = false;
+      await api(`/api/rooms/${CR_ROOM.id}/settings`, 'POST', body);
+      toast('✅ تم حفظ إعدادات غرفتك');
+      closeOv('createRoomOv');
+      await loadRooms();
+    } else {
+      const d = await api('/api/rooms', 'POST', { name, description, password, type, audience });
+      toast('🎉 تم إنشاء غرفتك بنجاح — أنت الآن أدمنها');
+      closeOv('createRoomOv');
+      // أدخل غرفتك الجديدة بعد تحديث القائمة حتى تتوفر بيانات الغرفة محلياً
+      await loadRooms();
+      if (d && d.id) enterRoom(+d.id);
+    }
+  } catch (e) {
+    if (e && e.need_register) { closeOv('createRoomOv'); openOv('needRegOv'); }
+    err(e.error || 'تعذر حفظ الغرفة');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = oldHtml;
+  }
+};
+// تأكيد حذف الغرفة
+function askDeleteRoom(room) {
+  if (!room) return;
+  DEL_ROOM = room;
+  $('#delRoomName').textContent = room.name || '-';
+  openOv('delRoomOv');
+}
+let DEL_ROOM = null;
+$('#delRoomYes').onclick = async () => {
+  const room = DEL_ROOM;
+  DEL_ROOM = null;
+  closeOv('delRoomOv');
+  if (!room) return;
+  try {
+    // إن كنت داخل الغرفة اخرج منها أولاً
+    if (CUR_ROOM && +CUR_ROOM.id === +room.id) { leaveRoom(); showScreen('rooms'); }
+    await api('/api/rooms/' + room.id, 'DELETE');
+    toast('🗑️ تم حذف الغرفة — يمكنك الآن إنشاء غرفة جديدة');
+    loadRooms();
+  } catch (e) { toast(e.error || 'تعذر حذف الغرفة', false); }
+};
 function enterRoom(id, pwd, hiddenChoice) {
   if (!ME) { openLogin(); return; }
   const r = ROOMS.find(x => x.id === id);
@@ -11558,7 +11731,21 @@ $('#gGenderSel').onchange = e => {
   const v = e.target.value;
   $('#gGenderTxt').textContent = { boy: 'ذكر', girl: 'أنثى', secret: 'مجهول' }[v];
   $('#gSym').textContent = { boy: 'M', girl: 'F', secret: '؟' }[v];
+  $$('#gGenderPills .g-pill').forEach(b => b.classList.toggle('active', b.dataset.g === v));
+  const heroIco = $('#lgHeroAva');
+  if (heroIco) heroIco.innerHTML = `<i class="f7-icons">${v === 'secret' ? 'question' : 'person_fill'}</i>`;
 };
+// حبات النوع في شاشة الدخول بالاسم
+const gPillsBox = $('#gGenderPills');
+if (gPillsBox) gPillsBox.addEventListener('click', (e) => {
+  const b = e.target.closest('.g-pill');
+  if (!b) return;
+  const sel = $('#gGenderSel');
+  if (sel) { sel.value = b.dataset.g; sel.dispatchEvent(new Event('change')); }
+});
+// «دخول العضو» يفتح نموذج الحساب المسجل مباشرة
+const goMemberBtn = $('#goMemberLogin');
+if (goMemberBtn) goMemberBtn.onclick = () => showLoginTab('member');
 $('#rGenderSel').onchange = e => {
   const v = e.target.value;
   $('#rGenderTxt').textContent = { boy: 'ذكر', girl: 'أنثى', secret: 'مجهول' }[v];
@@ -11816,6 +12003,8 @@ function onLoggedIn() {
   const bm = $('#bnMenu');
   bm.innerHTML = `<span class="bn-ava" id="bnMenuIcon">${avatarHtml(ME.avatar, '', frameOf(ME))}<span style="color: rgb(110, 110, 115); justify-content: center; align-items: center; width: 15px; height: 15px; display: flex; position: absolute; bottom: -3.5px; right: -1.5px; background: rgb(255, 255, 255); border-width: 0px; border-style: none; border-color: currentcolor; border-image: none; border-radius: 50%;"><i aria-hidden="true" class="f7-icons" style="font-size: 10.5px;">line_horizontal_3_decrease_circle_fill</i></span></span><span>القائمة</span>`;
   updatePrivateSettingsButton();
+  // شريط «غرفتي» يتحدث فور الدخول (زر الإنشاء أو بطاقة غرفتي)
+  if (typeof renderMyRoomStrip === 'function') renderMyRoomStrip();
 }
 let _sockTried = false;
 function connectSocketRetry() {
@@ -12219,6 +12408,11 @@ $('#btnRoomUsers').onclick = () => setUsersPanel(!$('#usersPanel').classList.con
 function closeRoomDrop() { $('#roomDrop').classList.remove('open'); $('#roomDropBg').style.display = 'none'; }
 $('#btnRoomMore').onclick = (e) => {
   e.stopPropagation();
+  // أزرار صاحب الغرفة (إدارة/حذف) — تظهر فقط لمالك الغرفة الحالية
+  const isOwner = !!(ME && CUR_ROOM && +CUR_ROOM.owner_id === +ME.id && +CUR_ROOM.owner_id !== 0);
+  const manageBtn = $('#dropManageRoom'), delBtn = $('#dropDeleteRoom');
+  if (manageBtn) manageBtn.style.display = isOwner ? 'flex' : 'none';
+  if (delBtn) delBtn.style.display = isOwner ? 'flex' : 'none';
   const wipe = $('#dropWipeWelcome');
   if (canModerateRank()) {
     if (!wipe && window.__wipeWipeClone) {
@@ -12325,6 +12519,19 @@ $$('.language-option').forEach(b => b.onclick = () => {
 $('#roomDropBg').onclick = closeRoomDrop;
 $('#dropLeaveRoom').onclick = () => { closeRoomDrop(); attemptLeaveRoom(); };
 $('#dropRefreshRooms').onclick = async () => { closeRoomDrop(); await loadRooms(); toast('تم تحديث قائمة الغرف ✓'); };
+// إدارة/حذف غرفتي من قائمة خيارات الغرفة
+$('#dropManageRoom').onclick = () => {
+  closeRoomDrop();
+  const mine = myOwnedRoom();
+  if (mine) openCreateRoomSheet('edit', mine);
+  else if (CUR_ROOM && ME && +CUR_ROOM.owner_id === +ME.id) openCreateRoomSheet('edit', CUR_ROOM);
+};
+$('#dropDeleteRoom').onclick = () => {
+  closeRoomDrop();
+  const mine = myOwnedRoom();
+  const target = (mine && CUR_ROOM && +mine.id === +CUR_ROOM.id) ? mine : (CUR_ROOM && ME && +CUR_ROOM.owner_id === +ME.id ? CUR_ROOM : mine);
+  if (target) askDeleteRoom(target);
+};
 // حبة المايك: قائمة الحالة السريعة
 
 $('#userSearch').oninput = renderUsers;

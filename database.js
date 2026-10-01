@@ -661,6 +661,13 @@ db.serialize(() => {
   db.run(`ALTER TABLE rooms ADD COLUMN hidden INTEGER DEFAULT 0`, () => { });
   db.run(`ALTER TABLE rooms ADD COLUMN seo_slug TEXT DEFAULT ''`, () => { });
 
+  // ---------- الغرف الشخصية (غرفة واحدة لكل حساب) ----------
+  // owner_id = صاحب الغرفة (الحساب الذي أنشأها)؛ يُنشأ له سجل في room_admins
+  // تلقائياً فيصبح أدمن غرفته (طرد/كتم/سحب المايك). لا يمكن للحساب إنشاء
+  // غرفة ثانية قبل حذف غرفته الحالية.
+  db.run(`ALTER TABLE rooms ADD COLUMN owner_id INTEGER DEFAULT 0`, () => { });
+  db.run(`CREATE INDEX IF NOT EXISTS idx_rooms_owner ON rooms (owner_id)`);
+
   // ---------- باقات شحن الذهب ----------
   db.run(`CREATE TABLE IF NOT EXISTS gold_packages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
