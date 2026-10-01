@@ -8856,8 +8856,78 @@ function broadcastPublicState(roomId) {
   const b = roomBroadcast[roomId];
   if (!b) return null;
   const viewersCount = b.mode === 'video' ? (b.viewerOf ? b.viewerOf.size : 0) : b.viewers.size;
-  return { mode: b.mode, hosts: [...b.hosts.values()], primaryHostId: b.primaryHostId, startedAt: b.startedAt, viewers: viewersCount };
+  return { mode: b.mode, hosts: [...b.hosts.values()], primaryHostId: b.primaryHostId, startedAt: b.startedAt, viewers: viewersCount, seats: seatPublicList(roomId) };
 }
+
+// =====================================================
+//  نظام المقاعد الصوتية (تصميم الغرفة)
+//  • المقعد 0 = «المضيف»، والمقاعد 1..8 مرقّمة «رقم ١..رقم ٨»
+//  • الإدارة فقط تحدد من يجلس على كل مقعد (دعوة + موافقة المستخدم)
+//  • مقاعد المذيعين تُستخلص من حالة البث الحالية وتُزامَن معها
+// =====================================================
+const roomSeats = {};        // roomId -> Map(hostId -> seatNo)
+const seatReservations = new Map(); // 'roomId:uid' -> seatNo (محجوز بانتظار صعود صاحبه)
+const seatInvites = new Map();      // 'roomId:targetId' -> {roomId, targetId, seatNo, byUid, byName, timer}
+const SEAT_MAX = 8;          // المقاعد المرقّمة (المضيف خارج هذا العد — مقعده 0)
+
+function seatsMap(roomId) { return roomSeats[roomId] || (roomSeats[roomId] = new Map()); }
+function seatTakenBy(seats, seatNo) { for (const [hid, s] of seats) if (+s === +seatNo) return hid; return 0; }
+function nextFreeSeat(seats, preferHost) {
+  if (preferHost && !seatTakenBy(seats, 0)) return 0;
+  for (let s = 1; s <= SEAT_MAX; s++) if (!seatTakenBy(seats, s)) return s;
+  return !seatTakenBy(seats, 0) ? 0 : SEAT_MAX + 1; // احتياطي خارج المسرح عند الامتلاء
+}
+function seatPublicList(roomId) {
+  const seats = roomSeats[roomId] || new Map();
+  const b = roomBroadcast[roomId];
+  const list = [];
+  for (const [hostId, seatNo] of seats) {
+    const h = b && b.hosts.get(hostId);
+    if (h) list.push({ seat: +seatNo, user: { id: +h.id, username: h.username, avatar: h.avatar || '', badge: h.badge || '' } });
+  }
+  return list;
+}
+function emitRoomSeats(roomId) {
+  io.to('room_' + roomId).emit('roomSeats', { roomId: +roomId, seats: seatPublicList(roomId) });
+}
+// مزامنة المقاعد مع قائمة المذيعين الحقيقية: من غادر يُفرَّغ مقعده، والمذيع الجديد
+// يأخذ مقعده المحجوز (من دعوة الإدارة) أو أدنى مقعد شاغر — والمضيف الأساسي على مقعد «المضيف».
+function syncRoomSeats(roomId) {
+  roomId = +roomId;
+  const b = roomBroadcast[roomId];
+  const seats = seatsMap(roomId);
+  let changed = false;
+  if (!b || b.mode !== 'audio') {
+    if (seats.size) { seats.clear(); changed = true; }
+  } else {
+    for (const [hostId] of [...seats]) if (!b.hosts.has(hostId)) { seats.delete(hostId); changed = true; }
+    for (const hostId of b.hosts.keys()) {
+      if (seats.has(hostId)) continue;
+      const reserved = seatReservations.get(roomId + ':' + hostId);
+      let seat;
+      if (reserved !== undefined && !seatTakenBy(seats, reserved)) seat = +reserved;
+      else seat = nextFreeSeat(seats, hostId === b.primaryHostId);
+      seats.set(hostId, seat);
+      seatReservations.delete(roomId + ':' + hostId);
+      changed = true;
+    }
+  }
+  // تنظيف الحجوزات القديمة لأي مستخدم لم يعد في الغرفة
+  for (const [key] of [...seatReservations]) {
+    const [rid, kUid] = key.split(':');
+    if (+rid === roomId && (!roomUsers[roomId] || !roomUsers[roomId].has(+kUid))) { seatReservations.delete(key); }
+  }
+  if (changed) emitRoomSeats(roomId);
+}
+// إبطال دعوة مقعد (قيد المهلة أو صراحة)
+function clearSeatInvite(roomId, targetId) {
+  const key = roomId + ':' + targetId;
+  const inv = seatInvites.get(key);
+  if (inv && inv.timer) clearTimeout(inv.timer);
+  seatInvites.delete(key);
+  seatReservations.delete(key);
+}
+
 // صلاحية الصعود للبث تُدار حسب العضوية من لوحة الإدارة؛ الشخص المكتوم مستمع فقط.
 async function canStartVideoBroadcast(user) {
   if (!user || mutedActive(user) || user.broadcast_banned) return false;
@@ -8871,6 +8941,7 @@ function endBroadcast(roomId, reason = 'ended') {
   roomId = +roomId;
   if (!roomBroadcast[roomId]) return;
   delete roomBroadcast[roomId];
+  syncRoomSeats(roomId);
   io.to('room_' + roomId).emit('bcast:stopped', { roomId, reason });
 }
 // هل يملك مستخدمٌ ما صلاحية إشراف في الغرفة المحددة؟ (إدارة عامة أو مشرف غرفة)
@@ -8888,6 +8959,7 @@ function removeHostFromBroadcast(roomId, uid, reason = 'host_left') {
   const b = roomBroadcast[roomId];
   if (!b || !b.hosts.has(uid)) return false;
   b.hosts.delete(uid);
+  clearSeatInvite(roomId, uid);
   if (b.hosts.size === 0) { endBroadcast(roomId, reason); return true; }
   io.to('room_' + roomId).emit('bcast:host_left', { roomId, hostId: uid, reason });
   // إن غادر المضيف الأساسي وبقي مذيعون آخرون، يُرقّى أقدمهم مضيفاً أساسياً جديداً تلقائياً
@@ -8895,6 +8967,7 @@ function removeHostFromBroadcast(roomId, uid, reason = 'host_left') {
     b.primaryHostId = [...b.hosts.keys()][0];
     io.to('room_' + roomId).emit('bcast:primary_changed', { roomId, primaryHostId: b.primaryHostId });
   }
+  syncRoomSeats(roomId);
   if (b.mode === 'video') {
     // [بثوث فيديو مستقلة] تنقطع فقط مشاهدة بث هذا المذيع تحديداً؛ أي بث آخر مقبول لدى نفس المشاهد يبقى شغالاً
     if (b.viewerOf) {
@@ -8941,6 +9014,7 @@ function removeHostFromBroadcast(roomId, uid, reason = 'host_left') {
 // عند خروج مستخدم من الغرفة (مغادرة أو انقطاع): يزيله من قائمة المذيعين إن كان مذيعاً، أو من المشاهدين/الطلبات المعلقة.
 function cleanupBroadcastForUser(roomId, uid) {
   roomId = +roomId;
+  clearSeatInvite(roomId, uid);
   const b = roomBroadcast[roomId];
   if (!b) return;
   if (b.hosts.has(uid)) { removeHostFromBroadcast(roomId, uid, 'host_left'); return; }
@@ -9674,6 +9748,7 @@ io.on('connection', async (socket) => {
     }
     b.viewers.delete(uid);
     b.hosts.set(uid, { id: uid, username: hostInfo.username, avatar: hostInfo.avatar, badge: hostInfo.badge, socketId: socket.id, startedAt: Date.now() });
+    syncRoomSeats(roomId); // يمنح المذيع مقعده (المحجوز من دعوة الإدارة أو أول مقعد شاغر)
     io.to('room_' + roomId).emit(isNewBroadcast ? 'bcast:started' : 'bcast:host_joined', {
       roomId, mode, host: hostInfo, hosts: [...b.hosts.values()], primaryHostId: b.primaryHostId
     });
@@ -9725,8 +9800,119 @@ io.on('connection', async (socket) => {
     const existingHosts = [...b.hosts.values()];
     const currentViewers = [...b.viewers];
     b.hosts.set(targetUserId, { ...hostInfo, socketId: null, startedAt: Date.now() });
+    syncRoomSeats(roomId);
     io.to('room_' + roomId).emit('bcast:host_joined', { roomId, mode: b.mode, host: hostInfo, hosts: [...b.hosts.values()], primaryHostId: b.primaryHostId });
     io.to('user_' + targetUserId).emit('bcast:speak_response', { roomId, accept: true, existingHosts, viewers: currentViewers });
+  });
+
+  // ===== إدارة المقاعد الصوتية (الإدارة تحدد من يجلس على كل مقعد) =====
+  // [إدارة] دعوة مستخدم للجلوس على مقعد محدد — يُحجز المقعد له حتى يوافق أو تنتهي المهلة
+  socket.on('seat:invite', async (roomId, seatNo, targetId, cb) => {
+    const ack = typeof cb === 'function' ? cb : () => { };
+    roomId = +roomId; seatNo = +seatNo; targetId = +targetId;
+    if (!(await socketCanModerate(uid, roomId))) return ack({ ok: false, text: 'تُدار المقاعد بواسطة إدارة الغرفة فقط' });
+    if (seatNo < 0 || seatNo > SEAT_MAX) return ack({ ok: false, text: 'رقم المقعد غير صالح' });
+    if (!targetId || targetId === uid) return ack({ ok: false, text: 'اختر مستخدماً آخر' });
+    if (!roomUsers[roomId] || !roomUsers[roomId].has(targetId)) return ack({ ok: false, text: 'هذا المستخدم غير موجود في الغرفة الآن' });
+    const b = roomBroadcast[roomId];
+    if (b && b.hosts.has(targetId)) return ack({ ok: false, text: 'هذا المستخدم على المايك بالفعل' });
+    const seats = seatsMap(roomId);
+    if (seatTakenBy(seats, seatNo)) return ack({ ok: false, text: 'هذا المقعد محجوز بالفعل' });
+    // المقعد غير محجوز لدعوة أخرى معلقة
+    for (const [key, inv] of seatInvites) {
+      if (inv.roomId === roomId && inv.seatNo === seatNo && inv.targetId !== targetId) return ack({ ok: false, text: 'هناك دعوة معلقة لهذا المقعد' });
+    }
+    const target = await q.get(`SELECT id,username,avatar,rank,membership,registered,muted,muted_until,broadcast_banned FROM users WHERE id=?`, targetId);
+    if (!target) return ack({ ok: false, text: 'المستخدم غير موجود' });
+    if (mutedActive(target) || target.broadcast_banned) return ack({ ok: false, text: 'هذا المستخدم مكتوم أو ممنوع من الصعود — لا يمكن دعوته للمقعد' });
+    clearSeatInvite(roomId, targetId);
+    const key = roomId + ':' + targetId;
+    const invite = {
+      roomId, targetId, seatNo,
+      byUid: uid, byName: me.username,
+      timer: setTimeout(() => {
+        seatInvites.delete(key);
+        seatReservations.delete(key);
+        io.to('user_' + targetId).emit('seat:invite_expired', { roomId, seatNo });
+      }, 90000)
+    };
+    seatInvites.set(key, invite);
+    seatReservations.set(key, seatNo); // حجز المقعد فوراً حتى لا يأخذه أحد بينما الطلب معلق
+    io.to('user_' + targetId).emit('seat:invite', {
+      roomId, seatNo,
+      by: { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me) },
+      seatLabel: seatNo === 0 ? 'المضيف' : 'رقم ' + seatNo
+    });
+    ack({ ok: true });
+  });
+
+  // [مدعو] قبول دعوة المقعد — يحجز مقعده ثم يصعد المذيع عبر المسار المعتاد (bcast:start من العميل)
+  socket.on('seat:accept', (roomId, cb) => {
+    const ack = typeof cb === 'function' ? cb : () => { };
+    roomId = +roomId;
+    const key = roomId + ':' + uid;
+    const inv = seatInvites.get(key);
+    if (!inv) return ack({ ok: false, text: 'انتهت دعوة المقعد أو أُلغيت' });
+    if (inv.timer) clearTimeout(inv.timer);
+    seatInvites.delete(key);
+    // يبقى الحجز قائماً حتى يستهلكه الصعود الفعلي (syncRoomSeats)
+    seatReservations.set(key, inv.seatNo);
+    io.to('user_' + inv.byUid).emit('seat:accepted', { roomId, seatNo: inv.seatNo, username: me.username });
+    ack({ ok: true, seatNo: inv.seatNo });
+  });
+
+  // [مدعو] رفض دعوة المقعد
+  socket.on('seat:decline', (roomId) => {
+    roomId = +roomId;
+    const key = roomId + ':' + uid;
+    const inv = seatInvites.get(key);
+    clearSeatInvite(roomId, uid);
+    if (inv) io.to('user_' + inv.byUid).emit('seat:declined', { roomId, seatNo: inv.seatNo, username: me.username });
+  });
+
+  // [إدارة] إلغاء دعوة مقعد معلقة
+  socket.on('seat:cancel', async (roomId, targetId, cb) => {
+    const ack = typeof cb === 'function' ? cb : () => { };
+    roomId = +roomId; targetId = +targetId;
+    if (!(await socketCanModerate(uid, roomId))) return ack({ ok: false, text: 'تُدار المقاعد بواسطة إدارة الغرفة فقط' });
+    clearSeatInvite(roomId, targetId);
+    io.to('user_' + targetId).emit('seat:invite_expired', { roomId });
+    ack({ ok: true });
+  });
+
+  // [مستخدم] طلب الصعود إلى المقعد — يصل لإدارة الغرفة المتصلة ليقرروا إعطاؤه مقعداً
+  socket.on('seat:request', async (roomId, cb) => {
+    const ack = typeof cb === 'function' ? cb : () => { };
+    roomId = +roomId;
+    if (!socket.data.joinedRooms.has(roomId)) return ack({ ok: false, text: 'ادخل الغرفة أولاً' });
+    const b = roomBroadcast[roomId];
+    if (b && b.hosts.has(uid)) return ack({ ok: false, text: 'أنت على المايك بالفعل' });
+    me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
+    if (!await canStartAudioBroadcast(me)) return ack({
+      ok: false,
+      text: me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (mutedActive(me) ? 'أنت مكتوم ولا يمكنك طلب الصعود' : 'عضويتك غير مسموح لها بالصعود كمذيع')
+    });
+    // أرسل الطلب لكل مشرفي الغرفة المتصلين (أدمن الغرفة + الإدارة العامة)
+    const raRows = await q.all(`SELECT user_id FROM room_admins WHERE room_id=?`, roomId);
+    const modIds = new Set(raRows.map(r => +r.user_id));
+    for (const mid of roomUsers[roomId] || []) {
+      const mu = await q.get(`SELECT rank FROM users WHERE id=?`, mid).catch(() => null);
+      if (mu && ['admin', 'superadmin', 'supermaster'].includes(mu.rank)) modIds.add(+mid);
+    }
+    modIds.delete(uid);
+    const payload = {
+      roomId,
+      user: { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me) }
+    };
+    let delivered = 0;
+    for (const mid of modIds) {
+      if (roomUsers[roomId] && roomUsers[roomId].has(mid)) {
+        io.to('user_' + mid).emit('seat:request', payload);
+        delivered++;
+      }
+    }
+    if (!delivered) return ack({ ok: false, text: 'لا يوجد أحد من إدارة الغرفة متصل الآن — حاول لاحقاً' });
+    ack({ ok: true, pending: true });
   });
 
   // إزالة مذيع وإعادته مستمعاً — للمضيف الأساسي فقط
@@ -9736,6 +9922,8 @@ io.on('connection', async (socket) => {
     if (!b || b.mode !== 'audio' || b.primaryHostId !== uid || targetUserId === uid || !b.hosts.has(targetUserId)) return;
     b.hosts.delete(targetUserId);
     b.viewers.add(targetUserId);
+    clearSeatInvite(roomId, targetUserId);
+    syncRoomSeats(roomId);
     io.to('room_' + roomId).emit('bcast:host_left', { roomId, hostId: targetUserId, reason: 'removed_by_host' });
     io.to('user_' + targetUserId).emit('bcast:speaker_removed', { roomId });
     for (const hostId of b.hosts.keys()) io.to('user_' + hostId).emit('bcast:new_listener', { roomId, listenerId: targetUserId });
@@ -9755,7 +9943,9 @@ io.on('connection', async (socket) => {
       b.primaryHostId = [...b.hosts.keys()].filter(h => h !== targetUserId)[0] || null;
     }
     b.hosts.delete(targetUserId);
+    clearSeatInvite(roomId, targetUserId);
     if (mode === 'audio') b.viewers.add(targetUserId);
+    syncRoomSeats(roomId);
     // إعلام الجميع أن هذا المذيع غادر البث (المذيع المرقّى سيتولى الصلاحيات عبر primary_changed).
     io.to('room_' + roomId).emit('bcast:host_left', { roomId, hostId: targetUserId, reason: 'removed_by_moderator' });
     if (b.primaryHostId && b.hosts.has(b.primaryHostId)) {

@@ -136,6 +136,14 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <div class="bubble3333 b4"><svg class="icon-heart3333" viewBox="0 0 32 29.6"><path d="M23.6,0c-2.9,0-5.4,1.8-6.6,4.4C15.8,1.8,13.3,0,10.4,0C5.5,0,1.6,3.9,1.6,8.8c0,9.3,15.4,20.8,15.4,20.8S32.4,18.1,32.4,8.8C32.4,3.9,28.5,0,23.6,0z"/></svg></div>
       </div>
     </div>
+
+    <!-- 🎤 مسرح المقاعد الصوتية (للغرف الصوتية): مقعد المضيف + ٨ مقاعد مرقّمة -->
+    <div class="seats-stage" id="seatsStage" hidden>
+      <div class="seats-glow" aria-hidden="true"></div>
+      <div class="seats-host-row" id="seatsHostRow"></div>
+      <div class="seats-grid" id="seatsGrid"></div>
+    </div>
+
     <!-- زر كتم مستقل بجانب الشاشة: يظهر عندما أكون مذيعاً (حتى لو مذيعاً وحيداً) أو عند تعدد المذيعين — لكتم صوت المذيعين -->
     <button class="live-mute-float" id="liveBarMute" type="button" title="كتم/إلغاء كتم صوت المذيعين" hidden><i class="f7-icons" id="liveBarMuteIcon">speaker_2_fill</i></button>
     <!-- طبقة صوت خفية لتشغيل البث الصوتي المباشر تلقائياً في الغرف الصوتية -->
@@ -1458,6 +1466,34 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <div class="dlg-btns">
         <button id="modTimeCancel" data-close="modTimeOv">إلغاء</button>
         <button id="modTimeOk">تأكيد</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🎤 تثبيت مستخدم على مقعد (للإدارة) — المقاعد تُحدد حصراً من الإدارة -->
+  <div class="overlay full" id="seatPickerOv">
+    <div class="pvpage">
+      <div class="pg-head bar mid">
+        <span class="pg-close back" data-close="seatPickerOv" style="flex-direction: row-reverse;"><i class="f7-icons">chevron_left</i> عودة</span>
+        <span class="pg-title" id="seatPickerTitle">تثبيت مستخدم على المقعد</span>
+      </div>
+      <div class="sp-count">متصل الان <b id="seatPickerCount">0</b> — اختر من يجلس على هذا المقعد</div>
+      <div class="sp-body" id="seatPickerList"></div>
+    </div>
+  </div>
+
+  <!-- 🎤 دعوة صعود إلى مقعد (تصل للمستخدم المختار من الإدارة) -->
+  <div class="overlay center" id="seatInviteOv">
+    <div class="dialog seat-invite-dialog">
+      <div class="dlg-title"><i class="f7-icons" style="font-size:19px;vertical-align:-3px;color:var(--main)">mic_fill</i> دعوة صعود إلى المايك</div>
+      <div class="dlg-body" style="text-align:center">
+        <div class="si-ava" id="seatInviteAva"></div>
+        <p style="font-weight:900;color:var(--navy);margin:8px 0 4px">رشّحتك إدارة الغرفة للجلوس على المقعد <b id="seatInviteSeat" style="color:var(--main)">-</b></p>
+        <p class="si-by" id="seatInviteBy">-</p>
+      </div>
+      <div class="dlg-btns">
+        <button id="seatInviteNo">لاحقاً</button>
+        <button id="seatInviteYes">قبول والصعود 🎤</button>
       </div>
     </div>
   </div>

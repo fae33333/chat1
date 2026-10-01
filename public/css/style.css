@@ -20025,3 +20025,261 @@ body.lang-ltr .r-logo {
 .cr-clear-pass i {
     font-size: 13px
 }
+
+/* =====================================================
+//  🎤 مسرح المقاعد الصوتية (تصميم الغرفة المرجعي)
+   ===================================================== */
+.seats-stage {
+    position: relative;
+    flex: none;
+    padding: 16px 10px 12px;
+    background:
+        radial-gradient(120% 90% at 50% -10%, rgba(168, 85, 247, .55), rgba(76, 29, 149, 0) 60%),
+        linear-gradient(180deg, #3b1276 0%, #2c0d5e 55%, #22094b 100%);
+    overflow: hidden;
+    border-bottom: 1px solid rgba(255, 255, 255, .08)
+}
+
+.seats-glow {
+    position: absolute;
+    inset: -40% -10% auto;
+    height: 140%;
+    background: radial-gradient(50% 55% at 50% 30%, rgba(192, 132, 252, .35), transparent 70%);
+    pointer-events: none
+}
+
+.seats-host-row {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px
+}
+
+.seats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px 4px
+}
+
+.seat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none
+}
+
+.seat-item:active {
+    transform: scale(.95)
+}
+
+.seat-circle {
+    position: relative;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, .10);
+    border: 1.5px solid rgba(255, 255, 255, .16);
+    box-shadow: 0 6px 16px rgba(20, 5, 60, .35);
+    overflow: visible
+}
+
+.seats-host-row .seat-circle {
+    width: 72px;
+    height: 72px
+}
+
+.seat-chair {
+    width: 30px;
+    height: 30px;
+    fill: rgba(255, 255, 255, .62)
+}
+
+.seats-host-row .seat-chair {
+    width: 38px;
+    height: 38px
+}
+
+.seat-ava {
+    position: absolute;
+    inset: 2px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: linear-gradient(160deg, #b48cff, #7c3aed)
+}
+
+.seat-ava img,
+.seat-ava .ava-ph {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 50%
+}
+
+.seat-item.occupied .seat-circle {
+    border-color: rgba(255, 255, 255, .45);
+    background: rgba(255, 255, 255, .2)
+}
+
+.seat-item.is-me .seat-circle {
+    border-color: #fbbf24;
+    box-shadow: 0 0 18px rgba(251, 191, 36, .55)
+}
+
+/* حلقة «يتحدث الآن» حول صورة المتكلم */
+.seat-live-ring {
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 2.5px solid transparent;
+    pointer-events: none
+}
+
+.seat-item.is-speaking .seat-live-ring {
+    border-color: #34d399;
+    box-shadow: 0 0 16px rgba(52, 211, 153, .8);
+    animation: seatSpeakPulse 1s ease-in-out infinite
+}
+
+@keyframes seatSpeakPulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 10px rgba(52, 211, 153, .55)
+    }
+
+    50% {
+        box-shadow: 0 0 22px rgba(52, 211, 153, .95)
+    }
+}
+
+.seat-name {
+    max-width: 82px;
+    font-size: 11px;
+    font-weight: 900;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, .45)
+}
+
+.seat-label {
+    font-size: 11px;
+    font-weight: 800;
+    color: rgba(255, 255, 255, .62);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, .4)
+}
+
+/* وسم «طلب صعود» في قائمة اختيار المقعد */
+.seat-req-tag {
+    font-size: 9.5px;
+    font-weight: 900;
+    color: #fff;
+    background: var(--skin-btn);
+    border-radius: 20px;
+    padding: 3px 9px;
+    margin-inline-start: 6px;
+    flex: none
+}
+
+/* نافذة دعوة المقعد */
+.seat-invite-dialog {
+    border-radius: 20px
+}
+
+.si-ava {
+    width: 74px;
+    height: 74px;
+    margin: 4px auto 0;
+    border-radius: 50%;
+    overflow: hidden;
+    background: linear-gradient(160deg, var(--main), var(--main2));
+    border: 2.5px solid var(--skin-border)
+}
+
+.si-ava img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block
+}
+
+.si-by {
+    font-size: 12.5px;
+    font-weight: 800;
+    color: var(--gray);
+    margin: 2px 0 6px
+}
+
+/* =====================================================
+   💌 رسائل الغرفة (شكل محدّد: صندوق ترحيبي مدوّر + فقاعات)
+   ===================================================== */
+.room-welcome.supervision-welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    max-width: 92%;
+    margin: 10px auto;
+    padding: 13px 18px;
+    background: linear-gradient(160deg, rgba(124, 58, 237, .16), rgba(124, 58, 237, .08));
+    border: 1px solid rgba(124, 58, 237, .22);
+    border-radius: 18px;
+    text-align: center
+}
+
+.room-welcome.supervision-welcome img {
+    width: 22px;
+    height: 22px
+}
+
+.room-welcome .room-welcome-title {
+    font-size: 11.5px;
+    font-weight: 900;
+    color: var(--main);
+    letter-spacing: .2px
+}
+
+.room-welcome .room-welcome-text {
+    font-size: 13.5px;
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1.9
+}
+
+/* فقاعة الرسالة: النص داخل فقاعة مدوّرة تحت الاسم */
+.msg .mbody {
+    min-width: 0
+}
+
+.msg .mline2 .mtext {
+    display: inline-block;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 4px 16px 16px 16px;
+    padding: 8px 13px;
+    margin-top: 3px;
+    line-height: 1.8;
+    max-width: 100%;
+    word-break: break-word
+}
+
+.msg .mline1 {
+    margin-bottom: 1px
+}
+
+.msg .mname {
+    font-size: 13.5px !important;
+    font-weight: 900 !important
+}
+
+.msg .mmark {
+    vertical-align: middle
+}

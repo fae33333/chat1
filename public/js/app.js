@@ -116,6 +116,9 @@ function rtcPrivateCallConfig() {
 }
 let ROOM_BCAST = {};        // roomId -> {mode, hosts:[{id,username,avatar,badge},...], viewers} آخر حالة معروفة للبث بكل غرفة
 let BCAST = null;           // الحالة الحية للبث الجاري (فيديو أو صوت) في الغرفة الحالية، أو null
+let ROOM_SEATS = {};        // roomId -> [{seat, user}] حالة المقاعد الصوتية (0=المضيف، 1..8 مرقّمة)
+let SEAT_REQUESTS = new Map(); // طلبات الصعود إلى المقاعد المعلقة (userId -> {username,avatar,roomId}) — لإدارة الغرفة
+let SEAT_INVITE = null;     // دعوة المقعد الحالية الواردة إليّ {roomId, seatNo, by}
 let BCAST_SIGNAL_QUEUE = []; // إشارات وصلت قبل تهيئة BCAST (سباق زمني عند الدخول لغرفة فيها بث نشط) — تُطبَّق فور التهيئة
 // سجلّ دائم بتدفّقات كل مذيع (hostId -> MediaStream) مستقلّ عن كائن BCAST المؤقت،
 // حتى تعيد الواجهة ربط عنصر الصوت بالتدفّق إذا انقطع أو أُعيد بناء الحالة.
@@ -3071,6 +3074,42 @@ function connectSocket() {
     bcastRenderBar();
     setTimeout(() => { try { bcastRenderBar(); } catch (e) {} }, 150);
   });
+
+  // ===== نظام المقاعد الصوتية (الإدارة تحدد المقاعد) =====
+  SOCKET.on('roomSeats', ({ roomId, seats }) => {
+    ROOM_SEATS[+roomId] = Array.isArray(seats) ? seats : [];
+    if (CUR_ROOM && +roomId === CUR_ROOM.id) renderSeats();
+  });
+  // [المدعو] دعوة جلوس على مقعد من الإدارة
+  SOCKET.on('seat:invite', ({ roomId, seatNo, by, seatLabel }) => {
+    if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
+    SEAT_INVITE = { roomId: +roomId, seatNo: +seatNo, by };
+    $('#seatInviteSeat').textContent = seatLabel || seatLabelOf(+seatNo);
+    $('#seatInviteBy').textContent = 'بواسطة ' + ((by && by.username) || 'الإدارة');
+    $('#seatInviteAva').innerHTML = avatarHtml(by && by.avatar);
+    openOv('seatInviteOv');
+    beep(880, .15);
+  });
+  SOCKET.on('seat:invite_expired', ({ roomId }) => {
+    if (SEAT_INVITE && +SEAT_INVITE.roomId === +roomId) { SEAT_INVITE = null; closeOv('seatInviteOv'); }
+    toast('انتهت دعوة المقعد أو أُلغيت', false);
+  });
+  // [الإدارة] الموافقة/الرفض على دعوتي للمقعد
+  SOCKET.on('seat:accepted', ({ seatNo, username }) => {
+    toast(`وافق ${username} على الصعود إلى ${seatLabelOf(+seatNo)} 🎤`);
+  });
+  SOCKET.on('seat:declined', ({ username }) => {
+    toast(`رفض ${username} دعوة الصعود إلى المقعد`, false);
+  });
+  // [الإدارة] طلب صعود مستخدم إلى المايك
+  SOCKET.on('seat:request', ({ roomId, user }) => {
+    if (!user) return;
+    SEAT_REQUESTS.set(+user.id, { ...user, roomId: +roomId });
+    if (canModerateRank()) {
+      toast(`يريد ${user.username} الصعود إلى المايك 🎤 — اضغط على مقعد فارغ لاختياره`);
+      renderSeatPickerListIfOpen();
+    }
+  });
   // [للمتحدث الذي أُزيل] أعادني المضيف الأساسي/المشرف إلى وضع الاستماع
   SOCKET.on('bcast:speaker_removed', ({ roomId }) => {
     if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
@@ -3100,11 +3139,14 @@ let SPEAK_REQUEST_PENDING = false; // هل لدي طلب تحدث معلّق ب�
 function updateVoiceRoomBarUI() {
   const voiceRoom = !!(CUR_ROOM && CUR_ROOM.type === 'voice');
   const bar = $('#liveBar');
-  if (bar) bar.hidden = !voiceRoom;
+  // شريط البث القديم مُستبدل بمسرح المقاعد في الغرف الصوتية — يبقى مخفياً دائماً
+  if (bar) bar.hidden = true;
   const btn = $('#btnTalkLive');
-  if (!btn) return;
-  btn.hidden = !voiceRoom;
-  btn.classList.toggle('on-air', !!(voiceRoom && ROOM_BCAST[CUR_ROOM.id]));
+  if (btn) {
+    btn.hidden = !voiceRoom;
+    btn.classList.toggle('on-air', !!(voiceRoom && ROOM_BCAST[CUR_ROOM.id]));
+  }
+  if (typeof renderSeats === 'function') renderSeats();
 }
 
 // شكل «لا يوجد احد في البث المباشر حي الان» قبل صعود أي مذيع في الغرفة الصوتية:
@@ -3118,6 +3160,127 @@ function renderIdleRoomNotice() {
     '<div class="red-circle3333 skin_color"></div>' +
     '<img class="video-icon3333" src="https://up6.cc/2025/10/176422975625851.gif" alt="ميكروفون">';
 }
+
+// =====================================================
+//  🎤 مسرح المقاعد الصوتية — مقعد «المضيف» + ٨ مقاعد مرقّمة
+//  المقاعد تُحدد حصراً من إدارة الغرفة: دعوة للمقعد + موافقة المستخدم
+// =====================================================
+const SEAT_CHAIR_SVG = '<svg class="seat-chair" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4C3.3 4 2 5.3 2 7v6c0 .6.4 1 1 1h1v3c0 .6.4 1 1 1h12c.6 0 1-.4 1-1v-3h1c.6 0 1-.4 1-1V7c0-1.7-1.3-3-3-3H5zm0 2h14c.6 0 1 .4 1 1v5h-2v-2c0-.6-.4-1-1-1H7c-.6 0-1 .4-1 1v2H4V7c0-.6.4-1 1-1zm1 8h12v3H6v-3z"/></svg>';
+function seatEntriesByIndex() {
+  const map = {};
+  if (!CUR_ROOM) return map;
+  (ROOM_SEATS[CUR_ROOM.id] || []).forEach(e => { if (+e.seat >= 0 && +e.seat <= 8 && e.user) map[+e.seat] = e.user; });
+  // أي مذيع بلا مقعد مُسجَّل (حالات الترقية السريعة) يُوضع تلقائياً على أول مقعد شاغر
+  const state = ROOM_BCAST[CUR_ROOM.id];
+  const hosts = (state && state.hosts) || [];
+  const placed = new Set(Object.values(map).map(u => +u.id));
+  const freeSeats = [0, 1, 2, 3, 4, 5, 6, 7, 8].filter(s => !map[s]);
+  hosts.forEach(h => {
+    if (!placed.has(+h.id) && freeSeats.length) map[freeSeats.shift()] = h;
+  });
+  return map;
+}
+function seatLabelOf(seatNo) { return seatNo === 0 ? 'المضيف' : 'رقم ' + seatNo; }
+function renderSeats() {
+  const stage = $('#seatsStage');
+  if (!stage) return;
+  const voiceRoom = !!(CUR_ROOM && CUR_ROOM.type === 'voice');
+  stage.hidden = !voiceRoom;
+  if (!voiceRoom) return;
+  const bySeat = seatEntriesByIndex();
+  const seatHtml = (seatNo) => {
+    const u = bySeat[seatNo];
+    if (u) {
+      const isMe = ME && +u.id === +ME.id;
+      return `<div class="seat-item occupied${isMe ? ' is-me' : ''}" data-hid="${u.id}" data-seat="${seatNo}" role="button" tabindex="0" title="${esc(u.username)}">
+        <div class="seat-circle"><span class="seat-ava">${liveAvatarHtml(u.avatar, false, '')}</span><span class="seat-live-ring"></span></div>
+        <div class="seat-name">${esc(u.username)}${isMe ? ' ⭐' : ''}</div>
+      </div>`;
+    }
+    return `<div class="seat-item empty" data-seat="${seatNo}" role="button" tabindex="0" title="${seatNo === 0 ? 'مقعد المضيف' : 'المقعد رقم ' + seatNo}">
+      <div class="seat-circle">${SEAT_CHAIR_SVG}</div>
+      <div class="seat-label">${seatLabelOf(seatNo)}</div>
+    </div>`;
+  };
+  const hostRow = $('#seatsHostRow'), grid = $('#seatsGrid');
+  if (hostRow) hostRow.innerHTML = seatHtml(0);
+  if (grid) grid.innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(seatHtml).join('');
+  $$('#seatsStage .seat-item').forEach(el => el.onclick = () => onSeatClick(+el.dataset.seat, el.dataset.hid ? +el.dataset.hid : 0));
+  try { bcastApplySpeaking(); } catch (e) { }
+}
+function onSeatClick(seatNo, hostId) {
+  if (!CUR_ROOM) return;
+  if (hostId) {
+    // مقعد مشغول: أنا → شاشة بثي/ورقتي، غيري → ورقة المستخدم (فيها سحب المايك/الكتم للإدارة)
+    if (ME && hostId === ME.id && BCAST && BCAST.isHost && BCAST.roomId === CUR_ROOM.id) return openOv('bcastOv');
+    return openUserSheet(hostId);
+  }
+  if (!ME) return openLogin();
+  if (canModerateRank()) return openSeatPicker(seatNo);
+  toast('المقاعد تُحدد بواسطة إدارة الغرفة — اطلب الصعود من الإدارة', false);
+}
+// ---- تثبيت مستخدم على مقعد (للإدارة فقط) ----
+let SEAT_PICK_SEAT = 0;
+function openSeatPicker(seatNo) {
+  if (!CUR_ROOM) return;
+  SEAT_PICK_SEAT = seatNo;
+  $('#seatPickerTitle').textContent = seatNo === 0 ? 'تثبيت المضيف' : `تثبيت مستخدم على المقعد ${seatLabelOf(seatNo)}`;
+  renderSeatPickerList();
+  openOv('seatPickerOv');
+}
+function renderSeatPickerList() {
+  if (!CUR_ROOM) return;
+  const busy = new Set(Object.values(seatEntriesByIndex()).map(u => +u.id));
+  const list = (ROOM_USERS || [])
+    .filter(u => !busy.has(+u.id) && !(u.rank === 'supermaster'))
+    .sort((a, b) => {
+      const ra = SEAT_REQUESTS.has(+a.id) ? 0 : 1, rb = SEAT_REQUESTS.has(+b.id) ? 0 : 1;
+      return ra - rb || String(a.username).localeCompare(String(b.username), 'ar');
+    });
+  $('#seatPickerCount').textContent = list.length;
+  $('#seatPickerList').innerHTML = list.length ? list.map(u => {
+    const req = SEAT_REQUESTS.has(+u.id);
+    return `
+    <div class="users-row${u.muted ? ' muted-user' : ''}" data-id="${u.id}">
+      <img class="ubadge" src="/badges/${badgeOf(u)}" alt="">
+      <div class="uava${statusRingClass(u.id)}">${liveAvatarHtml(u.avatar, false, frameOf(u))}<span class="dot ${statusDot(u.status)}"></span></div>
+      <div class="uname" style="color:${userColor(u)};font-weight:${userWeight(u)}">${esc(u.username)}${u.muted ? ' <i class="f7-icons muted-user-mark">mic_slash_fill</i>' : ''}</div>
+      ${req ? '<span class="seat-req-tag">طلب صعود 🎤</span>' : ''}
+    </div>`;
+  }).join('') : '<div class="pv-empty"><div>لا يوجد مستخدمون متاحون الآن</div></div>';
+  $$('#seatPickerList .users-row').forEach(r => r.onclick = () => sendSeatInvite(+r.dataset.id));
+}
+function sendSeatInvite(targetId) {
+  const seatNo = SEAT_PICK_SEAT;
+  if (!CUR_ROOM || !SOCKET) return;
+  SOCKET.emit('seat:invite', CUR_ROOM.id, seatNo, targetId, (res) => {
+    if (!res || !res.ok) return toast((res && res.text) || 'تعذر إرسال دعوة المقعد', false);
+    SEAT_REQUESTS.delete(targetId);
+    closeOv('seatPickerOv');
+    toast('أُرسلت دعوة المقعد — بانتظار موافقة المستخدم 🎤');
+  });
+}
+function renderSeatPickerListIfOpen() {
+  const ov = $('#seatPickerOv');
+  if (ov && ov.classList.contains('open')) renderSeatPickerList();
+}
+// قبول/رفض دعوة المقعد الواردة إليّ
+$('#seatInviteYes').onclick = () => {
+  const inv = SEAT_INVITE; SEAT_INVITE = null;
+  closeOv('seatInviteOv');
+  if (!inv || !SOCKET) return;
+  SOCKET.emit('seat:accept', inv.roomId, (res) => {
+    if (!res || !res.ok) return toast((res && res.text) || 'تعذر قبول دعوة المقعد', false);
+    // الصعود الفعلي كمذيع — المقعد محجوز لي في الخادم حتى أصعد
+    bcastStart('audio');
+  });
+};
+$('#seatInviteNo').onclick = () => {
+  const inv = SEAT_INVITE; SEAT_INVITE = null;
+  closeOv('seatInviteOv');
+  if (inv && SOCKET) SOCKET.emit('seat:decline', inv.roomId);
+};
+// ردود دعوات المقاعد (قبول/رفض) — تُربط مع بقية أحداث السوكيت
 
 // يحدّث شريط البث أعلى شاشة الدردشة حسب حالة الغرفة الحالية
 function bcastRenderBar() {
@@ -3264,7 +3427,7 @@ function bcastLevelDetach(hostId) {
   BCAST_LEVELS.delete(hostId);
   // إطفاء المؤشر الخاص بهذا المذيع (لم يعد ضمن من نتتبعهم)
   try {
-    document.querySelectorAll(`.lb-host-chip[data-hid="${hostId}"], .bcast-speaker-row[data-uid="${hostId}"], #bcastTile_${hostId}`).forEach(el => {
+    document.querySelectorAll(`.lb-host-chip[data-hid="${hostId}"], .bcast-speaker-row[data-uid="${hostId}"], #bcastTile_${hostId}, .seat-item[data-hid=\"${hostId}\"]`).forEach(el => {
       el.classList.remove('is-speaking');
     });
   } catch (er) {}
@@ -3324,7 +3487,7 @@ function bcastApplySpeaking() {
   for (const [id, e] of BCAST_LEVELS) {
     const on = e.speaking;
     // عناصر واجهة البث فقط: شريحة الشريط / صف المتحدثين / بلاطة الفيديو
-    document.querySelectorAll(`.lb-host-chip[data-hid="${id}"], .bcast-speaker-row[data-uid="${id}"], #bcastTile_${id}`).forEach(el => {
+    document.querySelectorAll(`.lb-host-chip[data-hid="${id}"], .bcast-speaker-row[data-uid="${id}"], #bcastTile_${id}, .seat-item[data-hid=\"${id}\"]`).forEach(el => {
       el.classList.toggle('is-speaking', on);
     });
   }
@@ -3943,10 +4106,11 @@ function bcastLeaveAsViewer() {
 // يُستدعى عند دخول غرفة (من ack الانضمام) لضبط حالة البث الحالية للغرفة
 function bcastApplyJoinState(roomId, broadcastState) {
   if (broadcastState) {
+    if (Array.isArray(broadcastState.seats)) ROOM_SEATS[roomId] = broadcastState.seats;
     ROOM_BCAST[roomId] = broadcastState;
     const iAmAlreadyHost = ME && broadcastState.hosts.some(h => h.id === ME.id);
     if (broadcastState.mode === 'audio' && !iAmAlreadyHost) bcastViewerAutoConnectAudio(roomId, broadcastState.hosts);
-  } else delete ROOM_BCAST[roomId];
+  } else { delete ROOM_BCAST[roomId]; delete ROOM_SEATS[roomId]; }
   syncRoomUserBroadcastFlags(roomId);
   bcastRenderBar();
 }
@@ -12393,6 +12557,7 @@ function leaveRoom() {
       bcastResetState();
     }
     delete ROOM_BCAST[CUR_ROOM.id];
+    delete ROOM_SEATS[CUR_ROOM.id];
     SOCKET.emit('leave', CUR_ROOM.id);
     delete ROOM_HIDDEN[CUR_ROOM.id];
   }
@@ -13046,12 +13211,17 @@ $('#btnMic').onclick = () => {
   startVoiceRecording();
 };
 // زر «تحدث» بجانب زر الميكروفون: في الغرفة الصوتية يصعد بي كمذيع (بث صوتي).
-// إن كنت مذيعاً بالفعل يفتح شاشة بثي العائمة، تماماً كما كان يفعل زر «بث صوتي» العلوي.
+// المقاعد تُحدد من إدارة الغرفة: الإدارة تختار بنفسها، وباقي المستخدمين يرسلون طلب صعود.
 $('#btnTalkLive').onclick = () => {
   if (!ME) return openLogin();
   if (!CUR_ROOM || CUR_ROOM.type !== 'voice') return;
   if (BCAST && BCAST.isHost && BCAST.roomId === CUR_ROOM.id) return openOv('bcastOv');
-  bcastOpenStartConfirm('audio');
+  if (canModerateRank()) return bcastOpenStartConfirm('audio');
+  if (!SOCKET) return toast('لا يوجد اتصال بالدردشة', false);
+  SOCKET.emit('seat:request', CUR_ROOM.id, (res) => {
+    if (!res || !res.ok) return toast((res && res.text) || 'تعذر إرسال طلب الصعود', false);
+    toast('أُرسل طلبك إلى إدارة الغرفة — بانتظار تحديد مقعد لك 🎤');
+  });
 };
 $('#pmMic').onclick = () => {
   if (!PM_WITH) return toast('المحادثة الخاصة غير مفتوحة', false);
