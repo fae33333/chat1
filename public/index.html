@@ -80,7 +80,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   <div class="royal-banner-layer" id="royalBannerLayer" aria-hidden="true"></div>
 
   <!-- ============ شاشة الدردشة ============ -->
-  <section id="chatScreen" class="screen">
+  <section id="chatScreen" class="screen room-skin">
     <header class="c-top dots-bg">
       <i class="f7-icons c-back" id="chatBack">chevron_left</i>
       <span class="c-room-name" id="chatRoomName">-</span>
@@ -139,13 +139,23 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <div class="enter-drop chat-drop" id="roomDrop">
       <button id="dropLeaveRoom">مغادرة الغرفة <i class="f7-icons">chevron_right</i></button>
       <button id="dropRefreshRooms">تحديث الغرف <i class="f7-icons">chevron_right</i></button>
-      <button id="dropHideWelcome" title="حذف «العام» من شاشة أنت فقط — يظل ظاهراً لبقية المستخدمين">حذف العام لدي فقط <i class="f7-icons">chevron_right</i></button>
-      <button id="dropWipeWelcome" style="display:none" title="حذف «العام» نهائياً من الغرفة لجميع المستخدمين">حذف العام للجميع <i class="f7-icons">chevron_right</i></button>
+      <button id="dropHideWelcome" title="إخفاء رسالة الترحيب لديك فقط — تبقى ظاهرة لبقية المستخدمين">إخفاء الترحيب لدي فقط <i class="f7-icons">chevron_right</i></button>
+      <button id="dropWipeWelcome" style="display:none" title="إيقاف رسالة الترحيب في هذه الغرفة للجميع">حذف الترحيب للجميع <i class="f7-icons">chevron_right</i></button>
     </div>
     <!-- طبقة العلامة المائية الثابتة في خلفية الدردشة العامة خلف كل الرسائل -->
     <div class="chat-bg-watermark" id="chatBgWatermark" aria-hidden="true">
       <div class="pm-water">الدردشة العربية</div>
     </div>
+    <!-- مساحة مقاعد الغرفة — تعرض المالك والمتصلين بتصميم ثابت حتى على الأجهزة الصغيرة -->
+    <section class="room-stage" id="roomStage" aria-label="مقاعد الغرفة" dir="rtl">
+      <div class="room-stage-heading">
+        <span class="room-stage-title"><i class="f7-icons">person_2_square_stack_fill</i> مقاعد الغرفة</span>
+        <span class="room-stage-owner" id="roomStageOwner">صاحب الغرفة: -</span>
+        <span class="room-stage-count"><i class="f7-icons">person_2_fill</i><b id="roomStageCount">0</b><span>متصل</span></span>
+      </div>
+      <div class="room-seat-primary" id="roomSeatPrimary"></div>
+      <div class="room-seat-grid" id="roomSeatGrid"></div>
+    </section>
     <div class="c-msgs" id="msgArea"></div>
 
     <!-- زر النزول لأسفل الدردشة مع عداد الرسائل الجديدة أثناء التمرير للأعلى -->
@@ -410,11 +420,11 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <div class="sheet lsheet">
       <div class="sh-handle"></div>
       <h3 id="loginTitle">تسجيل الدخول</h3>
-      <div class="lg-switchrow">
+      <div class="lg-switchrow" style="display:none">
         <span>دخول كزائر/ة</span>
         <label class="switch on" id="guestSwitch"><span class="knob"></span></label>
       </div>
-      <div id="memberBox" style="display:none">
+      <div id="memberBox">
         <div class="lf-field">
           <i class="f7-icons lf-ic">person_fill</i>
           <input id="lUser" placeholder="الأسم المستعار">
@@ -431,7 +441,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <span class="lg-pill" id="goRegister">إنشاء حساب مجانًا</span>
         </div>
       </div>
-      <div id="guestBox">
+      <div id="guestBox" style="display:none">
         <div class="lf-field">
           <i class="f7-icons lf-ic">person_fill</i>
           <input id="gName" placeholder="الأسم المستعار">

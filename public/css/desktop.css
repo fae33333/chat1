@@ -180,7 +180,7 @@
         z-index: 6
     }
 
-    .c-input,.c-msgs,.c-notice,.reply-bar {
+    .c-input,.c-msgs,.c-notice,.reply-bar,#roomStage {
         margin-right: var(--dsk-side-w)
     }
 

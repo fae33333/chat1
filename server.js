@@ -20,6 +20,16 @@ let sharp;
 try { sharp = require('sharp'); } catch (e) { }
 
 const app = express();
+const DEFAULT_ROOM_WELCOME = 'مرحباً {name}، أهلاً بك في غرفة {room}. نحن نراقب جميع الغرف للحفاظ على مجتمع صحي بالمنصة، حيث سيتم الإبلاغ عن السلوكيات المسيئة لحظر مرتكبيها.';
+function roomWelcomeTemplate(room) {
+  if (!room || Number(room.welcome_enabled) === 0) return '';
+  return String(room.welcome || '').trim() || DEFAULT_ROOM_WELCOME;
+}
+function personalizeRoomWelcome(template, room, username) {
+  return String(template || '')
+    .replace(/\{name\}/gi, String(username || ''))
+    .replace(/\{room\}/gi, String((room && room.name) || ''));
+}
 const COOKIE_SECRET = process.env.COOKIE_SECRET || 'nujum-admin-device-secret-2026';
 const cloak = require('./lib/cloak');
 const CLOAK_KEY = process.env.API_CLOAK_KEY || crypto.createHash('sha256')
@@ -1696,6 +1706,15 @@ function requireUser(req, res, next) {
     next();
   }).catch(() => next());
 }
+function requireRegisteredUser(req, res, next) {
+  requireUser(req, res, () => {
+    q.get(`SELECT registered FROM users WHERE id=?`, req.authUid).then(user => {
+      if (!user) return res.status(401).json({ error: 'المستخدم غير موجود' });
+      if (!user.registered) return res.status(403).json({ error: 'الغرف متاحة للأعضاء المسجلين فقط — سجّل الدخول بحساب مسجل' });
+      next();
+    }).catch(() => res.status(500).json({ error: 'تعذر التحقق من العضوية' }));
+  });
+}
 async function requireRoomNotKicked(req, res, next) {
   try {
     const user = await q.get(`SELECT registered,ip FROM users WHERE id=?`, req.authUid);
@@ -2097,7 +2116,7 @@ app.post('/api/login', async (req, res) => {
   if (!username || !password) return res.status(400).json({ error: 'أدخل اسم المستخدم وكلمة المرور' });
   const cleanUsername = String(username).trim();
   const u = await q.get(`SELECT * FROM users WHERE username=?`, cleanUsername);
-  if (!u || !u.password || !bcrypt.compareSync(String(password), u.password))
+  if (!u || !u.registered || !u.password || !bcrypt.compareSync(String(password), u.password))
     return res.status(400).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
   const activeBan = await persistentBanForRequest(req, u);
   if (activeBan) return sendPersistentBan(res, activeBan);
@@ -2106,56 +2125,8 @@ app.post('/api/login', async (req, res) => {
   await finishAuthentication(req, res, u, (u.registered && !u.email_verified && (u.email || u.pending_activation)) ? { needs_verification: true, email: u.email || '' } : {});
 });
 
-app.post('/api/guest', async (req, res) => {
-  const ip = requestIp(req);
-  const limit = checkRateLimit('guest:' + ip, 15, 60000);
-  if (!limit.ok) return res.status(429).json({ error: 'يرجى الانتظار قليلاً قبل الدخول كزائر' });
-  let { username, gender } = req.body || {};
-  username = String(username || '').trim().slice(0, 20);
-  if (!username) return res.status(400).json({ error: 'اكتب اسم المستخدم' });
-  const requestBan = await persistentBanForRequest(req);
-  if (requestBan) return sendPersistentBan(res, requestBan);
-
-  let u = await q.get(`SELECT * FROM users WHERE username=?`, username);
-  let renamedFrom = '';
-
-  // فحص هل الاسم متواجد حالياً بالدردشة في الوقت الفعلي
-  const isOnlineInChatNow = (name) => {
-    return Object.values(onlineUsers).some(ou => ou && ou.username && ou.username.toLowerCase() === name.toLowerCase());
-  };
-
-  const isRegisteredAccount = !!(u && u.registered);
-  const isCurrentlyInChat = isOnlineInChatNow(username);
-
-  // لا يتم إلحاق أرقام بالاسم إلا إذا كان مسجلاً كعضوية أو متواجداً بالدردشة بالوقت الفعلي
-  if (isRegisteredAccount || isCurrentlyInChat) {
-    renamedFrom = username;
-    const stem = username.slice(0, 15);
-    for (let attempt = 0; attempt < 100; attempt++) {
-      const candidate = `${stem} ${crypto.randomInt(1000, 10000)}`;
-      const candidateExistsInDb = await q.get(`SELECT id FROM users WHERE username=?`, candidate);
-      const candidateOnline = isOnlineInChatNow(candidate);
-      if (!candidateExistsInDb && !candidateOnline) {
-        username = candidate;
-        u = null;
-        break;
-      }
-    }
-    if (u && (isRegisteredAccount || isCurrentlyInChat)) {
-      return res.status(500).json({ error: 'تعذر إنشاء اسم زائر بديل، حاول مرة أخرى' });
-    }
-  }
-
-  // إذا لم يكن الاسم مسجلاً وغير متواجد في الدردشة حالياً، يدخل باسمه الأصلي مباشرة بدون أرقام
-  if (!u) {
-    const r = await q.run(`INSERT INTO users (username,gender,registered,membership,rank) VALUES (?,?,0,'none','user')`, username, gender || 'secret');
-    u = await q.get(`SELECT * FROM users WHERE id=?`, r.lastID);
-  }
-  if (bannedActive(u)) {
-    const userBan = await persistentBanForRequest(req, u);
-    return sendPersistentBan(res, userBan);
-  }
-  await finishAuthentication(req, res, u, renamedFrom ? { guest_name_changed: true, requested_username: renamedFrom } : {});
+app.post('/api/guest', (req, res) => {
+  res.status(403).json({ error: 'الدخول كزائر غير متاح — يجب تسجيل الدخول بحساب مسجل أو إنشاء عضوية' });
 });
 
 app.post('/api/register', async (req, res) => {
@@ -2322,9 +2293,13 @@ app.post('/api/logout', (req, res) => {
 // =====================================================
 //  API - الشات (غرف، مستخدمون، هدايا، ترقية...)
 // =====================================================
-app.get('/api/rooms', async (req, res) => {
-  // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً
-  const rooms = await q.all(`SELECT id, name, description, image, type, max_users, sort, status, password, audience FROM rooms WHERE hidden=0 ORDER BY sort,id`);
+app.get('/api/rooms', requireRegisteredUser, async (req, res) => {
+  // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً.
+  // اسم المنشئ محفوظ كنسخة احتياطية ويُفضَّل اسم الحساب الحالي إن كان متاحاً.
+  const rooms = await q.all(`SELECT r.id, r.name, r.description, r.image, r.type, r.max_users, r.sort, r.status, r.password, r.audience,
+    r.creator_id, COALESCE(NULLIF(u.username,''), NULLIF(r.creator_name,''), 'الإدارة') AS creator_name
+    FROM rooms r LEFT JOIN users u ON u.id=r.creator_id
+    WHERE COALESCE(r.hidden,0)=0 ORDER BY r.sort,r.id`);
   const counts = {};
   Object.entries(roomUsers).forEach(([rid, set]) => counts[rid] = set.size);
   res.json(rooms.map(r => ({
@@ -2338,14 +2313,20 @@ app.get('/api/rooms', async (req, res) => {
     status: String(r.status || 'open'),
     online: counts[r.id] || 0,
     audience: String(r.audience || 'all') === 'registered' ? 'registered' : 'all',
+    creator_id: +r.creator_id || 0,
+    creator_name: String(r.creator_name || 'الإدارة'),
+    owner_name: String(r.creator_name || 'الإدارة'),
     locked: !!(r.password && String(r.password).trim().length > 0)
   })));
 });
 
-app.get('/api/rooms/:id', async (req, res) => {
+app.get('/api/rooms/:id', requireRegisteredUser, async (req, res) => {
   const roomId = +req.params.id;
   if (!roomId) return res.status(400).json({ error: 'معرّف الغرفة غير صالح' });
-  const room = await q.get(`SELECT id, name, description, image, type, max_users, sort, status, password, audience FROM rooms WHERE id=?`, roomId);
+  const room = await q.get(`SELECT r.id, r.name, r.description, r.image, r.type, r.max_users, r.sort, r.status, r.password, r.audience,
+    r.creator_id, COALESCE(NULLIF(u.username,''), NULLIF(r.creator_name,''), 'الإدارة') AS creator_name
+    FROM rooms r LEFT JOIN users u ON u.id=r.creator_id
+    WHERE r.id=? AND COALESCE(r.hidden,0)=0`, roomId);
   if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
   res.json({
     id: +room.id,
@@ -2358,11 +2339,14 @@ app.get('/api/rooms/:id', async (req, res) => {
     status: String(room.status || 'open'),
     online: (roomUsers[room.id] && roomUsers[room.id].size) || 0,
     audience: String(room.audience || 'all') === 'registered' ? 'registered' : 'all',
+    creator_id: +room.creator_id || 0,
+    creator_name: String(room.creator_name || 'الإدارة'),
+    owner_name: String(room.creator_name || 'الإدارة'),
     locked: !!(room.password && String(room.password).trim().length > 0)
   });
 });
 
-app.get('/api/rooms/:id/messages', requireUser, requireRoomNotKicked, async (req, res) => {
+app.get('/api/rooms/:id/messages', requireRegisteredUser, requireRoomNotKicked, async (req, res) => {
   const roomId = +req.params.id;
   if (!roomId) return res.status(400).json({ error: 'معرّف الغرفة غير صالح' });
   // «منذ آخر رسالة ظاهرة»: عند استعادة اتصال منقطع نجلب فقط الرسائل الأحدث منها
@@ -2374,7 +2358,7 @@ app.get('/api/rooms/:id/messages', requireUser, requireRoomNotKicked, async (req
   res.json(msgs.reverse());
 });
 
-app.get('/api/rooms/:id/users', requireUser, requireRoomNotKicked, async (req, res) => {
+app.get('/api/rooms/:id/users', requireRegisteredUser, requireRoomNotKicked, async (req, res) => {
   const roomId = +req.params.id;
   const set = roomUsers[roomId];
   if (!set) return res.json([]);
@@ -5008,7 +4992,7 @@ app.post('/api/admin/rooms', requireAdmin, async (req, res) => {
   const isSuper = ['superadmin', 'supermaster'].includes(req.session.rank);
   if (r.id) {
     if (!isSuper) return res.status(403).json({ error: 'لا تملك صلاحية تعديل الغرف، يمكنك إضافة غرفة جديدة فقط' });
-    await q.run(`UPDATE rooms SET name=?,description=?,type=?,max_users=?,status=?,sound=?,video=?,bots=?,gifts=?,games=?,locked=?,welcome=?,password=?,image=?,audience=? WHERE id=?`,
+    await q.run(`UPDATE rooms SET name=?,description=?,type=?,max_users=?,status=?,sound=?,video=?,bots=?,gifts=?,games=?,locked=?,welcome=?,welcome_enabled=1,password=?,image=?,audience=? WHERE id=?`,
       r.name, r.description || '', roomType, r.max_users || 1000, r.status || 'open',
       r.sound ? 1 : 0, r.video ? 1 : 0, r.bots ? 1 : 0, r.gifts ? 1 : 0, r.games ? 1 : 0, r.locked ? 1 : 0, r.welcome || '',
       String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200), roomAudience, r.id);
@@ -5017,10 +5001,12 @@ app.post('/api/admin/rooms', requireAdmin, async (req, res) => {
     io.emit('sync');
     return res.json({ ok: true, id: r.id });
   }
-  const out = await q.run(`INSERT INTO rooms (name,description,type,max_users,status,sound,video,bots,gifts,games,locked,welcome,password,image,audience) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+  const creatorId = +(req.adminAuth && req.adminAuth.uid) || 0;
+  const creatorName = String((req.adminAuth && req.adminAuth.username) || 'الإدارة').trim().slice(0, 20) || 'الإدارة';
+  const out = await q.run(`INSERT INTO rooms (name,description,type,max_users,status,sound,video,bots,gifts,games,locked,welcome,welcome_enabled,password,image,audience,creator_id,creator_name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     r.name, r.description || '', roomType, r.max_users || 1000, r.status || 'open',
-    r.sound ? 1 : 0, r.video ? 1 : 0, r.bots ? 1 : 0, r.gifts ? 1 : 0, r.games ? 1 : 0, r.locked ? 1 : 0, r.welcome || '',
-    String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200), roomAudience);
+    r.sound ? 1 : 0, r.video ? 1 : 0, r.bots ? 1 : 0, r.gifts ? 1 : 0, r.games ? 1 : 0, r.locked ? 1 : 0, r.welcome || '', 1,
+    String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200), roomAudience, creatorId, creatorName);
   io.emit('sync');
   res.json({ ok: true, id: out.lastID });
 });
@@ -5033,12 +5019,12 @@ app.delete('/api/admin/rooms/:id', requireSuperAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- «حذف العام» (رسالة الترحيب/الإشراف) ----
+// ---- إخفاء رسالة الترحيب للمستخدم أو إيقافها للجميع ----
 // 1) للمستخدم نفسه فقط: يخفيها له هو دون بقية المستخدمين.
-app.post('/api/rooms/:id/hide-welcome', requireUser, async (req, res) => {
-  const room = await q.get(`SELECT id, welcome FROM rooms WHERE id=?`, +req.params.id);
+app.post('/api/rooms/:id/hide-welcome', requireRegisteredUser, async (req, res) => {
+  const room = await q.get(`SELECT id, welcome, welcome_enabled FROM rooms WHERE id=?`, +req.params.id);
   if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
-  const text = String(room.welcome || '').trim();
+  const text = roomWelcomeTemplate(room);
   await q.run(`INSERT INTO room_welcome_hides (user_id,room_id,hidden_text) VALUES (?,?,?)
     ON CONFLICT(user_id,room_id) DO UPDATE SET hidden_text=excluded.hidden_text`, req.authUid, room.id, text);
   res.json({ ok: true });
@@ -5049,7 +5035,7 @@ app.post('/api/rooms/:id/hide-welcome', requireUser, async (req, res) => {
 app.post('/api/admin/rooms/:room_id/wipe-welcome', requireModerator, async (req, res) => {
   const room = await q.get(`SELECT id FROM rooms WHERE id=?`, +req.params.room_id);
   if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
-  await q.run(`UPDATE rooms SET welcome='' WHERE id=?`, room.id);
+  await q.run(`UPDATE rooms SET welcome='',welcome_enabled=0 WHERE id=?`, room.id);
   const modName = (req.moderator && req.moderator.username) || 'الإدارة';
   io.to('room_' + room.id).emit('welcome_cleared', { roomId: room.id, by: modName });
   io.emit('sync');
@@ -9372,6 +9358,11 @@ io.on('connection', async (socket) => {
     });
     const isSuperMaster = me.rank === 'supermaster';
     const isAdm = me.rank === 'superadmin' || me.rank === 'admin' || isSuperMaster;
+    if (!me.registered && !isAdm) return done({
+      ok: false,
+      reason: 'registered_only',
+      text: 'الغرف متاحة للأعضاء المسجلين فقط — أنشئ عضوية أو سجّل الدخول بحسابك'
+    });
     const hiddenSetting = (await getSettings()).hidden_super === '1';
     const alwaysHidden = isAlwaysHiddenRank(me.rank) || isSuperMaster;
     const canChooseHidden = me.rank === 'superadmin' || me.rank === 'admin';
@@ -9420,19 +9411,27 @@ io.on('connection', async (socket) => {
         emitRoomSystemEvent(roomId, 'join', `مرحباً بـ ${me.username} في غرفة ${room.name}`);
       }
     }
-    // ترحيب الإدارة الاختياري يظهر في الدخول الجديد فقط، وليس عند استعادة WebSocket.
-    // «حذف العام» من قائمة الغرفة يخفيه للمستخدم نفسه فقط: إن كان قد أخفى هذه
-    // الرسالة بالذات (بنفس النص) فلا تُعرض له، أما بقية المستخدمين فيرونها.
-    const welcome = String(room.welcome || '').trim();
+    // رسالة الترحيب تظهر لكل دخول جديد باسم منشئ الغرفة، حتى إن كان غير متصل؛
+    // ولا تُعاد عند استرجاع اتصال WebSocket أو لمن أخفاها من هذه الرسالة.
+    const welcomeTemplate = roomWelcomeTemplate(room);
     let welcomeHiddenForMe = false;
-    if (welcome && uid) {
+    if (welcomeTemplate && uid) {
       const hideRow = await q.get(`SELECT hidden_text FROM room_welcome_hides WHERE user_id=? AND room_id=?`, uid, roomId);
-      welcomeHiddenForMe = !!(hideRow && hideRow.hidden_text === welcome);
+      welcomeHiddenForMe = !!(hideRow && hideRow.hidden_text === welcomeTemplate);
     }
-    if (welcome && !restoredConnection && !welcomeHiddenForMe) socket.emit('msg', {
-      id: Date.now(), room_id: +roomId, username: 'رسالة النظام',
-      text: welcome, type: 'welcome', created_at: Math.floor(Date.now() / 1000)
-    });
+    if (welcomeTemplate && !restoredConnection && !welcomeHiddenForMe) {
+      const owner = +room.creator_id ? await q.get(`SELECT * FROM users WHERE id=?`, +room.creator_id) : null;
+      const ownerName = String((owner && owner.username) || room.creator_name || 'الإدارة').trim() || 'الإدارة';
+      const ownerPublic = owner ? { ...pubUser(owner), badge: badgeOf(owner) } : {
+        id: 0, username: ownerName, avatar: '', avatar_frame: '', rank: 'user', membership: 'none',
+        gender: 'secret', registered: 1, verified: 0, royal: 0, badge: 'register.png'
+      };
+      socket.emit('msg', {
+        room_id: +roomId, user_id: owner ? +owner.id : 0, username: ownerName,
+        user: ownerPublic, text: personalizeRoomWelcome(welcomeTemplate, room, me.username),
+        type: 'owner_welcome', created_at: Math.floor(Date.now() / 1000)
+      });
+    }
     emitRoomUsers(roomId);
     emitRoomCounts();
     // بث صوتي قائم في غرفة صوتية: القادم الجديد يُوصل تلقائياً دون أي طلب — نُعلم كل مذيع لينشئ اتصال WebRTC نحوه.

@@ -58,6 +58,7 @@ let PREFS = { snd_all: 1, snd_msg: 1, snd_join: 1, snd_leave: 1, show_time: 1, p
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
 let ROOMS = [], ROOM_COUNTS = {}, CUR_ROOM = null, CUR_TAB = 'default';
+let ROOMS_LOAD_ERROR = false;
 let ROOM_PWD = {};                       // كلمات مرور الغرف الصحيحة لهذه الجلسة (لا تُعاد كتابتها)
 let ROOM_HIDDEN = {};                    // اختيار الدخول المخفي لكل غرفة في هذه الصفحة فقط
 let HIDDEN_ENTRY_PENDING = null;
@@ -2637,8 +2638,7 @@ function connectSocket() {
     beep(660, .2);
     notifyDesktopSystem({ text: a.text, icon: 'announcement' });
   });
-  // عندما تفريغ الإدارة «العام» (حذف العام للجميع): تختفي الرسالة مباشرة
-  // من شاشة كل من هو داخل الغرفة دون انتظار إعادة تحميل.
+  // عندما توقف الإدارة رسالة الترحيب للجميع، تختفي فوراً من شاشات الموجودين دون إعادة تحميل.
   SOCKET.on('welcome_cleared', d => {
     if (CUR_ROOM && d && +d.roomId === +CUR_ROOM.id) {
       $$('#msgArea .room-welcome').forEach(el => el.remove());
@@ -2652,7 +2652,7 @@ function connectSocket() {
     <span>رسالة النظام</span>
   </div>
   <div class="font_msg system-event-body">
-    <div class="u-msg system-event-message">تم حذف العام من قبل ${esc(d.by)}</div>
+    <div class="u-msg system-event-message">تم إيقاف رسالة الترحيب من قبل ${esc(d.by)}</div>
   </div>
 </div>`;
         }
@@ -4241,7 +4241,30 @@ function pushNotif(icon, text, extra = {}) {
 //  الغرف
 // =====================================================
 async function loadRooms() {
-  ROOMS = await api('/api/rooms');
+  if (!ME || !ME.registered) {
+    ROOMS = [];
+    ROOM_COUNTS = {};
+    ROOMS_LOAD_ERROR = false;
+    renderRooms();
+    return;
+  }
+
+  const requestedUserId = +ME.id;
+  try {
+    const rooms = await api('/api/rooms');
+    // تجاهل ردّ قديم وصل بعد تسجيل الخروج أو تبديل الحساب.
+    if (!ME || !ME.registered || +ME.id !== requestedUserId) return;
+    ROOMS = Array.isArray(rooms) ? rooms : [];
+    ROOMS_LOAD_ERROR = false;
+  } catch (error) {
+    if (!ME || !ME.registered || +ME.id !== requestedUserId) return;
+    ROOMS = [];
+    ROOM_COUNTS = {};
+    ROOMS_LOAD_ERROR = true;
+    renderRooms();
+    return;
+  }
+  ROOM_COUNTS = {};
   ROOMS.forEach(r => ROOM_COUNTS[r.id] = r.online || 0);
   // أي تعديل للغرفة من لوحة الإدارة (نوعها، اسمها، حالتها...) ينعكس فوراً على الغرفة
   // المفتوحة حالياً دون إعادة تحميل — فيتحدث شريط البث/زر «تحدث» حسب النوع الجديد مباشرة.
@@ -4290,6 +4313,30 @@ function roomFeaturesHtml(r) {
   if (r.audience === 'registered') icons.push('<i class="f7-icons" title="للأعضاء المسجلين فقط" style="color:#0ea5e9">person_badge_plus_fill</i>');
   return `<div class="room-feats">${icons.join('')}</div>`;
 }
+function roomCreatorName(r) {
+  return String((r && (r.creator_name || r.owner_name)) || 'الإدارة');
+}
+function roomAccessGateHtml() {
+  const isGuest = !!(ME && !ME.registered);
+  const title = 'الغرف متاحة للأعضاء المسجلين فقط';
+  const description = isGuest
+    ? 'أنشئ عضوية مجانية لتتمكن من مشاهدة الغرف والدخول إليها.'
+    : 'سجّل الدخول بحسابك المسجل أو أنشئ عضوية مجانية لتظهر لك الغرف.';
+  return `<div class="rooms-gate">
+    <div class="rooms-gate-icon"><i class="f7-icons">person_badge_plus_fill</i></div>
+    <strong>${title}</strong>
+    <span>${description}</span>
+    <button type="button" class="rooms-gate-action">${isGuest ? 'إنشاء عضوية' : 'تسجيل الدخول'}</button>
+  </div>`;
+}
+function wireRoomGateAction() {
+  $$('.rooms-gate-action').forEach(action => {
+    action.onclick = () => {
+      if (ME && !ME.registered) openOv('needRegOv');
+      else openLogin();
+    };
+  });
+}
 function roomRowHtml(r) {
   const online = ROOM_COUNTS[r.id] || 0;
   return `
@@ -4298,6 +4345,7 @@ function roomRowHtml(r) {
     <div class="room-info">
       <div class="room-name">${esc(r.name)}</div>
       <div class="room-desc">${esc(r.description || `أهلاً وسهلاً بكم في ${SETTINGS.site_name || 'الدردشة'} ★`)}</div>
+      <div class="room-created-by"><i class="f7-icons">person_fill</i><span>أنشأها:</span><b>${esc(roomCreatorName(r))}</b></div>
     </div>
     <div class="room-side">
       <div class="room-count"><i class="f7-icons">person_2_fill</i><b>${online}</b>/${r.max_users || 1000}</div>
@@ -4314,7 +4362,8 @@ function roomMiniHtml(r) {
     ${roomImgHtml(r, 'rm-img')}
     <div class="rm-info">
       <div class="rm-name">${esc(r.name)} ${r.locked ? '<i class="f7-icons" style="font-size:12px;color:#d946a6">lock_fill</i>' : ''}${r.status !== 'open' ? ' <span style="font-size:10px;color:#dc2626;font-weight:800">مغلقة 🔒</span>' : ''}</div>
-      <div class="rm-desc">${esc(r.description || ('غرفة مستخدمين ' + r.owner_name))}</div>
+      <div class="rm-desc">${esc(r.description || ('غرفة مستخدمين ' + roomCreatorName(r)))}</div>
+      <div class="rm-created-by">أنشأها: <b>${esc(roomCreatorName(r))}</b></div>
     </div>
     <div class="rm-side">
       ${isCur ? '<span class="rm-here">أنت هنا</span>' : `<span class="rm-count"><i class="f7-icons">person_2_fill</i>${online}/${r.max_users || 1000}</span>`}
@@ -4323,25 +4372,56 @@ function roomMiniHtml(r) {
   </div>`;
 }
 function renderRoomsPanel() {
-  const q2 = ($('#roomSearch2').value || '').trim();
+  const listBox = $('#roomsList2');
+  if (!listBox) return;
+  const search = $('#roomSearch2');
+  const isRegistered = !!(ME && ME.registered);
+  if (search && search.parentElement) search.parentElement.style.display = isRegistered ? '' : 'none';
+  if (!isRegistered) {
+    listBox.innerHTML = roomAccessGateHtml();
+    wireRoomGateAction();
+    return;
+  }
+  const q2 = (search.value || '').trim();
   // جميع الغرف صوتية الآن — لا يوجد تقسيم إلى أقسام.
   const list = ROOMS.filter(r => (!q2 || r.name.includes(q2)));
-  $('#roomsList2').innerHTML = list.length ? list.map(roomMiniHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
+  listBox.innerHTML = list.length ? list.map(roomMiniHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
   $$('#roomsList2 .room-mini').forEach(row => row.onclick = () => {
     if (CUR_ROOM && +row.dataset.id === CUR_ROOM.id) return toast('أنت متواجد في هذه الغرفة حالياً 📍');
     attemptRoomSwitch(+row.dataset.id);
   });
 }
 function renderRooms() {
+  const listBox = $('#roomsList');
+  if (!listBox) return;
+  const searchBar = document.querySelector('#roomsScreen .r-search');
+  const isRegistered = !!(ME && ME.registered);
+  if (searchBar) searchBar.style.display = isRegistered ? '' : 'none';
+  listBox.classList.toggle('is-locked', !isRegistered || ROOMS_LOAD_ERROR);
+
+  if (!isRegistered) {
+    listBox.innerHTML = roomAccessGateHtml();
+    wireRoomGateAction();
+    renderRoomsPanel();
+    return;
+  }
+  if (ROOMS_LOAD_ERROR) {
+    listBox.innerHTML = '<div class="rooms-gate rooms-gate-error"><strong>تعذر تحميل قائمة الغرف</strong><span>تحقق من اتصالك ثم حاول مرة أخرى.</span><button type="button" id="roomsRetry">إعادة المحاولة</button></div>';
+    const retry = $('#roomsRetry');
+    if (retry) retry.onclick = () => loadRooms();
+    renderRoomsPanel();
+    return;
+  }
   const q1 = ($('#roomSearch').value || '').trim();
   // جميع الغرف صوتية الآن — لا يوجد تقسيم إلى أقسام.
   const list = ROOMS.filter(r => (!q1 || r.name.includes(q1)));
-  $('#roomsList').innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
+  listBox.innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
   $$('#roomsList .room-row').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
   renderRoomsPanel();
 }
 function enterRoom(id, pwd, hiddenChoice) {
   if (!ME) { openLogin(); return; }
+  if (!ME.registered) { openOv('needRegOv'); return; }
   const r = ROOMS.find(x => x.id === id);
   if (!r) return;
   if (r.status !== 'open' && !isAdmRank()) return toast('🔒 هذه الغرفة مغلقة حالياً');
@@ -4364,6 +4444,8 @@ function enterRoom(id, pwd, hiddenChoice) {
   // فعلياً ثم ننضم إلى الجديدة — فلا يبقى اسمك في الغرفة القديمة ولا رسائلها.
   if (CUR_ROOM && CUR_ROOM.id !== id) leaveRoom();
   CUR_ROOM = r;
+  ROOM_USERS = [];
+  renderRoomSeats();
   updateVoiceRoomBarUI();
   $('#chatRoomName').textContent = r.name;
   renderIdleRoomNotice();
@@ -4391,7 +4473,7 @@ function enterRoom(id, pwd, hiddenChoice) {
       // مرجع المزامنة: آخر رسالة موجودة عند الدخول — لا نجلب تاريخاً أقدم منها لاحقاً.
       if (res.lastMsgId) ROOM_SYNC_BASE[id] = +res.lastMsgId;
       bcastApplyJoinState(id, res.broadcast || null);
-      // لا نحمّل سجل الرسائل القديم؛ العام يبدأ فارغاً ويظهر فقط ترحيب الغرفة من الإدارة.
+      // لا نحمّل سجل الرسائل القديم؛ يبدأ العام برسالة ترحيب من مالك الغرفة.
       api('/api/rooms/' + id + '/users').then(u => { ROOM_USERS = u; renderUsers(); });
       if (res.hidden && !(ME && ME.rank === 'supermaster')) toast('تم الدخول إلى الغرفة بشكل مخفي');
       return;
@@ -4405,7 +4487,7 @@ function enterRoom(id, pwd, hiddenChoice) {
     else if (res.reason === 'wrong_pass') openPassOv(r, true);
     else if (res.reason === 'kicked') toast(res.text || '🚫 أنت مطرود من هذه الغرفة', false);
     // غرفة للأعضاء المسجلين فقط: ندعو الزائر لإنشاء حساب بدل رسالة عابرة
-    else if (res.reason === 'members_only') { toast(res.text || '👤 هذه الغرفة للأعضاء المسجلين فقط', false); openOv('needRegOv'); }
+    else if (res.reason === 'members_only' || res.reason === 'registered_only') { toast(res.text || '👤 هذه الغرفة للأعضاء المسجلين فقط', false); openOv('needRegOv'); }
     else toast(res.text || 'تعذر الدخول للغرفة', false);
   });
 }
@@ -4628,6 +4710,7 @@ function renderMsg(m) {
     const uname = m.username || u.username || '';
     const rp = m.reply || u.reply || null;   // اقتباس «الرد على الرسالة»
     const tcol = m.color || u.color || null;  // لون خط مخصص من قائمة الألوان
+    const messageTextColor = tcol || ($('#chatScreen').classList.contains('room-skin') ? '#f3e8ff' : color);
     const currentFontSize = Math.min(40, Math.max(10, +(SETTINGS.font_size || 14)));
     const isCustomEmoji = typeof m.text === 'string' && m.text.startsWith('em::');
     const messageMedia = m.media || u.media || null;
@@ -4661,7 +4744,7 @@ function renderMsg(m) {
             : (showBadge ? `<img class="mmark" data-badge-kind="${badgeKind}" src="/badges/${badge}" alt="">` : '')}
           ${isCustomEmoji
             ? `<img class="mcustom-emoji" src="${esc(m.text.slice(4))}" alt="emoji">`
-            : `<span class="mtext message-content" style="color:${tcol || color};font-size:${currentFontSize}px">${m.text ? messageTextWithCustomEmojis(m.text) : ''}${messageMedia && messageMedia.type === 'image' ? `<button class="chat-public-image" type="button" data-src="${esc(messageMedia.path)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>` : ''}${messageMedia && messageMedia.type === 'audio' ? `<span class="chat-audio-player" data-duration="${+messageMedia.duration || 0}"><button class="chat-audio-play" type="button" aria-label="تشغيل"><i class="f7-icons">play_fill</i></button><span class="chat-audio-time chat-audio-current">00:00</span><input class="chat-audio-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="موضع المقطع"><span class="chat-audio-time chat-audio-duration">00:00</span><audio class="chat-audio-element" src="${esc(messageMedia.path)}" preload="metadata"></audio></span>` : ''}</span>`}
+            : `<span class="mtext message-content" style="color:${messageTextColor};font-size:${currentFontSize}px">${m.text ? messageTextWithCustomEmojis(m.text) : ''}${messageMedia && messageMedia.type === 'image' ? `<button class="chat-public-image" type="button" data-src="${esc(messageMedia.path)}"><i class="f7-icons">camera_fill</i><b>اضغط هنا لفتح الصورة</b></button>` : ''}${messageMedia && messageMedia.type === 'audio' ? `<span class="chat-audio-player" data-duration="${+messageMedia.duration || 0}"><button class="chat-audio-play" type="button" aria-label="تشغيل"><i class="f7-icons">play_fill</i></button><span class="chat-audio-time chat-audio-current">00:00</span><input class="chat-audio-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="موضع المقطع"><span class="chat-audio-time chat-audio-duration">00:00</span><audio class="chat-audio-element" src="${esc(messageMedia.path)}" preload="metadata"></audio></span>` : ''}</span>`}
         </div>
       </div>`;
     const publicImage = el.querySelector('.chat-public-image');
@@ -4696,6 +4779,29 @@ function renderMsg(m) {
       <div class="font_msg robot-system-body">
         <div class="u-msg robot-system-text" style="font-size:${botSize}px;color:${botColor}">${linkifyEscaped(esc(m.text))}</div>
       </div>`;
+  } else if (m.type === 'owner_welcome') {
+    const owner = m.user || {};
+    const ownerName = m.username || owner.username || 'صاحب الغرفة';
+    const ownerId = +(m.user_id || owner.id || 0);
+    el.className = 'room-welcome owner-welcome';
+    if (ownerId) el.dataset.uid = ownerId;
+    el.innerHTML = `
+      <button class="owner-welcome-avatar" type="button" aria-label="عرض ملف ${esc(ownerName)}">${avatarHtml(owner.avatar || '', 'owner-welcome-photo', frameOf(owner))}</button>
+      <div class="owner-welcome-content">
+        <div class="owner-welcome-head">
+          <span class="owner-welcome-name">${esc(ownerName)} <span class="owner-welcome-role"><i class="f7-icons">crown_fill</i>صاحب الغرفة</span></span>
+          <span class="owner-welcome-time">${t}</span>
+        </div>
+        <div class="owner-welcome-text">${linkifyEscaped(esc(m.text || ''))}</div>
+      </div>`;
+    if (ownerId) {
+      const openOwner = event => {
+        event.stopPropagation();
+        openUserSheet(ownerId, { text: m.text, username: ownerName, avatar: owner.avatar || '', rank: owner.rank, membership: owner.membership, gender: owner.gender, registered: owner.registered }, event.currentTarget);
+      };
+      el.querySelector('.owner-welcome-avatar').onclick = openOwner;
+      el.querySelector('.owner-welcome-name').onclick = openOwner;
+    }
   } else if (m.type === 'welcome') {
     el.className = 'room-welcome supervision-welcome';
     el.innerHTML = `
@@ -5400,6 +5506,52 @@ function initUsersSortMenu() {
   }).observe(panel, { attributes: true, attributeFilter: ['class'] });
   syncUsersSortMenu();
 }
+const ROOM_SEAT_CHAIR_SVG = '<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M10 5h12v11H10zM7 17h18v7H7zM9 24v4m14-4v4M10 13H7v4m15-4h3v4"/></svg>';
+function roomSeatHtml(user, label, isPrimary = false) {
+  const isOwner = !!(user && CUR_ROOM && +user.id === +(CUR_ROOM.creator_id || 0));
+  const isMe = !!(user && ME && +user.id === +ME.id);
+  if (!user) {
+    return `<div class="room-seat${isPrimary ? ' room-seat-primary-item' : ''} room-seat-empty" aria-label="${esc(label)} — مقعد فارغ">
+      <span class="room-seat-ring">${ROOM_SEAT_CHAIR_SVG}</span>
+      <span class="room-seat-name">${isPrimary ? 'مقعد الضيف' : 'مقعد فارغ'}</span>
+      <span class="room-seat-caption">${esc(label)}</span>
+    </div>`;
+  }
+  return `<button class="room-seat room-seat-occupied${isPrimary ? ' room-seat-primary-item' : ''}${isOwner ? ' room-seat-owner' : ''}" type="button" data-user-id="${+user.id}" aria-label="${esc(label)} — ${esc(user.username)}">
+    <span class="room-seat-ring">${avatarHtml(user.avatar || '', 'room-seat-photo', frameOf(user))}<i class="room-seat-presence" aria-hidden="true"></i></span>
+    <span class="room-seat-name">${esc(user.username || '')}</span>
+    <span class="room-seat-caption">${isOwner ? 'صاحب الغرفة' : (isMe ? 'أنت هنا' : esc(label))}</span>
+  </button>`;
+}
+function renderRoomSeats() {
+  const stage = $('#roomStage');
+  const primaryBox = $('#roomSeatPrimary');
+  const grid = $('#roomSeatGrid');
+  if (!stage || !primaryBox || !grid) return;
+  if (!CUR_ROOM) {
+    primaryBox.innerHTML = '';
+    grid.innerHTML = '';
+    if ($('#roomStageCount')) $('#roomStageCount').textContent = '0';
+    if ($('#roomStageOwner')) $('#roomStageOwner').textContent = 'صاحب الغرفة: -';
+    return;
+  }
+  const users = Array.isArray(ROOM_USERS) ? ROOM_USERS : [];
+  const ownerId = +(CUR_ROOM.creator_id || 0);
+  const primary = users.find(u => ownerId && +u.id === ownerId)
+    || users.find(u => ME && +u.id === +ME.id)
+    || users[0]
+    || null;
+  const others = users.filter(u => !primary || +u.id !== +primary.id).slice(0, 8);
+  primaryBox.innerHTML = roomSeatHtml(primary, 'المقعد الرئيسي', true);
+  grid.innerHTML = Array.from({ length: 8 }, (_, index) => roomSeatHtml(others[index] || null, `رقم ${index + 1}`)).join('');
+  const count = $('#roomStageCount');
+  const ownerLabel = $('#roomStageOwner');
+  if (count) count.textContent = String(users.length);
+  if (ownerLabel) ownerLabel.textContent = `صاحب الغرفة: ${roomCreatorName(CUR_ROOM)}`;
+  $$('#roomStage .room-seat-occupied').forEach(seat => {
+    seat.onclick = () => openUserSheet(+seat.dataset.userId);
+  });
+}
 function renderUsers() {
   const q = ($('#userSearch').value || '').trim();
   const hostIds = liveBroadcastHostIds();
@@ -5420,6 +5572,7 @@ function renderUsers() {
     </div>`;
   }).join('') : `<div class="pv-empty"><div>${USERS_SORT_EMPTY[USERS_SORT] || USERS_SORT_EMPTY.all}</div></div>`;
   $$('#usersList .users-row').forEach(r => r.onclick = () => openUserSheet(+r.dataset.id));
+  renderRoomSeats();
 }
 
 // قائمة إجراءات المستخدم
@@ -9905,6 +10058,7 @@ async function logoutWithoutReload() {
   SOCKET = null; CHAT_TOKEN = ''; ME = null; MYBADGE = 'guest.png';
   stopUserStatusActionWatcher(); USER_STATUS_REQUEST_ID++;
   CUR_ROOM = null; CUR_TARGET = null; PM_WITH = null; ROOM_USERS = [];
+  ROOMS = []; ROOM_COUNTS = {}; ROOMS_LOAD_ERROR = false;
   IGNORED_USERS = new Set(); STATUSES = []; NOTIFS = []; CURRENT_NOTIFICATIONS = []; READ_NOTIFS = new Set();
   PRIV_UNREAD = 0; NOTIF_UNREAD = 0; STATUS_UNREAD = 0;
   updatePrivBadge(); updateNotifBadge(); updateStatusUnreadBadge();
@@ -11449,16 +11603,17 @@ async function openNotifs() {
 // =====================================================
 function openLogin() {
   $('#loginErr').textContent = '';
-  showLoginTab('guest');   // الافتراضي: دخول كزائر (مثل المرجع)
+  showLoginTab('member');
   openOv('loginOv');
 }
-function showLoginTab(t) {
-  $('#memberBox').style.display = t === 'member' ? '' : 'none';
-  $('#guestBox').style.display = t === 'guest' ? '' : 'none';
-  $('#guestSwitch').classList.toggle('on', t === 'guest');
-  $('#loginTitle').textContent = 'تسجيل الدخول';
+function showLoginTab() {
+  $('#memberBox').style.display = '';
+  $('#guestBox').style.display = 'none';
+  const guestSwitchRow = document.querySelector('.lg-switchrow');
+  if (guestSwitchRow) guestSwitchRow.style.display = 'none';
+  $('#loginTitle').textContent = 'دخول بحساب مسجل';
 }
-$('#guestSwitch').onclick = () => showLoginTab($('#guestBox').style.display === 'none' ? 'guest' : 'member');
+$('#guestSwitch').onclick = () => showLoginTab('member');
 // استعادة كلمة المرور — نظام رمز عبر البريد للحسابات المسجلة
 $('#goForgot').onclick = () => {
   $('#resetEmail').value = '';
@@ -11794,6 +11949,7 @@ $('#doRegister').onclick = async () => {
   }
 };
 function onLoggedIn() {
+  loadRooms();
   // تحميل لون الخط المخصص المحفوظ في حساب العضو (يسري على كل الأجهزة).
   if (typeof syncMyColorFromProfile === 'function') syncMyColorFromProfile(ME);
   if (typeof applyMyColorToAppsButton === 'function') applyMyColorToAppsButton();
@@ -11830,8 +11986,10 @@ function showScreen(name) {
   $$('.screen').forEach(s => s.classList.remove('active'));
   $('#' + name + 'Screen').classList.add('active');
   $$('.bn-item').forEach(b => b.classList.toggle('active', b.dataset.nav === (name === 'chat' ? 'rooms' : name)));
-  // شريط التنقل السفلي يظهر فقط داخل الغرفة
+  // شريط التنقل السفلي يظهر فقط داخل الغرفة، وتُطبّق عليه سمة الغرفة البنفسجية.
   document.querySelector('.bottomnav').classList.toggle('show', name === 'chat');
+  const frame = $('#frame');
+  if (frame) frame.classList.toggle('room-skin-active', name === 'chat');
 }
 // إغلاق صفحات التنقل الأخرى عدا المطلوبة (التبديل بينها دون تراكم)
 function closeNavPages(except) { ['privOv', 'notifOv', 'wallOv', 'menuOv', 'myGiftsOv', 'blocksOv'].forEach(id => { if (id !== except) closeOv(id); }); }
@@ -12209,6 +12367,7 @@ function leaveRoom() {
   }
   CUR_ROOM = null;
   ROOM_USERS = [];
+  renderRoomSeats();
   updateVoiceRoomBarUI();
   closeOv('usersPanel');
   setRoomsPanel(false);
@@ -12247,7 +12406,7 @@ $('#btnRoomMore').onclick = (e) => {
 };
 // حفظ نسخة من زر «حذف العام للجميع» لإعادة إدراجها عند إعادة الصلاحية
 if ($('#dropWipeWelcome')) window.__wipeWipeClone = $('#dropWipeWelcome').cloneNode(true);
-// «حذف العام لدي فقط»: تختفي الرسالة منه هو فقط (تُحفظ في حسابه)
+// «إخفاء الترحيب لدي فقط»: تختفي الرسالة منه فقط (ويُحفظ اختياره في حسابه)
 $('#dropHideWelcome').onclick = async (e) => {
   e.stopPropagation();
   closeRoomDrop();
@@ -12255,15 +12414,15 @@ $('#dropHideWelcome').onclick = async (e) => {
   try {
     await api(`/api/rooms/${CUR_ROOM.id}/hide-welcome`, 'POST');
     $$('#msgArea .room-welcome').forEach(el => el.remove());
-    toast('تم حذف «العام» لديك فقط — يبقى ظاهراً لبقية المستخدمين');
-  } catch (err) { toast((err && err.error) || 'تعذر حذف «العام»', false); }
+    toast('تم إخفاء رسالة الترحيب لديك فقط — تبقى ظاهرة لبقية المستخدمين');
+  } catch (err) { toast((err && err.error) || 'تعذر إخفاء رسالة الترحيب', false); }
 };
-// «حذف العام للجميع» للمشرفين: تفريغ الرسالة من الغرفة فتختفي عند الجميع
+// «حذف الترحيب للجميع» للمشرفين: إيقاف رسالة الترحيب في الغرفة
 $('#dropWipeWelcome').onclick = async (e) => {
   e.stopPropagation();
   closeRoomDrop();
   if (!CUR_ROOM) return;
-  if (!confirm('حذف «العام» نهائياً من هذه الغرفة لجميع المستخدمين؟')) return;
+  if (!confirm('إيقاف رسالة الترحيب في هذه الغرفة لجميع المستخدمين؟')) return;
   try {
     await api(`/api/admin/rooms/${CUR_ROOM.id}/wipe-welcome`, 'POST');
     // مسح كل محتوى العام وإدراج قالب الحذف مع أيقونة المكنسة
@@ -12275,12 +12434,12 @@ $('#dropWipeWelcome').onclick = async (e) => {
     <span>رسالة النظام</span>
   </div>
   <div class="font_msg system-event-body">
-    <div class="u-msg system-event-message">تم حذف العام من قبل ${(ME && ME.username) || 'السوبر أدمن'}</div>
+    <div class="u-msg system-event-message">تم إيقاف رسالة الترحيب من قبل ${(ME && ME.username) || 'السوبر أدمن'}</div>
   </div>
 </div>`;
     }
-    toast('تم حذف «العام» من الغرفة بالكامل 🧹 بواسطة ' + ((ME && ME.username) || 'السوبر أدمن') + ' ✅');
-  } catch (err) { toast((err && err.error) || 'تعذر حذف «العام» للجميع', false); }
+    toast('تم إيقاف رسالة الترحيب للجميع 🧹 بواسطة ' + ((ME && ME.username) || 'السوبر أدمن') + ' ✅');
+  } catch (err) { toast((err && err.error) || 'تعذر إيقاف رسالة الترحيب للجميع', false); }
 };
 // (حدث welcome_cleared يُربط داخل connectSocket مع بقية أحداث السوكيت)
 $('#btnLanguage').onclick = () => { setLanguage(APP_LANG, false); openOv('languageOv'); };

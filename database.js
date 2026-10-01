@@ -110,15 +110,23 @@ db.serialize(() => {
     games INTEGER DEFAULT 0,
     locked INTEGER DEFAULT 0,
     welcome TEXT DEFAULT '',
+    welcome_enabled INTEGER DEFAULT 1,
     audience TEXT DEFAULT 'all',           -- all | registered
     sort INTEGER DEFAULT 0,
+    creator_id INTEGER DEFAULT 0,
+    creator_name TEXT DEFAULT 'الإدارة',
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
   // ترقية: كلمة مرور الغرفة (تُضاف للقواعد القديمة فقط)
   db.run(`ALTER TABLE rooms ADD COLUMN password TEXT DEFAULT ''`, () => { });
   // ترقية: جمهور الغرفة — 'all' = للجميع (الزوار والأعضاء)، 'registered' = للأعضاء المسجلين فقط
   db.run(`ALTER TABLE rooms ADD COLUMN audience TEXT DEFAULT 'all'`, () => { });
+  db.run(`ALTER TABLE rooms ADD COLUMN welcome_enabled INTEGER DEFAULT 1`, () => { });
+  db.run(`ALTER TABLE rooms ADD COLUMN creator_id INTEGER DEFAULT 0`, () => { });
+  db.run(`ALTER TABLE rooms ADD COLUMN creator_name TEXT DEFAULT 'الإدارة'`, () => { });
   db.run(`UPDATE rooms SET audience='all' WHERE audience IS NULL OR audience NOT IN ('all','registered')`, () => { });
+  // الغرف القديمة أُنشئت من لوحة الإدارة قبل حفظ اسم المنشئ.
+  db.run(`UPDATE rooms SET creator_name='الإدارة' WHERE creator_name IS NULL OR TRIM(creator_name)=''`, () => { });
   // ترقية: توحيد أنواع الغرف على القيمتين المدعومتين فقط (default | voice).
   // ملاحظة: أُزيل الإجبار القديم الذي كان يحوّل كل الغرف إلى «صوتية» بشكل دائم،
   // حتى يمكن إنشاء غرف افتراضية (كتابية فقط) من لوحة الإدارة والاحتفاظ بنوعها.
