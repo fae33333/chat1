@@ -21800,3 +21800,458 @@ body.skin-soulchill .pmb.send { background: linear-gradient(135deg, #7c4dff, #b0
 .pm-moment-card img { width: 54px; height: 44px; border-radius: 10px; object-fit: cover; }
 .pm-moment-card b { color: #fff; font-size: 14px; display: block; }
 .pm-moment-card small { color: #8d84ad; font-size: 10px; }
+
+/* =====================================================
+   🎤 غرفة SoulChill — العرش · No.N · الترويج الجانبي · LV
+   ===================================================== */
+/* بانر الترتيب + LV */
+.room-rank-row { display: flex; align-items: center; gap: 10px; margin: 10px 12px 0; }
+.room-rank-banner {
+  flex: 1; text-align: right; cursor: pointer;
+  background: linear-gradient(100deg, #f59e0b, #fbbf24 60%, #fcd34d);
+  color: #6b3a00; border: 0; border-radius: 14px; padding: 9px 14px;
+  font-size: 11px; font-weight: 800; line-height: 1.7;
+}
+.room-rank-banner b { font-size: 12px; }
+.room-rank-banner span { color: #7c4a00; }
+.room-lv-widget {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255, 255, 255, .1); border-radius: 14px; padding: 8px 12px;
+  min-width: 118px;
+}
+.rlw-ic {
+  width: 34px; height: 34px; border-radius: 10px; font-size: 19px;
+  background: linear-gradient(135deg, #7c4dff, #b06bff);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.rlw-txt { flex: 1; }
+.rlw-txt b { color: #fff; font-size: 11px; display: block; }
+.rlw-txt small { color: #cbb8f5; font-size: 9px; }
+.rlw-bar {
+  display: block; height: 3px; border-radius: 999px;
+  background: rgba(255, 255, 255, .2); margin-top: 3px;
+}
+.rlw-bar em { display: block; width: 3%; height: 100%; border-radius: 999px; background: #f5c842; }
+
+/* العرش + شارة المضيف */
+.seat-throne {
+  position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%);
+  font-size: 34px; z-index: 0; opacity: .95;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .5));
+  pointer-events: none;
+}
+.seat-so-badge {
+  position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%);
+  background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff;
+  border-radius: 999px; padding: 2px 10px; font-size: 9px; font-weight: 900;
+  z-index: 4; white-space: nowrap;
+}
+.seat-coins {
+  position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%);
+  margin-top: 16px;
+  background: #c026d3; color: #fff; border-radius: 999px;
+  padding: 1px 9px; font-size: 9px; font-weight: 900; z-index: 4;
+}
+.host-seat .seat-name, .seat-item.empty .seat-label {
+  color: #e9d5ff; font-size: 12px;
+}
+.seat-item.empty .seat-label { color: #b9a8e3; font-size: 11px; }
+.seat-item .seat-circle .seat-lock {
+  width: 30px; height: 30px; fill: rgba(255, 255, 255, .35);
+}
+
+/* فقاعة الترحيب (SoulChill) */
+body.skin-soulchill .c-notice {
+  background: rgba(20, 10, 40, .75);
+  border: 1px solid rgba(167, 139, 250, .2);
+  border-radius: 16px; margin: 10px 12px;
+}
+body.skin-soulchill .c-notice .lb-text, body.skin-soulchill #roomNotice {
+  color: #93c5fd; font-size: 13px; line-height: 2;
+}
+
+/* كومة الترويج الجانبية */
+.room-promo-stack {
+  position: absolute; bottom: 120px; left: 10px; z-index: 30;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.rps-card {
+  width: 108px; height: 52px; border-radius: 12px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, .3); color: #fff;
+  font-size: 10px; font-weight: 900;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .4);
+}
+.rps-1 { background: linear-gradient(120deg, #7c3aed, #a78bfa); }
+.rps-2 { background: linear-gradient(120deg, #b45309, #f59e0b); }
+.rps-3 { background: linear-gradient(120deg, #4c1d95, #7c3aed); }
+.rps-4 { background: linear-gradient(120deg, #0369a1, #22d3ee); }
+
+/* =====================================================
+   🏗️ Create Room — SoulChill طبق الأصل
+   ===================================================== */
+.cr-page {
+  background:
+    radial-gradient(700px 300px at 80% -5%, rgba(124, 77, 255, .22), transparent 55%),
+    linear-gradient(180deg, #14101f, #0a0712 30%);
+  min-height: 100%; overflow-y: auto;
+  padding: 14px 20px calc(24px + env(safe-area-inset-bottom));
+}
+.cr-head { display: flex; align-items: center; justify-content: center; position: relative; padding: 6px 0 12px; }
+.cr-back {
+  position: absolute; right: 0; top: 4px;
+  background: none; border: 0; color: #fff; font-size: 22px; cursor: pointer;
+}
+.cr-title { margin: 0; color: #fff; font-size: 21px; font-weight: 900; }
+.cr-img-wrap { position: relative; width: 128px; margin: 12px auto 20px; }
+.cr-img {
+  width: 128px; height: 128px; border-radius: 50%;
+  background: linear-gradient(150deg, #3b2a6e, #7c5cf0);
+  display: flex; align-items: center; justify-content: center; font-size: 52px;
+  border: 3px solid rgba(255, 255, 255, .2);
+  box-shadow: 0 18px 44px rgba(88, 40, 180, .5);
+}
+.cr-img-edit {
+  position: absolute; bottom: 2px; left: 2px;
+  width: 38px; height: 38px; border-radius: 50%; border: 3px solid #0a0712;
+  background: #fff; color: #221a3e; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.cr-img-edit i.f7-icons { font-size: 16px; }
+.cr-label { color: #8d84ad; font-size: 15px; margin: 16px 0 10px; }
+.cr-tags { display: flex; gap: 10px; flex-wrap: wrap; }
+.cr-tag {
+  border-radius: 999px; padding: 12px 22px; font-size: 16px; font-weight: 800;
+  border: 0; cursor: pointer; color: #fff;
+  background: #221a3e; display: inline-flex; align-items: center; gap: 7px;
+}
+.cr-tag i { font-style: normal; }
+.cr-tag.active {
+  background: #fff; color: #14101f;
+  box-shadow: 0 10px 26px rgba(255, 255, 255, .18);
+}
+.cr-field {
+  position: relative; display: flex; align-items: center;
+  background: rgba(255, 255, 255, .05);
+  border: 1.5px solid rgba(196, 181, 253, .25);
+  border-radius: 18px; padding: 4px 14px;
+}
+.cr-field input, .cr-field textarea {
+  flex: 1; background: none; border: 0; outline: 0;
+  color: #fff; font-size: 18px; padding: 15px 4px;
+}
+.cr-field textarea { resize: none; line-height: 1.8; }
+.cr-field input::placeholder, .cr-field textarea::placeholder { color: #6f6789; }
+.cr-shuffle {
+  background: none; border: 0; color: #fff; font-size: 20px; cursor: pointer;
+}
+.cr-desc-field { align-items: flex-start; }
+.cr-count {
+  position: absolute; bottom: 10px; left: 16px;
+  color: #6f6789; font-size: 13px;
+}
+.cr-count b { color: #6f6789; font-weight: 600; }
+.cr-country-row {
+  display: flex; align-items: center; gap: 12px; margin: 16px 0 4px;
+}
+.cr-country-row small { color: #8d84ad; font-size: 14px; }
+.cr-country-row select {
+  flex: 1; background: rgba(255, 255, 255, .06); color: #fff;
+  border: 1.5px solid rgba(196, 181, 253, .25); border-radius: 14px;
+  padding: 12px 14px; font-size: 15px;
+}
+.cr-guide {
+  text-align: center; padding: 18px 12px 8px;
+}
+.cg-logo { font-size: 58px; margin-bottom: 8px; filter: grayscale(1) brightness(1.6); }
+.cr-guide b { color: #fff; font-size: 18px; display: block; }
+.cr-guide p { color: #8d84ad; font-size: 13px; line-height: 2; margin: 10px 6px 0; }
+.cr-conditions {
+  background: #171226; border-radius: 22px; padding: 18px 18px 8px;
+  margin: 18px 0;
+}
+.cc-title { color: #6f6789; font-size: 16px; text-align: center; margin-bottom: 14px; }
+.cc-row {
+  display: flex; align-items: center; gap: 12px; padding: 12px 0;
+  color: #fff; font-size: 15px; font-weight: 700;
+}
+.cc-row span { flex: 1; }
+.cc-row i.f7-icons { font-size: 20px; color: #6f6789; }
+.cc-row.ok i.f7-icons { color: #7c5cf0; }
+.cr-submit {
+  width: 100%; padding: 17px; border-radius: 999px; font-size: 18px;
+  background: linear-gradient(135deg, #6c5ce7, #8b6bf2); border: 0; color: #fff;
+  font-weight: 900; margin-top: 6px;
+}
+.cr-sub { color: #6f6789; font-size: 11.5px; text-align: center; line-height: 1.9; margin-top: 12px; }
+body.skin-soulchill .cr-theme.t1, body.skin-soulchill .cr-theme.t2, body.skin-soulchill .cr-theme.t3,
+body.skin-soulchill .cr-theme.t4, body.skin-soulchill .cr-theme.t5, body.skin-soulchill .cr-theme.t6 {
+  /* الأصناف القديمة t1-t6 غير مستخدمة بعد التحويل إلى cr-tag */
+}
+
+/* =====================================================
+   🌍 الكوكب — 4 بطاقات + Games + مستخدمون (طبق الأصل)
+   ===================================================== */
+.pl-4cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 14px; }
+.pl-4cards .match-card-btn {
+  min-height: 118px; padding: 13px 12px; gap: 6px;
+  background: linear-gradient(155deg, rgba(30, 18, 60, .95), rgba(56, 28, 110, .95));
+  border: 1px solid rgba(167, 139, 250, .3);
+}
+.pl-4cards .match-card-btn.voice { background: linear-gradient(155deg, #1e1240, #3b2a8c); }
+.pl-4cards .match-card-btn.soul { background: linear-gradient(155deg, #2a1246, #5b2a9e); }
+.pl-4cards .match-card-btn.video { background: linear-gradient(155deg, #141030, #2d2260); }
+.pl-4cards .match-card-btn.party { background: linear-gradient(155deg, #20103c, #4c2490); }
+.pl-4cards .mcb-txt b { font-size: 15px; }
+.pl-4cards .mcb-txt span { font-size: 10px; color: #b9a8e3; }
+.mcb-left { color: #9c92c0; font-size: 10px; }
+.mcb-left b { color: #fff; }
+.mcb-launch.dark {
+  background: #14101f; color: #fff; border-radius: 999px;
+  padding: 5px 13px; font-size: 11px; font-weight: 800;
+}
+.pl-4cards .mcb-orb {
+  font-size: 38px; top: auto; bottom: 8px; left: 10px; opacity: .95; transform: none;
+}
+.pl-section-title { color: #fff; font-size: 17px; font-weight: 900; margin: 14px 16px 8px; }
+.pl-games {
+  display: flex; gap: 9px; overflow-x: auto; scrollbar-width: none;
+  padding: 2px 14px 6px;
+}
+.pl-games::-webkit-scrollbar { display: none; }
+.pl-game {
+  flex: 0 0 auto; width: 96px; height: 88px; border-radius: 16px; cursor: pointer;
+  background: linear-gradient(165deg, #221248, #3a1e78);
+  border: 1px solid rgba(167, 139, 250, .25);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  position: relative;
+}
+.pl-game .pg-art { font-size: 30px; }
+.pl-game small { color: #fff; font-size: 10.5px; font-weight: 800; text-align: center; line-height: 1.4; }
+.pg-reward {
+  position: absolute; top: 5px; left: 5px;
+  background: #22c55e; color: #fff; font-size: 8px; font-style: normal;
+  border-radius: 999px; padding: 2px 7px; font-weight: 900;
+}
+.pl-tabs { display: flex; gap: 18px; margin: 14px 16px 4px; }
+.pl-tab {
+  background: none; border: 0; color: #8d84ad; font-size: 16px; cursor: pointer;
+  position: relative; padding: 4px 0;
+}
+.pl-tab.active { color: #fff; font-weight: 900; }
+.pl-tab.active::after {
+  content: ''; position: absolute; bottom: -4px; right: 30%; left: 30%;
+  height: 3px; border-radius: 999px; background: #fff;
+}
+.pl-users { padding: 8px 14px; display: flex; flex-direction: column; gap: 10px; }
+.pl-user-card {
+  display: flex; align-items: center; gap: 11px;
+  background: #171225; border-radius: 18px; padding: 12px;
+}
+.puc-ava { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(176, 107, 255, .6); }
+.puc-info { flex: 1; min-width: 0; }
+.puc-info b { color: #fff; font-size: 14px; display: block; }
+.puc-badges { display: flex; gap: 6px; margin: 4px 0 3px; }
+.puc-g {
+  border-radius: 999px; padding: 2px 9px; font-size: 9.5px; font-weight: 900; color: #fff;
+}
+.puc-g.f { background: #ec4899; }
+.puc-g.m { background: #3b82f6; }
+.puc-lv {
+  background: #7c3aed; color: #fff; border-radius: 999px;
+  padding: 2px 9px; font-size: 9.5px; font-weight: 900;
+}
+.puc-info small { color: #8d84ad; font-size: 11px; }
+.puc-hi {
+  background: linear-gradient(135deg, #7c4dff, #b06bff); color: #fff;
+  border: 0; border-radius: 14px; padding: 11px 18px;
+  font-size: 14px; font-weight: 900; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.pl-live-pill {
+  position: absolute; left: 14px; bottom: 84px;
+  background: #22c5ee; color: #fff; border-radius: 16px;
+  padding: 10px 14px; font-size: 11px;
+  box-shadow: 0 12px 28px rgba(34, 197, 238, .45);
+  display: flex; align-items: center; gap: 7px;
+}
+.pl-live-pill span { font-size: 20px; }
+
+/* =====================================================
+   🎉 حفلة: شريط الأكوام + LIVE pill · 💜 Soul Match
+   ===================================================== */
+.party-avas {
+  display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none;
+  padding: 8px 14px 2px;
+}
+.party-avas::-webkit-scrollbar { display: none; }
+.pa-item {
+  flex: 0 0 auto; width: 64px; background: none; border: 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.pa-ava {
+  width: 56px; height: 56px; border-radius: 50%; object-fit: cover;
+  border: 2px solid rgba(176, 107, 255, .75);
+}
+.pa-count {
+  background: #6c5ce7; color: #fff; border-radius: 999px;
+  padding: 1px 10px; font-size: 9.5px; font-weight: 900;
+}
+.pa-item small {
+  color: #d9d2ef; font-size: 9.5px; max-width: 64px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.matched-live-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: #22c5ee; color: #fff; border-radius: 18px;
+  padding: 10px 16px; margin: 10px 14px 0;
+  font-size: 12px; box-shadow: 0 12px 28px rgba(34, 197, 238, .4);
+}
+.matched-live-pill span { font-size: 20px; }
+.matched-live-pill b { font-weight: 900; }
+
+/* صفحة Soul Match (طبق الأصل) */
+.sm-page {
+  background:
+    radial-gradient(700px 340px at 70% 0%, rgba(124, 77, 255, .3), transparent 55%),
+    linear-gradient(180deg, #170f2c, #0c0718 35%);
+  min-height: 100%; padding: 12px 18px calc(20px + env(safe-area-inset-bottom));
+}
+.sm-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 4px; }
+.sm-head b { color: #fff; font-size: 18px; }
+.sm-x, .sm-skip {
+  background: #221a3e; color: #fff; border: 0; cursor: pointer;
+  border-radius: 999px; padding: 8px 16px; font-size: 13px;
+}
+.sm-orbs { position: relative; height: 240px; margin: 10px 0 6px; }
+.sm-orb {
+  position: absolute; width: 62px; height: 62px; border-radius: 22px;
+  background: #221a3e; border: 1px solid rgba(196, 181, 253, .25);
+  display: flex; align-items: center; justify-content: center; font-size: 26px;
+  animation: orbFloat 5s ease-in-out infinite;
+}
+.sm-orb.o1 { top: 26px; right: 26%; }
+.sm-orb.o2 { top: 8px; right: 8%; animation-delay: .7s; }
+.sm-orb.o3 { top: 120px; right: 12%; animation-delay: 1.3s; }
+.sm-orb.o4 { top: 180px; right: 42%; animation-delay: 1.9s; }
+.sm-orb.sm-center {
+  width: 108px; height: 108px; border-radius: 50%;
+  top: 76px; right: 50%; transform: translateX(50%);
+  background: radial-gradient(circle at 35% 30%, #8b6bf2, #4c2d9c);
+  color: #fff; font-size: 44px; font-weight: 900;
+  box-shadow: 0 22px 50px rgba(124, 77, 255, .55);
+}
+.sm-title { color: #fff; font-size: 26px; margin: 10px 0 12px; }
+.sm-card {
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(167, 139, 250, .22);
+  border-radius: 18px; padding: 16px;
+}
+.sm-val { color: #4ade80; font-size: 16px; font-weight: 800; padding: 7px 0; }
+.sm-sub { color: #b9a8e3; font-size: 13px; line-height: 2; margin: 16px 2px 22px; }
+.sm-start {
+  width: 100%; padding: 16px; border: 0; border-radius: 999px;
+  background: linear-gradient(135deg, #6c5ce7, #8b6bf2); color: #fff;
+  font-size: 17px; font-weight: 900; cursor: pointer;
+}
+.sm-result { text-align: center; padding: 18px 0; }
+.mr-ava { width: 108px; height: 108px; border-radius: 50%; margin: 0 auto 12px; overflow: hidden; border: 3px solid rgba(176, 107, 255, .7); }
+.mr-ava img, .mr-ava span { width: 100%; height: 100%; object-fit: cover; font-size: 46px; display: flex; align-items: center; justify-content: center; }
+.mr-name { color: #fff; font-size: 21px; font-weight: 900; }
+.mr-meta { margin: 10px 0 18px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+
+/* =====================================================
+   🛍️ Shop + 🔺 Charm Level — طبق الأصل
+   ===================================================== */
+.shop-page, .charm-page {
+  background: linear-gradient(180deg, #14101f, #0a0712 30%);
+  overflow-y: auto;
+}
+.shop-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px 6px;
+}
+.shop-head h3 { margin: 0; color: #fff; font-size: 20px; font-weight: 900; }
+.shop-banners { display: flex; gap: 11px; padding: 12px 14px 4px; }
+.sb-card {
+  flex: 1; height: 86px; border: 0; border-radius: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 18px; color: #fff; font-size: 15px; font-weight: 900; text-align: right;
+}
+.sb-card span { font-size: 40px; }
+.sb-orange { background: linear-gradient(115deg, #ea580c, #f59e0b); }
+.sb-blue { background: linear-gradient(115deg, #2563eb, #38bdf8); }
+.shop-tabs {
+  display: flex; gap: 18px; overflow-x: auto; scrollbar-width: none;
+  padding: 14px 16px 4px;
+}
+.shop-tabs::-webkit-scrollbar { display: none; }
+.shop-tab {
+  flex: 0 0 auto; background: none; border: 0; cursor: pointer;
+  color: #8d84ad; font-size: 16px; position: relative; padding: 5px 0;
+}
+.shop-tab.active { color: #fff; font-weight: 900; }
+.shop-tab.active::after {
+  content: ''; position: absolute; bottom: -4px; right: 30%; left: 30%;
+  height: 3px; border-radius: 999px; background: #fff;
+}
+.shop-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  padding: 12px 14px 20px;
+}
+.shop-card {
+  background: #171225; border-radius: 18px; padding: 18px 12px 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.shop-art {
+  width: 86px; height: 86px; border-radius: 50%; font-size: 44px;
+  background: linear-gradient(150deg, #3b2a6e, #7c5cf0);
+  display: flex; align-items: center; justify-content: center;
+}
+.shop-name { color: #d9d2ef; font-size: 13px; font-weight: 700; }
+.shop-price { color: #fff; font-size: 13px; }
+.shop-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(124, 91, 220, .18);
+}
+.sf-gems { color: #fff; font-size: 15px; }
+.sf-recharge {
+  background: none; border: 0; color: #b9a8e3; font-size: 15px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+
+/* Charm Level */
+.charm-hero { text-align: center; padding: 20px 18px 8px; }
+.charm-gem {
+  width: 92px; height: 92px; margin: 0 auto 12px;
+  font-size: 52px;
+  background: radial-gradient(circle at 35% 30%, rgba(176, 107, 255, .5), transparent 70%);
+  display: flex; align-items: center; justify-content: center;
+}
+.charm-hero h2 { color: #fff; font-size: 34px; margin: 0 0 8px; }
+.charm-exp { color: #b9a8e3; font-size: 15px; }
+.charm-exp b { color: #fff; margin: 0 6px; }
+.charm-bar {
+  display: flex; align-items: center; gap: 10px; margin: 14px 0 6px;
+  color: #8d84ad; font-size: 12px;
+}
+.charm-bar i {
+  flex: 1; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, .18);
+}
+.charm-bar em { display: block; width: 2%; height: 100%; border-radius: 999px; background: #8b6bf2; }
+.charm-next { color: #8d84ad; font-size: 12px; }
+.charm-sec {
+  text-align: center; padding: 16px 18px;
+  border-bottom: 1px solid rgba(124, 91, 220, .14);
+}
+.charm-sec b { color: #fff; font-size: 17px; }
+.charm-sec p { color: #8d84ad; font-size: 13px; line-height: 2; margin: 10px 0 0; }
+.charm-rows { padding: 8px 18px 24px; }
+.charm-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 0; border-bottom: 1px solid rgba(124, 91, 220, .12);
+}
+.charm-row .cr-gem { font-size: 30px; }
+.charm-row div { flex: 1; }
+.charm-row small { color: #8d84ad; font-size: 11px; display: block; }
+.charm-row b { color: #fff; font-size: 14px; }

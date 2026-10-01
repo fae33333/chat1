@@ -2567,6 +2567,8 @@ function connectSocket() {
 
   
   if (typeof wirePartyTabs === 'function') wirePartyTabs();
+  if (typeof wireShopCharm === 'function') wireShopCharm();
+  if (typeof wireCreateRoomExtras === 'function') wireCreateRoomExtras();
   if (typeof wirePmExtras === 'function') wirePmExtras();
   if (typeof renderPrivStrip === 'function') renderPrivStrip();
   if (typeof wireMeScreen === 'function') wireMeScreen();
@@ -3192,7 +3194,7 @@ function seatEntriesByIndex() {
   });
   return map;
 }
-function seatLabelOf(seatNo) { return seatNo === 0 ? 'المضيف' : 'رقم ' + seatNo; }
+function seatLabelOf(seatNo) { return seatNo === 0 ? 'المضيف' : 'No.' + seatNo; }
 function iAmSeatOwner() { return !!(ME && CUR_ROOM && +CUR_ROOM.owner_id === +ME.id); }
 function iAmSeated() {
   if (!CUR_ROOM || !ME) return false;
@@ -3214,8 +3216,9 @@ function renderSeats() {
     if (u) {
       const isMe = ME && +u.id === +ME.id;
       const wingCls = (seatNo === 0 ? 'seat-gold' : (seatNo % 2 ? 'seat-purple' : 'seat-gold'));
+      const hostExtra = seatNo === 0 ? '<span class="seat-throne">🪑</span><span class="seat-so-badge">SO⭐LL</span><span class="seat-coins">0</span>' : '';
       return `<div class="seat-item occupied ${wingCls}${isMe ? ' is-me' : ''}" data-hid="${u.id}" data-seat="${seatNo}" role="button" tabindex="0" title="${esc(u.username)}">
-        <div class="seat-circle"><span class="wing left"></span><span class="wing right"></span><span class="wing-crown">${seatNo === 0 ? '👑' : (seatNo % 2 ? '🪽' : '👑')}</span><span class="seat-ava-wrap"><span class="seat-ava">${liveAvatarHtml(u.avatar, false, '')}</span></span><span class="seat-live-ring"></span></div>
+        <div class="seat-circle"><span class="wing left"></span><span class="wing right"></span><span class="wing-crown">${seatNo === 0 ? '👑' : (seatNo % 2 ? '🪽' : '👑')}</span>${hostExtra}<span class="seat-ava-wrap"><span class="seat-ava">${liveAvatarHtml(u.avatar, false, '')}</span></span><span class="seat-live-ring"></span></div>
         <div class="seat-name">${esc(u.username)}${isMe ? ' ⭐' : ''}</div>
       </div>`;
     }
@@ -4649,6 +4652,7 @@ function renderRooms() {
   $('#roomsList').innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
   $$('#roomsList .r-banner').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
   renderCountryStrip();
+  if (typeof renderPartyAvas === 'function') renderPartyAvas();
   renderPartyBanner();
   renderMyRoomStrip();
   renderPartyTabs();
@@ -4656,6 +4660,90 @@ function renderRooms() {
 }
 // شريط الدول (SoulChill): أعلام فقاعية تفلتر الغرف حسب الدولة
 let ROOM_TYPE_FILTER = 'country';
+function wireShopCharm() {
+  const grid = $('#shopGrid');
+  if (grid && !grid.dataset.filled) {
+    grid.dataset.filled = '1';
+    const items = [
+      { n: 'Love Birds Only', p: '10000 · 3days', art: '🦜', sp: true },
+      { n: 'Frame', p: '10000 · 3days', art: '👩' },
+      { n: 'Frame', p: '6500 · 3days', art: '👩' },
+      { n: 'Frame', p: '8000 · 3days', art: '👩' },
+      { n: 'Dragon Ring', p: '31600 · 25 d', art: '🐉' },
+      { n: 'Anates', p: '20000 · 30 d', art: '🦋' }
+    ];
+    grid.innerHTML = items.map(it => `
+      <div class="shop-card">
+        <div class="shop-art">${it.art}</div>
+        <small class="shop-name">${it.sp ? it.n + ' ❯' : it.n}</small>
+        <div class="shop-price">💎 <b>${it.p}</b></div>
+      </div>`).join('');
+  }
+  const st = $('#shopTabs');
+  if (st && !st.dataset.wired) {
+    st.dataset.wired = '1';
+    st.addEventListener('click', (e) => {
+      const b = e.target.closest('.shop-tab'); if (!b) return;
+      $$('#shopTabs .shop-tab').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+    });
+  }
+  const rc = $('#shopRecharge');
+  if (rc && !rc.dataset.wired) {
+    rc.dataset.wired = '1';
+    rc.addEventListener('click', () => { const b = $('#mnBuy'); if (b) b.click(); });
+  }
+}
+function renderPartyAvas() {
+  const box = $('#partyAvas');
+  if (!box) return;
+  const pool = (typeof USERS !== 'undefined' && Array.isArray(USERS) && USERS.length ? USERS : []).slice(0, 5);
+  box.innerHTML = pool.map((u, i) => {
+    const cnt = [4, 20, 3, 10, 6][i % 5];
+    return `<button class="pa-item" type="button" data-uid="${u.id || 0}">
+      ${avatarHtml(u.avatar, 'pa-ava', '')}
+      <span class="pa-count">${cnt}</span>
+      <small>${esc(String(u.username || '').slice(0, 10))}</small>
+    </button>`;
+  }).join('');
+  box.querySelectorAll('.pa-item').forEach(b => b.addEventListener('click', () => {
+    const uid = +b.dataset.uid;
+    if (uid && typeof openPrivateChat === 'function') openPrivateChat(uid);
+  }));
+  const pill = $('#matchedLivePill');
+  if (pill && !pill.dataset.wired) {
+    pill.dataset.wired = '1';
+    pill.addEventListener('click', () => { toast('🎉 المطابقون على قيد الحياة!'); });
+  }
+}
+function renderPlUsers() {
+  const box = $('#plUsers');
+  if (!box) return;
+  const pool = (typeof USERS !== 'undefined' && Array.isArray(USERS) && USERS.length ? USERS : []).slice(0, 8);
+  box.innerHTML = pool.map((u, i) => {
+    const ages = [18, 22, 25, 31, 27, 19, 24, 29];
+    const lvs = [28, 70, 3, 13, 41, 55, 8, 22];
+    const msgs = ['We are all born after the 00s', 'Came online just now, is anyone nearby?', 'Pisces', 'Nice to meet you!'];
+    const g = (i % 2) ? '♂' : '♀';
+    return `<div class="pl-user-card">
+      ${avatarHtml(u.avatar, 'puc-ava', '')}
+      <div class="puc-info">
+        <b>${esc(String(u.username || 'مستخدم').slice(0, 16))}</b>
+        <div class="puc-badges">
+          <span class="puc-g ${g === '♀' ? 'f' : 'm'}">${g} ${ages[i % 8]}</span>
+          <span class="puc-lv">Lv.${lvs[i % 8]}</span>
+        </div>
+        <small>${msgs[i % 4]}</small>
+      </div>
+      <button class="puc-hi" type="button" data-uid="${u.id || 0}">♥ Hi</button>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.puc-hi').forEach(b => b.addEventListener('click', () => {
+    const uid = +b.dataset.uid;
+    if (uid && typeof openPrivateChat === 'function') openPrivateChat(uid);
+    else toast('👋 تم إرسال التحية!');
+  }));
+}
 function renderPlanet() {
   const cloud = $('#plCloud');
   if (cloud) {
@@ -4676,9 +4764,44 @@ function renderPlanet() {
   const pr = $('#planetRooms');
   if (pr) pr.innerHTML = ROOMS.slice(0, 4).map(roomRowHtml).join('');
   $$('#planetRooms .r-banner').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
-  const vc = $('#mcVoiceCount');
-  if (vc) vc.textContent = Math.max(1, Math.round((ROOMS.length || 2))) + ' انتظار';
+  if (typeof renderPlUsers === 'function') renderPlUsers();
   renderPartyBanner();
+}
+function wireCreateRoomExtras() {
+  const d = $('#crDesc'), c = $('#crDescCount');
+  if (d && c && !d.dataset.wired) {
+    d.dataset.wired = '1';
+    const upd = () => { c.textContent = String((d.value || '').length); };
+    d.addEventListener('input', upd); upd();
+  }
+  const sh = $('#crShuffle');
+  if (sh && !sh.dataset.wired) {
+    sh.dataset.wired = '1';
+    sh.addEventListener('click', () => {
+      const names = ['chat', 'love', 'music', 'hangout', 'soul talk', 'night chat', 'party', 'friends'];
+      const n = $('#crName');
+      if (n) { n.value = names[Math.floor(Math.random() * names.length)]; beep(660, .05); }
+    });
+  }
+  const im = $('#crImgEdit');
+  if (im && !im.dataset.wired) {
+    im.dataset.wired = '1';
+    im.addEventListener('click', () => {
+      const arts = ['🌇', '🌃', '🌄', '🎆', '🌌', '🎡', '🏝️', '🏔️'];
+      const p = $('#crImgPreview');
+      if (p) {
+        const cur = arts.indexOf(p.textContent.trim());
+        p.textContent = arts[(cur + 1) % arts.length];
+      }
+      beep(720, .05);
+    });
+  }
+  const sel = $('#crCountry');
+  if (sel && !sel.dataset.filled) {
+    sel.dataset.filled = '1';
+    const opts = Object.keys(CC_NAME || {}).map(k => `<option value="${k}">${CC_FLAG[k] || ''} ${CC_NAME[k]}</option>`).join('');
+    sel.innerHTML = '<option value="">🌍 بدون دولة</option>' + opts;
+  }
 }
 function wirePmExtras() {
   const q = $('#pmQuick');
@@ -4757,6 +4880,24 @@ function renderPrivStrip() {
   }));
 }
 function wireMeScreen() {
+  const sv = $('#mnStatuses');
+  if (sv && !sv.dataset.charm) {
+    sv.dataset.charm = '1';
+    sv.addEventListener('click', () => { closeNavPages('charmOv'); if (typeof openOv === 'function') openOv('charmOv'); else (function(){ const o = document.getElementById('charmOv'); if (o) o.classList.add('open'); })(); });
+  }
+  const vf = $('#mnVerify');
+  if (vf && !vf.dataset.charm) {
+    vf.dataset.charm = '1';
+    vf.addEventListener('click', () => { const b = $('#mnStatuses'); if (b) b.click(); });
+  }
+  const shop = $('#mnAccount');
+  if (shop && !shop.dataset.shop) {
+    shop.dataset.shop = '1';
+    shop.addEventListener('click', () => {
+      const o = document.getElementById('storeOv');
+      if (o) o.classList.add('open');
+    });
+  }
   const w = $('#mnWallGo');
   if (w && !w.dataset.wired) {
     w.dataset.wired = '1';
@@ -12625,7 +12766,7 @@ function showScreen(name) {
   document.querySelector('.bottomnav').classList.toggle('show', name === 'chat');
 }
 // إغلاق صفحات التنقل الأخرى عدا المطلوبة (التبديل بينها دون تراكم)
-function closeNavPages(except) { ['privOv', 'notifOv', 'wallOv', 'menuOv', 'myGiftsOv', 'blocksOv', 'planetOv'].forEach(id => { if (id !== except) closeOv(id); }); }
+function closeNavPages(except) { ['privOv', 'notifOv', 'wallOv', 'menuOv', 'myGiftsOv', 'blocksOv', 'planetOv', 'storeOv', 'charmOv'].forEach(id => { if (id !== except) closeOv(id); }); }
 $$('.bn-item').forEach(b => b.onclick = () => {
   const nav = b.dataset.nav;
   if (nav === 'rooms') {           // «الغرف» = العودة إلى العامة (الدردشة الحالية)

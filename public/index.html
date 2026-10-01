@@ -92,9 +92,11 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <button class="ptab active" type="button" data-pt="country" id="ptabCountry">الأردن</button>
     <button class="ptab ptab-grid" type="button" id="ptabGrid"><i class="f7-icons">square_grid_2x2</i></button>
   </div>
+  <div class="party-avas" id="partyAvas"></div>
   <div class="country-strip" id="countryStrip"></div>
     <!-- شريط غرفتي: زر الإنشاء أو بطاقة غرفتي مع الإدارة -->
-    <div class="myroom-strip" id="myRoomStrip"></div>
+    <div class="matched-live-pill" id="matchedLivePill"><span>🧑‍🚀</span> <b>6 matched Soulers</b> are LIVE!</div>
+  <div class="myroom-strip" id="myRoomStrip"></div>
     <div class="r-list" id="roomsList"></div>
   </section>
 
@@ -157,7 +159,17 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       </div>
     </div>
 
-    <!-- 🎁 بانر الهدايا الترويجي (SoulChill) -->
+    <!-- 🏆 بانر الترتيب + مستوى الغرفة (SoulChill) -->
+<div class="room-rank-row">
+  <button class="room-rank-banner" id="roomRankBanner" type="button">
+    <b>08:00-09:00 real-time</b><br><span>Overall : No.100+ ❯</span>
+  </button>
+  <div class="room-lv-widget">
+    <span class="rlw-ic">🐧</span>
+    <div class="rlw-txt"><b>LV1</b><small>0/7000</small><i class="rlw-bar"><em></em></i></div>
+  </div>
+</div>
+<!-- 🎁 بانر الهدايا الترويجي (SoulChill) -->
 <button class="room-promo" id="roomPromoBanner" type="button">
   <span class="rp-count">x1</span>
   <span class="rp-text">أرسل هدية لـ<b>مُتصدر</b> أسـبق! اضغط للمشاهدة!</span>
@@ -180,6 +192,13 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   <span class="rl-count"><i class="f7-icons">person_fill</i> <b id="rlCount">0</b></span>
   <span class="rl-chatcount"><b id="rlChat">0</b></span>
   <div class="rl-avas" id="rlAvas"></div>
+</div>
+<!-- 🎴 بطاقات الترويج الجانبية (SoulChill) -->
+<div class="room-promo-stack" id="roomPromoStack">
+  <button class="rps-card rps-1" type="button">الشنق اليوم 🎯</button>
+  <button class="rps-card rps-2" type="button">مربع اللعب 🎲</button>
+  <button class="rps-card rps-3" type="button">المكافآت الكبرى 🏆</button>
+  <button class="rps-card rps-4" type="button">رحلة اليابان ✈️</button>
 </div>
 <!-- ⚔️ شريط تحدي PK -->
     <div class="pk-bar" id="pkBar" hidden></div>
@@ -316,20 +335,104 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <div class="plb-avas" id="plbAvas"></div>
       <i class="f7-icons plb-arrow">chevron_left</i>
     </button>
-    <div class="match-cards">
+    <div class="match-cards pl-4cards">
       <button class="match-card-btn voice" id="mcVoice" type="button">
-        <div class="mcb-txt"><b>مكالمة صوتية</b><span>اختر لاقفة المكالمات</span></div>
-        <span class="mcb-count" id="mcVoiceCount">0 انتظار</span>
-        <span class="mcb-launch">ابدأ ▶</span>
+        <div class="mcb-txt"><b>Voice match</b><span>Voice lovers are always online</span></div>
+        <span class="mcb-left">Left: <b id="mcVoiceCount">15</b></span>
+        <span class="mcb-launch dark">Launch ▶</span>
         <span class="mcb-orb">🌍</span>
       </button>
       <button class="match-card-btn soul" id="mcSoul" type="button">
-        <div class="mcb-txt"><b>رفيق الروح</b><span>تحدت مع من يحببك</span></div>
-        <span class="mcb-launch">ابدأ ▶</span>
+        <div class="mcb-txt"><b>Soul Match</b><span>Chat with someone who understands you</span></div>
+        <span class="mcb-left">Left: <b>10</b></span>
         <span class="mcb-orb">💝</span>
       </button>
+      <button class="match-card-btn video" id="mcVideo" type="button">
+        <div class="mcb-txt"><b>Video Streaming</b><span>Share wonderful moments</span></div>
+        <span class="mcb-orb">🎬</span>
+      </button>
+      <button class="match-card-btn party" id="mcParty" type="button">
+        <div class="mcb-txt"><b>Party On</b><span>Chat &amp; Mingle</span></div>
+        <span class="mcb-launch dark">Join ▶</span>
+        <span class="mcb-orb">🎉</span>
+      </button>
     </div>
+    <div class="pl-section-title">Games</div>
+    <div class="pl-games" id="plGames">
+      <button class="pl-game" type="button"><span class="pg-art">🎲</span><em class="pg-reward">🪙 Reward</em><small>ludo</small></button>
+      <button class="pl-game" type="button"><span class="pg-art">💥</span><small>Battle Match</small></button>
+      <button class="pl-game" type="button"><span class="pg-art">🐍</span><small>Snakes and Ladders</small></button>
+      <button class="pl-game" type="button"><span class="pg-art">🍬</span><small>Candy Match</small></button>
+      <button class="pl-game" type="button"><span class="pg-art">🎁</span><small>More</small></button>
+    </div>
+    <div class="pl-tabs" id="plTabs">
+      <button class="pl-tab active" type="button">Recommend</button>
+      <button class="pl-tab" type="button">Newcomer</button>
+    </div>
+    <div class="pl-users" id="plUsers"></div>
+    <div class="pl-live-pill" id="plLivePill"><span>🧑‍🚀</span> <b>6 Matched Souler</b> are now live</div>
     <div class="planet-rooms" id="planetRooms"></div>
+  </div>
+</div>
+
+<!-- ============ المتجر (Shop) ============ -->
+<div class="overlay full" id="storeOv">
+  <div class="pvpage shop-page">
+    <div class="shop-head">
+      <button class="cr-back" data-close="storeOv" type="button"><i class="f7-icons">chevron_right</i></button>
+      <h3>Shop</h3>
+      <button class="ph-ic" id="shopAvatarBtn" type="button">👕</button>
+    </div>
+    <div class="shop-banners">
+      <button class="sb-card sb-orange" type="button"><b>Special ID<br>store</b><span>🆔</span></button>
+      <button class="sb-card sb-blue" type="button"><b>Game store</b><span>🎮</span></button>
+    </div>
+    <div class="shop-tabs" id="shopTabs">
+      <button class="shop-tab active" type="button">Frames</button>
+      <button class="shop-tab" type="button">Entrance Effects</button>
+      <button class="shop-tab" type="button">Room Card</button>
+      <button class="shop-tab" type="button">Family</button>
+    </div>
+    <div class="shop-grid" id="shopGrid"></div>
+    <div class="shop-foot">
+      <span class="sf-gems">💎 <b>0</b></span>
+      <button class="sf-recharge" id="shopRecharge" type="button">Recharge <i class="f7-icons">chevron_left</i></button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Charm Level ============ -->
+<div class="overlay full" id="charmOv">
+  <div class="pvpage charm-page">
+    <div class="shop-head">
+      <button class="cr-back" data-close="charmOv" type="button"><i class="f7-icons">chevron_right</i></button>
+      <h3>Charm Level</h3>
+      <span></span>
+    </div>
+    <div class="charm-hero">
+      <div class="charm-gem">🔺</div>
+      <h2>Lv.0</h2>
+      <div class="charm-exp">Current Exp <b>0</b></div>
+      <div class="charm-bar"><span>Lv.0</span><i><em></em></i><span>Lv.1</span></div>
+      <small class="charm-next">Exp. to the next level : 1</small>
+    </div>
+    <div class="charm-sec">
+      <b>◆ Benefits of the High Level ◆</b>
+      <p>Higher levels make you receive more charm and attention.</p>
+    </div>
+    <div class="charm-sec">
+      <b>◆ Way to Level Up ◆</b>
+      <p>If you receive a gift worth 1 crystal, you will get 1 experience point. The higher the experience, the faster the upgrade</p>
+    </div>
+    <div class="charm-sec">
+      <b>◆ Level Icon Display ◆</b>
+      <p>The level icon will be displayed on the room's public screen, profile card, and greeting list. If the level goes higher, the icon will be more unique.</p>
+    </div>
+    <div class="charm-rows">
+      <div class="charm-row"><span class="cr-gem">🔺</span><div><small>Level</small><b>LV.1-LV.5</b></div><div><small>Experience</small><b>01-2160</b></div></div>
+      <div class="charm-row"><span class="cr-gem">🔺</span><div><small>Level</small><b>LV.6-LV.10</b></div><div><small>Experience</small><b>4200-46200</b></div></div>
+      <div class="charm-row"><span class="cr-gem">🔺</span><div><small>Level</small><b>LV.11-LV.15</b></div><div><small>Experience</small><b>68000-180000</b></div></div>
+    </div>
   </div>
 </div>
 
@@ -585,87 +688,64 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </div>
 </div>
 
-<div class="overlay" id="createRoomOv">
-    <div class="sheet lsheet roomform-sheet">
-      <div class="sh-handle"></div>
-      <i class="f7-icons sheet-x blue" data-close="createRoomOv">xmark</i>
-      <h3 id="crTitle">إنشاء غرفتي 🏠</h3>
-      <p class="cr-sub" id="crSub">كل حساب له غرفة واحدة — يمكنك حذفها وإنشاء غيرها في أي وقت</p>
-      <div class="lf-field">
-        <i class="f7-icons lf-ic">house_fill</i>
-        <input id="crName" placeholder="اسم الغرفة" maxlength="40">
-      </div>
-      <div class="lf-field">
-        <i class="f7-icons lf-ic">text_quote</i>
-        <input id="crDesc" placeholder="وصف الغرفة (اختياري)" maxlength="120">
-      </div>
-      <div class="lf-field">
-        <i class="f7-icons lf-ic">lock_fill</i>
-        <input id="crPass" type="password" placeholder="كلمة مرور الغرفة (اختياري)" maxlength="40" autocomplete="off">
-      </div>
-      <div class="cr-pass-row">
-        <button type="button" class="cr-clear-pass" id="crClearPass" style="display:none"><i class="f7-icons">lock_open_fill</i> إزالة كلمة المرور</button>
-      </div>
-      <div class="cr-type-row">
-        <small>نوع الغرفة</small>
-        <div class="cr-type-pills" id="crTypePills">
-          <button type="button" class="cr-pill active" data-type="voice"><i class="f7-icons">mic_fill</i> صوتية (مايك)</button>
-          <button type="button" class="cr-pill" data-type="default"><i class="f7-icons">bubble_left_bubble_right_fill</i> كتابية</button>
-        </div>
-      </div>
-      <div class="cr-type-row">
-        <small>الجمهور</small>
-        <div class="cr-type-pills" id="crAudPills">
-          <button type="button" class="cr-pill active" data-aud="all">الجميع</button>
-          <button type="button" class="cr-pill" data-aud="registered">الأعضاء المسجلون</button>
-        </div>
-      </div>
-      <div class="cr-type-row">
-        <small>ثيم الغرفة (الخلفية)</small>
-        <div class="cr-theme-pills" id="crThemePills">
-          <button type="button" class="cr-theme t1 active" data-theme="">🌟 كوني</button>
-          <button type="button" class="cr-theme t2" data-theme="sunset">🌅 غروب</button>
-          <button type="button" class="cr-theme t3" data-theme="ocean">🌊 محيط</button>
-          <button type="button" class="cr-theme t4" data-theme="rose">🌹 وردي</button>
-          <button type="button" class="cr-theme t5" data-theme="gold">👑 ذهبي</button>
-          <button type="button" class="cr-theme t6" data-theme="night">🌙 ليلي</button>
-        </div>
-      </div>
-      <div class="cr-type-row">
-        <small>الدولة</small>
-        <div class="lf-field" style="margin-top:6px">
-          <i class="f7-icons lf-ic">globe</i>
-          <select id="crCountry">
-            <option value="">🌍 جميع الدول</option>
-            <option value="SA">🇸🇦 السعودية</option>
-            <option value="EG">🇪🇬 مصر</option>
-            <option value="JO">🇯🇴 الأردن</option>
-            <option value="SY">🇸🇾 سوريا</option>
-            <option value="IQ">🇮🇶 العراق</option>
-            <option value="PS">🇵🇸 فلسطين</option>
-            <option value="LB">🇱🇧 لبنان</option>
-            <option value="YE">🇾🇪 اليمن</option>
-            <option value="SD">🇸🇩 السودان</option>
-            <option value="MA">🇲🇦 المغرب</option>
-            <option value="DZ">🇩🇿 الجزائر</option>
-            <option value="TN">🇹🇳 تونس</option>
-            <option value="LY">🇱🇾 ليبيا</option>
-            <option value="AE">🇦🇪 الإمارات</option>
-            <option value="KW">🇰🇼 الكويت</option>
-            <option value="QA">🇶🇦 قطر</option>
-            <option value="BH">🇧🇭 البحرين</option>
-            <option value="OM">🇴🇲 عُمان</option>
-            <option value="TR">🇹🇷 تركيا</option>
-          </select>
-        </div>
-      </div>
-      <button class="big-btn" id="crSubmit"><i class="f7-icons">plus_circle_fill</i> <span id="crSubmitTxt">إنشاء الغرفة</span></button>
-      <div class="cl-err" id="crErr"></div>
+<div class="overlay full" id="createRoomOv">
+  <div class="cr-page">
+    <div class="cr-head">
+      <button class="cr-back" data-close="createRoomOv" type="button"><i class="f7-icons">chevron_right</i></button>
+      <h3 class="cr-title" id="crTitle">Create Room</h3>
     </div>
+    <div class="cr-img-wrap">
+      <span class="cr-img" id="crImgPreview">🌇</span>
+      <button class="cr-img-edit" id="crImgEdit" type="button"><i class="f7-icons">photo_fill</i></button>
+    </div>
+    <div class="cr-label">Room tags</div>
+    <div class="cr-tags" id="crThemePills">
+      <button type="button" class="cr-tag cr-theme active" data-theme=""><i>💬</i> Chat</button>
+      <button type="button" class="cr-tag cr-theme" data-theme="rose"><i>❤️</i> Dating</button>
+      <button type="button" class="cr-tag cr-theme" data-theme="gold"><i>🎵</i> Music</button>
+      <button type="button" class="cr-tag cr-theme" data-theme="ocean"><i>🎮</i> Games</button>
+      <button type="button" class="cr-tag cr-theme" data-theme="sunset"><i>🔮</i> Astrology</button>
+      <button type="button" class="cr-tag cr-theme" data-theme="night"><i>🌙</i> Night Talk</button>
+    </div>
+    <div class="cr-label">Room title</div>
+    <div class="cr-field">
+      <input id="crName" maxlength="40" placeholder="chat">
+      <button class="cr-shuffle" id="crShuffle" type="button" title="عنوان عشوائي"><i class="f7-icons">arrow_2_squarepath</i></button>
+    </div>
+    <div class="cr-label">Description</div>
+    <div class="cr-field cr-desc-field">
+      <textarea id="crDesc" maxlength="100" rows="4" placeholder="let'stalking!"></textarea>
+      <span class="cr-count"><b id="crDescCount">0</b>/100</span>
+    </div>
+    <input id="crPass" type="password" placeholder="كلمة مرور الغرفة (اختياري)" maxlength="40" autocomplete="off" style="display:none">
+    <div class="cr-type-row" style="display:none">
+      <small>نوع الغرفة</small>
+      <div class="cr-type-btns" id="crTypeBtns">
+        <button type="button" class="cr-type-btn active" data-type="voice">صوتية 🎤</button>
+      </div>
+    </div>
+    <div class="cr-country-row">
+      <small>الدولة 🌍</small>
+      <select id="crCountry"></select>
+    </div>
+    <div class="cr-guide">
+      <div class="cg-logo">🌙</div>
+      <b>Room guide</b>
+      <p>Welcome to Voice Room! This is an online voice communication platform that allows you to interact with others in real time through voice</p>
+    </div>
+    <div class="cr-conditions">
+      <div class="cc-title">Room creation conditions</div>
+      <div class="cc-row ok"><span>Registration time ≥ 5 days</span><i class="f7-icons">checkmark_seal_fill</i></div>
+      <div class="cc-row"><span>The time for turning on the mic to chat in the voice room ≥ 60 minutes</span><i class="f7-icons">lock_fill</i></div>
+      <div class="cc-row"><span>Give or receive gifts ≥100 crystals</span><i class="f7-icons">lock_fill</i></div>
+    </div>
+    <div class="cr-err cl-err" id="crErr"></div>
+    <button class="big-btn cr-submit" id="crSubmit"><span id="crSubmitTxt">Create Room</span></button>
+    <p class="cr-sub" id="crSub">كل حساب له غرفة واحدة — يمكنك حذفها وإنشاء غيرها في أي وقت</p>
   </div>
+</div>
 
-  <!-- ============ تأكيد حذف الغرفة ============ -->
-  <div class="overlay" id="delRoomOv">
+<div class="overlay" id="delRoomOv">
     <div class="sheet needreg">
       <div class="nr-title">حذف الغرفة</div>
       <div class="nr-ico" style="background:linear-gradient(150deg,#ef4444,#b91c1c)"><i class="f7-icons">trash_fill</i></div>
@@ -892,40 +972,40 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </div>
 
   <!-- المطابقة الفورية -->
-  <div class="overlay center" id="matchOv">
-    <div class="match-card">
-      <button class="match-x" data-close="matchOv" type="button" aria-label="إغلاق"><i class="f7-icons">xmark_circle_fill</i></button>
-      <div class="match-visual" id="matchVisual">
-        <div class="match-orbit"><div class="match-orb o1"></div><div class="match-orb o2"></div><div class="match-orb o3"></div></div>
-        <div class="match-searching-ava" id="matchSearchAva"><i class="f7-icons">sparkles</i></div>
+  <div class="overlay full" id="matchOv">
+    <div class="sm-page">
+      <div class="sm-head">
+        <button class="sm-x" id="matchStop" type="button">✕</button>
+        <b id="matchTitle">Soul Match</b>
+        <button class="sm-skip" id="matchSkip" type="button">Skip</button>
       </div>
-      <div class="match-result" id="matchResult" hidden>
+      <div class="sm-orbs" id="matchVisual">
+        <span class="sm-orb o1">🔑</span>
+        <span class="sm-orb o2">💌</span>
+        <span class="sm-orb sm-center">?</span>
+        <span class="sm-orb o3">🏀</span>
+        <span class="sm-orb o4">🖐️</span>
+      </div>
+      <div class="sm-body">
+        <h2 class="sm-title">Soul Match</h2>
+        <div class="sm-card" id="matchText">
+          <div class="sm-val">▶ Same Values</div>
+          <div class="sm-val">▶ Same Hobbies</div>
+          <div class="sm-val">▶ Interesting Personality</div>
+        </div>
+        <p class="sm-sub">Through AI Test and Intelligent Analysis to help you find the most matching friends and chat online right now</p>
+        <button class="sm-start" id="matchGo" type="button">Start Now</button>
+      </div>
+      <div class="sm-result" id="matchResult" hidden>
         <div class="mr-ava" id="mrAva"></div>
         <div class="mr-name" id="mrName">-</div>
         <div class="mr-meta" id="mrMeta"></div>
-      </div>
-      <div class="match-text" id="matchText">جارٍ البحث عن روح متوافقة…</div>
-      <div class="match-btns">
-        <button class="btn-cancel" id="matchSkip" type="button" hidden>التالي</button>
-        <button class="btn-send" id="matchGo" type="button" hidden><i class="f7-icons">chat_bubble_fill</i> ابدأ الدردشة</button>
-        <button class="btn-cancel" data-close="matchOv" id="matchStop" type="button">إيقاف</button>
+        <button class="sm-start" id="matchChatBtn" type="button">💬 ابدأ المحادثة</button>
       </div>
     </div>
   </div>
 
-  <!-- بطاقة دعوة غرفة عائمة -->
-  <div class="room-invite-card" id="roomInviteCard" hidden>
-    <div class="ric-ic">🎉</div>
-    <div class="ric-txt">
-      <b id="ricFrom">-</b>
-      <span id="ricText">-</span>
-    </div>
-    <button class="ric-join" id="ricJoin" type="button">انضم الآن</button>
-    <button class="ric-x" id="ricClose" type="button" aria-label="إغلاق"><i class="f7-icons">xmark_circle_fill</i></button>
-  </div>
-
-  <!-- الترقية -->
-  <div class="overlay" id="upOv">
+<div class="overlay" id="upOv">
     <div class="sheet upsheet">
       <div class="pg-head">
         <span class="pg-title">الترقية</span>
