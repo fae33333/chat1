@@ -2565,7 +2565,15 @@ function connectSocket() {
       toast(`تم تغيير اسم حسابك إلى: ${ME.username} بنجاح ✨`);
     }
 
-    renderRooms();
+  
+  if (typeof wirePartyTabs === 'function') wirePartyTabs();
+  if (typeof wirePmExtras === 'function') wirePmExtras();
+  if (typeof renderPrivStrip === 'function') renderPrivStrip();
+  if (typeof wireMeScreen === 'function') wireMeScreen();
+  if (typeof wireLoginScreen === 'function') wireLoginScreen();
+  if (typeof wirePartyHeader === 'function') wirePartyHeader();
+  if (typeof wireCatCards === 'function') wireCatCards();
+  if (typeof renderPlanet === 'function') renderPlanet();  renderRooms();
     if (CUR_ROOM) renderUsers();
   });
   // تحديث مباشر لمفاتيح ضبط الإعدادات من لوحة الإدارة دون انتظار إعادة تحميل.
@@ -3205,8 +3213,9 @@ function renderSeats() {
     const isClosed = closed.includes(seatNo);
     if (u) {
       const isMe = ME && +u.id === +ME.id;
-      return `<div class="seat-item occupied${isMe ? ' is-me' : ''}" data-hid="${u.id}" data-seat="${seatNo}" role="button" tabindex="0" title="${esc(u.username)}">
-        <div class="seat-circle"><span class="seat-ava">${liveAvatarHtml(u.avatar, false, '')}</span><span class="seat-live-ring"></span></div>
+      const wingCls = (seatNo === 0 ? 'seat-gold' : (seatNo % 2 ? 'seat-purple' : 'seat-gold'));
+      return `<div class="seat-item occupied ${wingCls}${isMe ? ' is-me' : ''}" data-hid="${u.id}" data-seat="${seatNo}" role="button" tabindex="0" title="${esc(u.username)}">
+        <div class="seat-circle"><span class="wing left"></span><span class="wing right"></span><span class="wing-crown">${seatNo === 0 ? '👑' : (seatNo % 2 ? '🪽' : '👑')}</span><span class="seat-ava-wrap"><span class="seat-ava">${liveAvatarHtml(u.avatar, false, '')}</span></span><span class="seat-live-ring"></span></div>
         <div class="seat-name">${esc(u.username)}${isMe ? ' ⭐' : ''}</div>
       </div>`;
     }
@@ -3425,7 +3434,8 @@ function bcastRenderBar() {
   }
   if (!state) {
     // لا يوجد بث حالياً — الصعود كمذيع يتم الآن حصرياً من زر «تحدث» بجانب الميكروفون.
-    renderIdleRoomNotice();
+    if (typeof renderRoomListeners === 'function') renderRoomListeners();
+  renderIdleRoomNotice();
     SPEAK_REQUEST_PENDING = false;
     bar.onclick = null;
     return;
@@ -4315,6 +4325,7 @@ function openAnnouncementPopup(announcement) {
 $('#announcementOk').onclick = () => closeOv('announcementOverlay');
 function updateNotifBadge() {
   const badge = $('#notifBadge');
+  if (!badge) { syncBadgeMirror('#dskNotifBadge', NOTIF_UNREAD); updateUnreadTitle(); return; }
   if (NOTIF_UNREAD > 0) {
     badge.textContent = NOTIF_UNREAD > 99 ? '99+' : NOTIF_UNREAD;
     badge.style.display = 'flex';
@@ -4565,19 +4576,38 @@ function roomFlagOf(r) {
 function roomRowHtml(r) {
   const online = ROOM_COUNTS[r.id] || 0;
   const mine = isMyRoom(r);
+  const th = String(r.theme || 'default');
+  const artOf = (t) => ({ sunset: '👑', ocean: '🐬', rose: '🌹', gold: '🏆', night: '💎', default: '🎁' })[t] || '🎁';
+  const tagOf = (r) => {
+    const t = String(r.type || 'default');
+    if (t === 'video') return 'فيديو 🎥';
+    if (t === 'youtube') return 'يوتيوب ▶️';
+    if (t === 'game') return 'ألعاب 🎮';
+    return (r.description && r.description.trim()) ? r.description.trim().split(' ').slice(0, 2).join(' ') + ' 🎵' : 'نادي المزاج 🎵';
+  };
+  const rank = (+r.sort > 0 ? +r.sort : ((+r.id % 10) + 1));
+  const pool = (typeof USERS !== 'undefined' && Array.isArray(USERS) && USERS.length) ? USERS : [];
+  const avas = Array.from({ length: 4 }, (_, k) => {
+    const u = pool[((+r.id || 0) * 3 + k) % Math.max(pool.length, 1)] || {};
+    return avatarHtml(u.avatar || '', 'rb-ava-sm', '');
+  }).join('');
   return `
-  <div class="room-row room-theme-${esc(r.theme || 'default')}" data-id="${r.id}">
-    ${roomImgHtml(r)}
-    <div class="room-info">
-      <div class="room-name">${roomFlagOf(r) ? `<span class="room-flag">${roomFlagOf(r)}</span>` : ''}${esc(r.name)}${mine ? '<span class="room-mine-tag">غرفتي ⭐</span>' : ''}</div>
-      <div class="room-desc">${esc(r.description || `أهلاً وسهلاً بكم في ${SETTINGS.site_name || 'الدردشة'} ★`)}</div>
-      ${+r.owner_id ? `<div class="room-owner-tag"><i class="f7-icons">person_crop_circle_badge_checkmark</i> غرفة ${esc(r.owner_name || 'مستخدم')}</div>` : ''}
+  <div class="r-banner rb-theme-${esc(th)}" data-id="${r.id}">
+    <div class="rb-rank">جدول الساعة العام ${rank} 🏆</div>
+    <div class="rb-art">${artOf(th)}</div>
+    <div class="rb-info">
+      <div class="rb-name">${roomFlagOf(r) ? `<span class="room-flag">${roomFlagOf(r)}</span>` : ''}${esc(r.name)}${mine ? '<span class="room-mine-tag">غرفتي ⭐</span>' : ''}</div>
+      <div class="rb-tags">
+        <span class="rb-tag">${tagOf(r)}</span>
+        ${r.locked ? '<span class="rb-tag rb-lock"><i class="f7-icons">lock_fill</i></span>' : ''}
+        ${r.status !== 'open' ? '<span class="rb-tag rb-closed">مغلقة 🔒</span>' : ''}
+      </div>
+      <div class="rb-stats">
+        <span class="rb-listens"><i class="f7-icons">person_2_fill</i>${online}</span>
+        <div class="rb-avas">${avas}</div>
+      </div>
     </div>
-    <div class="room-side">
-      <div class="room-online-pill${online ? '' : ' off'}"><i class="f7-icons">person_2_fill</i><b>${online}</b></div>
-      <i class="f7-icons room-chev">chevron_right</i>
-      ${roomFeaturesHtml(r)}
-    </div>
+    <div class="rb-ava">${roomImgHtml(r, 'rb-ava-img')}</div>
   </div>`;
 }
 function roomMiniHtml(r) {
@@ -4609,28 +4639,270 @@ function renderRoomsPanel() {
 let COUNTRY_FILTER = 'all';   // فلتر «الغرف حسب الدول» (SoulChill)
 function renderRooms() {
   const q1 = ($('#roomSearch').value || '').trim();
-  // جميع الغرف صوتية الآن — مع فلتر الدولة وفلتر البحث
+  // جميع الغرف صوتية — فلترة: الدولة + نوع التبويب + البحث
   let list = ROOMS.filter(r => (!q1 || r.name.includes(q1)));
   if (COUNTRY_FILTER !== 'all') list = list.filter(r => String(r.country || '') === COUNTRY_FILTER);
+  if (ROOM_TYPE_FILTER === 'video') list = list.filter(r => String(r.type || '') === 'video');
+  else if (ROOM_TYPE_FILTER === 'pk') list = list.filter(r => String(r.type || '') === 'pk' || (r.name || '').includes('PK'));
+  else if (ROOM_TYPE_FILTER === 'youtube') list = list.filter(r => String(r.type || '') === 'youtube');
+  else if (ROOM_TYPE_FILTER === 'game') list = list.filter(r => String(r.type || '') === 'game');
   $('#roomsList').innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
-  $$('#roomsList .room-row').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
+  $$('#roomsList .r-banner').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
   renderCountryStrip();
   renderPartyBanner();
   renderMyRoomStrip();
+  renderPartyTabs();
   renderRoomsPanel();
 }
 // شريط الدول (SoulChill): أعلام فقاعية تفلتر الغرف حسب الدولة
+let ROOM_TYPE_FILTER = 'country';
+function renderPlanet() {
+  const cloud = $('#plCloud');
+  if (cloud) {
+    const pool = (typeof USERS !== 'undefined' && Array.isArray(USERS) && USERS.length ? USERS : []).slice(0, 22);
+    cloud.innerHTML = pool.map((u, i) => {
+      const pct = 72 + ((String(u.username || '').length * 13 + i * 7) % 27);
+      const x = 6 + ((i * 37) % 82), y = 4 + ((i * 53) % 70);
+      const sz = 54 + ((i * 11) % 30);
+      return `<button class="pl-bubble" type="button" data-uid="${u.id || 0}" style="left:${x}%;top:${y}%;width:${sz}px">
+        ${avatarHtml(u.avatar, 'pl-bub-img', '')}
+        <span class="pl-bub-name">${esc(String(u.username || 'مستخدم').slice(0, 8))}</span>
+        <span class="pl-bub-pct">${pct}٪</span>
+      </button>`;
+    }).join('');
+  }
+  const oc = $('#plOnlineCount');
+  if (oc) oc.textContent = (typeof USERS !== 'undefined' && USERS.length ? USERS.length * 137 + 538000 : 538368).toLocaleString('en-US');
+  const pr = $('#planetRooms');
+  if (pr) pr.innerHTML = ROOMS.slice(0, 4).map(roomRowHtml).join('');
+  $$('#planetRooms .r-banner').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
+  const vc = $('#mcVoiceCount');
+  if (vc) vc.textContent = Math.max(1, Math.round((ROOMS.length || 2))) + ' انتظار';
+  renderPartyBanner();
+}
+function wirePmExtras() {
+  const q = $('#pmQuick');
+  if (q && !q.dataset.wired) {
+    q.dataset.wired = '1';
+    q.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-q]');
+      if (!b) return;
+      const inp = $('#pmInput');
+      if (inp) { inp.value = b.dataset.q; inp.focus(); }
+    });
+  }
+  const tb = $('#pmToolbar');
+  if (tb && !tb.dataset.wired) {
+    tb.dataset.wired = '1';
+    tb.addEventListener('click', (e) => {
+      const b = e.target.closest('.pm-tb'); if (!b) return;
+      if (b.id === 'pmTbPhone') { const c = $('#pmCall'); if (c) c.click(); return; }
+      if (b.id === 'pmTbImg') { const c = $('#pmCam'); if (c) c.click(); return; }
+      if (b.id === 'pmTbMic') { const c = $('#pmMic'); if (c) c.click(); return; }
+      if (b.id === 'pmTbGift') {
+        if (typeof sendRoseFromPM === 'function') sendRoseFromPM();
+        else toast('🎁 أرسل هدية');
+        return;
+      }
+      toast('المزيد قريباً');
+    });
+  }
+}
+function renderRoomListeners() {
+  const box = $('#roomListeners');
+  if (!box || !CUR_ROOM) { if (box) box.style.display = 'none'; return; }
+  box.style.display = '';
+  const online = ROOM_COUNTS[CUR_ROOM.id] || 0;
+  const rc = $('#rlCount'); if (rc) rc.textContent = online;
+  const ch = $('#rlChat'); if (ch) ch.textContent = Math.max(1, Math.round(online / 2));
+  const av = $('#rlAvas');
+  if (av) {
+    const pool = (typeof USERS !== 'undefined' && Array.isArray(USERS) ? USERS : []).slice(0, 6);
+    av.innerHTML = pool.map(u => avatarHtml(u.avatar, 'rl-ava', '')).join('');
+  }
+  const pb = $('#roomPromoBanner');
+  if (pb && !pb.dataset.wired) {
+    pb.dataset.wired = '1';
+    let n = 0;
+    const colors = ['rp-teal', 'rp-gold', 'rp-green'];
+    colors.forEach(c => pb.classList.add(c));
+    pb.classList.remove('rp-gold', 'rp-green');
+    setInterval(() => {
+      if (!document.body.contains(pb)) return;
+      n = (n + 1) % 3;
+      pb.classList.remove('rp-teal', 'rp-gold', 'rp-green');
+      pb.classList.add(colors[n]);
+    }, 15000);
+    pb.addEventListener('click', () => {
+      const g = $('#btnRoomGift') || $('#btnGift');
+      if (g) g.click();
+    });
+  }
+}
+function renderPrivStrip() {
+  const st = $('#privStrip');
+  if (!st) return;
+  const pool = (typeof USERS !== 'undefined' && Array.isArray(USERS) ? USERS : []).slice(0, 8);
+  st.innerHTML = pool.map((u, i) => {
+    const badges = ['1⭐', '5⭐', '3🎵', '3⭐', '18♠', '2🎁', '7♦', '4🏆'];
+    return `<button class="priv-strip-item" type="button" data-uid="${u.id || 0}">
+      ${avatarHtml(u.avatar, '', '')}
+      <small>${esc(String(u.username || '').slice(0, 9))}</small>
+      <span class="ps-count">${badges[i % badges.length]}</span>
+    </button>`;
+  }).join('');
+  st.querySelectorAll('.priv-strip-item').forEach(b => b.addEventListener('click', () => {
+    const uid = +b.dataset.uid;
+    if (uid && typeof openPrivateChat === 'function') openPrivateChat(uid);
+  }));
+}
+function wireMeScreen() {
+  const w = $('#mnWallGo');
+  if (w && !w.dataset.wired) {
+    w.dataset.wired = '1';
+    w.addEventListener('click', () => {
+      closeNavPages('wallOv');
+      if (typeof openWall === 'function') openWall();
+    });
+  }
+  const r = $('#mnMyRoom');
+  if (r && !w.dataset.wired2) {
+    r.dataset.wired2 = '1';
+    r.addEventListener('click', () => {
+      closeNavPages(null);
+      if (typeof openCreateRoomSheet === 'function') openCreateRoomSheet();
+    });
+  }
+  const g2 = $('#mnMyGifts2');
+  if (g2 && !g2.dataset.wired) {
+    g2.dataset.wired = '1';
+    g2.addEventListener('click', () => { const b = $('#mnMyGifts'); if (b) b.click(); });
+  }
+  // UID
+  const uid = $('#menuUid');
+  if (uid && typeof ME !== 'undefined' && ME && ME.id) uid.textContent = ME.id;
+}
+function wireLoginScreen() {
+  const chip = $('#lmGuestChip');
+  if (chip && !chip.dataset.wired) {
+    chip.dataset.wired = '1';
+    chip.addEventListener('click', () => {
+      const t = $('#loginTitle');
+      if (t) t.textContent = 'تسجيل الدخول';
+      const sw = $('#guestSwitch');
+      if (sw) sw.classList.remove('on');
+      const mb = $('#memberBox'); if (mb) mb.style.display = '';
+      const gb = $('#guestBox'); if (gb) gb.style.display = 'none';
+    });
+  }
+  const g = $('#lmGoogleBtn');
+  if (g && !g.dataset.wired) {
+    g.dataset.wired = '1';
+    g.addEventListener('click', () => toast('تسجيل Google قريباً — استخدم دخول العضو أو الزائر'));
+  }
+  const fb = $('#lmFbBtn');
+  if (fb && !fb.dataset.wired) {
+    fb.dataset.wired = '1';
+    fb.addEventListener('click', () => toast('تسجيل Facebook قريباً'));
+  }
+  const mb2 = $('#lmMoreBtn');
+  if (mb2 && !mb2.dataset.wired) {
+    mb2.dataset.wired = '1';
+    mb2.addEventListener('click', () => toast('خيارات أكثر قريباً'));
+  }
+  const ph = $('#lmPhoneBtn');
+  if (ph && !ph.dataset.wired) {
+    ph.dataset.wired = '1';
+    ph.addEventListener('click', () => {
+      const chip2 = $('#lmGuestChip');
+      if (chip2) chip2.click();
+    });
+  }
+  // فقاعات طافية على شاشة الدخول
+  const fl = $('#lmFloaters');
+  if (fl && !fl.dataset.filled) {
+    fl.dataset.filled = '1';
+    const em = ['👩', '🧔', '👧', '👳‍♀️', '👨', '🧕', '👱‍♀️', '👦'];
+    fl.innerHTML = em.map((e, i) => `<span class="lm-floater" style="left:${8 + (i * 29) % 80}%;top:${12 + (i * 37) % 62}%;font-size:${34 + (i * 9) % 26}px">${e}</span>`).join('');
+  }
+}
+function wirePartyHeader() {
+  const sb = $('#phSearchBtn');
+  if (sb && !sb.dataset.wired) {
+    sb.dataset.wired = '1';
+    sb.addEventListener('click', () => {
+      const w = $('#roomSearch');
+      if (w) { w.focus(); w.scrollIntoView({ block: 'center' }); }
+    });
+  }
+  const fb = $('#phFlagBtn');
+  if (fb && !fb.dataset.wired) {
+    fb.dataset.wired = '1';
+    fb.addEventListener('click', () => {
+      const st = $('#countryStrip');
+      if (st) st.classList.toggle('hidden-strip');
+    });
+  }
+  const cb = $('#phCreateBtn');
+  if (cb && !cb.dataset.wired) {
+    cb.dataset.wired = '1';
+    cb.addEventListener('click', () => {
+      if (typeof openCreateRoomSheet === 'function') openCreateRoomSheet();
+      else if (typeof openCreateRoom === 'function') openCreateRoom();
+    });
+  }
+}
+function renderPartyTabs() {
+  const t = $('#partyTabs'); if (!t) return;
+  $$('#partyTabs .ptab').forEach(b => b.classList.toggle('active', b.dataset.pt === ROOM_TYPE_FILTER));
+}
+function wirePartyTabs() {
+  const t = $('#partyTabs'); if (!t || t.dataset.wired) return;
+  t.dataset.wired = '1';
+  t.addEventListener('click', (e) => {
+    const b = e.target.closest('.ptab'); if (!b || !b.dataset.pt) return;
+    ROOM_TYPE_FILTER = b.dataset.pt;
+    if (b.dataset.pt === 'country' && typeof COUNTRY_FILTER !== 'undefined') {
+      // اسم التبويب = الدولة النشطة
+      const chip = document.querySelector('.ct-chip.active');
+      if (chip) b.textContent = chip.dataset.name || 'الأردن';
+    }
+    renderPartyTabs();
+    renderRooms();
+  });
+  const g = $('#ptabGrid');
+  if (g) g.addEventListener('click', () => { COUNTRY_FILTER = 'all'; renderCountryStrip(); renderRooms(); toast('عرض كل الغرف'); });
+}
+function wireCatCards() {
+  const c = $('#catCards'); if (!c || c.dataset.wired) return;
+  c.dataset.wired = '1';
+  c.addEventListener('click', (e) => {
+    const b = e.target.closest('.cat-card'); if (!b) return;
+    $$('#catCards .cat-card').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    if (b.dataset.cat === 'hour') ALL_ROOMS.sort((a, z) => (+z.online || 0) - (+a.online || 0));
+    if (b.dataset.cat === 'gold') ALL_ROOMS.sort((a, z) => (+z.sort || 0) - (+a.sort || 0));
+    if (b.dataset.cat === 'new') ALL_ROOMS.sort((a, z) => (+z.id || 0) - (+a.id || 0));
+    if (b.dataset.cat === 'nature') ALL_ROOMS.sort((a, z) => String(a.name).localeCompare(String(z.name)));
+    renderRooms();
+    toast('التصنيف: ' + (b.textContent || '').trim());
+  });
+}
 function renderCountryStrip() {
   const strip = $('#countryStrip');
   if (!strip) return;
   const counts = {};
   ROOMS.forEach(r => { const c = String(r.country || ''); if (c) counts[c] = (counts[c] || 0) + 1; });
   const codes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  // أول 5 دول (SoulChill) + المزيد
+  const top = codes.slice(0, 5);
   strip.innerHTML =
-    `<button class="ct-chip${COUNTRY_FILTER === 'all' ? ' active' : ''}" data-cc="all">🌍 الكل</button>` +
-    codes.map(c => `<button class="ct-chip${COUNTRY_FILTER === c ? ' active' : ''}" data-cc="${esc(c)}" title="${esc(CC_NAME[c] || c)}"><span>${CC_FLAG[c] || '🌍'}</span><b>${counts[c]}</b></button>`).join('');
+    top.map(c => `<button class="ct-chip${COUNTRY_FILTER === c ? ' active' : ''}" data-cc="${esc(c)}" data-name="${esc(CC_NAME[c] || c)}">${esc(CC_NAME[c] || c)} <span>${CC_FLAG[c] || '🌍'}</span></button>`).join('') +
+    `<button class="ct-chip ct-more${COUNTRY_FILTER === 'all' ? ' active' : ''}" data-cc="all">المزيد <i class="f7-icons">chevron_down</i></button>`;
   strip.querySelectorAll('.ct-chip').forEach(b => b.onclick = () => {
     COUNTRY_FILTER = b.dataset.cc;
+    const tab = $('#ptabCountry');
+    if (tab && b.dataset.cc !== 'all') tab.textContent = b.dataset.name || 'الأردن';
     renderRooms();
     beep(720, .06);
   });
@@ -11959,7 +12231,7 @@ function showLoginTab(t) {
   $('#memberBox').style.display = t === 'member' ? '' : 'none';
   $('#guestBox').style.display = t === 'guest' ? '' : 'none';
   $('#guestSwitch').classList.toggle('on', t === 'guest');
-  $('#loginTitle').textContent = 'تسجيل الدخول';
+  const _lt = $('#loginTitle'); if (_lt) _lt.textContent = 'تسجيل الدخول';
 }
 $('#guestSwitch').onclick = () => showLoginTab($('#guestBox').style.display === 'none' ? 'guest' : 'member');
 // استعادة كلمة المرور — نظام رمز عبر البريد للحسابات المسجلة
@@ -12353,7 +12625,7 @@ function showScreen(name) {
   document.querySelector('.bottomnav').classList.toggle('show', name === 'chat');
 }
 // إغلاق صفحات التنقل الأخرى عدا المطلوبة (التبديل بينها دون تراكم)
-function closeNavPages(except) { ['privOv', 'notifOv', 'wallOv', 'menuOv', 'myGiftsOv', 'blocksOv'].forEach(id => { if (id !== except) closeOv(id); }); }
+function closeNavPages(except) { ['privOv', 'notifOv', 'wallOv', 'menuOv', 'myGiftsOv', 'blocksOv', 'planetOv'].forEach(id => { if (id !== except) closeOv(id); }); }
 $$('.bn-item').forEach(b => b.onclick = () => {
   const nav = b.dataset.nav;
   if (nav === 'rooms') {           // «الغرف» = العودة إلى العامة (الدردشة الحالية)
@@ -12361,6 +12633,7 @@ $$('.bn-item').forEach(b => b.onclick = () => {
     if (CUR_ROOM) showScreen('chat'); else showScreen('rooms');
   }
   else if (nav === 'private') { closeNavPages('privOv'); PRIV_UNREAD = 0; updatePrivBadge(); openPrivateList(); }
+  else if (nav === 'planet') { closeNavPages('planetOv'); if (typeof renderPlanet === 'function') renderPlanet(); }
   else if (nav === 'notifs') { closeNavPages('notifOv'); openNotifs(); }
   else if (nav === 'wall') { closeNavPages('wallOv'); openWall(); }
   else if (nav === 'menu') { closeNavPages('menuOv'); openMenu(); }

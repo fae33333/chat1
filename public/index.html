@@ -50,53 +50,49 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 
   <!-- ============ شاشة الغرف ============ -->
   <section id="roomsScreen" class="screen active">
-    <header class="r-head dots-bg">
-      <div class="r-logo" id="siteLogo">
-        <span class="r-logo-ico"><i class="f7-icons">smiley_fill</i></span>
-        <span class="r-logo-wrap">
-          <span class="r-logo-txt" id="siteName"></span>
-          <span class="r-logo-tag">مرحباً بك في عالم الدردشة ✨</span>
-        </span>
-      </div>
-      <button class="head-match" id="headMatchBtn" type="button" title="المطابقة الفورية"><i class="f7-icons">sparkles</i><span>مطابقة</span></button>
-      <button class="btn-enter" id="headEnterBtn">دخول</button>
+  <header class="p-head">
+    <div class="p-head-icons">
+      <button class="ph-ic" id="phSearchBtn" type="button"><i class="f7-icons">search</i></button>
+      <button class="ph-ic" id="phFlagBtn" type="button"><i class="f7-icons">flag</i></button>
+      <button class="ph-ic ph-create" id="phCreateBtn" type="button"><i class="f7-icons">plus_house_fill</i></button>
+      <button class="btn-enter ph-enter" id="headEnterBtn">دخول</button>
       <button class="head-user" id="headUserBox" style="display:none" aria-label="حسابي">
         <span class="head-ava" id="headAva"></span>
         <span class="head-name" id="headName">-</span>
       </button>
-    </header>
-    <!-- القائمة المنسدلة لزر الدخول / الاسم -->
-    <div class="drop-backdrop" id="enterDropBg" style="display:none"></div>
-    <div class="enter-drop" id="enterDrop">
-      <button id="dropRegister">إنشاء حساب <i class="f7-icons">chevron_right</i></button>
-      <button id="dropLogout">الخروج <i class="f7-icons">chevron_right</i></button>
     </div>
-    <div class="r-search dots-bg">
+    <h1 class="p-title">حفلة</h1>
+  </header>
+  <div class="drop-backdrop" id="enterDropBg" style="display:none"></div>
+  <div class="enter-drop" id="enterDrop">
+    <button id="dropRegister">إنشاء حساب <i class="f7-icons">chevron_right</i></button>
+    <button id="dropLogout">الخروج <i class="f7-icons">chevron_right</i></button>
+  </div>
+  <div class="cat-cards" id="catCards">
+    <button class="cat-card c-pink" type="button" data-cat="hour"><b>جدول الساعة</b><small>No.3</small></button>
+    <button class="cat-card c-purple" type="button" data-cat="nature"><b>الطبيعيـة</b></button>
+    <button class="cat-card c-gold" type="button" data-cat="gold"><b>الذهبيـة</b></button>
+    <button class="cat-card c-blue" type="button" data-cat="new"><b>الجديــدة</b></button>
+  </div>
+  <div class="r-search dots-bg">
       <i class="f7-icons r-search-ic">search</i>
       <textarea id="roomSearch" rows="1" placeholder="ابحث عن غرفك"></textarea>
     </div>
     <!-- بانر الحفلات الحيّة (SoulChill) -->
-    <button class="party-live-banner" id="partyLiveBanner" type="button">
-      <span class="plb-ic">🎉</span>
-      <div class="plb-txt"><b id="plbCount">0</b> مستخدماً في الحفلات الآن<br><small>انضم للبث المباشر! 🔥</small></div>
-      <div class="plb-avas" id="plbAvas"></div>
-      <i class="f7-icons plb-arrow">chevron_left</i>
-    </button>
+    
     <!-- بطاقتا التوافق الصوتي والروحي (SoulChill) -->
-    <div class="match-cards">
-      <button class="match-card-btn voice" id="mcVoice" type="button">
-        <div class="mcb-txt"><b>التوافق الصوتي</b><span>Voice match — عشاق الصوت دائماً متصلون</span></div>
-        <span class="mcb-launch">ابدأ ▶</span>
-        <span class="mcb-orb">🎙️</span>
-      </button>
-      <button class="match-card-btn soul" id="mcSoul" type="button">
-        <div class="mcb-txt"><b>التوافق الروحي</b><span>Soul match — اكتشف روحاً متوافقة</span></div>
-        <span class="mcb-launch">ابدأ ▶</span>
-        <span class="mcb-orb">💞</span>
-      </button>
-    </div>
+    
     <!-- الغرف حسب الدول -->
-    <div class="country-strip" id="countryStrip"></div>
+    <div class="ptabs" id="partyTabs">
+    <button class="ptab" type="button" data-pt="reco">ترشيحات</button>
+    <button class="ptab" type="button" data-pt="video">الفيديو</button>
+    <button class="ptab" type="button" data-pt="pk">PK</button>
+    <button class="ptab" type="button" data-pt="youtube">YouTube</button>
+    <button class="ptab" type="button" data-pt="game">لعبة</button>
+    <button class="ptab active" type="button" data-pt="country" id="ptabCountry">الأردن</button>
+    <button class="ptab ptab-grid" type="button" id="ptabGrid"><i class="f7-icons">square_grid_2x2</i></button>
+  </div>
+  <div class="country-strip" id="countryStrip"></div>
     <!-- شريط غرفتي: زر الإنشاء أو بطاقة غرفتي مع الإدارة -->
     <div class="myroom-strip" id="myRoomStrip"></div>
     <div class="r-list" id="roomsList"></div>
@@ -161,7 +157,14 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       </div>
     </div>
 
-    <!-- 🎤 مسرح المقاعد الصوتية (للغرف الصوتية): مقعد المضيف + ٨ مقاعد مرقّمة -->
+    <!-- 🎁 بانر الهدايا الترويجي (SoulChill) -->
+<button class="room-promo" id="roomPromoBanner" type="button">
+  <span class="rp-count">x1</span>
+  <span class="rp-text">أرسل هدية لـ<b>مُتصدر</b> أسـبق! اضغط للمشاهدة!</span>
+  <span class="rp-user"><span class="rp-badges"><em>Lv.38</em><em class="rp-gold">Lv.119</em></span> O cean¹¹⁰⁴</span>
+  <span class="rp-gift">🦚</span>
+</button>
+<!-- 🎤 مسرح المقاعد الصوتية (للغرف الصوتية): مقعد المضيف + ٨ مقاعد مرقّمة -->
     <div class="seats-stage" id="seatsStage" hidden>
       <div class="seats-glow" aria-hidden="true"></div>
       <div class="seats-host-row" id="seatsHostRow"></div>
@@ -172,7 +175,13 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <div class="tg-list" id="topGiftersList"></div>
       </div>
     </div>
-    <!-- ⚔️ شريط تحدي PK -->
+    <!-- 👥 شريط المستمعين (SoulChill) -->
+<div class="room-listeners" id="roomListeners">
+  <span class="rl-count"><i class="f7-icons">person_fill</i> <b id="rlCount">0</b></span>
+  <span class="rl-chatcount"><b id="rlChat">0</b></span>
+  <div class="rl-avas" id="rlAvas"></div>
+</div>
+<!-- ⚔️ شريط تحدي PK -->
     <div class="pk-bar" id="pkBar" hidden></div>
 
     <!-- زر كتم مستقل بجانب الشاشة: يظهر عندما أكون مذيعاً (حتى لو مذيعاً وحيداً) أو عند تعدد المذيعين — لكتم صوت المذيعين -->
@@ -277,16 +286,54 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </section>
 
   <!-- ============ التنقل السفلي ============ -->
-  <nav class="bottomnav">
-    <button class="bn-item active" data-nav="rooms"><i class="f7-icons">house_fill</i><span>الحفلات</span></button>
-    <button class="bn-item" data-nav="private"><i class="f7-icons">bubble_left_fill</i><span>الرسائل</span><em class="bn-badge" id="privBadge" style="display:none">0</em></button>
-    <button class="bn-item bn-center" data-nav="wall"><i class="f7-icons">star_fill</i><span>اللحظات</span></button>
-    <button class="bn-item" data-nav="notifs"><i class="f7-icons">bell_fill</i><span>الإشعارات</span><em class="bn-badge" id="notifBadge" style="display:none">0</em></button>
-    <button class="bn-item" data-nav="menu" id="bnMenu"><i class="f7-icons" id="bnMenuIcon">person_fill</i><span>حسابي</span></button>
+  <nav class="bottomnav sc-nav">
+    <button class="bn-item" data-nav="planet" id="bnPlanet"><i class="f7-icons">globe</i><span>الكوكب</span></button>
+    <button class="bn-item active" data-nav="rooms"><i class="f7-icons">house_fill</i><span>حفلة</span></button>
+    <button class="bn-item bn-center" data-nav="wall"><i class="f7-icons">star_fill</i><span>المنشورات</span></button>
+    <button class="bn-item" data-nav="private"><i class="f7-icons">chat_bubble_fill</i><span>رسائل</span><em class="bn-badge" id="privBadge" style="display:none">0</em></button>
+    <button class="bn-item" data-nav="menu" id="bnMenu"><i class="f7-icons" id="bnMenuIcon">person_fill</i><span>أنت</span><em class="bn-dot" id="bnDot"></em></button>
   </nav>
   </main>
 
-  <!-- ============ الحالات ============ -->
+  <!-- ============ الكوكب (Explore) ============ -->
+<div class="overlay full" id="planetOv">
+  <div class="pvpage planet-page">
+    <div class="pl-head">
+      <div class="pl-head-icons">
+        <button class="ph-ic" id="plFilterBtn" type="button"><i class="f7-icons">slider_horizontal_3</i></button>
+        <button class="ph-ic" id="plCalBtn" type="button"><i class="f7-icons">calendar</i></button>
+      </div>
+      <div class="pl-head-mid">
+        <button class="pl-gift-pill" id="plGiftPill" type="button">المفدى <span>🎁</span></button>
+      </div>
+      <div class="pl-title"><span class="pl-bird">🕊️</span> SoulChill</div>
+    </div>
+    <div class="pl-cloud" id="plCloud"></div>
+    <div class="pl-online"><b id="plOnlineCount">0</b> <span>عدد المستخدمين الحاليين</span></div>
+    <button class="party-live-banner" id="partyLiveBanner" type="button">
+      <span class="plb-ic">🎁</span>
+      <div class="plb-txt"><b>مكاقات الشحنة الأولى</b><br><small id="plbCount">0 مستخدماً في الحفلات الآن — انضم! 🔥</small></div>
+      <div class="plb-avas" id="plbAvas"></div>
+      <i class="f7-icons plb-arrow">chevron_left</i>
+    </button>
+    <div class="match-cards">
+      <button class="match-card-btn voice" id="mcVoice" type="button">
+        <div class="mcb-txt"><b>مكالمة صوتية</b><span>اختر لاقفة المكالمات</span></div>
+        <span class="mcb-count" id="mcVoiceCount">0 انتظار</span>
+        <span class="mcb-launch">ابدأ ▶</span>
+        <span class="mcb-orb">🌍</span>
+      </button>
+      <button class="match-card-btn soul" id="mcSoul" type="button">
+        <div class="mcb-txt"><b>رفيق الروح</b><span>تحدت مع من يحببك</span></div>
+        <span class="mcb-launch">ابدأ ▶</span>
+        <span class="mcb-orb">💝</span>
+      </button>
+    </div>
+    <div class="planet-rooms" id="planetRooms"></div>
+  </div>
+</div>
+
+<!-- ============ الحالات ============ -->
   <div class="overlay full" id="statusOv">
     <div class="pvpage statuses-page">
       <div class="status-page-head">
@@ -460,26 +507,34 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </div>
 
   <!-- ============ تسجيل الدخول (شاشة الدخول بالاسم) ============ -->
-  <div class="overlay" id="loginOv">
-    <div class="sheet lsheet login-hero">
-      <div class="sh-handle"></div>
-      <i class="f7-icons sheet-x blue" data-close="loginOv">xmark</i>
+  <div class="overlay full" id="loginOv">
+  <div class="lm-page">
+    <div class="lm-mosaic" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <div class="lm-floaters" id="lmFloaters"></div>
+    <button class="lm-guest-chip" id="lmGuestChip" type="button"><span class="lm-gc-ava" id="lmGcAva">🙂</span> تفضل تسجيل الدخول؟</button>
+    <i class="f7-icons sheet-x lm-x" data-close="loginOv">xmark</i>
+    <div class="lm-logo"><span class="lm-bird">🕊️</span> SoulChill</div>
+    <div class="lm-hero-ava" id="lgHeroAva">🎧</div>
+    <h2 class="lm-title">Find My<br><span>Soulmate</span></h2>
+    <p class="lm-sub">قم بتسجيل الدخول وابدأ في التواصل معهم</p>
 
-      <div class="lg-hero">
-        <div class="sc-stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-        <div class="sc-logo-orb">
-          <div class="lg-hero-ava" id="lgHeroAva"><i class="f7-icons">mic_fill</i></div>
-          <span class="sc-orb o1">🌙</span><span class="sc-orb o2">✨</span><span class="sc-orb o3">🪐</span>
-        </div>
-        <h2 class="lg-hero-title" id="loginTitle">تسجيل الدخول</h2>
-        <p class="lg-hero-sub">SoulChill — تواصل بصوتك وروحك 💬</p>
-      </div>
+    <button class="lm-google" id="lmGoogleBtn" type="button"><span class="lm-g-ic">G</span> سجّل الدخول بـ Google</button>
+    <div class="lm-or"><i></i><span>أو</span><i></i></div>
+    <div class="lm-socials">
+      <button class="lm-soc lm-more" id="lmMoreBtn" type="button">···</button>
+      <button class="lm-soc lm-phone" id="lmPhoneBtn" type="button"><i class="f7-icons">phone_fill</i></button>
+      <button class="lm-soc lm-fb" id="lmFbBtn" type="button"><b>f</b></button>
+    </div>
+    <div class="lg-terms lm-terms">بإنشائك أوامنافقاً على اتفاقية الاستخدام &amp; سياسة الخصوصية</div>
 
+    <!-- نماذج الدخول المحفوظة -->
+    <div class="lm-forms" id="lmForms">
       <div class="lg-switchrow">
         <span>دخول كزائر/ة</span>
         <label class="switch on" id="guestSwitch"><span class="knob"></span></label>
       </div>
-
       <div id="memberBox" style="display:none">
         <div class="lf-field">
           <i class="f7-icons lf-ic">person_fill</i>
@@ -489,7 +544,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <i class="f7-icons lf-ic">lock_fill</i>
           <input id="lPass" type="password" placeholder="الرقم السري" autocomplete="off">
         </div>
-        <button class="big-btn" id="doLogin"><i class="f7-icons">person_fill"></i> دخول</button>
+        <button class="big-btn" id="doLogin"><i class="f7-icons">person_fill</i> دخول</button>
         <div class="lg-links">
           <div class="lg-q">نسيت كلمة السر؟</div>
           <span class="lg-pill" id="goForgot">استعادة كلمة السر</span>
@@ -497,24 +552,10 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <span class="lg-pill" id="goRegister">إنشاء حساب مجانًا</span>
         </div>
       </div>
-
       <div id="guestBox">
         <div class="lf-field lf-name-field">
           <i class="f7-icons lf-ic">person_fill</i>
           <input id="gName" placeholder="الأسم المستعار" maxlength="20" autocomplete="off">
-        </div>
-        <div class="lf-field lf-gender" id="gGenderBox">
-          <small>النوع</small>
-          <div class="lf-grow">
-            <span class="lf-gsym" id="gSym">M</span>
-            <span id="gGenderTxt">ذكر</span>
-            <i class="f7-icons" style="margin-inline-start:auto">arrowtriangle_down_fill</i>
-            <select id="gGenderSel">
-              <option value="boy" selected>ذكر</option>
-              <option value="girl">أنثى</option>
-              <option value="secret">مجهول</option>
-            </select>
-          </div>
         </div>
         <div class="lf-gender-pills" id="gGenderPills">
           <button type="button" class="g-pill active" data-g="boy"><i class="f7-icons">person_fill</i> ذكر</button>
@@ -528,14 +569,23 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <span class="lg-pill" id="goRegister2">إنشاء حساب مجانًا</span>
         </div>
       </div>
-
       <div class="cl-err" id="loginErr"></div>
-      <div class="lg-terms">الرجاء قراءة <b id="openTerms">شروط الاستخدام</b> <span>-</span> وقراءة <b id="openPrivacy">سياسة الخصوصية</b></div>
+      <!-- عناصر مخفية يعتمد عليها JS -->
+      <div style="display:none">
+        <span id="gSym">M</span><span id="gGenderTxt">ذكر</span>
+        <select id="gGenderSel">
+          <option value="boy" selected>ذكر</option>
+          <option value="girl">أنثى</option>
+          <option value="secret">مجهول</option>
+        </select>
+        <button id="openTerms" type="button">شروط</button>
+        <button id="openPriva" type="button">خصوصية</button>
+      </div>
     </div>
   </div>
+</div>
 
-  <!-- ============ إنشاء / تعديل غرفتي ============ -->
-  <div class="overlay" id="createRoomOv">
+<div class="overlay" id="createRoomOv">
     <div class="sheet lsheet roomform-sheet">
       <div class="sh-handle"></div>
       <i class="f7-icons sheet-x blue" data-close="createRoomOv">xmark</i>
@@ -936,17 +986,21 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <div class="pvpage">
       <div class="pg-head bar mid">
         <span class="pg-close back" data-close="privOv" style="display: flex;flex-direction: row-reverse;"><i class="f7-icons">chevron_left</i> عودة</span>
-        <span class="pg-title">المحادثات الخاصة</span>
+        <span class="pg-title">رسائل</span>
       </div>
       <div class="page-heading">
-        <span class="ph-title">المحادثات الخاصة</span>
+        <span class="ph-title">رسائل</span>
         <i class="f7-icons ph-icon" id="privSettings">gear_alt_fill</i>
       </div>
       <div class="pill-tabs">
-        <button class="pv-tab active" data-ptab="members">الاعضاء المسجلين</button>
-        <button class="pv-tab" data-ptab="spam">غير مرغوب فيه <em class="bn-badge spam-tab-badge" id="spamTabBadge" style="display:none">0</em></button>
+        <button class="pv-tab active" data-ptab="all">الكل</button>
+<button class="pv-tab" data-ptab="members">الأصدقاء</button>
+        <button class="pv-tab" data-ptab="spam">الرسائل</button>
+<button class="pv-tab" data-ptab="spamhidden" style="display:none">غير مرغوب فيه <em class="bn-badge spam-tab-badge" id="spamTabBadge" style="display:none">0</em></button>
       </div>
-      <div class="pv-list" id="privList"></div>
+      <div class="priv-strip-title">أشخاص ممن تتبع بالغرف الآن</div>
+<div class="priv-strip" id="privStrip"></div>
+<div class="pv-list" id="privList"></div>
     </div>
   </div>
 
@@ -962,6 +1016,18 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         </span>
       </div>
       <div class="pm-body" id="pmBody"></div>
+      <div class="pm-safety">انتبه لانشائك والاحتيال، ممكن ان يعطي للآخرين الاحتيال الصيغة يعد</div>
+      <div class="pm-quick" id="pmQuick">
+        <button type="button" data-q="السلام عليكم">السلام عليكم</button>
+        <button type="button" data-q="أنت تبدو ممتها جداً!">أنت تبدو ممتها جداً!</button>
+      </div>
+      <div class="pm-toolbar" id="pmToolbar">
+        <button class="pm-tb" type="button" id="pmTbMore">➕</button>
+        <button class="pm-tb pm-tb-gift" type="button" id="pmTbGift">🎁</button>
+        <button class="pm-tb" type="button" id="pmTbPhone">📞</button>
+        <button class="pm-tb" type="button" id="pmTbImg">🖼️</button>
+        <button class="pm-tb" type="button" id="pmTbMic">🎤</button>
+      </div>
       <div class="pm-bar">
         <button class="pmb emo" id="pmEmoji"><i class="f7-icons">smiley_fill</i></button>
         <button class="pmb cam" id="pmCam"><i class="f7-icons">camera_fill</i></button>
@@ -1191,40 +1257,73 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </div>
 
   <!-- القائمة الرئيسية -->
-  <div class="overlay full withnav" id="menuOv">
-    <div class="pvpage menupage">
-      <div class="pg-head bar">
-        <span class="pg-title">القائمة الرئيسية</span>
-        <span class="pg-close back" data-close="menuOv"><i class="f7-icons">chevron_left</i> عودة</span>
-      </div>
-      <div class="mn-user" id="menuUserCard">
+  <div class="overlay full" id="menuOv">
+  <div class="pvpage menupage me-page">
+    <div class="me-head">
+      <button class="ph-ic" id="mnSettings" type="button"><i class="f7-icons">gear_alt_fill</i><em class="bn-dot"></em></button>
+      <h2 class="me-title">أنت</h2>
+    </div>
+    <div class="me-top" id="menuUserCard">
+      <div class="me-ava-wrap">
         <span class="mn-ava" id="menuAva"><span class="dot green" id="menuAvaDot"></span></span>
-        <span class="mn-uinfo"><b id="menuName">-</b><span id="menuStatus">متصل</span></span>
-        <i class="f7-icons mn-chev">chevron_right</i>
       </div>
-      <div class="mn-balance">رصيدك الحالي <b id="menuBal">0</b></div>
-      <div class="mn-list">
-        <button class="mn-item" id="mnAccount"><span class="mni"><i class="f7-icons">person_crop_circle</i></span> حسابي <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnBuy"><span class="mni"><i class="f7-icons">creditcard_fill</i></span> شراء رصيد <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnVerify"><span class="mni"><i class="f7-icons">checkmark_seal_fill</i></span> توثيق حسابي <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnRoyal"><span class="mni" style="color:#f59e0b"><i class="f7-icons">crown_fill</i></span> <span style="color:#b45309;font-weight:900">الدخول الملكي 👑</span> <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnUpgrade"><span class="mni"><i class="f7-icons">chart_bar_fill</i></span> ترقية حسابي <i class="f7-icons mnc">chevron_right</i></button>
-      </div>
-      <div class="mn-list" id="menuAdminSection" style="display:none">
-        <button class="mn-item" id="mnAdminPanel" style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(168,85,247,.12));border:1.5px solid #c7d2fe"><span class="mni" style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff"><i class="f7-icons">shield_fill</i></span> لوحة التحكم الإدارية <i class="f7-icons mnc">chevron_right</i></button>
-      </div>
-      <div class="mn-list">
-        <button class="mn-item" id="mnStatuses"><span class="mni"><i class="f7-icons">circle_grid_hex_fill</i></span> الحالات <em class="bn-badge mn-badge" id="mnStatusBadge" style="display:none">0</em> <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnAvatar"><span class="mni"><i class="f7-icons">photo_on_rectangle</i></span> تغيير الصورة <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnMyGifts"><span class="mni"><i class="f7-icons">gift_fill</i></span> هدايا حسابي <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnBlocks"><span class="mni"><i class="f7-icons">slash_circle_fill</i></span> قوائم الحظر <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnSettings"><span class="mni"><i class="f7-icons">gear_alt_fill</i></span> الاعدادات <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnPrivateSettings" style="display:none"><span class="mni"><i class="f7-icons">lock_fill</i></span> <span id="mnPrivateSettingsText">إيقاف الرسائل الخاصة لحسابك</span> <i class="f7-icons mnc">chevron_right</i></button>
-        <button class="mn-item" id="mnLogout"><span class="mni"><i class="f7-icons">power</i></span> تسجيل الخروج <i class="f7-icons mnc">chevron_right</i></button>
+      <div class="me-uinfo">
+        <b id="menuName">-</b>
+        <span id="menuStatus" style="display:none">متصل</span>
+        <span class="me-uid">UID: <i id="menuUid">0</i></span>
+        <div class="me-lvls"><span class="me-lvl l-p">△ Lv.1</span><span class="me-lvl l-g">⚙ Lv.6</span></div>
       </div>
     </div>
+    <div class="me-stats">
+      <div class="me-stat"><b id="meStatRooms">1</b><span>الأدوار</span></div>
+      <div class="me-stat"><b id="meStatFollowers">0</b><span>المتابعين</span></div>
+      <div class="me-stat"><b id="meStatFollowing">0</b><span>يتابع</span></div>
+      <div class="me-stat"><b id="meStatFriends">0</b><span>الأصدقاء</span></div>
+    </div>
+    <button class="me-wallet" id="mnBuy" type="button">
+      <span class="mw-left"><i class="f7-icons">chevron_left</i> <b id="menuBal">0</b> 💎</span>
+      <span class="mw-right">المحفظة <i class="f7-icons">wallet_fill</i></span>
+    </button>
+    <div class="me-card me-empire">
+      <div class="me-empire-txt">
+        <b>الإمبراطورية</b>
+        <span>انضم الى امبراطورية وكن صداقات</span>
+      </div>
+      <div class="me-empire-avas"><span>👩</span><span>🧑</span><span>👧</span></div>
+      <button class="me-join-btn" id="mnUpgrade" type="button">انضم</button>
+    </div>
+    <div class="me-card">
+      <div class="me-grid">
+        <button class="me-gi" id="mnRoyal" type="button"><span class="me-gic g1">🏠</span><small>الإمبراطورية</small></button>
+        <button class="me-gi" id="mnMyGifts" type="button"><span class="me-gic g2">👑</span><small>طلة النبالة</small></button>
+        <button class="me-gi" id="mnStatuses" type="button"><span class="me-gic g3">🦁</span><small>SVIP</small></button>
+        <button class="me-gi" id="mnVerify" type="button"><span class="me-gic g4">💎</span><small>المستوى</small></button>
+        <button class="me-gi" id="mnAvatar" type="button"><span class="me-gic g5">🎖️</span><small>ميدالية</small></button>
+        <button class="me-gi" id="mnBlocks" type="button"><span class="me-gic g6">💗</span><small>شيركاني</small></button>
+        <button class="me-gi" id="mnPrivateSettings" type="button"><span class="me-gic g7">🎮</span><small>مركز الألعاب</small></button>
+        <button class="me-gi" id="mnAccount" type="button"><span class="me-gic g8">🏪</span><small>المتجر</small></button>
+      </div>
+    </div>
+    <div class="me-card">
+      <div class="me-grid me-grid-4">
+        <button class="me-gi" id="mnWallGo" type="button"><span class="me-gic g3">⭐</span><small>المنشورات</small></button>
+        <button class="me-gi" id="mnMyGifts2" type="button"><span class="me-gic g2">👕</span><small>الالكسسوارات</small></button>
+        <button class="me-gi" id="mnMyRoom" type="button"><span class="me-gic g1">🏠</span><small>غرفتي</small></button>
+        <button class="me-gi" id="mnStatusBadge" type="button"><span class="me-gic g4">🎯</span><small>المهام</small></button>
+      </div>
+    </div>
+    <div class="me-card me-prayer">
+      <span class="mp-ic">🕌</span>
+      <b>الصلاة</b>
+      <i class="f7-icons">chevron_left</i>
+    </div>
+    <div class="me-rows">
+      <button class="mn-item" id="mnPrivateSettingsText" type="button"><span class="mni"><i class="f7-icons">lock_fill</i></span> خصوصية الرسائل <i class="f7-icons mn-chev">chevron_left</i></button>
+      <button class="mn-item" id="mnAdminPanel" type="button"><span class="mni"><i class="f7-icons">hammer_fill</i></span> لوحة التحكم <i class="f7-icons mn-chev">chevron_left</i></button>
+      <button class="mn-item" id="mnLogout" type="button"><span class="mni"><i class="f7-icons">power</i></span> تسجيل الخروج <i class="f7-icons mn-chev">chevron_left</i></button>
+    </div>
   </div>
-
+</div>
   <!-- هدايا حسابي -->
   <div class="overlay full withnav" id="myGiftsOv">
     <div class="pvpage my-gifts-page">
@@ -1380,11 +1479,12 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <div class="wall-page">
       <div class="wall-head">
         <button class="wall-back" data-close="wallOv" type="button"><i class="f7-icons">chevron_left</i><span>عودة</span></button>
-        <b>اللحظات ✨</b>
+        <b>المنشورات</b>
+<div class="wall-tabs"><button class="active" type="button">المنشورات</button><button type="button">الأصدقاء</button></div>
         <button class="wall-refresh" id="wallRefresh" type="button" aria-label="تحديث اللحظات"><i class="f7-icons">arrow_clockwise</i></button>
       </div>
       <div class="wall-scroll" id="wallScroll">
-        <button class="wall-create-trigger" id="wallCreateTrigger" type="button"><i class="f7-icons">plus_circle_fill</i><span>نشر</span></button>
+        <button class="wall-create-trigger" id="wallCreateTrigger" type="button">+ </button>
         <div class="wall-composer" id="wallComposer" hidden>
           <div class="wall-composer-title"><b>منشور جديد</b><button id="wallComposerClose" type="button"><i class="f7-icons">xmark</i></button></div>
           <div class="wall-compose-main">

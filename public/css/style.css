@@ -21088,3 +21088,715 @@ body.skin-soulchill .r-list .rm-img {
 body.skin-soulchill .r-list .rm-img img {
   width: 100%; height: 100%; object-fit: cover; display: block;
 }
+
+/* =====================================================
+   🎉 SoulChill — شاشة حفلة (قائمة الغرف) + الكوكب + التنقل
+   ===================================================== */
+
+/* ---------- شريط التنقل السفلي (الترتيب من اليسار: أنت رسائل المنشورات حفلة الكوكب) ---------- */
+body.skin-soulchill .sc-nav {
+  background: #100c1c; border-top: 1px solid rgba(124, 91, 220, .18);
+  padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
+}
+body.skin-soulchill .sc-nav .bn-item { color: #6f6789; gap: 4px; }
+body.skin-soulchill .sc-nav .bn-item i.f7-icons { font-size: 20px; }
+body.skin-soulchill .sc-nav .bn-item span { font-size: 10.5px; font-weight: 700; }
+body.skin-soulchill .sc-nav .bn-item.active { color: #8b6bf2; }
+body.skin-soulchill .sc-nav .bn-item.active i.f7-icons {
+  filter: drop-shadow(0 0 10px rgba(139, 107, 242, .8));
+}
+body.skin-soulchill .sc-nav .bn-center i.f7-icons {
+  background: none; -webkit-background-clip: initial; background-clip: initial;
+  color: inherit; filter: none;
+}
+body.skin-soulchill .sc-nav .bn-center.active i.f7-icons {
+  filter: drop-shadow(0 0 12px rgba(176, 132, 255, .9));
+}
+body.skin-soulchill .sc-nav .bn-center.active::after { display: none; }
+.bn-dot {
+  position: absolute; top: 2px; left: 50%; margin-left: -16px;
+  width: 7px; height: 7px; border-radius: 50%; background: #f24e9c;
+}
+
+/* ---------- رأس شاشة حفلة ---------- */
+.p-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px 6px;
+}
+.p-title { margin: 0; color: #fff; font-size: 22px; font-weight: 900; }
+.p-head-icons { display: flex; align-items: center; gap: 10px; }
+.ph-ic {
+  width: 38px; height: 38px; border-radius: 12px;
+  background: rgba(255, 255, 255, .07); color: #cfc7ea;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.ph-ic i.f7-icons { font-size: 18px; }
+.ph-create { background: linear-gradient(135deg, #7c4dff, #b06bff); color: #fff; }
+.ph-enter {
+  padding: 7px 14px; border-radius: 999px; font-size: 12px;
+  background: linear-gradient(135deg, #7c4dff, #b06bff); color: #fff; border: 0; font-weight: 800;
+}
+
+/* ---------- بطاقات التصنيف (جدول الساعة/الطبيعة/الذهبية) ---------- */
+.cat-cards {
+  display: flex; gap: 9px; overflow-x: auto; scrollbar-width: none;
+  padding: 8px 14px 4px;
+}
+.cat-cards::-webkit-scrollbar { display: none; }
+.cat-card {
+  flex: 0 0 auto; width: 128px; height: 56px; border-radius: 16px;
+  position: relative; overflow: hidden; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: #fff; border: 1px solid rgba(255, 255, 255, .22);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .35);
+}
+.cat-card b { font-size: 12.5px; font-weight: 900; z-index: 1; text-shadow: 0 2px 8px rgba(0, 0, 0, .45); }
+.cat-card small { font-size: 10px; opacity: .95; z-index: 1; }
+.cat-card::before {
+  content: ''; position: absolute; inset: 0; opacity: .5;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 255, 255, .5) 0 6px, transparent 7px),
+    radial-gradient(circle at 60% 70%, rgba(255, 255, 255, .35) 0 5px, transparent 6px),
+    radial-gradient(circle at 85% 25%, rgba(255, 255, 255, .4) 0 7px, transparent 8px);
+}
+.cat-card::after {
+  content: ''; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(30deg, rgba(255, 255, 255, .14) 12%, transparent 12.5%, transparent 87%, rgba(255, 255, 255, .14) 87.5%),
+    linear-gradient(150deg, rgba(255, 255, 255, .14) 12%, transparent 12.5%, transparent 87%, rgba(255, 255, 255, .14) 87.5%);
+  background-size: 22px 38px;
+}
+.cat-card.c-pink { background: linear-gradient(135deg, #e58cb0, #c96a96); }
+.cat-card.c-purple { background: linear-gradient(135deg, #8d6bf0, #6c4ad8); }
+.cat-card.c-gold { background: linear-gradient(135deg, #e8c15a, #c9972e); }
+.cat-card.c-blue { background: linear-gradient(135deg, #5aa7e8, #3c7fd0); }
+.cat-card.active { outline: 2px solid #fff; outline-offset: 1px; }
+
+/* ---------- تبويبات حفلة (ترشيحات/فيديو/PK/YouTube/لعبة/الأردن) ---------- */
+.ptabs {
+  display: flex; align-items: center; gap: 16px; overflow-x: auto; scrollbar-width: none;
+  padding: 10px 14px 2px;
+}
+.ptabs::-webkit-scrollbar { display: none; }
+.ptab {
+  flex: 0 0 auto; background: none; border: 0; cursor: pointer;
+  color: #8d84ad; font-size: 14.5px; font-weight: 700;
+  padding: 6px 2px 8px; position: relative; white-space: nowrap;
+}
+.ptab.active { color: #fff; font-weight: 900; }
+.ptab.active::after {
+  content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 22px; height: 3px; border-radius: 999px;
+  background: linear-gradient(90deg, #7c4dff, #b06bff);
+}
+.ptab-grid { margin-inline-start: auto; color: #cfc7ea; }
+
+/* ---------- شرائط الدول (SoulChill) ---------- */
+body.skin-soulchill .country-strip { gap: 8px; padding: 10px 14px; }
+body.skin-soulchill .ct-chip {
+  background: rgba(255, 255, 255, .07); color: #d9d2ef;
+  border: 1px solid rgba(255, 255, 255, .12);
+  padding: 8px 15px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+body.skin-soulchill .ct-chip span { font-size: 15px; }
+body.skin-soulchill .ct-chip b { display: none; }
+body.skin-soulchill .ct-chip.active {
+  background: #fff; color: #221a3e; border-color: #fff;
+  box-shadow: 0 8px 20px rgba(255, 255, 255, .2);
+}
+body.skin-soulchill .ct-chip.active b { display: none; }
+body.skin-soulchill .ct-chip.ct-more { font-size: 12px; color: #9c92c0; }
+body.skin-soulchill .ct-chip.ct-more i.f7-icons { font-size: 12px; }
+.hidden-strip { display: none !important; }
+
+/* ---------- بطاقات الغرف البانر (SoulChill — عريضة ملوّنة) ---------- */
+body.skin-soulchill .r-list {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 10px 14px 24px;
+}
+.r-banner {
+  position: relative; height: 118px; border-radius: 18px; overflow: hidden;
+  cursor: pointer; display: block; width: 100%; text-align: right;
+  border: 1px solid rgba(255, 255, 255, .16);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .4);
+}
+.rb-theme-default { background: linear-gradient(115deg, #2b2160, #4b3aa8 55%, #7c5cf0); }
+.rb-theme-sunset { background: linear-gradient(115deg, #7c2d12, #ea580c 55%, #f59e0b); }
+.rb-theme-ocean { background: linear-gradient(115deg, #0c4a6e, #0284c7 55%, #22d3ee); }
+.rb-theme-rose { background: linear-gradient(115deg, #831843, #db2777 55%, #f472b6); }
+.rb-theme-gold { background: linear-gradient(115deg, #713f12, #d97706 55%, #fbbf24); }
+.rb-theme-night { background: linear-gradient(115deg, #1e1b4b, #4338ca 55%, #6366f1); }
+.rb-rank {
+  position: absolute; top: 8px; right: 10px; z-index: 3;
+  background: #f6efdc; color: #6b4c12; border-radius: 999px;
+  padding: 4px 11px; font-size: 10px; font-weight: 900;
+}
+.rb-art {
+  position: absolute; left: -6px; bottom: -8px; font-size: 84px; z-index: 1;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, .5)) saturate(1.25);
+  transform: rotate(-8deg); opacity: .95;
+  pointer-events: none;
+}
+.rb-info {
+  position: absolute; inset-inline-end: 76px; top: 34px; z-index: 2;
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
+}
+.rb-name { color: #fff; font-size: 15.5px; font-weight: 900; text-shadow: 0 2px 10px rgba(0, 0, 0, .5); }
+.rb-name .room-flag { font-size: 14px; }
+.rb-tags { display: flex; gap: 6px; }
+.rb-tag {
+  background: rgba(255, 255, 255, .92); color: #221a3e;
+  border-radius: 999px; padding: 3px 10px; font-size: 10px; font-weight: 800;
+}
+.rb-tag.rb-closed { background: rgba(220, 38, 38, .92); color: #fff; }
+.rb-tag.rb-lock { padding: 3px 7px; }
+.rb-tag i.f7-icons { font-size: 10px; }
+.rb-stats { display: flex; align-items: center; gap: 8px; }
+.rb-listens {
+  display: inline-flex; align-items: center; gap: 3px;
+  color: #fff; font-size: 11px; font-weight: 800;
+  background: rgba(0, 0, 0, .3); border-radius: 999px; padding: 3px 9px;
+}
+.rb-listens i.f7-icons { font-size: 11px; }
+.rb-avas { display: flex; }
+.rb-avas .rb-ava-sm {
+  width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #fff;
+  object-fit: cover; margin-left: -8px; background: #5b4bb8;
+}
+.rb-avas > *:first-child { margin-left: 0; }
+.rb-ava {
+  position: absolute; left: 12px; top: 12px; z-index: 3;
+}
+.rb-ava-img {
+  width: 56px; height: 56px; border-radius: 50%; object-fit: cover;
+  border: 2.5px solid #f5d680;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .45);
+}
+.room-mine-tag {
+  background: rgba(245, 214, 128, .95); color: #6b4c12;
+  border-radius: 999px; padding: 2px 8px; font-size: 9px; margin-right: 5px;
+}
+
+/* ---------- صفحة الكوكب (Explore) ---------- */
+.planet-page {
+  background:
+    radial-gradient(1100px 500px at 80% -10%, rgba(124, 77, 255, .38), transparent 60%),
+    radial-gradient(900px 500px at 10% 25%, rgba(188, 84, 224, .3), transparent 55%),
+    linear-gradient(180deg, #241442, #170d2c 45%, #0e081c);
+  overflow-y: auto;
+}
+.pl-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px 4px;
+}
+.pl-title { color: #fff; font-size: 20px; font-weight: 900; display: flex; align-items: center; gap: 6px; }
+.pl-bird { font-size: 18px; }
+.pl-head-icons { display: flex; gap: 8px; }
+.pl-gift-pill {
+  background: rgba(255, 255, 255, .12); color: #efeaff;
+  border: 1px solid rgba(196, 181, 253, .35); border-radius: 999px;
+  padding: 7px 14px; font-size: 12px; font-weight: 800;
+}
+.pl-head-mid { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; }
+.pl-cloud {
+  position: relative; height: 420px; margin: 6px 8px 0; overflow: hidden;
+}
+.pl-bubble {
+  position: absolute; background: none; border: 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  animation: plFloat 6s ease-in-out infinite;
+}
+.pl-bubble:nth-child(2n) { animation-delay: 1.2s; }
+.pl-bubble:nth-child(3n) { animation-delay: 2.3s; }
+@keyframes plFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.pl-bub-img {
+  width: 100%; aspect-ratio: 1; border-radius: 50%; object-fit: cover;
+  border: 2px solid rgba(216, 180, 254, .8);
+  box-shadow: 0 12px 28px rgba(88, 40, 180, .55);
+  background: #3b2a6e;
+}
+.pl-bub-name {
+  color: #fff; font-size: 10px; font-weight: 800; text-shadow: 0 2px 8px rgba(0, 0, 0, .8);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pl-bub-pct {
+  background: #c94fd2; color: #fff; border-radius: 999px;
+  padding: 2px 9px; font-size: 9.5px; font-weight: 900;
+  box-shadow: 0 6px 14px rgba(201, 79, 210, .55);
+}
+.pl-online {
+  text-align: center; color: #cbb8f5; font-size: 12px; padding: 6px 12px 2px;
+}
+.pl-online b { color: #fff; font-size: 15px; margin: 0 5px; }
+.planet-rooms { display: flex; flex-direction: column; gap: 12px; padding: 10px 14px 24px; }
+body.skin-soulchill .planet-page .party-live-banner {
+  margin: 8px 14px; width: calc(100% - 28px);
+}
+body.skin-soulchill .planet-page .match-cards { margin: 10px 14px; }
+.mcb-count {
+  position: absolute; top: 10px; left: 12px;
+  background: rgba(0, 0, 0, .35); color: #fff;
+  border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 800;
+}
+
+/* =====================================================
+   🔐 شاشة الدخول — Find My Soulmate (SoulChill طبق الأصل)
+   ===================================================== */
+.lm-page {
+  position: relative; width: 100%; min-height: 100%;
+  background: #050308;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 20px 22px 30px; overflow: hidden;
+}
+.lm-mosaic {
+  position: absolute; inset: 0; pointer-events: none; opacity: .55;
+  background-image:
+    repeating-conic-gradient(from 45deg, #12101c 0deg 90deg, #0b0812 90deg 180deg);
+  background-size: 92px 92px;
+  mask-image: linear-gradient(180deg, #000 30%, transparent 95%);
+  -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 95%);
+}
+.lm-mosaic span {
+  position: absolute; width: 74px; height: 74px; border-radius: 18px;
+  background: linear-gradient(150deg, rgba(120, 110, 160, .12), rgba(120, 110, 160, 0));
+}
+.lm-mosaic span:nth-child(1) { left: 6%; top: 8%; }
+.lm-mosaic span:nth-child(2) { left: 28%; top: 4%; }
+.lm-mosaic span:nth-child(3) { left: 52%; top: 12%; }
+.lm-mosaic span:nth-child(4) { left: 76%; top: 6%; }
+.lm-mosaic span:nth-child(5) { left: 12%; top: 30%; }
+.lm-mosaic span:nth-child(6) { left: 40%; top: 34%; }
+.lm-mosaic span:nth-child(7) { left: 66%; top: 28%; }
+.lm-mosaic span:nth-child(8) { left: 84%; top: 38%; }
+.lm-mosaic span:nth-child(9) { left: 8%; top: 54%; }
+.lm-mosaic span:nth-child(10) { left: 34%; top: 58%; }
+.lm-mosaic span:nth-child(11) { left: 60%; top: 52%; }
+.lm-mosaic span:nth-child(12) { left: 82%; top: 60%; }
+.lm-floaters { position: absolute; inset: 0; pointer-events: none; }
+.lm-floater {
+  position: absolute; width: 64px; height: 64px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1);
+  filter: saturate(.9);
+}
+.lm-guest-chip {
+  position: absolute; top: 12px; right: 14px; z-index: 5;
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255, 255, 255, .1); color: #fff;
+  border: 1px solid rgba(255, 255, 255, .18); border-radius: 999px;
+  padding: 6px 12px 6px 14px; font-size: 11.5px;
+}
+.lm-gc-ava {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: linear-gradient(135deg, #7c4dff, #c94fd2);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 13px;
+}
+.lm-x { position: absolute; top: 12px; left: 14px; z-index: 6; color: #cfc7ea; background: rgba(255,255,255,.08); border-radius: 50%; padding: 7px; }
+.lm-logo {
+  margin-top: 26px; z-index: 2;
+  color: #fff; font-size: 30px; font-weight: 900; letter-spacing: .5px;
+  display: flex; align-items: center; gap: 10px;
+}
+.lm-bird { font-size: 30px; }
+.lm-hero-ava {
+  z-index: 2; width: 108px; height: 108px; border-radius: 50%;
+  margin: 26px auto 18px; font-size: 52px;
+  background: linear-gradient(150deg, #2c2248, #513a92);
+  border: 3px solid rgba(255, 255, 255, .25);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 22px 60px rgba(88, 40, 180, .6);
+}
+.lm-title {
+  z-index: 2; margin: 8px 0 6px; text-align: center;
+  font-size: 44px; font-weight: 900; line-height: 1.12; color: #fff;
+}
+.lm-title span {
+  background: linear-gradient(90deg, #b08bff, #e6c6ff);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.lm-sub { z-index: 2; color: #cbb8f5; font-size: 14px; margin: 4px 0 22px; }
+.lm-google {
+  z-index: 2; width: 100%; max-width: 340px;
+  background: #fff; color: #1c1630; border: 0; border-radius: 999px;
+  padding: 15px 18px; font-size: 16px; font-weight: 800; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
+}
+.lm-g-ic {
+  width: 26px; height: 26px; border-radius: 50%; font-weight: 900;
+  background: conic-gradient(from -45deg, #ea4335 0 25%, #fbbc05 25% 50%, #34a853 50% 75%, #4285f4 75%);
+  color: #fff; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px;
+}
+.lm-or {
+  z-index: 2; display: flex; align-items: center; gap: 12px; width: 100%; max-width: 340px;
+  margin: 18px 0; color: #8d84ad; font-size: 13px;
+}
+.lm-or i { flex: 1; height: 1px; background: rgba(255, 255, 255, .16); }
+.lm-socials { z-index: 2; display: flex; gap: 18px; }
+.lm-soc {
+  width: 86px; height: 56px; border-radius: 18px; border: 0; cursor: pointer;
+  color: #fff; font-size: 22px; font-weight: 900;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.lm-more { background: linear-gradient(135deg, #7c4dff, #9a6bff); }
+.lm-phone { background: linear-gradient(135deg, #6c4ae8, #8b63f5); }
+.lm-fb { background: #2c7df0; }
+.lm-terms {
+  z-index: 2; margin-top: 18px; color: #7c7398; font-size: 11px; text-align: center;
+}
+.lm-terms b { color: #7c7398; }
+.lm-forms { z-index: 2; width: 100%; max-width: 340px; margin-top: 20px; }
+.lm-forms .lf-field {
+  background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .16);
+}
+.lm-forms .big-btn {
+  background: linear-gradient(135deg, #7c4dff, #b06bff); border-radius: 16px;
+}
+.lm-forms .lg-switchrow { color: #cbb8f5; }
+body.skin-soulchill .overlay.full .lm-page .sh-handle { display: none; }
+
+/* =====================================================
+   👤 شاشة «أنت» (Me) — SoulChill طبق الأصل
+   ===================================================== */
+.me-page {
+  background:
+    radial-gradient(900px 380px at 85% -5%, rgba(124, 77, 255, .3), transparent 55%),
+    linear-gradient(180deg, #1b1030, #120a22 30%, #0c0716);
+  overflow-y: auto;
+}
+.me-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px 4px;
+}
+.me-title { margin: 0; color: #fff; font-size: 22px; font-weight: 900; }
+.me-head .ph-ic { position: relative; }
+.me-top { display: flex; align-items: center; gap: 14px; padding: 14px 18px 6px; flex-direction: row-reverse; }
+.me-ava-wrap { position: relative; }
+.me-top .mn-ava {
+  width: 76px; height: 76px; border-radius: 50%; display: block;
+  border: 2px solid rgba(196, 181, 253, .5);
+}
+.me-uinfo { flex: 1; text-align: right; }
+.me-uinfo b { color: #fff; font-size: 21px; font-weight: 900; display: block; }
+.me-uid { color: #9c92c0; font-size: 12px; display: block; margin-top: 2px; }
+.me-uid i { font-style: normal; }
+.me-lvls { display: flex; gap: 6px; margin-top: 7px; }
+.me-lvl {
+  border-radius: 999px; padding: 3px 11px; font-size: 10.5px; font-weight: 900; color: #fff;
+}
+.me-lvl.l-p { background: linear-gradient(135deg, #7c4dff, #a06bff); }
+.me-lvl.l-g { background: linear-gradient(135deg, #22a06b, #2fc98f); }
+.me-stats {
+  display: flex; justify-content: space-around; padding: 12px 14px 4px;
+}
+.me-stat { text-align: center; }
+.me-stat b { color: #fff; font-size: 19px; font-weight: 900; display: block; }
+.me-stat span { color: #9c92c0; font-size: 11px; }
+.me-wallet {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 12px 14px 0; padding: 15px 16px;
+  border: 0; border-radius: 16px; cursor: pointer;
+  background: linear-gradient(115deg, #4b2a9c, #7c4dff 60%, #b06bff);
+  box-shadow: 0 14px 34px rgba(76, 41, 156, .5);
+}
+.mw-left { color: #fff; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.mw-left b { font-size: 16px; }
+.mw-right { color: #fff; font-size: 15px; font-weight: 900; display: flex; align-items: center; gap: 8px; }
+.mw-right i.f7-icons { font-size: 18px; }
+.me-card {
+  margin: 12px 14px 0; padding: 14px;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(196, 181, 253, .14);
+  border-radius: 18px;
+}
+.me-empire { display: flex; align-items: center; gap: 10px; }
+.me-empire-txt { flex: 1; text-align: right; }
+.me-empire-txt b { color: #fff; font-size: 14.5px; display: block; }
+.me-empire-txt span { color: #9c92c0; font-size: 11px; }
+.me-empire-avas { display: flex; }
+.me-empire-avas span {
+  width: 32px; height: 32px; border-radius: 50%; margin-left: -9px;
+  background: #4b2a9c; display: inline-flex; align-items: center; justify-content: center;
+  border: 2px solid #1b1030;
+}
+.me-empire-avas > *:first-child { margin-left: 0; }
+.me-join-btn {
+  background: linear-gradient(135deg, #7c4dff, #b06bff); color: #fff;
+  border: 0; border-radius: 999px; padding: 8px 17px; font-size: 12px; font-weight: 900; cursor: pointer;
+}
+.me-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 6px; }
+.me-gi {
+  background: none; border: 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+}
+.me-gic {
+  width: 52px; height: 52px; border-radius: 16px;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 24px;
+}
+.me-gic.g1 { background: rgba(124, 77, 255, .25); }
+.me-gic.g2 { background: rgba(236, 72, 153, .22); }
+.me-gic.g3 { background: rgba(34, 160, 107, .22); }
+.me-gic.g4 { background: rgba(56, 189, 248, .22); }
+.me-gic.g5 { background: rgba(245, 158, 11, .22); }
+.me-gic.g6 { background: rgba(236, 72, 153, .25); }
+.me-gic.g7 { background: rgba(124, 77, 255, .22); }
+.me-gic.g8 { background: rgba(56, 189, 248, .2); }
+.me-gi small { color: #d9d2ef; font-size: 10.5px; font-weight: 700; }
+.me-prayer {
+  display: flex; align-items: center; gap: 10px;
+}
+.me-prayer b { flex: 1; text-align: right; color: #fff; font-size: 14px; }
+.me-prayer .mp-ic { font-size: 22px; }
+.me-prayer i.f7-icons { color: #9c92c0; }
+.me-rows { margin: 12px 14px 26px; display: flex; flex-direction: column; gap: 8px; }
+.me-rows .mn-item {
+  background: rgba(255, 255, 255, .05); border: 1px solid rgba(196, 181, 253, .12);
+  border-radius: 14px; padding: 13px 14px;
+  display: flex; align-items: center; gap: 10px; color: #fff; font-size: 13.5px; cursor: pointer;
+}
+.me-rows .mn-item .mn-chev { margin-inline-start: auto; color: #9c92c0; }
+.me-rows .mni i.f7-icons { color: #b06bff; }
+
+/* =====================================================
+   ✨ اللحظات (المنشورات) + 📩 رسائل — SoulChill
+   ===================================================== */
+body.skin-soulchill .wall-head { padding: 12px 14px; }
+body.skin-soulchill .wall-head b { font-size: 19px; }
+body.skin-soulchill .wall-head .wall-tabs { display: flex; gap: 16px; margin-inline-start: 16px; }
+.wall-tabs button {
+  background: none; border: 0; color: #8d84ad; font-size: 14px; cursor: pointer; position: relative;
+}
+.wall-tabs button.active { color: #fff; font-weight: 900; }
+.wall-tabs button.active::after {
+  content: ''; position: absolute; bottom: -6px; right: 0; left: 0; height: 3px;
+  border-radius: 999px; background: #fff;
+}
+body.skin-soulchill .wall-create-trigger {
+  width: 38px; height: 38px; border-radius: 50%; padding: 0;
+  position: absolute; top: 10px; left: 12px; z-index: 20;
+}
+body.skin-soulchill .wall-create-trigger span { display: none; }
+body.skin-soulchill .wall-post { padding: 14px; margin-bottom: 12px; }
+body.skin-soulchill .wall-post .wp-react-row {
+  display: flex; align-items: center; gap: 18px; padding: 8px 2px 0;
+}
+body.skin-soulchill .wall-action {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: #cfc7ea; font-size: 12.5px; background: none; border: 0; cursor: pointer;
+}
+.wp-follow-btn {
+  background: none; border: 1px solid rgba(255, 255, 255, .35); color: #fff;
+  border-radius: 999px; padding: 6px 16px; font-size: 11.5px; cursor: pointer;
+}
+.wp-join-room {
+  background: linear-gradient(135deg, #7c4dff, #b06bff); color: #fff; border: 0;
+  border-radius: 999px; padding: 7px 15px; font-size: 11.5px; font-weight: 800; cursor: pointer;
+}
+body.skin-soulchill .pill-tabs { padding: 10px 14px; gap: 8px; }
+body.skin-soulchill .pv-tab {
+  background: rgba(255, 255, 255, .06); color: #d9d2ef;
+  border: 1px solid rgba(255, 255, 255, .14); border-radius: 999px;
+  padding: 7px 16px; font-size: 12px;
+}
+body.skin-soulchill .pv-tab.active {
+  background: #fff; color: #221a3e; font-weight: 900; border-color: #fff;
+}
+.priv-strip {
+  display: flex; gap: 14px; overflow-x: auto; scrollbar-width: none;
+  padding: 8px 14px 12px;
+}
+.priv-strip::-webkit-scrollbar { display: none; }
+.priv-strip-title { color: #cbb8f5; font-size: 12.5px; padding: 10px 14px 0; }
+.priv-strip-item { flex: 0 0 auto; width: 62px; text-align: center; }
+.priv-strip-item img, .priv-strip-item span.ava {
+  width: 58px; height: 58px; border-radius: 50%; object-fit: cover;
+  border: 2px solid rgba(176, 107, 255, .8);
+}
+.priv-strip-item small {
+  display: block; color: #fff; font-size: 9.5px; margin-top: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.priv-strip-item .ps-count {
+  background: #6c5ce7; color: #fff; border-radius: 999px;
+  padding: 1px 8px; font-size: 8.5px; margin-top: 2px; display: inline-block;
+}
+
+/* =====================================================
+   🎤 شكل الغرفة — SoulChill طبق الأصل
+   بانر الهدايا · الأجنحة · شريط المستمعين · التذييل
+   ===================================================== */
+
+/* ---------- بانر الهدايا الترويجي ---------- */
+.room-promo {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  margin: 10px 12px 2px; padding: 12px 14px;
+  border: 0; border-radius: 18px; cursor: pointer; overflow: hidden;
+  color: #fff; text-align: right;
+}
+.room-promo.rp-teal { background: linear-gradient(100deg, #0fb5c9, #21c9d8 55%, #5eead4); }
+.room-promo.rp-gold { background: linear-gradient(100deg, #b8860b, #e8c15a 55%, #f5d680); }
+.room-promo.rp-green { background: linear-gradient(100deg, #15803d, #22c55e 55%, #4ade80); }
+.rp-count {
+  background: rgba(255, 255, 255, .25); border-radius: 999px;
+  padding: 3px 10px; font-size: 11px; font-weight: 900;
+}
+.rp-text { flex: 1; font-size: 11.5px; font-weight: 700; line-height: 1.7; }
+.rp-text b { font-size: 13px; }
+.rp-user { display: flex; flex-direction: column; align-items: flex-start; font-size: 11px; font-weight: 800; }
+.rp-badges em {
+  font-style: normal; background: rgba(255, 255, 255, .3); border-radius: 999px;
+  padding: 1px 7px; font-size: 8.5px; margin: 0 2px;
+}
+.rp-badges em.rp-gold { background: #d97706; }
+.rp-gift { font-size: 34px; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .35)); }
+
+/* ---------- شريط المستمعين ---------- */
+.room-listeners {
+  display: flex; align-items: center; gap: 9px;
+  margin: 10px 12px 2px; padding: 8px 10px;
+}
+.rl-count {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1.5px solid #f5c842; border-radius: 12px;
+  padding: 7px 12px; color: #f5c842; font-size: 13px; font-weight: 900;
+}
+.rl-count i.f7-icons { font-size: 13px; }
+.rl-chatcount {
+  background: rgba(255, 255, 255, .1); border-radius: 12px;
+  padding: 7px 13px; color: #fff; font-size: 13px; font-weight: 800;
+}
+.rl-avas { display: flex; flex: 1; overflow: hidden; }
+.rl-ava {
+  width: 34px; height: 34px; border-radius: 50%; object-fit: cover;
+  border: 2px solid rgba(176, 107, 255, .75); margin-left: -8px; background: #3b2a6e;
+}
+.rl-avas > *:first-child { margin-left: 0; }
+
+/* ---------- أجنحة المقاعد (إطار مجنّح ذهبي/بنفسجي) ---------- */
+.seat-ava-wrap, .host-ava-wrap { position: relative; display: inline-block; }
+.seat-item .wing, .host-seat .wing {
+  position: absolute; top: 26%; width: 52%; height: 46%;
+  background: linear-gradient(135deg, #f5d680, #c9972e 55%, #8a5a12);
+  clip-path: polygon(100% 50%, 72% 8%, 30% 0%, 0% 22%, 34% 34%, 6% 48%, 38% 56%, 12% 74%, 48% 66%, 30% 92%, 78% 66%, 96% 55%);
+  pointer-events: none; z-index: 1;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .45));
+}
+.seat-item .wing.left { left: -34%; transform: scaleX(-1) rotate(-10deg); }
+.seat-item .wing.right { right: -34%; transform: rotate(-10deg); }
+.seat-item.seat-purple .wing, .host-seat .wing {
+  background: linear-gradient(135deg, #d8b4fe, #8b5cf6 55%, #5b21b6);
+}
+.seat-item.seat-gold .wing {
+  background: linear-gradient(135deg, #fde68a, #d97706 55%, #92400e);
+}
+.seat-item .wing-crown, .host-seat .wing-crown {
+  position: absolute; top: -17px; left: 50%; transform: translateX(-50%);
+  font-size: 19px; z-index: 3; pointer-events: none;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .5));
+}
+.seat-item .seat-ava, .host-seat .host-ava {
+  border: 2.5px solid rgba(245, 214, 128, .9);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .5);
+}
+
+/* ---------- تذييل الغرفة (SoulChill) ---------- */
+body.skin-soulchill .c-input {
+  background: #100c1c;
+  border-top: 1px solid rgba(124, 91, 220, .18);
+  padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+  gap: 7px;
+}
+body.skin-soulchill .ci-field {
+  background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 999px; color: #fff;
+}
+body.skin-soulchill .ci-field::placeholder { color: #8d84ad; }
+body.skin-soulchill .ci-circle, body.skin-soulchill .ci-plain {
+  background: rgba(255, 255, 255, .07); color: #cfc7ea;
+  border-radius: 50%; width: 42px; height: 42px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+body.skin-soulchill .sc-gift { color: #f5c842; background: rgba(245, 200, 66, .14); }
+body.skin-soulchill .btnSend, body.skin-soulchill #btnSend {
+  background: linear-gradient(135deg, #7c4dff, #b06bff); color: #fff;
+}
+
+/* ---------- فقاعات الدردشة داخل الغرفة (SoulChill) ---------- */
+body.skin-soulchill .chat-item, body.skin-soulchill .cm-row {
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(167, 139, 250, .16);
+  border-radius: 16px;
+}
+body.skin-soulchill .cm-name { color: #b9a8ff; font-weight: 800; }
+body.skin-soulchill .cm-lv {
+  background: linear-gradient(135deg, #7c4dff, #a06bff); color: #fff;
+  border-radius: 999px; padding: 1px 8px; font-size: 9px; font-weight: 900;
+}
+
+/* ---------- إشعار الانضمام الطائر ---------- */
+.toast, .join-toast {
+  background: linear-gradient(115deg, #6c4ae8, #9a6bff) !important;
+  color: #fff; border-radius: 999px;
+  box-shadow: 0 14px 34px rgba(88, 40, 180, .55);
+}
+
+/* =====================================================
+   💬 المحادثة الخاصة — SoulChill طبق الأصل
+   ===================================================== */
+.pmpage { background: #0a0712; }
+body.skin-soulchill .pm-head {
+  background: #0a0712; border-bottom: 1px solid rgba(124, 91, 220, .12);
+  padding: 12px 14px;
+}
+body.skin-soulchill .pm-peer b { color: #fff; font-size: 15px; }
+body.skin-soulchill .pm-peer small { color: #8d84ad; font-size: 10.5px; display: block; margin-top: 2px; }
+.pm-safety {
+  color: #6f6789; font-size: 10.5px; text-align: center;
+  padding: 8px 18px 4px; line-height: 1.7;
+}
+.pm-quick {
+  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+  padding: 6px 12px;
+}
+.pm-quick button {
+  background: rgba(255, 255, 255, .07); color: #d9d2ef;
+  border: 1px solid rgba(255, 255, 255, .12); border-radius: 12px;
+  padding: 8px 13px; font-size: 11.5px; cursor: pointer;
+}
+.pm-quick button:active { background: rgba(124, 77, 255, .35); }
+.pm-toolbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 8px 18px 4px;
+}
+.pm-tb {
+  background: none; border: 0; font-size: 21px; cursor: pointer;
+  opacity: .85; transition: transform .12s ease;
+}
+.pm-tb:active { transform: scale(1.15); }
+.pm-tb-gift { opacity: 1; }
+body.skin-soulchill .pm-bar {
+  background: #100c1c; border-top: 1px solid rgba(124, 91, 220, .12);
+}
+body.skin-soulchill .pm-bar input {
+  background: rgba(255, 255, 255, .08); color: #fff;
+  border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px;
+}
+body.skin-soulchill .pm-bar input::placeholder { color: #8d84ad; }
+body.skin-soulchill .pmb {
+  background: rgba(255, 255, 255, .07); color: #cfc7ea; border-radius: 50%;
+}
+body.skin-soulchill .pmb.send { background: linear-gradient(135deg, #7c4dff, #b06bff); color: #fff; }
+/* بطاقة Moment المشتركة */
+.pm-moment-card {
+  background: #1c1830; border-radius: 16px; padding: 10px 12px;
+  display: flex; align-items: center; gap: 10px; margin: 8px 0;
+  border: 1px solid rgba(167, 139, 250, .16);
+}
+.pm-moment-card img { width: 54px; height: 44px; border-radius: 10px; object-fit: cover; }
+.pm-moment-card b { color: #fff; font-size: 14px; display: block; }
+.pm-moment-card small { color: #8d84ad; font-size: 10px; }
