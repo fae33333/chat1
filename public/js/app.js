@@ -3113,10 +3113,8 @@ function renderIdleRoomNotice() {
   const el = $('#roomNotice');
   if (!el) return;
   el.classList.add('is-idle');
-  el.innerHTML =
-    '<span style="margin:1px 3px 4px 47px">لا يوجد احد في البث المباشر حي الان</span>' +
-    '<div class="red-circle3333 skin_color"></div>' +
-    '<img class="video-icon3333" src="https://up6.cc/2025/10/176422975625851.gif" alt="ميكروفون">';
+  const description = String((CUR_ROOM && CUR_ROOM.description) || '').trim();
+  el.textContent = description || `أهلاً وسهلاً بكم في ${CUR_ROOM ? CUR_ROOM.name : 'الغرفة'}`;
 }
 
 // يحدّث شريط البث أعلى شاشة الدردشة حسب حالة الغرفة الحالية

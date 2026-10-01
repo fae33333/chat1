@@ -20325,3 +20325,146 @@ body.lang-ltr .r-logo {
         font-size: 9px
     }
 }
+
+/* العرض النظيف للغرفة: إخفاء عناصر الواجهة القديمة خارج مكونات التصميم المرجعي */
+#frame.room-skin-active .bottomnav,
+#chatScreen.room-skin .c-top-mid,
+#chatScreen.room-skin .c-top-btns,
+#chatScreen.room-skin .live-mute-float,
+#chatScreen.room-skin .live-bar-animation,
+#chatScreen.room-skin .containersacscs,
+#chatScreen.room-skin .container3333,
+#chatScreen.room-skin .chat-bg-watermark,
+#chatScreen.room-skin .scroll-down-btn,
+#chatScreen.room-skin .reply-bar,
+#chatScreen.room-skin #topcmm-123flashchat,
+#chatScreen.room-skin #roomDrop,
+#chatScreen.room-skin #roomDropBg,
+#chatScreen.room-skin #roomsPanel,
+#chatScreen.room-skin #usersPanel,
+#chatScreen.room-skin #roomsVeil,
+#frame.room-skin-active .royal-entry-layer,
+#frame.room-skin-active .royal-banner-layer,
+#frame.room-skin-active .gift-celebration-layer,
+#frame.room-skin-active #colorPanel {
+    display: none!important
+}
+
+#frame.room-skin-active .bottomnav.show {
+    display: none!important
+}
+
+#chatScreen.room-skin .c-top {
+    min-height: 58px;
+    justify-content: flex-start;
+    padding: max(9px,env(safe-area-inset-top)) 14px 9px;
+    gap: 12px;
+    background: linear-gradient(105deg,#522078,#71309c)!important
+}
+
+#chatScreen.room-skin .c-room-name {
+    flex: 1;
+    max-width: none;
+    margin: 0;
+    overflow: hidden;
+    background: transparent;
+    border: 0;
+    padding: 7px 4px;
+    text-align: center;
+    text-overflow: ellipsis
+}
+
+#chatScreen.room-skin #liveBar {
+    display: flex!important;
+    min-height: 36px;
+    margin: 5px 9px 0;
+    padding: 4px 12px;
+    border: 1px solid rgba(255,226,165,.42);
+    border-radius: 9px;
+    background: linear-gradient(100deg,#ffc354,#ff9b38)!important;
+    box-shadow: 0 3px 10px rgba(38,12,57,.18)
+}
+
+#chatScreen.room-skin #roomNotice {
+    display: block;
+    color: #542b13;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1.45;
+    text-align: center;
+    white-space: normal
+}
+
+#chatScreen.room-skin #roomNotice[hidden] {
+    display: none!important
+}
+
+#chatScreen.room-skin .c-input {
+    min-height: 52px;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 7px 10px max(7px,env(safe-area-inset-bottom));
+    direction: ltr
+}
+
+#chatScreen.room-skin #btnApps,
+#chatScreen.room-skin #btnMic,
+#chatScreen.room-skin #btnTalkLive,
+#chatScreen.room-skin #btnCam,
+#chatScreen.room-skin #ciAva,
+#chatScreen.room-skin .ci-break {
+    display: none!important
+}
+
+#chatScreen.room-skin .ci-field {
+    position: static;
+    left: auto;
+    width: auto;
+    min-width: 0;
+    height: 38px;
+    flex: 1;
+    margin: 0;
+    border-radius: 22px;
+    text-indent: 13px
+}
+
+#chatScreen.room-skin #btnEmoji.ci-circle {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    margin: 0;
+    background: rgba(255,255,255,.08)!important
+}
+
+#chatScreen.room-skin #btnSend.ci-circle {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    margin: 0
+}
+
+#chatScreen.room-skin #msgArea .system-event.join,
+#chatScreen.room-skin #msgArea .system-event.leave {
+    display: none!important
+}
+
+@media (min-width: 1024px) {
+    #chatScreen.room-skin .c-top {
+        min-height: 62px;
+        padding-right: 24px;
+        padding-left: 24px
+    }
+
+    #chatScreen.room-skin .c-notice,
+    #chatScreen.room-skin .room-stage,
+    #chatScreen.room-skin .c-msgs,
+    #chatScreen.room-skin .c-input {
+        margin-right: 0
+    }
+
+    #chatScreen.room-skin .room-stage {
+        max-width: 1120px;
+        align-self: center;
+        width: 100%
+    }
+}
