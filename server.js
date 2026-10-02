@@ -2446,6 +2446,50 @@ app.post('/api/soulchill/checkin', requireUser, async (req, res) => {
   res.json({ ok: true, reward, balance: +(u && u.balance) || 0 });
 });
 
+// =====================================================
+//  إنشاء غرفة من داخل التطبيق (SoulChill) — للمستخدمين المسجّلين
+//  المنشئ يصبح مسؤول غرفته (room_admins) فيقبل المايك ويدير المقاعد والكتم،
+//  مع حدّ أقصى للغرف لكل عضو، ورفع صورة الغرفة عبر /api/soulchill/rooms/upload
+// =====================================================
+const uploadRoomImage = multer({
+  storage,
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = /^image\/(png|jpe?g|webp|gif)$/i.test(String(file.mimetype || ''));
+    cb(ok ? null : new Error('صيغة الصورة غير مدعومة'), ok);
+  }
+});
+app.post('/api/soulchill/rooms/upload', requireUser, (req, res) => {
+  uploadRoomImage.single('image')(req, res, (err) => {
+    if (err || !req.file) return res.status(400).json({ error: err ? err.message : 'اختر ملف الصورة' });
+    res.json({ ok: true, path: '/uploads/' + req.file.filename });
+  });
+});
+const MAX_ROOMS_PER_USER = 3;
+app.post('/api/soulchill/rooms', requireUser, async (req, res) => {
+  const me = await q.get(`SELECT * FROM users WHERE id=?`, req.authUid);
+  if (!me) return res.status(401).json({ error: 'غير مسجل في هذه الصفحة' });
+  if (!me.registered) return res.status(403).json({ error: 'أنشئ حساباً مسجّلاً أولاً لتفتح غرفتك' });
+  const limit = checkRateLimit('mkroom:' + me.id, 4, 10 * 60 * 1000);
+  if (!limit.ok) return res.status(429).json({ error: 'محاولات كثيرة — انتظر قليلاً ثم أعد المحاولة' });
+  const name = String((req.body && req.body.name) || '').trim().replace(/\s+/g, ' ');
+  if (name.length < 2 || name.length > 24) return res.status(400).json({ error: 'اسم الغرفة بين حرفين و24 حرفاً' });
+  const type = ((req.body && req.body.type) === 'text') ? 'default' : 'voice';
+  const welcome = String((req.body && req.body.welcome) || '').slice(0, 200);
+  let image = String((req.body && req.body.image) || '').slice(0, 200);
+  if (image && !/^\/(img|uploads)\//.test(image)) image = '';
+  const mine = await q.all(`SELECT room_id FROM room_admins WHERE user_id=?`, me.id);
+  if (mine.length >= MAX_ROOMS_PER_USER)
+    return res.status(400).json({ error: `لا يمكنك إنشاء أكثر من ${MAX_ROOMS_PER_USER} غرف` });
+  const out = await q.run(`INSERT INTO rooms (name,description,image,type,max_users,status,sound,video,bots,gifts,games,locked,welcome,audience,sort)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    name, welcome || 'اهلا وسهلا بكم في الدردشة ★', image, type, 1000, 'open',
+    1, 1, 0, 1, 1, 0, welcome, 'all', 0);
+  const roomId = +out.lastID;
+  await q.run(`INSERT INTO room_admins (room_id, user_id, username, expires_at) VALUES (?,?,?,?)`, roomId, me.id, me.username, 0);
+  io.emit('sync');
+  res.json({ ok: true, id: roomId, name });
+});
 app.get('/api/rooms/:id', async (req, res) => {
   const roomId = +req.params.id;
   if (!roomId) return res.status(400).json({ error: 'معرّف الغرفة غير صالح' });

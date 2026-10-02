@@ -163,7 +163,7 @@
     roomsLoaded: false
   };
   window.SC = {
-    build: 'sc8',
+    build: 'sc9',
     get state() { return S; },
     go, refresh: loadAll, sheetOpen, sheetClose,
     refreshRoom() { if (G.curRoom) { renderSeats(); renderRoomSub(); renderRoomHead(); renderVisitors(); syncMicState(); } },
@@ -248,6 +248,9 @@
     if (role) role.innerHTML = `<i class="f7-icons">planet_fill</i>${me ? (levelOf(me) >= 26 ? 'المؤدي' : 'عضو') : 'زائر'}`;
     const logo = q('#scPlanetLogo');
     if (logo) logo.textContent = siteName();
+    // شارة الإصدار: تظهر رقم النسخة الحالية للتأكد من تحديث المتصفح (تُخفى عند النقر)
+    const build = q('#scPlanetBuild');
+    if (build) build.textContent = 'v' + String(window.SC.build || '').replace(/^sc/, '');
 
     // شارة الحضور اليومي
     const ci = q('#scCheckinBtn');
@@ -1332,6 +1335,79 @@
   const AR_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   const arNum = n => String(n).split('').map(ch => AR_DIGITS[+ch] || ch).join('');
 
+  /* ---------- إنشاء غرفة حقيقية من داخل التطبيق ---------- */
+  let SC_NEW_ROOM_IMAGE = '';
+  function openCreateRoomSheet() {
+    if (!G.me) { call('openLogin'); return; }
+    if (!G.me.registered) { sheetOpen(`<h3>إنشاء غرفة</h3><p class="sc-sheet-sub">تحتاج حساباً مسجّلاً لتفتح غرفتك الصوتية.</p><button class="sc-btn-primary" id="scRegGo">تسجيل حساب</button>`); const b = q('#scRegGo'); if (b) b.onclick = () => { sheetClose(); call('openOv', 'registerOv'); }; return; }
+    SC_NEW_ROOM_IMAGE = '';
+    sheetOpen(`
+      <h3>🎙️ إنشاء غرفة</h3>
+      <p class="sc-sheet-sub">اختر اسماً وصورة، وستصبح أنت مسؤول الغرفة (مايك، مقاعد، كتم).</p>
+      <label class="sc-fld"><span>اسم الغرفة</span><input id="scNRName" maxlength="24" placeholder="مثال: غرفة الأصدقاء"></label>
+      <div class="sc-fld"><span>نوع الغرفة</span>
+        <div class="sc-seg" id="scNRType">
+          <button class="on" data-t="voice">🎙️ صوتية</button>
+          <button data-t="text">💬 كتابية</button>
+        </div>
+      </div>
+      <label class="sc-fld"><span>رسالة الترحيب (اختياري)</span><input id="scNRWelcome" maxlength="120" placeholder="أهلاً بكم في غرفتي 🌹"></label>
+      <div class="sc-fld"><span>صورة الغرفة</span>
+        <div class="sc-nr-img">
+          <div class="sc-nr-prev" id="scNRPrev"><i class="f7-icons">photo_fill</i></div>
+          <button class="sc-btn-ghost" id="scNRPick">اختيار صورة من الجهاز</button>
+        </div>
+      </div>
+      <button class="sc-btn-primary" id="scNRMake">إنشاء الغرفة</button>
+    `);
+    const typeBox = q('#scNRType');
+    if (typeBox) qa('button', typeBox).forEach(b => b.onclick = () => { qa('button', typeBox).forEach(x => x.classList.toggle('on', x === b)); });
+    const pick = q('#scNRPick');
+    if (pick) pick.onclick = () => {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*';
+      inp.onchange = async () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        toastSafe('جارٍ رفع الصورة…');
+        const fd = new FormData();
+        fd.append('image', f);
+        try {
+          const r = await fetch('/api/soulchill/rooms/upload', {
+            method: 'POST', credentials: 'same-origin', body: fd,
+            headers: (typeof CHAT_TOKEN !== 'undefined' && CHAT_TOKEN) ? { 'X-Chat-Client': '1', 'X-Chat-Token': CHAT_TOKEN } : { 'X-Chat-Client': '1' }
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || !d.path) throw new Error(d.error || 'فشل رفع الصورة');
+          SC_NEW_ROOM_IMAGE = d.path;
+          const prev = q('#scNRPrev');
+          if (prev) prev.innerHTML = `<img src="${E(d.path)}" alt="">`;
+          toastSafe('تم رفع الصورة ✅');
+        } catch (e) { toastSafe(e.message || 'فشل رفع الصورة', false); }
+      };
+      inp.click();
+    };
+    const make = q('#scNRMake');
+    if (make) make.onclick = async () => {
+      const name = ((q('#scNRName') && q('#scNRName').value) || '').trim();
+      if (name.length < 2) return toastSafe('اكتب اسم الغرفة (حرفان على الأقل)', false);
+      const typeBtn = q('#scNRType button.on');
+      const type = typeBtn && typeBtn.dataset.t === 'text' ? 'text' : 'voice';
+      const welcome = ((q('#scNRWelcome') && q('#scNRWelcome').value) || '').trim();
+      make.disabled = true;
+      try {
+        const d = await jpost('/api/soulchill/rooms', { name, type, welcome, image: SC_NEW_ROOM_IMAGE });
+        sheetClose();
+        toastSafe('🎉 تم إنشاء غرفتك «' + name + '» — أنت مسؤول الغرفة');
+        // نحدّث قائمة الغرف من الخادم ثم ندخل الغرفة الجديدة
+        if (fn('loadRooms')) { try { await call('loadRooms'); } catch (e) { } }
+        setTimeout(() => { call('enterRoom', d.id); }, 350);
+      } catch (e) {
+        toastSafe((e && e.payload && e.payload.error) || 'تعذر إنشاء الغرفة', false);
+      } finally { make.disabled = false; }
+    };
+  }
+
   // ورقة المكافأة الكبرى (من الأيقونة العائمة أو من شريط الكتابة)
   function openPrizeSheet() {
     const giftsToday = +(G.me && G.me.gifts_today) || 0;
@@ -2111,17 +2187,7 @@
 
     // شاشة الحفلة
     const createRoom = q('#scCreateRoom');
-    if (createRoom) createRoom.onclick = () => {
-      sheetOpen(`<h3>إنشاء غرفة</h3>
-      <p class="sc-sheet-sub">أنشئ غرفتك الصوتية واختر لها اسماً وصورة، ثم أدِر المقاعد والزوار.</p>
-      <div class="sc-sheet-row" data-op="myroom"><i class="f7-icons">house_fill</i><div><b>غرفتي</b><br><small>${G.curRoom ? 'أنت الآن في ' + E(G.curRoom.name) : 'لم تنشئ غرفة بعد'}</small></div><i class="f7-icons sc-chev">chevron_left</i></div>
-      <div class="sc-sheet-row" data-op="browse"><i class="f7-icons">square_grid2x2_fill</i><b>تصفح كل الغرف</b><i class="f7-icons sc-chev">chevron_left</i></div>
-      <div class="sc-msg-tip">إنشاء الغرف وصورها يتم من لوحة تحكم الموقع — تواصل مع الإدارة لإنشاء غرفتك.</div>`);
-      sheetBindOps({
-        myroom: () => { if (G.curRoom) { activateScreen('planet'); onScreenChanged('chat'); } else { S.cat = '__all'; go('party'); } },
-        browse: () => { S.cat = '__all'; S.country = ''; go('party'); }
-      });
-    };
+    if (createRoom) createRoom.onclick = () => openCreateRoomSheet();
     const events = q('#scEventsBtn');
     if (events) events.onclick = () => {
       sheetOpen(`<h3>🎉 الفعاليات</h3>
