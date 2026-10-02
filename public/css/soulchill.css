@@ -1371,17 +1371,18 @@ body.sc-room #inputBar { display: none !important; }
   height: 44px;
   padding: 0 10px;
   border-radius: 12px;
-  background: linear-gradient(100deg, rgba(255, 214, 102, .96), rgba(255, 236, 179, .98));
-  border: 1.5px solid rgba(255, 255, 255, .65);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, .4);
-  color: #4a3208;
+  background: linear-gradient(100deg, #f97316 0%, #fb923c 50%, #f59e0b 100%);
+  border: 1.5px solid rgba(255, 224, 178, .85);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .4), 0 0 14px rgba(249, 115, 22, .35);
+  color: #fff;
   cursor: pointer;
 }
 .sc-hour-bar .sc-hb-chev { font-size: 15px; flex: 0 0 auto; }
 .sc-hour-bar .sc-hb-icon { font-size: 22px; flex: 0 0 auto; }
 .sc-hour-bar .sc-hb-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; text-align: right; }
 .sc-hour-bar .sc-hb-txt b { font-size: 11.5px; font-weight: 900; }
-.sc-hour-bar .sc-hb-txt small { font-size: 10px; font-weight: 700; opacity: .82; }
+.sc-hour-bar .sc-hb-txt small { font-size: 10px; font-weight: 700; opacity: .95; }
+.sc-hour-bar .sc-hb-txt b { text-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
 
 /* ---------- إخفاء نافذة البث العائمة عند الصعود للمايك ----------
    عند الصعود لا نريد رأس نافذة البث (الصورة/الاسم/عدد المشاهدين/مباشر) ولا الصندوق
@@ -1409,6 +1410,22 @@ body.sc-room #bcastOv.sc-hide-bcast .bcast-requests { pointer-events: auto; }
   box-shadow: 0 0 14px rgba(239, 68, 68, .5);
 }
 .sc-rb-btn.sc-mic-btn[hidden] { display: none !important; }
+
+/* إخفاء بقايا واجهة الدردشة القديمة داخل الغرفة الجديدة («أي شيء زيادة») */
+body.sc-room #liveBar,
+body.sc-room #btnTalkLive,
+body.sc-room #roomNotice,
+body.sc-room .bcast-drag-hint,
+body.sc-room #liveBarMute { display: none !important; }
+
+/* زر الإرسال يظهر فقط عند الكتابة (بأولوية على قاعدة #btnSend) */
+#btnSend.sc-send-btn { display: none; }
+#btnSend.sc-send-btn.has-text { display: flex; }
+
+/* أيقونة المكافأة الكبرى في الشريط السفلي مع شريط تقدم صغير */
+.sc-rb-btn.sc-rb-prize { position: relative; flex-direction: column; gap: 1px; padding: 4px 10px; }
+.sc-rb-prog { display: block; width: 26px; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, .25); overflow: hidden; }
+.sc-rb-prog i { display: block; height: 100%; background: #ffd85e; border-radius: 3px; }
 
 /* ---------- بطاقة الملف الشخصي (أنا) ---------- */
 .sc-self-loading { text-align: center; color: rgba(255, 255, 255, .7); font-size: 13px; padding: 18px 0; }
@@ -1612,6 +1629,12 @@ body.sc-room #bcastOv.sc-hide-bcast .bcast-requests { pointer-events: auto; }
 .sc-win-txt small { font-size: 10px; font-weight: 700; opacity: .92; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-win-ava { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1.5px solid rgba(255, 255, 255, .8); flex: 0 0 auto; }
 
+/* ---------- صندوق المستوى المدمج ---------- */
+.sc-lvbox { flex-direction: column; align-items: flex-start; }
+.sc-lv-row { display: flex; align-items: center; gap: 5px; }
+.sc-lv-num { margin: 3px 0 0; font-size: 11px; font-weight: 800; color: #fff; opacity: .95; }
+.sc-lvbox .sc-lv-prog { display: none; }
+
 /* ---------- المقاعد ---------- */
 .sc-seats {
   position: relative;
@@ -1639,26 +1662,17 @@ body.sc-room #bcastOv.sc-hide-bcast .bcast-requests { pointer-events: auto; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 32px;
-  color: rgba(255, 255, 255, .5);
-  background: rgba(255, 255, 255, .10);
-  border: 1px solid rgba(255, 255, 255, .12);
+  color: rgba(255, 255, 255, .92);
+  background: rgba(80, 40, 160, .55);
+  border: 0;
   box-shadow: none;
 }
+.sc-host-ava.empty .sc-sofa svg { width: 34px; height: 34px; }
 .sc-host-seat.empty { cursor: pointer; }
 .sc-host-ava.empty i.f7-icons { font-size: 34px; opacity: .55; }
-.sc-host-hand {
-  position: absolute;
-  top: 50%;
-  inset-inline-start: 50%;
-  transform: translate(-30%, -35%);
-  font-size: 26px;
-  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .55));
-  animation: sc-nudge 1.6s ease-in-out infinite;
-}
-.sc-host-prompt { color: #fff !important; font-size: 12px !important; font-weight: 700; margin-top: 8px; opacity: .92; }
+.sc-host-label { margin-top: 7px; color: #fff; font-size: 11.5px; font-weight: 700; opacity: .92; }
 .sc-host-follow {
-  margin-top: 8px;
+  margin-top: 7px;
   padding: 6px 16px;
   border-radius: 999px;
   font-size: 12px;
@@ -1731,7 +1745,9 @@ body.sc-room #bcastOv.sc-hide-bcast .bcast-requests { pointer-events: auto; }
   color: rgba(255, 255, 255, .92);
 }
 .sc-seat.empty .sc-seat-ava svg { width: 30px; height: 30px; opacity: .95; }
-.sc-seat.empty:active .sc-seat-ava { background: rgba(168, 85, 247, .5); }
+.sc-seat.empty:active .sc-seat-ava { background: rgba(168, 85, 247, .55); }
+.sc-seat-ava .sc-sofa { display: flex; align-items: center; justify-content: center; }
+.sc-seat-ava .sc-sofa svg { width: 27px; height: 27px; }
 .sc-seat.locked .sc-seat-ava {
   background: rgba(255, 255, 255, .10);
   border: 0;

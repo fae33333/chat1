@@ -163,6 +163,7 @@
     roomsLoaded: false
   };
   window.SC = {
+    build: 'sc8',
     get state() { return S; },
     go, refresh: loadAll, sheetOpen, sheetClose,
     refreshRoom() { if (G.curRoom) { renderSeats(); renderRoomSub(); renderRoomHead(); renderVisitors(); syncMicState(); } },
@@ -1134,15 +1135,6 @@
     const roomImg = room.image && room.image.startsWith('/') ? room.image : '';
     const rank = roomRankNo();
     head.innerHTML = `
-      <div class="sc-rh-tools">
-        <button class="sc-rh-ico" id="scRoomStatus" title="الحالات"><i class="f7-icons">circle_dashed</i></button>
-        <button class="sc-rh-ico" id="scRoomShare" title="مشاركة"><i class="f7-icons">arrowshape_turn_up_right_fill</i></button>
-        <button class="sc-rh-ico" id="scRoomMore" title="قائمة"><i class="f7-icons">ellipsis_vertical</i></button>
-      </div>
-      <button class="sc-rh-back" id="scRoomBack" title="رجوع"><i class="f7-icons">chevron_right</i></button>
-      <div class="sc-rh-sup-pill">
-        ${sup.map((u, i) => `<span class="sc-rh-sup" data-uid="${u.id}" title="${E(u.username)}">${AVI(u, '')}<em>${i + 1}</em></span>`).join('')}
-      </div>
       <div class="sc-room-card-mini">
         <img class="sc-rcm-ava" src="${E(roomImg || '/img/room.png')}" alt="">
         <div class="sc-rcm-info">
@@ -1151,6 +1143,15 @@
         </div>
         <span class="sc-rcm-rank"><i>👑</i>${rank}</span>
         <button class="sc-rcm-heart${S.following.has('room_' + room.id) ? ' on' : ''}" id="scRoomHeart" title="متابعة الغرفة"><i class="f7-icons">heart_fill</i></button>
+      </div>
+      <div class="sc-rh-sup-pill">
+        ${sup.map((u, i) => `<span class="sc-rh-sup" data-uid="${u.id}" title="${E(u.username)}">${AVI(u, '')}<em>${i + 1}</em></span>`).join('')}
+      </div>
+      <button class="sc-rh-back" id="scRoomBack" title="رجوع"><i class="f7-icons">chevron_right</i></button>
+      <div class="sc-rh-tools">
+        <button class="sc-rh-ico" id="scRoomStatus" title="الحالات"><i class="f7-icons">square_pencil</i></button>
+        <button class="sc-rh-ico" id="scRoomShare" title="مشاركة"><i class="f7-icons">arrowshape_turn_up_right_fill</i></button>
+        <button class="sc-rh-ico" id="scRoomMore" title="قائمة"><i class="f7-icons">ellipsis_vertical</i></button>
       </div>`;
     const heart = q('#scRoomHeart');
     if (heart) heart.onclick = () => {
@@ -1205,8 +1206,8 @@
       </div>`;
     } else if (ranked) {
       bar = `<div class="sc-hour-bar" id="scHourBar">
-        <span class="sc-hb-txt"><b>جدول الساعة ${E(hourWindow())}</b><small>الجدول العام +100.No.</small></span>
-        <span class="sc-hb-icon">🕌</span>
+        <span class="sc-hb-txt"><b>جدول الساعة ${E(hourWindow())}</b><small>الجداول العامة +100 No.</small></span>
+        <span class="sc-hb-icon">🕐</span>
         <i class="f7-icons sc-hb-chev">chevron_right</i>
       </div>`;
     } else {
@@ -1220,10 +1221,8 @@
     box.innerHTML = `
       ${bar}
       <div class="sc-lvbox" id="scLvBox" title="مستواك وتقدمك">
-        <div class="sc-lv-top"><span class="sc-lv-badge">LV${me ? levelOf(me) : 1}</span></div>
+        <div class="sc-lv-row"><span class="sc-lv-badge">LV${me ? levelOf(me) : 1}</span><span class="sc-egg" id="scEgg">🥚</span></div>
         <div class="sc-lv-num">${num(prog)}/7000</div>
-        <div class="sc-lv-prog"><i style="width:${Math.min(100, Math.round((prog / 7000) * 100))}%"></i></div>
-        <span class="sc-egg" id="scEgg">🥚</span>
       </div>`;
     const winBar = q('#scWinBar');
     if (winBar) winBar.onclick = () => sheetOpen(`<h3>⚽ تحدي UEFA</h3>
@@ -1263,34 +1262,53 @@
     try { return !!f('voice_allowed_memberships'); } catch (e) { return true; }
   }
 
-  // من هو فعلياً على المايك الآن؟ (حالة البث الحقيقية للغرفة) — لا نخترع أشخاصاً على المقاعد
-  // حالة البث الحيّة في app.js (BCAST/ROOM_BCAST يعيشان في النطاق العام المشترك بين السكربتين)
+  // حالة البث الحيّة في app.js (BCAST في النطاق العام المشترك بين السكربتين)
   function appBcast() {
     let b = null;
     try { b = (typeof BCAST !== 'undefined') ? BCAST : null; } catch (e) { b = null; }
     if (b && G.curRoom && +b.roomId === +G.curRoom.id) return b;
     return null;
   }
+  // من هو فعلياً على المايك الآن؟ نجمع كل المصادر الحقيقية حتى لا يغيب أي مذيع عن المقعد
   function micHosts() {
     const room = G.curRoom || {};
     const map = new Map();
+    (G.roomUsers || []).forEach(u => { if (u && +u.live_broadcast_host) map.set(+u.id, u); });
     let rb = null;
     try { rb = (typeof ROOM_BCAST !== 'undefined' && ROOM_BCAST) ? ROOM_BCAST[+room.id] : null; } catch (e) { }
-    if (rb && Array.isArray(rb.hosts)) rb.hosts.forEach(h => { if (h && h.id) map.set(+h.id, h); });
+    if (rb && Array.isArray(rb.hosts)) rb.hosts.forEach(h => { if (h && h.id) map.set(+h.id, Object.assign({}, map.get(+h.id) || {}, h)); });
     const b = appBcast();
-    if (b && b.hosts && +b.roomId === +room.id && typeof b.hosts.forEach === 'function') b.hosts.forEach((h, id) => map.set(+id, h));
-    // نُثري البيانات (صورة/إطار/رتبة محدثة) من قائمة أعضاء الغرفة
+    if (b && b.hosts && typeof b.hosts.forEach === 'function') b.hosts.forEach((h, id) => map.set(+id, Object.assign({}, map.get(+id) || {}, h)));
+    if (G.me && iAmOnMic()) {
+      const mine = (G.roomUsers || []).find(u => +u.id === +G.me.id) || {};
+      map.set(+G.me.id, Object.assign({}, mine, G.me, map.get(+G.me.id) || {}));
+    }
     return [...map.values()].map(h => {
-      const u = G.roomUsers.find(x => +x.id === +h.id) || {};
+      const u = (G.roomUsers || []).find(x => +x.id === +h.id) || {};
       return {
         id: +h.id,
         username: h.username || u.username || '',
         avatar: h.avatar || u.avatar || '',
-        avatar_frame: u.avatar_frame || '',
-        membership: u.membership || '', rank: u.rank || '',
-        registered: u.registered, verified: u.verified
+        avatar_frame: h.avatar_frame || u.avatar_frame || '',
+        membership: h.membership || u.membership || '',
+        rank: h.rank || u.rank || '',
+        registered: (h.registered !== undefined) ? h.registered : u.registered,
+        verified: h.verified || u.verified
       };
     });
+  }
+
+  // هل أنا على المايك الآن؟ (حالة البث الحيّة أو مذيعو الغرفة أو علم العضو)
+  function iAmOnMic() {
+    if (!G.me) return false;
+    const room = G.curRoom || {};
+    const b = appBcast();
+    if (b && b.isHost && +b.roomId === +room.id) return true;
+    let rb = null;
+    try { rb = (typeof ROOM_BCAST !== 'undefined' && ROOM_BCAST) ? ROOM_BCAST[+room.id] : null; } catch (e) { }
+    if (rb && Array.isArray(rb.hosts) && rb.hosts.some(h => +h.id === +G.me.id)) return true;
+    const mine = (G.roomUsers || []).find(u => +u.id === +G.me.id);
+    return !!(mine && +mine.live_broadcast_host);
   }
 
   // أقفال المقاعد (يحفظها مشرف الغرفة محلياً) — مقعد مقفل يظهر بأيقونة قفل ورقمه
@@ -1314,12 +1332,43 @@
   const AR_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   const arNum = n => String(n).split('').map(ch => AR_DIGITS[+ch] || ch).join('');
 
+  // ورقة المكافأة الكبرى (من الأيقونة العائمة أو من شريط الكتابة)
+  function openPrizeSheet() {
+    const giftsToday = +(G.me && G.me.gifts_today) || 0;
+    const target = 5;
+    sheetOpen(`<h3>🏆 المكافأة الكبرى</h3>
+      <p class="sc-sheet-sub">تقدمك اليوم: أرسلت ${num(giftsToday)} من ${num(target)} هدية — أكمل للوصول للمكافأة الكبرى</p>
+      <div class="sc-prize-track"><i style="width:${Math.min(100, Math.round((giftsToday / target) * 100))}%"></i></div>
+      <div style="height:14px"></div>
+      <button class="sc-btn-primary" id="scPrizeGift">إرسال هدية الآن</button>`);
+    const g = q('#scPrizeGift');
+    if (g) g.onclick = () => { sheetClose(); call('openGifts', G.me || undefined); };
+  }
+
   const CHAIR_SVG = '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11V8.5A2.5 2.5 0 0 1 8.5 6h7A2.5 2.5 0 0 1 18 8.5V11"/><path d="M4.5 11h15v3.5A2.5 2.5 0 0 1 17 17H7a2.5 2.5 0 0 1-2.5-2.5V11z"/><path d="M8 17v2M16 17v2"/></svg>';
 
-  // ---------- حالة المقاعد: مشغول (على المايك) / فارغ / مقفل ----------
+  // ---------- حالة المقاعد ----------
+  const HOST_RANKS = ['roomadmin', 'admin', 'superadmin', 'supermaster'];
+  function roomOwner() {
+    return (G.roomUsers || []).find(u => HOST_RANKS.includes(String(u.rank || ''))) || null;
+  }
+  // صف المذيعين: أنا أولاً ثم بقية المذيعين (مالك الغرفة له مقعده الخاص أعلى الصف)
+  function micRowHosts() {
+    const all = micHosts();
+    const owner = roomOwner();
+    const host = (owner && all.find(h => +h.id === +owner.id)) || null;
+    const rest = all.filter(h => !host || +h.id !== +host.id);
+    rest.sort((a, b) => {
+      const am = G.me && +a.id === +G.me.id ? 1 : 0;
+      const bm = G.me && +b.id === +G.me.id ? 1 : 0;
+      if (am !== bm) return bm - am;
+      return badgeLevelOf(b) - badgeLevelOf(a);
+    });
+    return rest;
+  }
   function seatStates() {
     const seats = [];
-    const occupants = micHosts().slice(1, 1 + SC_SEAT_COUNT);
+    const occupants = micRowHosts().slice(0, SC_SEAT_COUNT);
     for (let i = 0; i < SC_SEAT_COUNT; i++) {
       const u = occupants[i] || null;
       if (u) seats.push({ u, idx: i });
@@ -1335,8 +1384,7 @@
     if (state.u) {
       const u = state.u;
       const mine = G.me && +u.id === +G.me.id;
-      const onMic = !!(G.bcast && G.bcast.isHost && mine);
-      return `<div class="sc-seat filled${mine ? ' mine' : ''}${onMic ? ' onmic' : ''}" data-uid="${u.id}" data-seat="${i + 1}">
+      return `<div class="sc-seat filled${mine ? ' mine' : ''}${mine && iAmOnMic() ? ' onmic' : ''}" data-uid="${u.id}" data-seat="${i + 1}">
         <div class="sc-seat-ava">${AVI(u, '')}<span class="sc-seat-star">0 ⭐</span></div>
         <div class="sc-seat-label">${E(u.username)}</div>
       </div>`;
@@ -1356,28 +1404,33 @@
   function renderSeats() {
     const box = q('#scSeats');
     if (!box) return;
-    const hosts = micHosts();
-    const host = hosts[0] || null;
+    const all = micHosts();
+    const owner = roomOwner();
+    const host = (owner && all.find(h => +h.id === +owner.id)) || null;
     const follow = S.following.has('room_' + ((G.curRoom || {}).id || 0));
+    const nobody = all.length === 0;
     let html = '';
     if (host) {
       const mine = G.me && +host.id === +G.me.id;
-      html += `<div class="sc-host-seat${mine ? ' mine' : ''}" data-uid="${host.id}">
+      html += `<div class="sc-host-seat${mine ? ' mine' : ''}${mine && iAmOnMic() ? ' onmic' : ''}" data-uid="${host.id}">
         <div class="sc-host-ava">${AVI(host, '')}<span class="sc-host-star">0 ⭐</span></div>
         <div class="sc-host-name">${E(host.username)}</div>
         <div class="sc-host-label">المضيف</div>
       </div>`;
     } else {
-      // لا يوجد أحد على المايك → أيقونة يد تشير + نص الصعود، مع زر متابعة الغرفة
+      // مقعد المضيف فارغ: أريكة + «المضيف» — وزر متابعة يظهر فقط إن لم يكن أحد على المايك
       html += `<div class="sc-host-seat empty" data-host-empty="1">
-        <div class="sc-host-ava empty"><i class="f7-icons">person_fill</i><span class="sc-host-hand">👆</span></div>
-        <div class="sc-host-label sc-host-prompt">انقر للصعود إلى المايك</div>
-        <button class="sc-host-follow${follow ? ' on' : ''}" id="scHostFollow">${follow ? '✓ تتابعها' : '＋ متابعة'}</button>
+        <div class="sc-host-ava empty"><span class="sc-sofa">${CHAIR_SVG}</span></div>
+        <div class="sc-host-label">المضيف</div>
+        ${nobody ? `<button class="sc-host-follow${follow ? ' on' : ''}" id="scHostFollow">${follow ? '✓ متابعة' : '＋ متابعة'}</button>` : ''}
       </div>`;
     }
     html += '<div class="sc-seat-row">' + seatStates().map(seatHtml).join('') + '</div>';
     box.innerHTML = html;
+    bindSeatEvents(box);
+  }
 
+  function bindSeatEvents(box) {
     qa('.sc-seat', box).forEach(el => {
       let pressTimer = null;
       const seatIdx = (+el.dataset.seat || 1) - 1;
@@ -1397,25 +1450,22 @@
           return toastSafe('هذا المقعد مقفل من إدارة الغرفة', false);
         }
         const uid = el.dataset.uid;
-        // صورتي أنا → بطاقة ملفي (المستوى + الميداليات + زر كتم المايك والنزول عنه)
         if (uid && G.me && +uid === +G.me.id) return openSelfSheet();
         if (uid) {
-          const u = G.roomUsers.find(x => +x.id === +uid);
-          if (u) return call('openUserSheet', u.id);
+          const u = (G.roomUsers || []).find(x => +x.id === +uid) || micHosts().find(x => +x.id === +uid);
+          if (u) return call('openUserSheet', +uid);
           return openSelfSheet();
         }
         micToggle();
       };
     });
-
     const emptyHost = q('.sc-host-seat.empty', box);
-    if (emptyHost) emptyHost.onclick = micToggle;
+    if (emptyHost) emptyHost.onclick = ev => { if (ev.target.closest('#scHostFollow')) return; micToggle(); };
     const hostSeat = q('.sc-host-seat', box);
     if (hostSeat && !hostSeat.classList.contains('empty')) hostSeat.onclick = () => {
       const uid = +hostSeat.dataset.uid;
       if (G.me && uid === +G.me.id) return openSelfSheet();
-      const u = G.roomUsers.find(x => +x.id === uid);
-      if (u) call('openUserSheet', u.id);
+      call('openUserSheet', uid);
     };
     const followBtn = q('#scHostFollow', box);
     if (followBtn) followBtn.onclick = ev => { ev.stopPropagation(); toggleRoomFollow(); };
@@ -1572,7 +1622,7 @@
   // زر المايك أسفل الشاشة + إخفاء نافذة البث العائمة عند الصعود للمايك
   function syncMicState() {
     const b = appBcast();
-    const on = !!(b && b.isHost);
+    const on = iAmOnMic();
     document.body.classList.toggle('on-mic', on);
     qa('.sc-seat.mine, .sc-host-seat.mine').forEach(el => el.classList.toggle('onmic', on));
     const appBtn = q('#bcastHostMute');
@@ -1701,6 +1751,7 @@
           <p class="sc-sheet-sub">فعالية كرة القدم — توقّع نتائج المباريات واحصل على جوائز. تُعلَن النتائج في المنشورات الرسمية.</p>
           <button class="sc-btn-primary" id="scUefaGo">عرض فعاليات UEFA</button>`);
       }
+      return openPrizeSheet();
       sheetOpen(`<h3>🏆 المكافأة الكبرى</h3>
         <p class="sc-sheet-sub">تقدمك اليوم: أرسلت ${num(giftsToday)} من ${num(target)} هدية — أكمل للوصول للمكافأة الكبرى</p>
         <div class="sc-prize-track"><i style="width:${pct}%"></i></div>
@@ -1721,13 +1772,15 @@
     bar.appendChild(wrap);
     const icons = document.createElement('div');
     icons.className = 'sc-rb-icons';
+    const giftsToday = +(G.me && G.me.gifts_today) || 0;
+    const prizePct = Math.min(100, Math.round((giftsToday / 5) * 100));
     icons.innerHTML = `
       <button class="sc-rb-btn sc-mic-btn" id="scMicBtn" hidden title="كتم صوتي"><i class="f7-icons">mic_fill</i></button>
-      <button class="sc-rb-btn sc-rb-lucky" data-op="lucky" title="صندوق الحظ"><i class="f7-icons">gift_fill</i></button>
       <button class="sc-rb-btn" data-op="more" title="خيارات"><i class="f7-icons">line_horizontal_3_decrease</i></button>
       <button class="sc-rb-btn" data-op="games" title="ألعاب"><i class="f7-icons">gamecontroller_fill</i></button>
       <button class="sc-rb-btn" data-op="chat" title="دردشة نصية"><i class="f7-icons">chat_bubble_fill</i></button>
-      <button class="sc-rb-btn sc-rb-gift" data-op="gift" title="هدية"><i class="f7-icons">gift_fill</i></button>`;
+      <button class="sc-rb-btn sc-rb-prize" data-op="prize" title="المكافأة الكبرى"><i class="f7-icons">crown_fill</i><span class="sc-rb-prog"><i style="width:${prizePct}%"></i></span></button>
+      <button class="sc-rb-btn sc-rb-lucky" data-op="lucky" title="صندوق الحظ"><i class="f7-icons">gift_fill</i></button>`;
     bar.appendChild(icons);
 
     // ننقل عناصر الإدخال الأصلية إلى الشريط الجديد حتى تبقى كل وظائفها (الإرسال، الإيموجي، الرد)
@@ -1735,11 +1788,16 @@
     const input = q('#msgInput'), emoji = q('#btnEmoji'), send = q('#btnSend');
     [input, emoji, send].forEach(el => { if (el) wrap.appendChild(el); });
     if (send) { send.classList.add('sc-send-btn'); send.innerHTML = '<i class="f7-icons">arrow_up</i>'; }
+    // زر الإرسال يظهر فقط عندما يوجد نص (الصورة تعرض حقلاً بلا زر إرسال)
+    const syncSend = () => { if (send) send.classList.toggle('has-text', !!(input && input.value.trim())); };
+    if (input) ['input', 'keyup', 'change'].forEach(ev => input.addEventListener(ev, syncSend));
+    syncSend();
     ensurePlaceholder();
 
     qa('[data-op]', icons).forEach(b => b.onclick = () => {
       const op = b.dataset.op;
       if (op === 'gift') call('openGifts', G.me || undefined);
+      else if (op === 'prize') openPrizeSheet();
       else if (op === 'chat') { if (input) input.focus(); }
       else if (op === 'games') sheetGames();
       else if (op === 'more') call('openOv', 'menuOv');
