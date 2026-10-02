@@ -3110,7 +3110,6 @@ function connectSocket() {
     bcastSetFloatingMode('audio');
     AUDIO_BCAST_HOST_MUTED = false;
     bcastUpdateHostMuteButton();
-    openOv('bcastOv');
     try {
       bcastRegisterHost({ id: ME.id, username: ME.username, avatar: ME.avatar || '', badge: badgeOf(ME) }, true);
       (existingHosts || []).forEach(h => { bcastRegisterHost(h); bcastConnectToPeer(h.id); });
@@ -3156,7 +3155,9 @@ let SPEAK_REQUEST_PENDING = false; // هل لدي طلب تحدث معلّق ب�
 function updateVoiceRoomBarUI() {
   const voiceRoom = !!(CUR_ROOM && CUR_ROOM.type === 'voice');
   const bar = $('#liveBar');
-  if (bar) bar.hidden = !voiceRoom;
+  if (bar) bar.hidden = true;
+  const liveMute = $('#liveBarMute');
+  if (liveMute) liveMute.hidden = true;
   const btn = $('#btnTalkLive');
   if (!btn) return;
   btn.hidden = !voiceRoom;
@@ -3198,11 +3199,7 @@ function bcastRenderBar() {
   audioBroadcastFx.hidden = !(singleHost && state.mode === 'audio');
   const iAmHost = BCAST && BCAST.isHost && BCAST.roomId === CUR_ROOM.id;
   bar.classList.toggle('is-live', !!state);
-  // نظام ظهور زر الكتم المستقل بجانب الشاشة:
-  //  • المستمع: يظهر دوماً أثناء البث الصوتي (لكتم ما يسمعه)
-  //  • المذيع: يظهر فقط عندما يكون هناك مذيعان أو أكثر (لكتم المذيعين الآخرين)
-  //    — وأنا وحدي على المايك لا يظهر لي (لا يوجد أحد لكتمه)
-  muteBtn.hidden = !(state && state.mode === 'audio' && (!iAmHost || (state.hosts || []).length > 1));
+  muteBtn.hidden = true;
   muteBtn.classList.toggle('is-muted', AUDIO_BCAST_MUTED);
     if (hostsBox) {
       const hosts = (state && state.hosts) || [];
@@ -3222,7 +3219,11 @@ function bcastRenderBar() {
         e.stopPropagation();
         const h = hosts.find(x => x.id === +chip.dataset.hid);
         if (!h) return;
-        if (ME && h.id === ME.id) { if (iAmHost) openOv('bcastOv'); return; } // صورتي أنا: أعد فتح شاشة بثي
+        if (ME && +h.id === +ME.id) {
+          if (iAmHost && state.mode === 'audio') bcastStopAsHost();
+          else if (iAmHost) openOv('bcastOv');
+          return;
+        }
         // المشرف: ينقر على المذيع لفتح ورقة المستخدم فيها أزرار «سحب المايك / سحب مع منع صعود / فك من البث».
         // على الكمبيوتر تُفتح الورقة ملتصقة بجانب صورة/اسم المذيع؛ وعلى الجوال تبقى ورقة سفلية كالمعتاد.
         if (modClickable) return openUserSheet(+h.id, null, chip);
@@ -3241,7 +3242,7 @@ function bcastRenderBar() {
   const extra = names.length > 1 ? ` و${names.length - 1} آخرين` : '';
   if (state.mode === 'audio') {
     $('#roomNotice').textContent = iAmHost ? 'أنت تبث صوتياً الآن في هذه الغرفة' : `${names[0]}${extra} يتحدث الآن مباشرة`;
-    bar.onclick = () => { if (iAmHost) openOv('bcastOv'); };
+    bar.onclick = null;
   } else {
     $('#roomNotice').textContent = iAmHost ? 'أنت تبث فيديو الآن'
       : (names.length > 1 ? `${names[0]}${extra} يبثون فيديو مباشر الآن — اضغط على صورة أحدهم للمشاهدة`
@@ -3808,25 +3809,9 @@ function bcastViewerAutoConnectAudio(roomId, hosts) {
   bcastFlushSignalQueue();
 }
 
-// نافذة تأكيد الصعود إلى مقعد والتحدث
-function bcastOpenStartConfirm(mode, seatNo = null) {
-  if (!ME) return openLogin();
-  const joiningExisting = !!(CUR_ROOM && ROOM_BCAST[CUR_ROOM.id]);
-  const hasSeatChoice = seatNo !== null && seatNo !== undefined && Number.isInteger(+seatNo) && +seatNo >= 0 && +seatNo < ROOM_STAGE_SEAT_COUNT;
-  if (mode === 'audio' && !hasSeatChoice) return toast('اختر مقعداً مفتوحاً من المسرح قبل بدء التحدث', false);
-  $('#bcastStartIcon').textContent = mode === 'audio' ? 'mic_fill' : 'videocam_fill';
-  $('#bcastStartTitle').textContent = joiningExisting
-    ? (mode === 'audio' ? 'الصعود كمذيع صوتي' : 'بدء بث فيديو مستقل')
-    : (mode === 'audio' ? 'بدء بث صوتي' : 'بدء بث فيديو');
-  $('#bcastStartText').textContent = mode === 'audio'
-    ? `سيتم الصعود على ${+seatNo === 0 ? 'المقعد الرئيسي' : `المقعد رقم ${+seatNo}`} وسيُفتح الميكروفون ويُسمعك الموجودون في الغرفة. يمكنك النزول في أي وقت من زر إنهاء البث.`
-    : 'سيبدأ بث فيديو مستقل خاص بك: لا يرى بثك أحد إلا بعد موافقتك على طلبه، ولا يُدمج بثك تلقائياً مع أي مذيع آخر. ولمشاهدة مذيع آخر أرسل له طلباً بالنقر على صورته في شريط البث — بثك وبثه يعملان معاً بشكل طبيعي بعد الموافقة.';
-  $('#bcastStartGo').onclick = () => { closeOv('bcastStartOv'); bcastStart(mode, hasSeatChoice ? +seatNo : null); };
-  openOv('bcastStartOv');
-}
-
 // بدء البث فعلياً (أو الصعود كمذيع مشارك): يطلب إذن الميكروفون ثم يحجز المقعد من الخادم
 async function bcastStart(mode, seatNo = null) {
+  if (!ME) return openLogin();
   if (!CUR_ROOM) return;
   if (mode === 'audio' && (seatNo === null || seatNo === undefined || !Number.isInteger(+seatNo) || +seatNo < 0 || +seatNo >= ROOM_STAGE_SEAT_COUNT))
     return toast('اختر مقعداً مفتوحاً من المسرح قبل بدء التحدث', false);
@@ -3870,8 +3855,9 @@ async function bcastStart(mode, seatNo = null) {
     $('#bcastEndBtn').hidden = false;
     $('#bcastLeaveBtn').hidden = true;
     $('#bcastWaitMsg').hidden = true;
-    openOv('bcastOv');
-    if (res.mode !== 'video') toast(res.isNewBroadcast ? 'بدأ البث الصوتي — يسمعك جميع من في الغرفة الآن مباشرة' : 'انضممت للبث الصوتي');
+    if (res.mode === 'video') openOv('bcastOv');
+    else closeOv('bcastOv');
+    if (res.mode !== 'video') toast(res.isNewBroadcast ? 'صعدت إلى المقعد وبدأ التحدث' : 'صعدت إلى المقعد وتحدثك مسموع في الغرفة');
     // [صوت] أتصل بكل من انضم قبلي: المذيعون الحاليون (بث ثنائي الاتجاه بيننا) والمستمعون المسجلون بالفعل.
     // [فيديو] بثّي مستقل تماماً: لا اتصال بأي مذيع آخر ولا بأي مشاهد — كل مشاهد يصل بطلبٍ أوافقُ عليه بنفسي،
     // وإن أردتُ مشاهدة مذيع آخر فعليّ طلبُه هو والموافقة عليه.
@@ -4414,11 +4400,13 @@ function syncRoomCreateButton() {
 function isMyUserCreatedRoom(room) {
   return !!(ME && ME.registered && room && +room.user_created === 1 && +room.creator_id === +ME.id);
 }
-function roomParticipantsHtml(room, compact = false) {
+function roomParticipantsHtml(room, compact = false, totalOverride = null) {
   const participants = Array.isArray(room && room.participants) ? room.participants : [];
   const visible = participants.slice(0, compact ? 4 : 6);
   if (!visible.length) return `<div class="room-participants empty${compact ? ' compact' : ''}"><span>لا يوجد متصلون الآن</span></div>`;
-  const total = Math.max(participants.length, +ROOM_COUNTS[room.id] || +room.online || 0);
+  const total = totalOverride === null
+    ? Math.max(participants.length, +ROOM_COUNTS[room.id] || +room.online || 0)
+    : Math.max(participants.length, +totalOverride || 0);
   const rest = Math.max(0, total - visible.length);
   return `<div class="room-participants${compact ? ' compact' : ''}" aria-label="الأعضاء المتصلون">
     ${visible.map(user => `<span class="room-participant" title="${esc(user.username)}">
@@ -4441,7 +4429,6 @@ function roomRowHtml(r) {
       </div>
       <div class="room-desc">${esc(r.description || `أهلاً وسهلاً بكم في ${SETTINGS.site_name || 'الدردشة'} ★`)}</div>
       <div class="room-created-by"><i class="f7-icons">person_fill</i><span>أنشأها</span><b>${esc(roomCreatorName(r))}</b>${mine ? '<em>غرفتي</em>' : ''}</div>
-      ${roomParticipantsHtml(r)}
     </div>
     <div class="room-side">
       <div class="room-count"><i class="f7-icons">person_2_fill</i><b>${online}</b><span>متصل</span></div>
@@ -4460,7 +4447,6 @@ function roomMiniHtml(r) {
       <div class="rm-name">${esc(r.name)} ${r.locked ? '<i class="f7-icons" style="font-size:12px;color:#d946a6">lock_fill</i>' : ''}${r.status !== 'open' ? ' <span style="font-size:10px;color:#dc2626;font-weight:800">مغلقة 🔒</span>' : ''}</div>
       <div class="rm-desc">${esc(r.description || ('غرفة مستخدمين ' + roomCreatorName(r)))}</div>
       <div class="rm-created-by">أنشأها: <b>${esc(roomCreatorName(r))}</b></div>
-      ${roomParticipantsHtml(r, true)}
     </div>
     <div class="rm-side">
       ${isCur ? '<span class="rm-here">أنت هنا</span>' : `<span class="rm-count"><i class="f7-icons">person_2_fill</i>${online}/${r.max_users || 1000}</span>`}
@@ -5775,12 +5761,6 @@ function roomSeatHtml(user, label, seatNo, isPrimary, locked, canManageSeats, ca
     </button>
   </div>`;
 }
-function roomVisitorHtml(user) {
-  return `<button class="room-visitor" type="button" data-user-id="${+user.id}" title="${esc(user.username || '')}">
-    <span class="room-visitor-avatar">${avatarHtml(user.avatar || '', 'room-visitor-photo', frameOf(user))}<i class="room-visitor-presence" aria-hidden="true"></i></span>
-    <span class="room-visitor-name">${esc(user.username || '')}</span>
-  </button>`;
-}
 function toggleRoomSeatLock(seatNo, locked) {
   if (!CUR_ROOM || !canModerateRoomMembers()) return toast('لا تملك صلاحية إدارة مقاعد هذه الغرفة', false);
   if (!SOCKET || !SOCKET.connected) return toast('انتظر عودة الاتصال قبل تغيير حالة المقعد', false);
@@ -5802,13 +5782,11 @@ function renderRoomSeats() {
   const grid = $('#roomSeatGrid');
   if (!stage || !primaryBox || !grid) return;
   const visitorsBox = $('#roomVisitorsList');
-  const visitorsCount = $('#roomVisitorsCount');
   const kicksButton = $('#roomKicksBtn');
   if (!CUR_ROOM) {
     primaryBox.innerHTML = '';
     grid.innerHTML = '';
     if (visitorsBox) visitorsBox.innerHTML = '';
-    if (visitorsCount) visitorsCount.textContent = '0';
     if (kicksButton) kicksButton.hidden = true;
     if ($('#roomStageCount')) $('#roomStageCount').textContent = '0';
     if ($('#roomStageOwner')) $('#roomStageOwner').textContent = 'صاحب الغرفة: -';
@@ -5853,14 +5831,17 @@ function renderRoomSeats() {
   if (kicksButton) kicksButton.hidden = !isCurrentRoomOwner();
   const hostIds = liveBroadcastHostIds();
   const visitors = users.filter(user => !hostIds.has(+user.id));
-  if (visitorsCount) visitorsCount.textContent = String(visitors.length);
-  if (visitorsBox) visitorsBox.innerHTML = visitors.length
-    ? visitors.map(roomVisitorHtml).join('')
-    : '<span class="room-visitors-empty">لا يوجد زوار خارج المقاعد</span>';
+  if (visitorsBox) visitorsBox.innerHTML = roomParticipantsHtml(
+    { id: +CUR_ROOM.id, participants: visitors }, false, visitors.length
+  );
   $$('#roomStage .room-seat-occupied').forEach(seat => {
     seat.onclick = () => {
       const userId = +seat.dataset.userId;
-      if (ME && userId === +ME.id && BCAST && BCAST.isHost) return openOv('bcastOv');
+      if (ME && userId === +ME.id && liveBroadcastHostIds().has(userId)) {
+        if (BCAST && BCAST.isHost && +BCAST.roomId === +CUR_ROOM.id) return bcastStopAsHost();
+        if (SOCKET && SOCKET.connected) SOCKET.emit('bcast:stop', +CUR_ROOM.id);
+        return;
+      }
       openUserSheet(userId);
     };
   });
@@ -5868,7 +5849,7 @@ function renderRoomSeats() {
     seat.onclick = () => {
       if (!CUR_ROOM || CUR_ROOM.type !== 'voice') return;
       const seatNo = +seat.dataset.seatNo;
-      bcastOpenStartConfirm('audio', seatNo);
+      bcastStart('audio', seatNo);
     };
   });
   $$('#roomStage .room-seat-lock').forEach(button => {
@@ -5877,9 +5858,6 @@ function renderRoomSeats() {
       event.stopPropagation();
       toggleRoomSeatLock(+button.dataset.seatNo, button.dataset.nextLocked === '1');
     };
-  });
-  $$('#roomStage .room-visitor').forEach(visitor => {
-    visitor.onclick = () => openUserSheet(+visitor.dataset.userId);
   });
 }
 function roomKickExpiryLabel(expiresAt) {
@@ -13406,7 +13384,7 @@ $('#btnMic').onclick = () => {
 $('#btnTalkLive').onclick = () => {
   if (!ME) return openLogin();
   if (!CUR_ROOM || CUR_ROOM.type !== 'voice') return;
-  if (BCAST && BCAST.isHost && BCAST.roomId === CUR_ROOM.id) return openOv('bcastOv');
+  if (BCAST && BCAST.isHost && +BCAST.roomId === +CUR_ROOM.id) return toast('للنزول من المقعد، انقر على اسمك في المسرح', true);
   const availableSeats = $$('#roomStage .room-seat-empty:not(:disabled)');
   if (!availableSeats.length) return toast('لا يوجد مقعد مفتوح متاح حالياً', false);
   const stage = $('#roomStage');
