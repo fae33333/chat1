@@ -61,6 +61,7 @@
 
   /* ------------------------------ المستويات والأدوار ------------------------------ */
   const LEVEL_BY_MEMBERSHIP = { none: 1, '': 1, registered: 2, mmez: 8, plus: 12, premium: 18, vip: 26 };
+  const MEMBERSHIP_LABEL = { none: 'عضو', '': 'عضو', registered: 'مسجّل', mmez: 'مميز', plus: 'بلس', premium: 'بريميوم', vip: 'SVIP' };
   const LEVEL_BY_RANK = { roomadmin: 30, admin: 40, superadmin: 50, supermaster: 60 };
   function levelOf(u) {
     if (!u) return 1;
@@ -163,7 +164,9 @@
   };
   window.SC = {
     get state() { return S; },
-    go, refresh: loadAll, sheetOpen, sheetClose
+    go, refresh: loadAll, sheetOpen, sheetClose,
+    refreshRoom() { if (G.curRoom) { renderSeats(); renderRoomSub(); renderRoomHead(); renderVisitors(); syncMicState(); } },
+    openSelfSheet, leaveMic, toggleMyMute, appBcast
   };
   window.SC.__mounted = true;
 
@@ -1085,6 +1088,8 @@
       if (!document.body.classList.contains('sc-room')) return;
       if (S.win && nowSec() - S.win.at >= 45) { S.win = null; renderRoomSub(); }
     }, 8000);
+    // يبقي زر المايك/حالة الصعود متوافقاً مع نافذة البث الأصلية
+    if (!S.micTimer) S.micTimer = setInterval(() => { if (document.body.classList.contains('sc-room')) syncMicState(); }, 2500);
   }
 
   function unmountRoom() {
@@ -1093,6 +1098,8 @@
     if (screen) { screen.style.backgroundImage = ''; screen.style.backgroundColor = ''; }
     if (S.placeholderTimer) { clearInterval(S.placeholderTimer); S.placeholderTimer = null; }
     if (S.winTimer) { clearInterval(S.winTimer); S.winTimer = null; }
+    if (S.micTimer) { clearInterval(S.micTimer); S.micTimer = null; }
+    document.body.classList.remove('on-mic');
   }
 
   // يتتبّع من انضم للغرفة بعد دخولنا — يظهر كرقم صغير بجانب شارة الزوار
@@ -1257,13 +1264,20 @@
   }
 
   // من هو فعلياً على المايك الآن؟ (حالة البث الحقيقية للغرفة) — لا نخترع أشخاصاً على المقاعد
+  // حالة البث الحيّة في app.js (BCAST/ROOM_BCAST يعيشان في النطاق العام المشترك بين السكربتين)
+  function appBcast() {
+    let b = null;
+    try { b = (typeof BCAST !== 'undefined') ? BCAST : null; } catch (e) { b = null; }
+    if (b && G.curRoom && +b.roomId === +G.curRoom.id) return b;
+    return null;
+  }
   function micHosts() {
     const room = G.curRoom || {};
     const map = new Map();
     let rb = null;
     try { rb = (typeof ROOM_BCAST !== 'undefined' && ROOM_BCAST) ? ROOM_BCAST[+room.id] : null; } catch (e) { }
     if (rb && Array.isArray(rb.hosts)) rb.hosts.forEach(h => { if (h && h.id) map.set(+h.id, h); });
-    const b = G.bcast;
+    const b = appBcast();
     if (b && b.hosts && +b.roomId === +room.id && typeof b.hosts.forEach === 'function') b.hosts.forEach((h, id) => map.set(+id, h));
     // نُثري البيانات (صورة/إطار/رتبة محدثة) من قائمة أعضاء الغرفة
     return [...map.values()].map(h => {
@@ -1383,10 +1397,12 @@
           return toastSafe('هذا المقعد مقفل من إدارة الغرفة', false);
         }
         const uid = el.dataset.uid;
+        // صورتي أنا → بطاقة ملفي (المستوى + الميداليات + زر كتم المايك والنزول عنه)
+        if (uid && G.me && +uid === +G.me.id) return openSelfSheet();
         if (uid) {
           const u = G.roomUsers.find(x => +x.id === +uid);
-          if (u && (!G.me || +u.id !== +G.me.id)) return call('openUserSheet', u.id);
-          return micToggle();
+          if (u) return call('openUserSheet', u.id);
+          return openSelfSheet();
         }
         micToggle();
       };
@@ -1394,9 +1410,144 @@
 
     const emptyHost = q('.sc-host-seat.empty', box);
     if (emptyHost) emptyHost.onclick = micToggle;
+    const hostSeat = q('.sc-host-seat', box);
+    if (hostSeat && !hostSeat.classList.contains('empty')) hostSeat.onclick = () => {
+      const uid = +hostSeat.dataset.uid;
+      if (G.me && uid === +G.me.id) return openSelfSheet();
+      const u = G.roomUsers.find(x => +x.id === uid);
+      if (u) call('openUserSheet', u.id);
+    };
     const followBtn = q('#scHostFollow', box);
     if (followBtn) followBtn.onclick = ev => { ev.stopPropagation(); toggleRoomFollow(); };
     syncMicState();
+  }
+
+  /* ---------- بطاقة ملفي الشخصي (تُفتح بالنقر على صورتي في المقعد) ---------- */
+  function flagOf(name) {
+    const key = String(name || '');
+    const c = COUNTRIES.find(x => x.k === key || (x.m || []).includes(key));
+    return c ? c.f : '🏳️';
+  }
+  function roleLabelOf(u) {
+    if (!u) return 'عضو';
+    if (u.membership && u.membership !== 'none') return MEMBERSHIP_LABEL[u.membership] || 'عضو مميز';
+    if (u.rank === 'roomadmin') return 'مسؤول غرفة';
+    if (u.rank === 'admin') return 'مشرف';
+    if (u.rank === 'superadmin' || u.rank === 'supermaster') return 'إدارة';
+    return u.registered ? 'نشيط' : 'زائر';
+  }
+  function badgeLevelOf(u) {
+    const byRank = LV_BY_BADGE[u && u.rank];
+    const byMem = LV_BY_BADGE[u && u.membership];
+    return Math.max(byRank || 0, byMem || 0, 1);
+  }
+  async function openSelfSheet() {
+    const me = G.me;
+    if (!me || !me.id) return call('openLogin');
+    sheetOpen('<h3 class="sc-self-loading">جارٍ تحميل ملفك…</h3>');
+    let d = {};
+    try { d = await jget('/api/user/' + me.id); } catch (e) { }
+    const u = Object.assign({}, me, d.user || {});
+    const days = +d.member_days || (u.created_at ? Math.max(0, Math.floor((nowSec() - +u.created_at) / 86400)) : 0);
+    const gifts = Array.isArray(d.gifts) ? d.gifts : [];
+    const medals = +d.likes || 0;
+    const lvl = levelOf(u);
+    const blvl = badgeLevelOf(u);
+    const followers = +u.followers || 0;
+    const following = +u.following || 0;
+    const b = appBcast();
+    const onMic = !!(b && b.isHost);
+    const appBtn = q('#bcastHostMute');
+    const muted = !!(appBtn && appBtn.classList.contains('is-muted'));
+    sheetOpen(`
+      <div class="sc-self-top">
+        <div class="sc-self-ava-wrap">
+          <span class="sc-self-coins">+${num(+u.balance || 0)} 🪙</span>
+          <div class="sc-self-ava">${AVI(u, 'sc-self-avi')}</div>
+          <span class="sc-self-followers">${num(followers)} متابع</span>
+        </div>
+        <div class="sc-self-name">${E(u.username || '')}</div>
+        <div class="sc-self-meta">UID : ${E(u.id)} | ${num(following)} متابع | يوم ${arNum(days)}</div>
+        <div class="sc-self-chips">
+          <span class="sc-self-chip gold">${flagOf(u.country)} ${E(u.country || 'غير محدد')}</span>
+          <span class="sc-self-chip">${E(roleLabelOf(u))}</span>
+          ${u.verified ? '<span class="sc-self-chip">✔️ موثّق</span>' : ''}
+        </div>
+        <button class="sc-self-titles" id="scSelfTitles">عرض الألقاب الشرفية</button>
+      </div>
+      <div class="sc-self-levels">
+        <div class="sc-lvl-card purple"><i>▲</i><b>Lv.${lvl}</b><span>الدرج</span></div>
+        <div class="sc-lvl-card green"><i>🛡️</i><b>Lv.${blvl}</b><span>الدروع</span></div>
+      </div>
+      <div class="sc-self-rows">
+        <button class="sc-self-row" id="scSelfMedals"><span>حائط الميداليات -</span><em>${num(medals)}</em><i class="f7-icons">chevron_left</i></button>
+        <button class="sc-self-row" id="scSelfGifts"><span>معرض الهدايا -</span><em>${num(gifts.length)}</em><i class="f7-icons">chevron_left</i></button>
+      </div>
+      ${onMic
+        ? `<button class="sc-self-mute${muted ? ' on' : ''}" id="scSelfMicBtn">${muted ? '🔇 إلغاء كتم الميكروفون' : '🎙️ كتم الميكروفون'}</button>
+           <button class="sc-self-leave" id="scSelfLeave">⬇ النزول من الميكروفون</button>`
+        : `<button class="sc-self-leave up" id="scSelfUp">⬆ الصعود إلى الميكروفون</button>`}
+    `);
+    const t = q('#scSelfTitles');
+    if (t) t.onclick = () => openTitlesSheet(u, { days, medals, gifts: gifts.length, followers });
+    const m = q('#scSelfMedals');
+    if (m) m.onclick = () => openMedalsSheet(d, medals);
+    const g = q('#scSelfGifts');
+    if (g) g.onclick = () => openGiftsGallery(gifts);
+    const up = q('#scSelfUp');
+    if (up) up.onclick = () => { sheetClose(); micToggle(); refreshMicUI(600); };
+    const mi = q('#scSelfMicBtn');
+    if (mi) mi.onclick = () => toggleMyMute();
+    const lv = q('#scSelfLeave');
+    if (lv) lv.onclick = () => {
+      sheetClose();
+      leaveMic();
+      toastSafe('نزلت من الميكروفون');
+      refreshMicUI(400);
+    };
+  }
+
+  // الألقاب الشرفية: كل ما يستحقه العضو من ألقاب حقيقية (رتبة/عضوية/توثيق/حضور)
+  function openTitlesSheet(u, extra) {
+    const titles = [];
+    if (u.rank === 'roomadmin') titles.push(['🎧', 'مسؤول غرفة', 'يدير الغرفة ويقبل المايك']);
+    if (u.rank === 'admin' || u.rank === 'superadmin' || u.rank === 'supermaster') titles.push(['🛡️', 'مشرف المنصة', 'صلاحيات إشراف كاملة']);
+    if (u.membership === 'vip') titles.push(['💎', 'VIP', 'عضوية VIP بحزمة مزايا كاملة']);
+    if (u.membership === 'mmez') titles.push(['⭐', 'مميز', 'عضوية مميزة']);
+    if (u.membership === 'premium') titles.push(['👑', 'بريميوم', 'أعلى عضويات المستخدمين']);
+    if (u.verified) titles.push(['✔️', 'موثّق', 'حساب موثّق من الإدارة']);
+    if (u.avatar_frame) titles.push(['🖼️', 'إطار مميز', 'إطار صورة حصري']);
+    if (+extra.days >= 7) titles.push(['📅', 'عضو قديم', `عضو منذ ${num(+extra.days)} يوم`]);
+    if (+extra.followers >= 10) titles.push(['❤️', 'محبوب', `${num(+extra.followers)} متابع`]);
+    if (!titles.length) titles.push(['🙂', 'عضو جديد', 'ابدأ نشاطك اليومي لتكسب الألقاب']);
+    sheetOpen(`<h3>الألقاب الشرفية</h3>
+      <p class="sc-sheet-sub">ألقابك الحالية داخل ${E(siteName())}</p>
+      <div class="sc-title-list">${titles.map(t => `<div class="sc-title-row"><span class="sc-title-ico">${t[0]}</span><span class="sc-title-txt"><b>${E(t[1])}</b><small>${E(t[2])}</small></span></div>`).join('')}</div>
+      <button class="sc-btn-primary" id="scTitlesBack">رجوع</button>`);
+    const back = q('#scTitlesBack');
+    if (back) back.onclick = () => openSelfSheet();
+  }
+  function openMedalsSheet(d, medals) {
+    const likers = Array.isArray(d && d.likers) ? d.likers : [];
+    sheetOpen(`<h3>حائط الميداليات</h3>
+      <p class="sc-sheet-sub">${num(medals)} ميدالية — ميدالياتك تُهدى لك من أعضاء يعجبون بملفك ❤️</p>
+      ${likers.length
+        ? likers.map(l => `<div class="sc-sheet-row" data-uid="${l.user_id}"><img class="sc-sheet-ava" src="${E(l.avatar || '/avatars/default.png')}" alt=""><b>${E(l.username || '')}</b></div>`).join('')
+        : '<div class="sc-sheet-empty">لا ميداليات بعد — تفاعل أكثر ليُعجب بك الأعضاء</div>'}
+      <button class="sc-btn-primary" id="scTitlesBack">رجوع</button>`);
+    qa('#scSheetCard [data-uid]').forEach(row => row.onclick = () => { sheetClose(); call('openUserSheet', +row.dataset.uid); });
+    const back = q('#scTitlesBack');
+    if (back) back.onclick = () => openSelfSheet();
+  }
+  function openGiftsGallery(gifts) {
+    sheetOpen(`<h3>معرض الهدايا</h3>
+      <p class="sc-sheet-sub">${num(gifts.length)} هدية وصلتك — كل هدية تزيد رصيدك وتلمع معرضك ✨</p>
+      <div class="sc-gift-grid">${gifts.map(g => `<div class="sc-gift-card" title="${E(g.gift_name || '')}">
+          ${g.gift_img ? `<img src="${E(g.gift_img)}" alt="">` : '<span class="sc-gift-emoji">🎁</span>'}
+          <small>${num(+g.price || 0)}</small></div>`).join('')}</div>
+      <button class="sc-btn-primary" id="scTitlesBack">رجوع</button>`);
+    const back = q('#scTitlesBack');
+    if (back) back.onclick = () => openSelfSheet();
   }
 
   // متابعة الغرفة (تُحفظ محلياً وتنعكس على القلب في بطاقة الغرفة)
@@ -1411,16 +1562,62 @@
 
   function micToggle() {
     if (!G.me) return call('openLogin');
-    const bcast = G.bcast;
-    if (bcast && bcast.isHost) return call('bcastStopAsHost');
+    const bcast = appBcast();
+    if (bcast && bcast.isHost) return leaveMic();
     const btn = q('#btnTalkLive');
     if (btn) { btn.click(); return; }
     if (fn('bcastOpenStartConfirm')) call('bcastOpenStartConfirm', 'audio');
     else toastSafe('البث الصوتي غير متاح الآن', false);
   }
+  // زر المايك أسفل الشاشة + إخفاء نافذة البث العائمة عند الصعود للمايك
   function syncMicState() {
-    const on = !!(G.bcast && G.bcast.isHost);
-    qa('.sc-seat.mine').forEach(el => el.classList.toggle('onmic', on));
+    const b = appBcast();
+    const on = !!(b && b.isHost);
+    document.body.classList.toggle('on-mic', on);
+    qa('.sc-seat.mine, .sc-host-seat.mine').forEach(el => el.classList.toggle('onmic', on));
+    const appBtn = q('#bcastHostMute');
+    const adminMuted = !!(G.me && G.me.muted);
+    const muted = adminMuted || !!(appBtn && appBtn.classList.contains('is-muted'));
+    // نافذة البث الأصلية: تُخفى تماماً عندما أكون أنا المذيع (الصوتي) داخل واجهة الغرفة الجديدة
+    const ov = q('#bcastOv');
+    if (ov) ov.classList.toggle('sc-hide-bcast', !!(b && b.isHost && b.mode === 'audio'));
+    const btn = q('#scMicBtn');
+    if (btn) {
+      btn.hidden = !on;
+      btn.classList.toggle('muted', muted);
+      btn.innerHTML = `<i class="f7-icons">${muted ? 'mic_slash_fill' : 'mic_fill'}</i>`;
+      btn.title = adminMuted ? 'تم كتمك إجبارياً من الإدارة' : (muted ? 'إلغاء كتم صوتي' : 'كتم صوتي');
+    }
+    const sheetMic = q('#scSelfMicBtn');
+    if (sheetMic) {
+      sheetMic.textContent = muted ? '🔇 إلغاء كتم الميكروفون' : '🎙️ كتم الميكروفون';
+      sheetMic.classList.toggle('on', muted);
+    }
+  }
+
+  // يعيد رسم المقاعد وزر المايك بعد أي تغيير في البث (مع متابعة قصيرة حتى تستقر حالة التطبيق)
+  function refreshMicUI(delay) {
+    const t0 = Date.now();
+    const tick = () => {
+      if (!document.body.classList.contains('sc-room')) return;
+      renderSeats(); renderRoomSub(); renderVisitors(); syncMicState();
+      if (appBcast() && Date.now() - t0 < 2500) setTimeout(tick, 400);
+    };
+    setTimeout(tick, delay || 250);
+  }
+
+  // النزول من الميكروفون (يعيد استخدام منطق التطبيق: يوقف بثي وأتحول لمستمع إن بقي مذيعون)
+  function leaveMic() {
+    if (fn('bcastStopAsHost')) return call('bcastStopAsHost');
+    const close = q('#bcastClose');
+    if (close) close.click();
+  }
+  function toggleMyMute() {
+    const appBtn = q('#bcastHostMute');
+    if (!appBtn) return toastSafe('كتم المايك غير متاح الآن', false);
+    if (G.me && G.me.muted) return toastSafe('تم كتمك إجبارياً من الإدارة 🚫', false);
+    appBtn.click();
+    setTimeout(syncMicState, 120);
   }
 
   /* ---------- شارة الزوار + المنضمون الجدد ---------- */
@@ -1525,6 +1722,7 @@
     const icons = document.createElement('div');
     icons.className = 'sc-rb-icons';
     icons.innerHTML = `
+      <button class="sc-rb-btn sc-mic-btn" id="scMicBtn" hidden title="كتم صوتي"><i class="f7-icons">mic_fill</i></button>
       <button class="sc-rb-btn sc-rb-lucky" data-op="lucky" title="صندوق الحظ"><i class="f7-icons">gift_fill</i></button>
       <button class="sc-rb-btn" data-op="more" title="خيارات"><i class="f7-icons">line_horizontal_3_decrease</i></button>
       <button class="sc-rb-btn" data-op="games" title="ألعاب"><i class="f7-icons">gamecontroller_fill</i></button>
@@ -1551,6 +1749,9 @@
     });
     const lucky = q('#scLuckyGo');
     if (lucky) lucky.onclick = () => { sheetClose(); call('openGifts', G.me || undefined); };
+    const micBtn = q('#scMicBtn', icons);
+    if (micBtn) micBtn.onclick = () => { toggleMyMute(); refreshMicUI(500); };
+    syncMicState();
   }
 
   // النص التوضيحي لحقل الكتابة في الغرفة (كما في الصورة المرجعية)
