@@ -19793,8 +19793,8 @@ body.lang-ltr .r-logo {
     display: flex;
     flex: 0 0 auto;
     flex-direction: column;
-    height: clamp(300px,48dvh,470px);
-    min-height: 300px;
+    height: clamp(330px,48dvh,480px);
+    min-height: 330px;
     padding: 9px 12px 7px;
     overflow: hidden;
     background:
@@ -19847,6 +19847,36 @@ body.lang-ltr .r-logo {
     gap: 5px
 }
 
+#chatScreen.room-skin .room-stage-tools {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px
+}
+
+#chatScreen.room-skin .room-stage-kicks {
+    display: inline-flex;
+    width: 26px;
+    height: 26px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid rgba(255,226,165,.3);
+    border-radius: 9px;
+    background: rgba(37,9,58,.35);
+    color: #ffe3a5;
+    cursor: pointer
+}
+
+#chatScreen.room-skin .room-stage-kicks[hidden] {
+    display: none
+}
+
+#chatScreen.room-skin .room-stage-kicks i {
+    font-size: 14px
+}
+
 #chatScreen.room-skin .room-stage-title {
     font-size: 11px;
     color: #fff
@@ -19886,7 +19916,7 @@ body.lang-ltr .r-logo {
 
 #chatScreen.room-skin .room-seat-primary {
     display: flex;
-    flex: 0 0 112px;
+    flex: 0 0 96px;
     align-items: center;
     justify-content: center;
     min-height: 0
@@ -19900,7 +19930,45 @@ body.lang-ltr .r-logo {
     align-items: center;
     justify-items: center;
     gap: 1px 6px;
-    min-height: 0
+    min-height: 96px
+}
+
+#chatScreen.room-skin .room-seat-slot {
+    position: relative;
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    align-items: center;
+    justify-content: center
+}
+
+#chatScreen.room-skin .room-seat-primary-slot {
+    max-width: 120px
+}
+
+#chatScreen.room-skin .room-seat-lock {
+    position: absolute;
+    z-index: 3;
+    top: 1px;
+    inset-inline-end: 1px;
+    display: inline-flex;
+    width: 21px;
+    height: 21px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid rgba(255,255,255,.34);
+    border-radius: 50%;
+    background: linear-gradient(145deg,#ffdc8a,#f2a944);
+    color: #572b13;
+    box-shadow: 0 2px 7px rgba(30,6,47,.3);
+    cursor: pointer
+}
+
+#chatScreen.room-skin .room-seat-lock i {
+    font-size: 11px
 }
 
 #chatScreen.room-skin .room-seat {
@@ -19948,8 +20016,8 @@ body.lang-ltr .r-logo {
 }
 
 #chatScreen.room-skin .room-seat-primary-item .room-seat-ring {
-    width: 82px;
-    height: 82px;
+    width: 64px;
+    height: 64px;
     border-color: rgba(245,218,255,.94);
     box-shadow: 0 0 0 5px rgba(235,203,255,.1),0 7px 18px rgba(30,6,47,.34)
 }
@@ -20042,6 +20110,164 @@ body.lang-ltr .r-logo {
 #chatScreen.room-skin .room-seat-empty .room-seat-name {
     color: rgba(255,255,255,.82);
     font-weight: 700
+}
+
+#chatScreen.room-skin button.room-seat-empty:not(:disabled) {
+    cursor: pointer
+}
+
+#chatScreen.room-skin .room-seat-empty:disabled {
+    cursor: default;
+    opacity: .7
+}
+
+#chatScreen.room-skin .room-seat-empty.room-seat-locked .room-seat-ring {
+    border-color: rgba(255,220,138,.65);
+    background: rgba(44,22,65,.68)
+}
+
+#chatScreen.room-skin .room-visitors {
+    display: flex;
+    flex: 0 0 84px;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: 3px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(226,193,255,.17)
+}
+
+#chatScreen.room-skin .room-visitors-heading {
+    display: flex;
+    flex: 0 0 17px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    color: rgba(252,241,255,.9);
+    font-size: 9px;
+    font-weight: 900
+}
+
+#chatScreen.room-skin .room-visitors-heading span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px
+}
+
+#chatScreen.room-skin .room-visitors-heading i {
+    font-size: 12px
+}
+
+#chatScreen.room-skin .room-visitors-heading b {
+    display: inline-flex;
+    min-width: 18px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.13);
+    color: #fff;
+    font-size: 9px
+}
+
+#chatScreen.room-skin .room-visitors-list {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(4,minmax(0,1fr));
+    grid-auto-rows: 48px;
+    align-content: start;
+    gap: 1px 4px;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none
+}
+
+#chatScreen.room-skin .room-visitors-list::-webkit-scrollbar {
+    display: none
+}
+
+#chatScreen.room-skin .room-visitor {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    padding: 0 2px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none
+}
+
+#chatScreen.room-skin .room-visitor:active {
+    background: rgba(255,255,255,.12)
+}
+
+#chatScreen.room-skin .room-visitor-avatar {
+    position: relative;
+    display: flex;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+    border: 1.5px solid rgba(230,204,255,.76);
+    border-radius: 50%;
+    background: rgba(57,20,84,.6)
+}
+
+#chatScreen.room-skin .room-visitor-avatar img,
+#chatScreen.room-skin .room-visitor-avatar > span {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 50%;
+    object-fit: cover
+}
+
+#chatScreen.room-skin .room-visitor-avatar .ava-framed {
+    border-radius: 50%
+}
+
+#chatScreen.room-skin .room-visitor-presence {
+    position: absolute;
+    right: -1px;
+    bottom: 0;
+    width: 8px;
+    height: 8px;
+    border: 1.5px solid #672d90;
+    border-radius: 50%;
+    background: #4ade80
+}
+
+#chatScreen.room-skin .room-visitor-name {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    color: rgba(255,255,255,.92);
+    font-size: 7.5px;
+    font-weight: 800;
+    line-height: 1.1;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+
+#chatScreen.room-skin .room-visitors-empty {
+    grid-column: 1 / -1;
+    align-self: center;
+    color: rgba(246,231,255,.7);
+    font-size: 9px;
+    text-align: center
 }
 
 #chatScreen.room-skin .c-msgs {
@@ -20236,30 +20462,43 @@ body.lang-ltr .r-logo {
 
 @media (max-height: 740px) {
     #chatScreen.room-skin .room-stage {
-        height: clamp(272px,38dvh,330px);
-        min-height: 272px
+        height: clamp(300px,46dvh,345px);
+        min-height: 300px
     }
 
     #chatScreen.room-skin .room-seat-primary {
-        flex-basis: 82px
+        flex-basis: 68px
     }
 
     #chatScreen.room-skin .room-seat-primary-item .room-seat-ring {
-        width: 52px;
-        height: 52px
+        width: 44px;
+        height: 44px
     }
 
     #chatScreen.room-skin .room-seat-primary-item .room-seat-name {
-        font-size: 10px
+        font-size: 9px
     }
 
     #chatScreen.room-skin .room-seat-primary-item .room-seat-caption {
-        font-size: 8px
+        font-size: 7.5px
     }
 
     #chatScreen.room-skin .room-seat-grid .room-seat-ring {
-        width: 48px;
-        height: 48px
+        width: 40px;
+        height: 40px
+    }
+
+    #chatScreen.room-skin .room-visitors {
+        flex-basis: 72px
+    }
+
+    #chatScreen.room-skin .room-visitors-list {
+        grid-auto-rows: 40px
+    }
+
+    #chatScreen.room-skin .room-visitor-avatar {
+        width: 28px;
+        height: 28px
     }
 
     #chatScreen.room-skin .room-seat-name {
@@ -20273,9 +20512,9 @@ body.lang-ltr .r-logo {
 
 @media (max-height: 620px) {
     #chatScreen.room-skin .room-stage {
-        height: 230px;
-        min-height: 230px;
-        padding-top: 6px;
+        height: 280px;
+        min-height: 280px;
+        padding-top: 5px;
         padding-bottom: 4px
     }
 
@@ -20284,17 +20523,30 @@ body.lang-ltr .r-logo {
     }
 
     #chatScreen.room-skin .room-seat-primary {
-        flex-basis: 68px
+        flex-basis: 54px
     }
 
     #chatScreen.room-skin .room-seat-primary-item .room-seat-ring {
-        width: 44px;
-        height: 44px
+        width: 36px;
+        height: 36px
     }
 
     #chatScreen.room-skin .room-seat-grid .room-seat-ring {
-        width: 38px;
-        height: 38px
+        width: 34px;
+        height: 34px
+    }
+
+    #chatScreen.room-skin .room-visitors {
+        flex-basis: 62px
+    }
+
+    #chatScreen.room-skin .room-visitors-list {
+        grid-auto-rows: 35px
+    }
+
+    #chatScreen.room-skin .room-visitor-avatar {
+        width: 25px;
+        height: 25px
     }
 
     #chatScreen.room-skin .room-seat-grid .room-seat-name {
@@ -20468,6 +20720,116 @@ body.lang-ltr .r-logo {
         align-self: center;
         width: 100%
     }
+}
+
+/* Owner-managed kicked list for member-created rooms */
+.room-kicks-page {
+    min-height: 100%;
+    background: linear-gradient(180deg,#faf7ff,#f2ecfa)
+}
+
+.room-kicks-note {
+    margin: 8px 0 12px;
+    padding: 11px 13px;
+    border: 1px solid #e5d7f3;
+    border-radius: 13px;
+    background: #fff;
+    color: #654579;
+    font-size: 12px;
+    line-height: 1.7
+}
+
+.room-kicks-list {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0
+}
+
+.room-kicks-empty {
+    padding: 38px 14px;
+    border: 1px dashed #d8c7e8;
+    border-radius: 14px;
+    color: #826b92;
+    font-size: 13px;
+    text-align: center
+}
+
+.room-kicks-empty.error {
+    color: #b42336
+}
+
+.room-kick-row {
+    display: flex;
+    min-height: 66px;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: 1px solid #e9def2;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 3px 11px rgba(57,25,81,.06)
+}
+
+.room-kick-avatar {
+    display: flex;
+    width: 38px;
+    height: 38px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #f4eafa;
+    color: #8a4bb1
+}
+
+.room-kick-avatar i {
+    font-size: 19px
+}
+
+.room-kick-info {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 3px
+}
+
+.room-kick-info b,
+.room-kick-info small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+
+.room-kick-info b {
+    color: #352044;
+    font-size: 12px
+}
+
+.room-kick-info small {
+    color: #81728c;
+    font-size: 10px
+}
+
+.room-kick-remove {
+    min-height: 32px;
+    flex: none;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 10px;
+    background: #7c3aa2;
+    color: #fff;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer
+}
+
+.room-kick-remove:disabled {
+    opacity: .55;
+    cursor: wait
 }
 
 /* SoulChill-inspired room directory and owner-created room controls */

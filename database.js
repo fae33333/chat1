@@ -524,6 +524,14 @@ db.serialize(() => {
     UNIQUE(room_id, user_id)
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_mutes_room_user ON room_mutes (room_id, user_id)`);
+  // ---------- إغلاق مقاعد المايك داخل الغرفة (الحالة محفوظة لكل غرفة) ----------
+  db.run(`CREATE TABLE IF NOT EXISTS room_seat_locks (
+    room_id INTEGER NOT NULL,
+    seat_no INTEGER NOT NULL,
+    locked_by INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    PRIMARY KEY(room_id, seat_no)
+  )`);
   // ---------- إخفاء «العام» (رسالة الترحيب) لمستخدم واحد ----------
   // المستخدم العادي يحذف الرسالة له فقط: تُخزن النسخة المخفية كي لا تُعرض له
   // عند دخوله الغرفة مجدداً، ما لم تغيّر الإدارة نصها.

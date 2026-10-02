@@ -152,10 +152,17 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <div class="room-stage-heading">
         <span class="room-stage-title"><i class="f7-icons">person_2_square_stack_fill</i> مقاعد الغرفة</span>
         <span class="room-stage-owner" id="roomStageOwner">صاحب الغرفة: -</span>
-        <span class="room-stage-count"><i class="f7-icons">person_2_fill</i><b id="roomStageCount">0</b><span>متصل</span></span>
+        <div class="room-stage-tools">
+          <button class="room-stage-kicks" id="roomKicksBtn" type="button" hidden title="المطرودون من الغرفة" aria-label="عرض المطرودين من الغرفة"><i class="f7-icons">person_crop_circle_badge_xmark</i></button>
+          <span class="room-stage-count"><i class="f7-icons">person_2_fill</i><b id="roomStageCount">0</b><span>متصل</span></span>
+        </div>
       </div>
       <div class="room-seat-primary" id="roomSeatPrimary"></div>
       <div class="room-seat-grid" id="roomSeatGrid"></div>
+      <section class="room-visitors" aria-label="زوار الغرفة">
+        <div class="room-visitors-heading"><span><i class="f7-icons">person_3_fill</i> الزوار</span><b id="roomVisitorsCount">0</b></div>
+        <div class="room-visitors-list" id="roomVisitorsList"></div>
+      </section>
     </section>
     <div class="c-msgs" id="msgArea"></div>
 
@@ -202,6 +209,19 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <div class="sp-body" id="usersList"></div>
     </div>
 
+    <!-- إدارة المطرودين من غرفة العضو — المالك وحده يزيل الطرد -->
+    <div class="overlay full" id="roomKicksOv">
+      <div class="pvpage room-kicks-page">
+        <div class="pg-head bar mid">
+          <span class="pg-close back" data-close="roomKicksOv" style="flex-direction:row-reverse"><i class="f7-icons">chevron_left</i> عودة</span>
+          <span class="pg-title">المطرودون من الغرفة</span>
+          <span class="pg-close" data-close="roomKicksOv" aria-label="إغلاق"><i class="f7-icons">xmark</i></span>
+        </div>
+        <div class="room-kicks-note">يمكنك فك الطرد من هنا ليتمكن العضو من دخول غرفتك مجدداً.</div>
+        <div class="room-kicks-list" id="roomKicksList"><div class="room-kicks-empty">جارٍ تحميل القائمة...</div></div>
+      </div>
+    </div>
+
     <!-- زر عائم لقائمة المتصلين داخل الغرفة (بأسلوب 123flashchat):
          نقرة = عرض المتصلين (وإخفاء لوحة الغرف إن كانت مفتوحة)، نقرة أخرى = إخفاؤهم -->
     <span id="topcmm-123flashchat" class="topcmm_open_user" onclick="toggleUsersPanel()" style="right: 5px;" role="button" tabindex="0" title="عرض/إخفاء قائمة المتصلين" aria-label="عرض/إخفاء قائمة المتصلين">
@@ -225,7 +245,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <span class="ci-ava" id="ciAva" role="button" tabindex="0" title="تغيير الصورة الشخصية" aria-label="تغيير الصورة الشخصية"></span>
       <textarea type="text" class="ci-field" id="msgInput" onfocus="activeresize()" placeholder="رسالة عامة" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
       <button class="ci-plain" id="btnMic"><i class="f7-icons">mic_fill</i></button>
-      <button class="ci-plain talk-live" id="btnTalkLive" type="button" title="تحدث — الصعود كمذيع" hidden>
+      <button class="ci-plain talk-live" id="btnTalkLive" type="button" title="تحدث — اختر مقعداً للصعود" hidden>
        <span>تحدث</span>
       </button>
       <button class="ci-plain" id="btnCam"><i class="f7-icons">camera_fill</i></button>
