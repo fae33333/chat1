@@ -101,6 +101,7 @@ db.serialize(() => {
     description TEXT DEFAULT 'اهلا وسهلا بكم في الدردشة ★',
     image TEXT DEFAULT '',
     type TEXT DEFAULT 'default',           -- default | voice
+    category TEXT DEFAULT 'chat',          -- music | chat | chill | gaming | dating
     max_users INTEGER DEFAULT 1000,
     status TEXT DEFAULT 'open',            -- open | closed
     sound INTEGER DEFAULT 0,
@@ -122,6 +123,9 @@ db.serialize(() => {
   db.run(`ALTER TABLE rooms ADD COLUMN password TEXT DEFAULT ''`, () => { });
   // ترقية: جمهور الغرفة — 'all' = للجميع (الزوار والأعضاء)، 'registered' = للأعضاء المسجلين فقط
   db.run(`ALTER TABLE rooms ADD COLUMN audience TEXT DEFAULT 'all'`, () => { });
+  // تصنيف الغرفة الظاهر في شريط الأصناف واختيار إنشاء الغرفة.
+  db.run(`ALTER TABLE rooms ADD COLUMN category TEXT DEFAULT 'chat'`, () => { });
+  db.run(`UPDATE rooms SET category='chat' WHERE category IS NULL OR category NOT IN ('music','chat','chill','gaming','dating')`, () => { });
   db.run(`ALTER TABLE rooms ADD COLUMN welcome_enabled INTEGER DEFAULT 1`, () => { });
   db.run(`ALTER TABLE rooms ADD COLUMN creator_id INTEGER DEFAULT 0`, () => { });
   db.run(`ALTER TABLE rooms ADD COLUMN creator_name TEXT DEFAULT 'الإدارة'`, () => { });

@@ -517,7 +517,7 @@ const ADMIN_I18N_EN = {
   "ذهب": "Gold",
   "حرف": "chars",
   "ثانية": "sec",
-  "عنابي (افتراضي)": "Maroon (Default)",
+  "بنفسجي ووردي (افتراضي)": "Purple and Rose (Default)",
   "أزرق ملكي": "Royal Blue",
   "أخضر زمردي": "Emerald Green",
   "بنفسجي أنيق": "Elegant Purple",
@@ -1000,7 +1000,7 @@ const ADMIN_I18N_ES = {
   "ذهب": "Oro",
   "حرف": "caracteres",
   "ثانية": "seg",
-  "عنابي (افتراضي)": "Granate (Predeterminado)",
+  "بنفسجي ووردي (افتراضي)": "Morado y rosa (predeterminado)",
   "أزرق ملكي": "Azul Real",
   "أخضر زمردي": "Verde Esmeralda",
   "بنفسجي أنيق": "Púrpura Elegante",
@@ -1481,7 +1481,7 @@ const ADMIN_I18N_TR = {
   "ذهب": "Altın",
   "حرف": "karakter",
   "ثانية": "sn",
-  "عنابي (افتراضي)": "Bordo (Varsayılan)",
+  "بنفسجي ووردي (افتراضي)": "Mor ve pembe (Varsayılan)",
   "أزرق ملكي": "Kraliyet Mavisi",
   "أخضر زمردي": "Zümrüt Yeşili",
   "بنفسجي أنيق": "Zarif Mor",
@@ -2157,7 +2157,7 @@ function trackingSourceStyle(src) {
   const n = String(src || '').toLowerCase();
   if (n.includes('google')) return { bg: '#e8f0fe', fg: '#1a73e8', icon: 'search' };
   if (n.includes('bing') || n.includes('yahoo') || n.includes('duckduckgo') || n.includes('yandex') || n.includes('ecosia') || n.includes('brave'))
-    return { bg: '#eef2ff', fg: '#4338ca', icon: 'search' };
+    return { bg: '#f7f2fc', fg: '#5b267e', icon: 'search' };
   if (n.includes('facebook')) return { bg: '#e7f0fd', fg: '#1877f2', icon: 'globe' };
   if (n.includes('instagram')) return { bg: '#fdeef5', fg: '#c13584', icon: 'camera_fill' };
   if (n.includes('twitter') || n.includes('x')) return { bg: '#e8f5fd', fg: '#1d9bf0', icon: 'globe' };
@@ -2314,7 +2314,7 @@ async function openTrackingDetail(loginId) {
       ${trkDtRow('search', '#f59e0b', 'كلمة البحث', L.search_query || '')}
       ${trkDtRow('link', '#10b981', 'الرابط القادم', L.referrer || '', true)}
       ${trkDtRow('signpost_right', '#0ea5e9', 'المسار الذي دخل إليه', L.landing || '', true)}
-      ${trkDtRow('network', '#6366f1', 'عنوان IP', L.ip || '', true)}
+      ${trkDtRow('network', '#7c3aed', 'عنوان IP', L.ip || '', true)}
       ${trkDtRow('globe_2', '#10b981', 'الدولة', L.country || 'غير معروف')}
       ${trkDtRow('mobile_vibration', '#8b5cf6', 'الجهاز / المتصفح', L.user_agent || '', true)}
       ${trkDtRow('clock', '#94a3b8', 'وقت الدخول', fmtTime(L.created_at))}
@@ -2333,8 +2333,8 @@ async function openTrackingDetail(loginId) {
       ${trkDtRow('globe_2', '#10b981', 'دولة الحساب', U.country || '')}
       ${trkDtRow('cube_box', '#f59e0b', 'الرصيد (ذهب)', U.balance)}
       ${trkDtRow('calendar', '#94a3b8', 'تاريخ إنشاء الحساب', fmtTime(U.created_at))}
-      ${trkDtRow('arrow_uturn_left', '#6366f1', 'آخر دخول', fmtTime(d.stats ? d.stats.last_login : 0))}
-      ${trkDtRow('list_number', '#6366f1', 'إجمالي عمليات الدخول', d.stats ? d.stats.logins : 0)}
+      ${trkDtRow('arrow_uturn_left', '#7c3aed', 'آخر دخول', fmtTime(d.stats ? d.stats.last_login : 0))}
+      ${trkDtRow('list_number', '#7c3aed', 'إجمالي عمليات الدخول', d.stats ? d.stats.logins : 0)}
       ${trkDtRow('message', '#ec4899', 'النبذة', U.bio || '')}
     </div>
     ${d.online && d.currentRooms.length ? `
@@ -2737,7 +2737,7 @@ const PAGES = {
 
       <div class="section" style="margin-bottom:20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-          <div class="section-title" style="margin:0" id="pkgFormHeader"><i class="f7-icons mi" style="color:#6366f1">plus_circle_fill</i> إضافة باقة ذهب جديدة</div>
+          <div class="section-title" style="margin:0" id="pkgFormHeader"><i class="f7-icons mi" style="color:#7c3aed">plus_circle_fill</i> إضافة باقة ذهب جديدة</div>
         </div>
         <input type="hidden" id="editPkgId">
         <div class="grid2">
@@ -2756,7 +2756,7 @@ const PAGES = {
             <input class="inp" id="pkgPrice" type="number" step="0.01" min="0.1" placeholder="مثال: 9.99">
           </div>
           <div class="fgroup">
-            <label><i class="f7-icons mi" style="color:#6366f1">textformat</i> العملة:</label>
+            <label><i class="f7-icons mi" style="color:#7c3aed">textformat</i> العملة:</label>
             <select class="inp" id="pkgCurrency">
               <option value="$">$ (USD)</option>
               <option value="د.أ">د.أ (دينار أردني)</option>
@@ -3311,7 +3311,7 @@ const PAGES = {
     build: () => `
       <div class="page-title"><i class="f7-icons mi" style="color:#fbbf24">money_dollar_circle_fill</i> رصيد العضويات والتسجيل</div>
       <div style="background:#eef0ff;border:1px solid #c9d1ff;border-radius:12px;padding:8px 18px 12px;margin-bottom:22px">
-        <div style="color:#4f46e5;font-weight:800;font-size:14.5px;padding:10px 0;border-bottom:1px dashed #c9d1ff;margin-bottom:8px;text-align:center">إعدادات رصيد العضويات والمكافآت</div>
+        <div style="color:#7c3aed;font-weight:800;font-size:14.5px;padding:10px 0;border-bottom:1px dashed #c9d1ff;margin-bottom:8px;text-align:center">إعدادات رصيد العضويات والمكافآت</div>
         <ul style="list-style:none">
           <li style="padding:6px 0;display:flex;align-items:center;gap:9px;color:#4b5563;font-size:14px"><span style="width:7px;height:7px;border-radius:50%;background:#6b7280"></span> VIP - الرصيد المطلوب لشراء عضوية VIP 👑</li>
           <li style="padding:6px 0;display:flex;align-items:center;gap:9px;color:#4b5563;font-size:14px"><span style="width:7px;height:7px;border-radius:50%;background:#6b7280"></span> Premium - الرصيد المطلوب لشراء عضوية Premium 💎</li>
@@ -3364,7 +3364,7 @@ const PAGES = {
       </div>
 
       <div class="section" style="margin-bottom:22px">
-        <div class="section-title"><i class="f7-icons mi" style="color:#6366f1">chat_bubble_2_fill</i> ${t('اللغة الافتراضية للدردشة والموقع')}</div>
+        <div class="section-title"><i class="f7-icons mi" style="color:#7c3aed">chat_bubble_2_fill</i> ${t('اللغة الافتراضية للدردشة والموقع')}</div>
         <div style="color:#64748b;font-size:13.5px;margin-bottom:14px;line-height:1.6">
           ${t('يتم تطبيق هذه اللغة تلقائياً على أي زائر أو مستخدم جديد يدخل الدردشة لأول مرة. يمكن لكل مستخدم اختيار لغته الخاصة بحرية من قائمة اللغات داخل الشات.')}
         </div>
@@ -3485,8 +3485,8 @@ const PAGES = {
   // ====== صلاحيات الميزات حسب العضوية ======
   featureAccess: {
     build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#6366f1">checkmark_shield_fill</i> صلاحيات العضويات</div>
-      <div style="background:#eef2ff;border:1px solid #c7d2fe;color:#4f46e5;border-radius:12px;padding:13px 16px;margin-bottom:18px;font-size:13.5px;font-weight:700">حدد العضويات المسموح لها باستخدام كل ميزة. حسابات الإدارة ومشرفو الغرف مسموح لهم دائماً.</div>
+      <div class="page-title"><i class="f7-icons mi" style="color:#7c3aed">checkmark_shield_fill</i> صلاحيات العضويات</div>
+      <div style="background:#f7f2fc;border:1px solid #e3d4f1;color:#7c3aed;border-radius:12px;padding:13px 16px;margin-bottom:18px;font-size:13.5px;font-weight:700">حدد العضويات المسموح لها باستخدام كل ميزة. حسابات الإدارة ومشرفو الغرف مسموح لهم دائماً.</div>
       ${membershipAccessCard('chat_bubble_fill', '#2563eb', 'إرسال الرسائل في العام', 'public_message_allowed_memberships', 'كتابة وإرسال الرسائل النصية والإيموجي داخل الغرف العامة.')}
       ${membershipAccessCard('bubble_left_bubble_right_fill', '#14b8a6', 'إرسال الرسائل الخاصة', 'private_message_allowed_memberships', 'إرسال رسالة نصية مباشرة إلى مستخدم آخر في الخاص.')}
       ${membershipAccessCard('lock_shield_fill', '#0284c7', 'إغلاق واستقبال الرسائل الخاصة', 'private_settings_allowed_memberships', 'ظهور زر (استقبال الرسائل الخاصة) بالقائمة وإمكانية إغلاق أو فتح الخاص للحساب.')}
@@ -3652,7 +3652,7 @@ const PAGES = {
     build: () => `
       <div class="page-title"><i class="f7-icons mi" style="color:#c084fc">paintbrush_fill</i> وضع الشعار</div>
       <div style="background:#f2f5ff;border:1px solid #dfe5ff;border-radius:12px;padding:30px;text-align:center;margin-bottom:22px">
-        ${SETTINGS.logo_url ? `<img src="${esc(SETTINGS.logo_url)}" alt="شعار الموقع" style="max-width:260px;max-height:120px" onerror="this.outerHTML='<div style=&quot;color:#9ca3af&quot;>تعذر تحميل الشعار</div>'">` : `<div style="font-size:20px;font-weight:800;color:#4f46e5">★ ${esc(SETTINGS.site_name || 'الدردشة')}</div>`}
+        ${SETTINGS.logo_url ? `<img src="${esc(SETTINGS.logo_url)}" alt="شعار الموقع" style="max-width:260px;max-height:120px" onerror="this.outerHTML='<div style=&quot;color:#9ca3af&quot;>تعذر تحميل الشعار</div>'">` : `<div style="font-size:20px;font-weight:800;color:#7c3aed">★ ${esc(SETTINGS.site_name || 'الدردشة')}</div>`}
         <div style="color:#9ca3af;font-size:12px;margin-top:8px">الرابط : ${esc(SETTINGS.logo_url || 'الافتراضي')}</div>
       </div>
       <div class="section-title">رفع شعار جديد <i class="f7-icons mi" style="color:#818cf8">square_arrow_up_fill</i></div>
@@ -3670,7 +3670,7 @@ const PAGES = {
     bind: () => {
       const drop = $('#dropLogo'), file = $('#logoFile');
       drop.onclick = () => file.click();
-      drop.ondragover = e => { e.preventDefault(); drop.style.background = '#eef2ff'; };
+      drop.ondragover = e => { e.preventDefault(); drop.style.background = '#f7f2fc'; };
       drop.ondragleave = () => drop.style.background = '';
       drop.ondrop = e => { e.preventDefault(); drop.style.background = ''; if (e.dataTransfer.files[0]) { file.files = e.dataTransfer.files; uploadLogo(); } };
       file.onchange = uploadLogo;
@@ -3980,7 +3980,7 @@ const PAGES = {
       };
       const dz = $('#emojiDrop');
       dz.onclick = () => $('#emojiFiles').click();
-      dz.ondragover = e => { e.preventDefault(); dz.style.background = '#eef2ff'; };
+      dz.ondragover = e => { e.preventDefault(); dz.style.background = '#f7f2fc'; };
       dz.ondragleave = () => dz.style.background = '';
       dz.ondrop = e => { e.preventDefault(); dz.style.background = ''; if (e.dataTransfer.files.length) doFiles([...e.dataTransfer.files]); };
       $('#emojiFiles').onchange = () => { if ($('#emojiFiles').files.length) doFiles([...$('#emojiFiles').files]); };
@@ -3997,7 +3997,7 @@ const PAGES = {
       </div>
 
       <div class="section" style="margin-bottom:22px">
-        <div class="section-title"><i class="f7-icons mi" style="color:#6366f1">plus_circle_fill</i> ${t('رفع رمزية جديدة')}</div>
+        <div class="section-title"><i class="f7-icons mi" style="color:#7c3aed">plus_circle_fill</i> ${t('رفع رمزية جديدة')}</div>
         <div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap">
           <div style="flex:1;min-width:180px">
             <label style="display:block;font-size:13px;font-weight:700;color:#334155;margin-bottom:6px">${t('تصنيف الرمزية:')}</label>
@@ -4089,7 +4089,7 @@ const PAGES = {
         const sel = current === k;
         return `
           <div class="skin-box" data-skin="${k}" style="cursor:pointer;text-align:center">
-            <div class="skin-swatch" data-skin="${k}" style="background:linear-gradient(135deg, ${t.primary}, ${t.secondary});border:${sel ? '4px solid #4f46e5' : '3px solid #e5e7eb'};box-shadow:${sel ? '0 6px 18px ' : '0 6px 12px '}${t.primary}66"></div>
+            <div class="skin-swatch" data-skin="${k}" style="background:linear-gradient(135deg, ${t.primary}, ${t.secondary});border:${sel ? '4px solid #7c3aed' : '3px solid #e5e7eb'};box-shadow:${sel ? '0 6px 18px ' : '0 6px 12px '}${t.primary}66"></div>
             <div style="font-size:12px;font-weight:800;color:#374151;margin-top:7px">${t.label}</div>
           </div>`;
       }).join('');
@@ -4106,7 +4106,7 @@ const PAGES = {
         <div class="section-title">🌈 كل الألوان — اختر لون جلد الشات</div>
         <div class="section">
           <div class="skin-color-grid" id="skinColors">
-            <button class="skin-dot auto${current === 'default' ? ' sel' : ''}" data-c="" style="background:linear-gradient(135deg,#9c1e46,#c22e5e)" title="تلقائي (عنابي)">تلقائي</button>
+            <button class="skin-dot auto${current === 'default' ? ' sel' : ''}" data-c="" style="background:linear-gradient(135deg,#7c3aed,#d946a6)" title="تلقائي (بنفسجي ووردي)">تلقائي</button>
             ${colorSwatches}
           </div>
           <div class="skin-hint">اضغط أي نقطة لاستخدامها كلون كامل للجلد — دون الحاجة إلى ثيم جاهز.</div>
@@ -4119,7 +4119,7 @@ const PAGES = {
 
         <div class="btn-row" style="justify-content:flex-start;margin-top:26px">
           <button class="btn btn-purple" id="saveSkin"><i class="f7-icons">square_arrow_down_fill</i> حفظ الجلد</button>
-          <button class="btn" id="resetSkin"><i class="f7-icons">arrow_clockwise</i> إعادة العنابي</button>
+          <button class="btn" id="resetSkin"><i class="f7-icons">arrow_clockwise</i> إعادة اللون الافتراضي</button>
         </div>`;
     },
     bind: () => {
@@ -4238,14 +4238,16 @@ const PAGES = {
     bind: async () => {
       const rooms = await api('/api/admin/rooms');
       ROOMS_CACHE = rooms;
+      const roomCategoryLabels = { music: '🎶 طرب وموسيقى', chat: '💬 سوالف وجمعة', chill: '☕ هدوء ورواق', gaming: '🎮 مسابقات وألعاب', dating: '🔮 كواكب وأبراج' };
       $('#roomsList').innerHTML = rooms.length ? rooms.map(r => `
         <div class="list-card">
           <div style="display:flex;align-items:center;gap:12px">
-            <div style="width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,#9c1f46,#d43d6e);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;overflow:hidden">${r.image ? `<img src="${esc(r.image)}" alt="صورة الغرفة" style="width:100%;height:100%;object-fit:cover">` : '<i class="f7-icons">house_fill</i>'}</div>
+            <div style="width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#d946a6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;overflow:hidden">${r.image ? `<img src="${esc(r.image)}" alt="صورة الغرفة" style="width:100%;height:100%;object-fit:cover">` : '<i class="f7-icons">house_fill</i>'}</div>
             <div>
               <div style="font-weight:800;color:#111827">${esc(r.name)}</div>
               <div style="font-size:12.5px;color:#6b7280">${esc(r.description)}</div>
               <div style="display:flex;gap:7px;margin-top:5px;flex-wrap:wrap">
+                <span class="chip">${roomCategoryLabels[r.category] || roomCategoryLabels.chat}</span>
                 <span class="chip">${r.type === 'voice' ? 'صوتية 🎙' : 'افتراضية 💬'}</span>
                 <span class="chip">${r.max_users} مستخدم</span>
                 <span class="chip" style="color:${r.status === 'open' ? '#059669' : '#dc2626'}">${r.status === 'open' ? '● مفتوحة' : '● مغلقة'}</span>
@@ -4286,19 +4288,27 @@ const PAGES = {
       <div class="grid2">
         <div class="fgroup"><label><i class="f7-icons mi" style="color:#818cf8">person2_fill</i> الحد الأقصى للمستخدمين</label>
           <input class="inp" type="number" id="rMax" value="${r.max_users || 1000}"></div>
-        <div class="fgroup"><label><i class="f7-icons mi" style="color:#d946a6">dot_radiowaves_right</i> نوع الغرفة</label>
+        <div class="fgroup"><label><i class="f7-icons mi" style="color:#d946a6">dot_radiowaves_right</i> نمط الغرفة</label>
           <select class="inp" id="rType">
             <option value="voice" ${r.type === 'voice' ? 'selected' : ''}>🎙 صوتية — بث صوتي وزر «تحدث»</option>
-            <option value="default" ${r.type !== 'voice' ? 'selected' : ''}>💬 افتراضية — كتابية فقط</option>
+            <option value="default" ${r.type !== 'voice' ? 'selected' : ''}>💬 افتراضية — دردشة عادية بلا بث صوتي</option>
           </select></div>
       </div>
+      <div class="fgroup"><label><i class="f7-icons mi" style="color:#a855f7">circle_grid_hex_fill</i> تصنيف الغرفة</label>
+        <select class="inp" id="rCategory">
+          <option value="music" ${r.category === 'music' ? 'selected' : ''}>🎶 طرب وموسيقى</option>
+          <option value="chat" ${!r.category || r.category === 'chat' ? 'selected' : ''}>💬 سوالف وجمعة</option>
+          <option value="chill" ${r.category === 'chill' ? 'selected' : ''}>☕ هدوء ورواق</option>
+          <option value="gaming" ${r.category === 'gaming' ? 'selected' : ''}>🎮 مسابقات وألعاب</option>
+          <option value="dating" ${r.category === 'dating' ? 'selected' : ''}>🔮 كواكب وأبراج</option>
+        </select></div>
       <div class="fgroup"><label><i class="f7-icons mi" style="color:#0ea5e9">person_2_square_stack_fill</i> من يدخل الغرفة؟</label>
         <select class="inp" id="rAudience">
           <option value="all" ${r.audience !== 'registered' ? 'selected' : ''}>🌍 للجميع — الزوار والأعضاء المسجلون</option>
           <option value="registered" ${r.audience === 'registered' ? 'selected' : ''}>🔐 للأعضاء المسجلين فقط — الزائر لا يدخل</option>
         </select>
         <div style="font-size:11.5px;color:#9aa0b5;margin-top:5px">عند اختيار «للأعضاء المسجلين فقط» تُمنع حسابات الزوار من دخول الغرفة، وتظهر لهم رسالة تدعوهم لإنشاء حساب. الإدارة تدخل دائماً.</div></div>
-      <div style="font-size:12.5px;color:#7b8495;font-weight:700;background:#f8f5ff;border:1px solid #e9ddff;border-radius:10px;padding:9px 13px;margin-top:10px">💡 الغرفة الصوتية: يظهر شريط البث وزر «تحدث» للصعود كمذيع. الغرفة الافتراضية: دردشة كتابية فقط — لا شريط بث ولا زر «تحدث».</div>
+      <div style="font-size:12.5px;color:#7b8495;font-weight:700;background:#f8f5ff;border:1px solid #e9ddff;border-radius:10px;padding:9px 13px;margin-top:10px">💡 الغرفة الصوتية: يظهر شريط البث وزر «تحدث» للصعود كمذيع. الغرفة الافتراضية: دردشة عادية بلا بث صوتي ولا زر «تحدث».</div>
       <div class="section-title"><i class="f7-icons mi" style="color:#94a3b8">gear_alt_fill</i> إعدادات إضافية</div>
       ${roomSel('mic_fill', '#c084fc', 'تمكين الصوت', 'rSound', r.sound)}
       ${roomSel('videocam_fill', '#60a5fa', 'تمكين الفيديو', 'rVideo', r.video)}
@@ -4309,7 +4319,7 @@ const PAGES = {
         <input class="inp" id="rPass" placeholder="اتركها فارغة بدون كلمة مرور" value="${esc(r.password || '')}"></div>
       <div class="fgroup"><label><i class="f7-icons mi" style="color:#22c55e">photo_fill</i> صورة الغرفة</label>
         <div style="display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #e7eaf5;border-radius:12px;padding:12px 14px">
-          <div id="roomImgPrev" style="width:64px;height:64px;border-radius:14px;background:linear-gradient(135deg,#9c1f46,#d43d6e);display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;overflow:hidden;flex:0 0 auto">${r.image ? `<img src="${esc(r.image)}" alt="صورة الغرفة" style="width:100%;height:100%;object-fit:cover">` : '<i class="f7-icons">house_fill</i>'}</div>
+          <div id="roomImgPrev" style="width:64px;height:64px;border-radius:14px;background:linear-gradient(135deg,#7c3aed,#d946a6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;overflow:hidden;flex:0 0 auto">${r.image ? `<img src="${esc(r.image)}" alt="صورة الغرفة" style="width:100%;height:100%;object-fit:cover">` : '<i class="f7-icons">house_fill</i>'}</div>
           <div style="flex:1">
             <button type="button" class="btn btn-gray" id="roomImgBtn"><i class="f7-icons">square_arrow_up_fill</i> رفع صورة الغرفة</button>
             <input type="file" id="roomImgFile" accept="image/*" style="display:none">
@@ -4337,6 +4347,7 @@ const PAGES = {
           name: $('#rName').value.trim(), description: $('#rDesc').value,
           welcome: $('#rWelcome').value.trim(),
           status: $('#rStatus').value, max_users: +$('#rMax').value || 1000, type: $('#rType').value === 'voice' ? 'voice' : 'default',
+          category: $('#rCategory').value,
           audience: $('#rAudience').value === 'registered' ? 'registered' : 'all',
           sound: $('#rSound').value === '1', video: $('#rVideo').value === '1', bots: $('#rBots').value === '1',
           gifts: $('#rGifts').value === '1', games: $('#rGames').value === '1',
@@ -4362,7 +4373,7 @@ const PAGES = {
       </div>
 
       <div class="section" style="margin-bottom:20px">
-        <div class="section-title"><i class="f7-icons mi" style="color:#6366f1">plus_circle_fill</i> تعيين مشرف جديد لغرفة</div>
+        <div class="section-title"><i class="f7-icons mi" style="color:#7c3aed">plus_circle_fill</i> تعيين مشرف جديد لغرفة</div>
         <div class="grid3">
           <div class="fgroup">
             <label><i class="f7-icons mi" style="color:#fb923c">house_fill</i> اختر الغرفة المستهدفة:</label>
@@ -4392,7 +4403,7 @@ const PAGES = {
       try {
         const rooms = await api('/api/admin/rooms');
         $('#raRoomSelect').innerHTML = rooms.length
-          ? rooms.map(r => `<option value="${r.id}">🏠 ${esc(r.name)} (${r.type === 'voice' ? 'صوتية' : 'كتابية'})</option>`).join('')
+          ? rooms.map(r => `<option value="${r.id}">🏠 ${esc(r.name)} (${r.type === 'voice' ? 'صوتية' : 'افتراضية'})</option>`).join('')
           : '<option value="">لا توجد غرف متاحة</option>';
       } catch (e) {}
 
@@ -4511,7 +4522,7 @@ const PAGES = {
         </div>
         
         <div class="inp-row" id="roomBotReplyRow">
-          <label><i class="f7-icons mi" style="color:#6366f1">sparkles</i> وضع التحدث والرد في الغرفة :</label>
+          <label><i class="f7-icons mi" style="color:#7c3aed">sparkles</i> وضع التحدث والرد في الغرفة :</label>
           <select class="inp" id="roomBotReplyMode">
             <option value="1" ${replyMode === 1 ? 'selected' : ''}>🤖 متحدث ذكي (يرد بالذكاء الاصطناعي عند مناداته بالاسم)</option>
             <option value="2" ${replyMode === 2 ? 'selected' : ''}>💬 متحدث برد مخصص (يرد بالنص المحدد عند مناداته بالاسم)</option>
@@ -4627,13 +4638,13 @@ const PAGES = {
   // ====== إعدادات الذكاء الاصطناعي والعقل العصبي ======
   aiSettings: {
     build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#6366f1">sparkles</i> إعدادات العقل العصبي والذكاء الاصطناعي (AI)</div>
-      <div class="info-box" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3;margin-bottom:18px">
+      <div class="page-title"><i class="f7-icons mi" style="color:#7c3aed">sparkles</i> إعدادات العقل العصبي والذكاء الاصطناعي (AI)</div>
+      <div class="info-box" style="background:#f7f2fc;border-color:#e3d4f1;color:#5b267e;margin-bottom:18px">
         يتحكم هذا القسم في العقل العصبي للذكاء الاصطناعي الذي تستخدمه روبوتات الدردشة عند مناداتها بالاسم للإجابة عن أي سؤال بشكل واقعي وذكي. يدعم النظام Google Gemini و Groq (Llama 3.3) و OpenAI و DeepSeek أو أي خادم عصبي مخصص (Ollama / LocalAI).
       </div>
 
       <div class="section" style="margin-bottom:20px">
-        <div class="section-title"><i class="f7-icons mi" style="color:#6366f1">gear_alt_fill</i> تهيئة مزود الذكاء الاصطناعي ومفتاح الـ API</div>
+        <div class="section-title"><i class="f7-icons mi" style="color:#7c3aed">gear_alt_fill</i> تهيئة مزود الذكاء الاصطناعي ومفتاح الـ API</div>
         
         <div class="fgroup">
           <label><i class="f7-icons mi" style="color:#38bdf8">cpu</i> مزود خدمة الذكاء الاصطناعي :</label>
@@ -4685,7 +4696,7 @@ const PAGES = {
 
         <div id="aiTestResultBox" style="display:none;margin-top:16px;background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:14px;padding:16px">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-            <span class="chip" id="aiTestProviderBadge" style="background:#e0e7ff;color:#3730a3;font-weight:800">🤖 المزود: -</span>
+            <span class="chip" id="aiTestProviderBadge" style="background:#e0e7ff;color:#5b267e;font-weight:800">🤖 المزود: -</span>
             <span class="chip" id="aiTestLatencyBadge" style="background:#ecfdf5;color:#047857;font-weight:800">⚡ زمن الاستجابة: -</span>
           </div>
           <div id="aiTestReplyText" style="font-size:14.5px;line-height:1.8;color:#0f172a;font-weight:700;white-space:pre-wrap"></div>
@@ -4767,7 +4778,7 @@ const PAGES = {
       <div class="section">
         <div class="section-title"><i class="f7-icons mi" style="color:#d97706">cloud_fill</i> إعدادات SMTP (إرسال الرمز)</div>
         ${swRow('power', '#d97706', 'تفعيل إرسال البريد (SMTP)', 'smtp_enabled')}
-        ${inpRow('globe', '#6366f1', 'خادم SMTP (host)', 'smtp_host', 'text', '')}
+        ${inpRow('globe', '#7c3aed', 'خادم SMTP (host)', 'smtp_host', 'text', '')}
         ${inpRow('number', '#10b981', 'المنفذ (port) — 587 أو 465', 'smtp_port', 'number', '')}
         ${inpRow('person_fill', '#38bdf8', 'بريد SMTP (user)', 'smtp_user', 'text', '')}
         ${inpRow('key_fill', '#ef4444', 'كلمة مرور SMTP / كلمة مرور تطبيق', 'smtp_pass', 'text', '')}
@@ -5020,8 +5031,8 @@ const PAGES = {
   // ====== طلبات التوثيق والترقية ======
   serviceRequests: {
     build: () => `
-      <div class="page-title"><i class="f7-icons mi" style="color:#6366f1">bell_badge_fill</i> طلبات التوثيق والترقية</div>
-      <div class="info-box" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3;margin-bottom:16px">
+      <div class="page-title"><i class="f7-icons mi" style="color:#7c3aed">bell_badge_fill</i> طلبات التوثيق والترقية</div>
+      <div class="info-box" style="background:#f7f2fc;border-color:#e3d4f1;color:#5b267e;margin-bottom:16px">
         عند الموافقة اختر مقدار الذهب الذي سيُخصم من صاحب الطلب. لا يتم الخصم ولا تطبيق التوثيق أو العضوية قبل موافقتك.
       </div>
       <div style="display:flex;gap:8px;margin-bottom:16px" id="requestTabs">
@@ -5354,7 +5365,7 @@ const PAGES = {
     build: () => `
       <div class="page-title"><i class="f7-icons mi" style="color:#60a5fa">arrow_clockwise_circle_fill</i> استئناف الخادم</div>
       <div class="section" style="text-align:center;padding:50px 20px">
-        <i class="f7-icons" style="font-size:60px;color:#6366f1">arrow_clockwise_circle_fill</i>
+        <i class="f7-icons" style="font-size:60px;color:#7c3aed">arrow_clockwise_circle_fill</i>
         <h3 style="margin:14px 0 6px;color:#1f2937">إعادة تشغيل خادم الشات</h3>
         <p style="color:#6b7280;font-size:13.5px">سيتم قطع الاتصال عن جميع المستخدمين لثوانٍ قليلة ثم يعود الخادم للعمل.</p>
         <div class="btn-row">
@@ -5505,7 +5516,7 @@ const PAGES = {
 
       <div class="section" style="margin-bottom:22px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-          <div class="section-title" style="margin:0"><i class="f7-icons mi" style="color:#6366f1">sparkles</i> إعدادات الهوية والأرشفة للموقع الأساسي (/)</div>
+          <div class="section-title" style="margin:0"><i class="f7-icons mi" style="color:#7c3aed">sparkles</i> إعدادات الهوية والأرشفة للموقع الأساسي (/)</div>
           <button class="btn btn-yellow btn-sm" id="aiGenMainSeoBtn" type="button"><i class="f7-icons">wand_stars</i> 🤖 توليد SEO ذكي بالذكاء الاصطناعي</button>
         </div>
         <div class="grid2">
@@ -6284,7 +6295,7 @@ function userForm(u) {
       <input class="inp" id="uName" value="${esc(u.username || '')}" placeholder="اسم المستخدم"></div>
     <div class="fgroup"><label><i class="f7-icons mi" style="color:#fbbf24">lock_fill</i> كلمة المرور (pwd) ${isEdit ? '(اتركها فارغة للإبقاء)' : '*'} :</label>
       <input class="inp" type="password" id="uPass" placeholder="••••••"></div>
-    <div class="fgroup"><label><i class="f7-icons mi" style="color:#6366f1">envelope_fill</i> البريد الإلكتروني (e) :</label>
+    <div class="fgroup"><label><i class="f7-icons mi" style="color:#7c3aed">envelope_fill</i> البريد الإلكتروني (e) :</label>
       <input class="inp" id="uEmail" value="${esc(u.email || '')}" placeholder="example@email.com"></div>
     <div class="grid2">
       <div class="fgroup"><label><i class="f7-icons mi" style="color:#fbbf24">money_dollar_circle_fill</i> الرصيد (crdsamt) :</label>
@@ -6690,7 +6701,7 @@ function showAdminTerminatedScreen() {
         </div>
         <h2 style="font-size:20px;font-weight:900;margin-bottom:12px;color:#f8fafc">انتهت جلسة لوحة الإدارة</h2>
         <p style="font-size:13.5px;color:#94a3b8;line-height:1.8;margin-bottom:26px">تم إبطال رابط وجلسة الإدارة فوراً لأنك لست متواجداً في الدردشة أو قمت بعمل تحديث.<br>يجب أن تكون متواجداً ومتصلاً داخل الدردشة في نفس الوقت لتشغيل لوحة الإدارة.</p>
-        <a href="/" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;text-decoration:none;padding:12px 28px;border-radius:14px;font-weight:800;font-size:14px">العودة إلى الدردشة</a>
+        <a href="/" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#7c3aed,#d946a6);color:#fff;text-decoration:none;padding:12px 28px;border-radius:14px;font-weight:800;font-size:14px">العودة إلى الدردشة</a>
       </div>
     </div>
   `;
@@ -7086,7 +7097,7 @@ function resetPkgForm() {
   $('#pkgBadge').value = '';
   $('#pkgSort').value = '1';
   $('#pkgActive').checked = true;
-  $('#pkgFormHeader').innerHTML = '<i class="f7-icons mi" style="color:#6366f1">plus_circle_fill</i> إضافة باقة ذهب جديدة';
+  $('#pkgFormHeader').innerHTML = '<i class="f7-icons mi" style="color:#7c3aed">plus_circle_fill</i> إضافة باقة ذهب جديدة';
   $('#cancelPkgBtn').style.display = 'none';
 }
 

@@ -59,6 +59,14 @@ try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
 let ROOMS = [], ROOM_COUNTS = {}, CUR_ROOM = null, CUR_TAB = 'default';
 let ROOMS_FILTER = 'all';
+let ROOM_CREATE_CATEGORY = 'chat';
+const ROOM_CATEGORY_META = Object.freeze({
+  music: { label: 'طرب وموسيقى', emoji: '🎶' },
+  chat: { label: 'سوالف وجمعة', emoji: '💬' },
+  chill: { label: 'هدوء ورواق', emoji: '☕' },
+  gaming: { label: 'مسابقات وألعاب', emoji: '🎮' },
+  dating: { label: 'كواكب وأبراج', emoji: '🔮' }
+});
 let ROOMS_LOAD_ERROR = false;
 let ROOMS_LOAD_SEQ = 0;
 let ROOM_CREATE_IMAGE = '';
@@ -4459,14 +4467,13 @@ function roomParticipantsHtml(room, compact = false, totalOverride = null) {
 function roomRowHtml(r) {
   const online = Math.max(0, +ROOM_COUNTS[r.id] || 0);
   const mine = isMyUserCreatedRoom(r);
-  const voiceRoom = r.type === 'voice';
-  const typeName = voiceRoom ? 'صوتية' : 'كتابية';
-  const typeIcon = voiceRoom ? 'music_mic' : 'bubble_left_bubble_right_fill';
+  const category = roomCategoryKey(r.category);
+  const categoryInfo = ROOM_CATEGORY_META[category];
   return `
   <article class="room-row${mine ? ' room-row-owned' : ''}" data-id="${r.id}">
     <div class="room-card-head">
       ${roomImgHtml(r)}
-      <span class="room-card-type${voiceRoom ? ' is-voice' : ' is-text'}"><i class="f7-icons">${typeIcon}</i><span>${typeName}</span></span>
+      <span class="room-card-type is-${category}" title="${categoryInfo.label}"><span class="room-category-emoji" aria-hidden="true">${categoryInfo.emoji}</span><span>${categoryInfo.label}</span></span>
     </div>
     <div class="room-info">
       <div class="room-row-heading">
@@ -4517,11 +4524,15 @@ function renderRoomsPanel() {
     attemptRoomSwitch(+row.dataset.id);
   });
 }
+function roomCategoryKey(value) {
+  const key = String(value || '');
+  return Object.prototype.hasOwnProperty.call(ROOM_CATEGORY_META, key) ? key : 'chat';
+}
 function bindRoomDirectoryFilters() {
-  const buttons = $$('#roomFilters .room-filter');
-  if (buttons.length && !buttons.some(button => button.dataset.roomFilter === ROOMS_FILTER)) ROOMS_FILTER = 'all';
+  const buttons = $$('#roomsCategoryBar .cat-pill');
+  if (buttons.length && !buttons.some(button => button.dataset.cat === ROOMS_FILTER)) ROOMS_FILTER = 'all';
   buttons.forEach(button => {
-    const filter = button.dataset.roomFilter || 'all';
+    const filter = button.dataset.cat || 'all';
     const active = filter === ROOMS_FILTER;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', active ? 'true' : 'false');
@@ -4536,10 +4547,8 @@ function roomDirectoryList(query = '') {
   const q = String(query || '').trim().toLowerCase();
   return ROOMS.filter(room => {
     if (q && !`${room.name || ''} ${room.description || ''} ${room.creator_name || ''}`.toLowerCase().includes(q)) return false;
-    if (ROOMS_FILTER === 'voice') return room.type === 'voice';
-    if (ROOMS_FILTER === 'text') return room.type !== 'voice';
-    if (ROOMS_FILTER === 'members') return room.audience === 'registered';
-    return true;
+    const category = roomCategoryKey(room.category);
+    return ROOMS_FILTER === 'all' || category === ROOMS_FILTER;
   });
 }
 function renderRooms() {
@@ -4588,8 +4597,23 @@ function renderRooms() {
   });
   renderRoomsPanel();
 }
+function syncRoomCreateCategoryButtons() {
+  const buttons = $$('#roomCreateCategories .room-create-category');
+  if (buttons.length && !buttons.some(button => button.dataset.createCategory === ROOM_CREATE_CATEGORY)) ROOM_CREATE_CATEGORY = 'chat';
+  buttons.forEach(button => {
+    const active = button.dataset.createCategory === ROOM_CREATE_CATEGORY;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+$$('#roomCreateCategories .room-create-category').forEach(button => button.onclick = () => {
+  ROOM_CREATE_CATEGORY = roomCategoryKey(button.dataset.createCategory);
+  syncRoomCreateCategoryButtons();
+});
 function resetRoomCreateForm() {
   ROOM_CREATE_IMAGE = '';
+  ROOM_CREATE_CATEGORY = 'chat';
+  syncRoomCreateCategoryButtons();
   const name = $('#roomCreateName');
   const description = $('#roomCreateDescription');
   const type = $('#roomCreateType');
@@ -4696,6 +4720,7 @@ $('#roomCreateSubmit').onclick = async () => {
     const result = await api('/api/rooms', 'POST', {
       name,
       description: $('#roomCreateDescription').value.trim(),
+      category: roomCategoryKey(ROOM_CREATE_CATEGORY),
       type: $('#roomCreateType').value,
       image: ROOM_CREATE_IMAGE
     });

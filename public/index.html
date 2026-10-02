@@ -22,8 +22,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20261002-room-visitor-sheet">
-<link rel="stylesheet" href="/css/desktop.css?v=20261002-room-visitor-sheet" media="(min-width: 1024px)">
+<link rel="stylesheet" href="/css/style.css?v=20261002-room-categories-theme">
+<link rel="stylesheet" href="/css/desktop.css?v=20261002-room-categories-theme" media="(min-width: 1024px)">
 </head>
 <body>
 <div id="frame">
@@ -75,11 +75,13 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         </div>
         <span class="rooms-directory-count" id="roomsResultsCount" aria-live="polite">0 غرفة</span>
       </div>
-      <div class="room-filters" id="roomFilters" role="group" aria-label="تصفية الغرف">
-        <button class="room-filter active" type="button" data-room-filter="all" aria-pressed="true"><i class="f7-icons">square_grid_2x2_fill</i><span>الكل</span></button>
-        <button class="room-filter" type="button" data-room-filter="voice" aria-pressed="false"><i class="f7-icons">music_mic</i><span>صوتية</span></button>
-        <button class="room-filter" type="button" data-room-filter="text" aria-pressed="false"><i class="f7-icons">bubble_left_bubble_right_fill</i><span>كتابية</span></button>
-        <button class="room-filter" type="button" data-room-filter="members" aria-pressed="false"><i class="f7-icons">person_crop_circle_badge_checkmark</i><span>للأعضاء</span></button>
+      <div class="rooms-category-bar" id="roomsCategoryBar" role="group" aria-label="أصناف الغرف">
+        <button class="cat-pill active" type="button" data-cat="all" aria-pressed="true">🌟 الكل</button>
+        <button class="cat-pill" type="button" data-cat="music" aria-pressed="false">🎶 طرب وموسيقى</button>
+        <button class="cat-pill" type="button" data-cat="chat" aria-pressed="false">💬 سوالف وجمعة</button>
+        <button class="cat-pill" type="button" data-cat="chill" aria-pressed="false">☕ هدوء ورواق</button>
+        <button class="cat-pill" type="button" data-cat="gaming" aria-pressed="false">🎮 مسابقات وألعاب</button>
+        <button class="cat-pill" type="button" data-cat="dating" aria-pressed="false">🔮 كواكب وأبراج</button>
       </div>
     </div>
     <div class="r-search dots-bg">
@@ -267,7 +269,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     </div>
     <!-- شريط الإدخال -->
     <div class="c-input dots-bg" id="inputBar">
-      <button class="ci-circle" id="btnEmoji" style="background: #9c1e4600;"><i class="f7-icons btnEmojiGG">smiley_fill</i></button>
+      <button class="ci-circle" id="btnEmoji" style="background: transparent;"><i class="f7-icons btnEmojiGG">smiley_fill</i></button>
       <button class="ci-circle room-host-mic-toggle" id="roomHostMicBtn" type="button" title="كتم ميكروفون المذيع" aria-label="كتم ميكروفون المذيع" aria-pressed="false" hidden><i class="f7-icons" id="roomHostMicIcon">mic_fill</i></button>
       <button class="ci-plain pink" id="btnApps"><i class="f7-icons" style="font-size:25px;color:var(--njomarab-theme-color)">circle_grid_hex_fill</i></button>
       <!-- كسر السطر + صورتي: يظهران على الكمبيوتر فقط (سطر الأيقونات فوق، ثم الصورة والحقل والإرسال) -->
@@ -1037,7 +1039,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <button class="mn-item" id="mnUpgrade"><span class="mni"><i class="f7-icons">chart_bar_fill</i></span> ترقية حسابي <i class="f7-icons mnc">chevron_right</i></button>
       </div>
       <div class="mn-list" id="menuAdminSection" style="display:none">
-        <button class="mn-item" id="mnAdminPanel" style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(168,85,247,.12));border:1.5px solid #c7d2fe"><span class="mni" style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff"><i class="f7-icons">shield_fill</i></span> لوحة التحكم الإدارية <i class="f7-icons mnc">chevron_right</i></button>
+        <button class="mn-item" id="mnAdminPanel" style="background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(217,70,166,.12));border:1.5px solid #e3d4f1"><span class="mni" style="background:linear-gradient(135deg,#7c3aed,#d946a6);color:#fff"><i class="f7-icons">shield_fill</i></span> لوحة التحكم الإدارية <i class="f7-icons mnc">chevron_right</i></button>
       </div>
       <div class="mn-list">
         <button class="mn-item" id="mnStatuses"><span class="mni"><i class="f7-icons">circle_grid_hex_fill</i></span> الحالات <em class="bn-badge mn-badge" id="mnStatusBadge" style="display:none">0</em> <i class="f7-icons mnc">chevron_right</i></button>
@@ -1421,10 +1423,18 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <input class="room-create-input" id="roomCreateName" type="text" maxlength="32" autocomplete="off" placeholder="مثال: أصدقاء الأردن">
           <label class="room-create-label" for="roomCreateDescription">وصف قصير</label>
           <textarea class="room-create-input room-create-description" id="roomCreateDescription" maxlength="120" rows="2" placeholder="اكتب نبذة بسيطة عن غرفتك"></textarea>
-          <label class="room-create-label" for="roomCreateType">نوع الغرفة</label>
+          <label class="room-create-label">تصنيف الغرفة</label>
+          <div class="room-create-categories" id="roomCreateCategories" role="group" aria-label="اختر تصنيف الغرفة">
+            <button class="room-create-category" type="button" data-create-category="music" aria-pressed="false">🎶 طرب وموسيقى</button>
+            <button class="room-create-category active" type="button" data-create-category="chat" aria-pressed="true">💬 سوالف وجمعة</button>
+            <button class="room-create-category" type="button" data-create-category="chill" aria-pressed="false">☕ هدوء ورواق</button>
+            <button class="room-create-category" type="button" data-create-category="gaming" aria-pressed="false">🎮 مسابقات وألعاب</button>
+            <button class="room-create-category" type="button" data-create-category="dating" aria-pressed="false">🔮 كواكب وأبراج</button>
+          </div>
+          <label class="room-create-label" for="roomCreateType">نمط الغرفة</label>
           <select class="room-create-input" id="roomCreateType">
             <option value="voice">غرفة صوتية</option>
-            <option value="default">غرفة كتابية</option>
+            <option value="default">غرفة افتراضية</option>
           </select>
           <label class="room-create-label">صورة الغرفة (اختياري)</label>
           <div class="room-create-image-row">
@@ -1734,9 +1744,9 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </div>
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
-<script src="/js/skins.js?v=20260904-skins" defer></script>
+<script src="/js/skins.js?v=20261002-room-categories-theme" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
-<script src="/js/app.js?v=20261002-room-visitor-sheet" defer></script>
+<script src="/js/app.js?v=20261002-room-categories-theme" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

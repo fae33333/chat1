@@ -20,7 +20,7 @@
 
   // الثيمات الجاهزة (اسم → [اللون الأساسي، اللون الثانوي، الاسم العربي])
   const THEMES = {
-    default:   { primary: '#9c1e46', secondary: '#c22e5e', label: 'عنابي (افتراضي)' },
+    default:   { primary: '#7c3aed', secondary: '#d946a6', label: 'بنفسجي ووردي (افتراضي)' },
     blue:      { primary: '#1d4ed8', secondary: '#3b82f6', label: 'أزرق ملكي' },
     green:     { primary: '#15803d', secondary: '#22c55e', label: 'أخضر زمردي' },
     purple:    { primary: '#7c3aed', secondary: '#a855f7', label: 'بنفسجي أنيق' },
@@ -44,7 +44,7 @@
     hex = String(hex || '').replace('#', '');
     if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join('');
     var n = parseInt(hex, 16);
-    if (isNaN(n)) return { r: 156, g: 30, b: 70 };
+    if (isNaN(n)) return { r: 124, g: 58, b: 237 };
     return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
   }
   function rgbToHex(r, g, b) {
@@ -68,7 +68,7 @@
       primary = THEMES[sel].primary;
       secondary = THEMES[sel].secondary;
     } else {
-      primary = /^#[0-9a-f]{6}$/i.test(sel) ? sel : '#9c1e46';
+      primary = /^#[0-9a-f]{6}$/i.test(sel) ? sel : '#7c3aed';
       secondary = mix(primary, '#ffffff', 0.22);
     }
     return {

@@ -2320,6 +2320,11 @@ app.post('/api/logout', (req, res) => {
 // =====================================================
 //  API - الشات (غرف، مستخدمون، هدايا، ترقية...)
 // =====================================================
+const ROOM_CATEGORY_IDS = new Set(['music', 'chat', 'chill', 'gaming', 'dating']);
+function normalizeRoomCategory(value) {
+  const category = String(value || '').trim().toLowerCase();
+  return ROOM_CATEGORY_IDS.has(category) ? category : 'chat';
+}
 function publicRoomParticipants(roomId, creatorId = 0) {
   const ids = [...(roomUsers[+roomId] || new Set())];
   const ownerIndex = ids.findIndex(id => +id === +creatorId);
@@ -2335,7 +2340,7 @@ app.get('/api/rooms', async (req, res) => {
   // قائمة الغرف للعرض العام قبل الدخول؛ بياناتها وصفية فقط ولا تمنح صلاحية الدخول.
   // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً.
   // اسم المنشئ محفوظ كنسخة احتياطية ويُفضَّل اسم الحساب الحالي إن كان متاحاً.
-  const rooms = await q.all(`SELECT r.id, r.name, r.description, r.image, r.type, r.max_users, r.sort, r.status, r.password, r.audience,
+  const rooms = await q.all(`SELECT r.id, r.name, r.description, r.image, r.type, r.category, r.max_users, r.sort, r.status, r.password, r.audience,
     r.creator_id, r.user_created, COALESCE(NULLIF(u.username,''), NULLIF(r.creator_name,''), 'الإدارة') AS creator_name
     FROM rooms r LEFT JOIN users u ON u.id=r.creator_id
     WHERE COALESCE(r.hidden,0)=0 ORDER BY r.sort,r.id`);
@@ -2348,6 +2353,7 @@ app.get('/api/rooms', async (req, res) => {
     image: String(r.image || ''),
     sort: +r.sort || 0,
     type: String(r.type || 'default'),
+    category: normalizeRoomCategory(r.category),
     max_users: +r.max_users || 1000,
     status: String(r.status || 'open'),
     online: counts[r.id] || 0,
@@ -2387,15 +2393,16 @@ app.post('/api/rooms', requireRegisteredUser, async (req, res) => {
   const image = String((req.body && req.body.image) || '').trim().slice(0, 200);
   if (image && !/^\/uploads\/rooms\/[a-zA-Z0-9_.-]+$/.test(image)) return res.status(400).json({ error: 'مسار صورة الغرفة غير صالح' });
   const roomType = req.body && req.body.type === 'default' ? 'default' : 'voice';
+  const roomCategory = normalizeRoomCategory(req.body && req.body.category);
   const owner = await q.get(`SELECT id,username FROM users WHERE id=? AND registered=1`, req.authUid);
   if (!owner) return res.status(403).json({ error: 'إنشاء الغرف متاح للأعضاء المسجلين فقط' });
   const existing = await q.get(`SELECT id,name FROM rooms WHERE creator_id=? AND user_created=1 LIMIT 1`, owner.id);
   if (existing) return res.status(409).json({ error: 'لديك غرفة بالفعل — احذف غرفتك الحالية قبل إنشاء غرفة أخرى', room_id: +existing.id, room_name: existing.name });
   try {
     const out = await q.run(`INSERT INTO rooms
-      (name,description,image,type,max_users,status,sound,video,bots,gifts,games,locked,welcome,welcome_enabled,audience,creator_id,creator_name,user_created)
-      VALUES (?,?,?,?,100,'open',1,0,0,1,0,0,'',1,'registered',?,?,1)`,
-      name, description || `أهلاً وسهلاً بكم في غرفة ${name}`, image, roomType, +owner.id, String(owner.username || '').slice(0, 40));
+      (name,description,image,type,category,max_users,status,sound,video,bots,gifts,games,locked,welcome,welcome_enabled,audience,creator_id,creator_name,user_created)
+      VALUES (?,?,?,?,?,100,'open',1,0,0,1,0,0,'',1,'registered',?,?,1)`,
+      name, description || `أهلاً وسهلاً بكم في غرفة ${name}`, image, roomType, roomCategory, +owner.id, String(owner.username || '').slice(0, 40));
     io.emit('sync');
     return res.status(201).json({ ok: true, id: +out.lastID, name });
   } catch (error) {
@@ -2451,7 +2458,7 @@ app.delete('/api/rooms/:id', requireRegisteredUser, async (req, res) => {
 app.get('/api/rooms/:id', requireRegisteredUser, async (req, res) => {
   const roomId = +req.params.id;
   if (!roomId) return res.status(400).json({ error: 'معرّف الغرفة غير صالح' });
-  const room = await q.get(`SELECT r.id, r.name, r.description, r.image, r.type, r.max_users, r.sort, r.status, r.password, r.audience,
+  const room = await q.get(`SELECT r.id, r.name, r.description, r.image, r.type, r.category, r.max_users, r.sort, r.status, r.password, r.audience,
     r.creator_id, r.user_created, COALESCE(NULLIF(u.username,''), NULLIF(r.creator_name,''), 'الإدارة') AS creator_name
     FROM rooms r LEFT JOIN users u ON u.id=r.creator_id
     WHERE r.id=? AND COALESCE(r.hidden,0)=0`, roomId);
@@ -2463,6 +2470,7 @@ app.get('/api/rooms/:id', requireRegisteredUser, async (req, res) => {
     image: String(room.image || ''),
     sort: +room.sort || 0,
     type: String(room.type || 'default'),
+    category: normalizeRoomCategory(room.category),
     max_users: +room.max_users || 1000,
     status: String(room.status || 'open'),
     online: (roomUsers[room.id] && roomUsers[room.id].size) || 0,
@@ -5141,15 +5149,16 @@ app.get('/api/admin/rooms', requireAdmin, async (req, res) => {
 });
 app.post('/api/admin/rooms', requireAdmin, async (req, res) => {
   const r = req.body;
-  // نوع الغرفة: 'voice' = صوتية (بث وزر تحدث)، أي قيمة أخرى = 'default' (كتابية فقط)
+  // نوع الغرفة: 'voice' = صوتية (بث وزر تحدث)، أي قيمة أخرى = 'default' (افتراضية)
   const roomType = String(r.type || '') === 'voice' ? 'voice' : 'default';
+  const roomCategory = normalizeRoomCategory(r.category);
   // جمهور الغرفة: 'registered' = للأعضاء المسجلين فقط، وأي قيمة أخرى = 'all' (للجميع)
   const roomAudience = String(r.audience || '') === 'registered' ? 'registered' : 'all';
   const isSuper = ['superadmin', 'supermaster'].includes(req.session.rank);
   if (r.id) {
     if (!isSuper) return res.status(403).json({ error: 'لا تملك صلاحية تعديل الغرف، يمكنك إضافة غرفة جديدة فقط' });
-    await q.run(`UPDATE rooms SET name=?,description=?,type=?,max_users=?,status=?,sound=?,video=?,bots=?,gifts=?,games=?,locked=?,welcome=?,welcome_enabled=1,password=?,image=?,audience=? WHERE id=?`,
-      r.name, r.description || '', roomType, r.max_users || 1000, r.status || 'open',
+    await q.run(`UPDATE rooms SET name=?,description=?,type=?,category=?,max_users=?,status=?,sound=?,video=?,bots=?,gifts=?,games=?,locked=?,welcome=?,welcome_enabled=1,password=?,image=?,audience=? WHERE id=?`,
+      r.name, r.description || '', roomType, roomCategory, r.max_users || 1000, r.status || 'open',
       r.sound ? 1 : 0, r.video ? 1 : 0, r.bots ? 1 : 0, r.gifts ? 1 : 0, r.games ? 1 : 0, r.locked ? 1 : 0, r.welcome || '',
       String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200), roomAudience, r.id);
     // أصبحت الغرفة «كتابية فقط»: أنهِ أي بث قائم فوراً وأنزل كل المذيعين (يصلهم bcast:stopped).
@@ -5159,8 +5168,8 @@ app.post('/api/admin/rooms', requireAdmin, async (req, res) => {
   }
   const creatorId = +(req.adminAuth && req.adminAuth.uid) || 0;
   const creatorName = String((req.adminAuth && req.adminAuth.username) || 'الإدارة').trim().slice(0, 20) || 'الإدارة';
-  const out = await q.run(`INSERT INTO rooms (name,description,type,max_users,status,sound,video,bots,gifts,games,locked,welcome,welcome_enabled,password,image,audience,creator_id,creator_name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    r.name, r.description || '', roomType, r.max_users || 1000, r.status || 'open',
+  const out = await q.run(`INSERT INTO rooms (name,description,type,category,max_users,status,sound,video,bots,gifts,games,locked,welcome,welcome_enabled,password,image,audience,creator_id,creator_name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    r.name, r.description || '', roomType, roomCategory, r.max_users || 1000, r.status || 'open',
     r.sound ? 1 : 0, r.video ? 1 : 0, r.bots ? 1 : 0, r.gifts ? 1 : 0, r.games ? 1 : 0, r.locked ? 1 : 0, r.welcome || '', 1,
     String(r.password || '').slice(0, 40), String(r.image || '').slice(0, 200), roomAudience, creatorId, creatorName);
   io.emit('sync');
