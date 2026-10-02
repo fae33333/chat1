@@ -220,6 +220,16 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <div class="room-kicks-list" id="roomKicksList"><div class="room-kicks-empty">جارٍ تحميل القائمة...</div></div>
       </div>
     </div>
+    <div class="overlay center room-seat-action-overlay" id="roomSeatActionsOv">
+      <div class="hidden-entry-dialog room-seat-action-dialog" role="dialog" aria-modal="true" aria-labelledby="roomSeatActionsTitle">
+        <button class="hidden-entry-close" type="button" data-close="roomSeatActionsOv" aria-label="إغلاق"><i class="f7-icons">xmark</i></button>
+        <span class="room-seat-action-icon"><i class="f7-icons">mic_fill</i></span>
+        <h3 id="roomSeatActionsTitle">إدارة مقعدك</h3>
+        <p id="roomSeatActionsName">أنت تصعد كمذيع الآن</p>
+        <button class="room-seat-leave-action" id="roomSeatLeaveBtn" type="button"><i class="f7-icons">mic_slash_fill</i><span>النزول من المقعد</span></button>
+        <button class="room-seat-cancel-action" type="button" data-close="roomSeatActionsOv">إلغاء</button>
+      </div>
+    </div>
 
     <!-- زر عائم لقائمة المتصلين داخل الغرفة (بأسلوب 123flashchat):
          نقرة = عرض المتصلين (وإخفاء لوحة الغرف إن كانت مفتوحة)، نقرة أخرى = إخفاؤهم -->
@@ -238,6 +248,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <!-- شريط الإدخال -->
     <div class="c-input dots-bg" id="inputBar">
       <button class="ci-circle" id="btnEmoji" style="background: #9c1e4600;"><i class="f7-icons btnEmojiGG">smiley_fill</i></button>
+      <button class="ci-circle room-host-mic-toggle" id="roomHostMicBtn" type="button" title="كتم ميكروفون المذيع" aria-label="كتم ميكروفون المذيع" aria-pressed="false" hidden><i class="f7-icons" id="roomHostMicIcon">mic_fill</i></button>
       <button class="ci-plain pink" id="btnApps"><i class="f7-icons" style="font-size:25px;color:var(--njomarab-theme-color)">circle_grid_hex_fill</i></button>
       <!-- كسر السطر + صورتي: يظهران على الكمبيوتر فقط (سطر الأيقونات فوق، ثم الصورة والحقل والإرسال) -->
       <span class="ci-break" aria-hidden="true"></span>

@@ -159,6 +159,7 @@ function canUsePrivateSettings() {
 window.canUsePrivateSettings = canUsePrivateSettings;
 let ROOM_USERS = [], CUR_TARGET = null;
 let ROOM_SEAT_LOCKS = {}; // roomId -> Set(seatNo)
+const ROOM_VISITORS_EXPANDED = new Set(); // غرف أُظهر فيها كامل شريط صور الزوار
 let GIFTS = [], SEL_GIFT = null, G_QTY = 1;
 let UP_PLAN = 'vip', UP_MONTHS = 1, UP_TARGET = null;
 let PM_WITH = null, PRIV_UNREAD = 0, PRIV_TAB = 'members';
@@ -2832,6 +2833,7 @@ function connectSocket() {
       BCAST.localStream.getAudioTracks().forEach(t => { t.enabled = !muted; });
       AUDIO_BCAST_HOST_MUTED = !!muted;
       bcastUpdateHostMuteButton();
+      if (CUR_ROOM && +CUR_ROOM.id === +BCAST.roomId) renderRoomSeats();
     }
     bcastRenderBar();
     toast(muted ? 'قامت الإدارة بكتمك — تم كتم ميكروفونك إجبارياً 🚫' : 'قامت الإدارة بإلغاء كتمك — عاد ميكروفونك للعمل 🎙️', !muted);
@@ -2997,6 +2999,16 @@ function connectSocket() {
     bcastRenderBar();
     if (BCAST && BCAST.roomId === +roomId) bcastUnregisterHost(hostId);
   });
+  SOCKET.on('bcast:host_mute_changed', ({ roomId, hostId, muted }) => {
+    const state = ROOM_BCAST[+roomId];
+    const host = state && (state.hosts || []).find(item => +item.id === +hostId);
+    if (host) host.micMuted = !!muted;
+    if (CUR_ROOM && +CUR_ROOM.id === +roomId) renderRoomSeats();
+  });
+  SOCKET.on('bcast:seat_emoji', payload => {
+    if (!payload) return;
+    showRoomSeatEmoji(payload.roomId, payload.userId, payload.image);
+  });
   // وصول طلب مشاهدة جديد (تصل لكل المذيعين الحاليين)
   SOCKET.on('bcast:watch_request', ({ roomId, user }) => {
     if (!BCAST || !BCAST.isHost || BCAST.roomId !== +roomId) return;
@@ -3146,7 +3158,9 @@ function connectSocket() {
 //  البث المباشر (متعدد المذيعين) — منطق الواجهة و WebRTC
 // =====================================================
 let AUDIO_BCAST_MUTED = false;
-let AUDIO_BCAST_HOST_MUTED = false; // كتم ميكروفون المذيع محلياً دون إيقاف البث
+let AUDIO_BCAST_HOST_MUTED = false; // حالة كتم المذيع المتزامنة مع جميع الموجودين في الغرفة
+let BCAST_MIC_MUTE_PENDING = false;
+let BCAST_MIC_MUTE_TIMER = 0;
 let SPEAK_REQUEST_PENDING = false; // هل لدي طلب تحدث معلّق بانتظار رد المضيف الأساسي (غرفة صوتية)
 
 // الغرف الصوتية (type=voice) هي الوحيدة التي تعرض شريط البث وزر «تحدث» بجانب الميكروفون.
@@ -3260,20 +3274,68 @@ function bcastSetFloatingMode(mode) {
 }
 
 function bcastUpdateHostMuteButton() {
-  const btn = $('#bcastHostMute');
-  if (!btn) return;
+  const buttons = [$('#bcastHostMute'), $('#roomHostMicBtn')].filter(Boolean);
+  if (!buttons.length) return;
   const isAudioHost = !!(BCAST && BCAST.isHost && BCAST.mode === 'audio');
-  btn.hidden = !isAudioHost;
   const isAdminMuted = !!(ME && ME.muted);
   const isMuted = isAdminMuted || AUDIO_BCAST_HOST_MUTED;
-  btn.classList.toggle('is-muted', isMuted);
-  btn.classList.toggle('is-admin-muted', isAdminMuted);
-  if (isAdminMuted) {
-    btn.setAttribute('title', 'تم كتمك إجبارياً من المشرف — لا يمكنك إلغاء الكتم حتى يتم فكه من الإدارة');
-  } else {
-    btn.setAttribute('title', isMuted ? 'إلغاء كتم صوتي كمذيع' : 'كتم صوتي كمذيع');
+  const title = isAdminMuted
+    ? 'تم كتمك إجبارياً من المشرف — لا يمكنك إلغاء الكتم حتى يتم فكه من الإدارة'
+    : (isMuted ? 'إلغاء كتم صوتي كمذيع' : 'كتم صوتي كمذيع');
+  buttons.forEach(btn => {
+    btn.hidden = !isAudioHost;
+    btn.disabled = !isAudioHost || isAdminMuted || BCAST_MIC_MUTE_PENDING;
+    btn.classList.toggle('is-muted', isMuted);
+    btn.classList.toggle('is-admin-muted', isAdminMuted);
+    btn.setAttribute('title', title);
+    btn.setAttribute('aria-label', title);
+    btn.setAttribute('aria-pressed', isMuted ? 'true' : 'false');
+  });
+  const legacyIcon = $('#bcastHostMuteIcon');
+  const roomIcon = $('#roomHostMicIcon');
+  if (legacyIcon) legacyIcon.textContent = isMuted ? 'mic_slash_fill' : 'mic_fill';
+  if (roomIcon) roomIcon.textContent = isMuted ? 'mic_slash_fill' : 'mic_fill';
+}
+function setBroadcastMicMuteLocal(muted) {
+  AUDIO_BCAST_HOST_MUTED = !!muted;
+  if (BCAST && BCAST.localStream) {
+    const canTransmit = !AUDIO_BCAST_HOST_MUTED && !(ME && ME.muted);
+    BCAST.localStream.getAudioTracks().forEach(track => { track.enabled = canTransmit; });
+    const state = ROOM_BCAST[+BCAST.roomId];
+    const host = state && (state.hosts || []).find(item => +item.id === +(ME && ME.id));
+    if (host) host.micMuted = AUDIO_BCAST_HOST_MUTED;
+    if (CUR_ROOM && +CUR_ROOM.id === +BCAST.roomId) renderRoomSeats();
   }
-  $('#bcastHostMuteIcon').textContent = isMuted ? 'mic_slash_fill' : 'mic_fill';
+  bcastUpdateHostMuteButton();
+}
+function toggleBroadcastMicMute() {
+  if (!BCAST || !BCAST.isHost || BCAST.mode !== 'audio' || !BCAST.localStream) return;
+  if (BCAST_MIC_MUTE_PENDING) return;
+  if (ME && ME.muted) return toast('تم كتمك إجبارياً من قِبل المشرف — لا يمكنك إلغاء الكتم حتى يتم فك الكتم من الإدارة 🚫', false);
+  if (!SOCKET || !SOCKET.connected) return toast('انتظر عودة الاتصال قبل تغيير حالة الميكروفون', false);
+  const activeBroadcast = BCAST;
+  const roomId = +activeBroadcast.roomId;
+  const previous = AUDIO_BCAST_HOST_MUTED;
+  const nextMuted = !previous;
+  let completed = false;
+  BCAST_MIC_MUTE_PENDING = true;
+  setBroadcastMicMuteLocal(nextMuted);
+  bcastUpdateHostMuteButton();
+  const finish = (response, timedOut = false) => {
+    if (completed) return;
+    completed = true;
+    clearTimeout(BCAST_MIC_MUTE_TIMER);
+    BCAST_MIC_MUTE_TIMER = 0;
+    BCAST_MIC_MUTE_PENDING = false;
+    if (BCAST !== activeBroadcast) return bcastUpdateHostMuteButton();
+    if (timedOut || !response || !response.ok) {
+      setBroadcastMicMuteLocal(previous);
+      return toast((response && response.text) || 'تعذر مزامنة حالة الميكروفون', false);
+    }
+    setBroadcastMicMuteLocal(!!response.muted);
+  };
+  BCAST_MIC_MUTE_TIMER = setTimeout(() => finish(null, true), 7000);
+  SOCKET.emit('bcast:host_mute', roomId, nextMuted, response => finish(response));
 }
 
 // يعيد كل شيء إلى الوضع الافتراضي: إغلاق اتصالات WebRTC وإيقاف الوسائط وإخفاء الشاشة
@@ -3395,6 +3457,9 @@ function bcastResetState() {
   BCAST_STREAMS.clear();     // انتهى البث — امسح سجلّ التدفّقات حتى لا يُحيي العداد أصواتاً قديمة
   bcastStopAudioWatchdog();  // أوقف عدّاد حماية الصوت
   SPEAK_REQUEST_PENDING = false;
+  clearTimeout(BCAST_MIC_MUTE_TIMER);
+  BCAST_MIC_MUTE_TIMER = 0;
+  BCAST_MIC_MUTE_PENDING = false;
   AUDIO_BCAST_HOST_MUTED = false;
   bcastLevelDetachAll();
   bcastUpdateHostMuteButton();
@@ -4001,15 +4066,8 @@ $('#bcastClose').onclick = () => {
   closeOv('bcastOv');
 };
 $('#bcastEndBtn').onclick = bcastStopAsHost;
-$('#bcastHostMute').onclick = () => {
-  if (!BCAST || !BCAST.isHost || BCAST.mode !== 'audio' || !BCAST.localStream) return;
-  if (ME && ME.muted) {
-    return toast('تم كتمك إجبارياً من قِبل المشرف — لا يمكنك إلغاء الكتم حتى يتم فك الكتم من الإدارة 🚫', false);
-  }
-  AUDIO_BCAST_HOST_MUTED = !AUDIO_BCAST_HOST_MUTED;
-  BCAST.localStream.getAudioTracks().forEach(track => { track.enabled = !AUDIO_BCAST_HOST_MUTED; });
-  bcastUpdateHostMuteButton();
-};
+$('#bcastHostMute').onclick = toggleBroadcastMicMute;
+$('#roomHostMicBtn').onclick = toggleBroadcastMicMute;
 // سحب نافذة البث داخل إطار التطبيق، بالفأرة أو باللمس.
 (() => {
   const panel = $('#bcastOv .bcast-viewer'), handle = $('#bcastDragHandle'), frame = $('#frame');
@@ -4402,18 +4460,21 @@ function isMyUserCreatedRoom(room) {
 }
 function roomParticipantsHtml(room, compact = false, totalOverride = null) {
   const participants = Array.isArray(room && room.participants) ? room.participants : [];
-  const visible = participants.slice(0, compact ? 4 : 6);
-  if (!visible.length) return `<div class="room-participants empty${compact ? ' compact' : ''}"><span>لا يوجد متصلون الآن</span></div>`;
+  if (!participants.length) return `<div class="room-participants empty${compact ? ' compact' : ''}"><span>لا يوجد زوار الآن</span></div>`;
+  const roomId = +(room && room.id) || 0;
+  const maxVisible = compact ? 4 : 6;
+  const expanded = !compact && ROOM_VISITORS_EXPANDED.has(roomId);
+  const visible = expanded ? participants : participants.slice(0, maxVisible);
   const total = totalOverride === null
-    ? Math.max(participants.length, +ROOM_COUNTS[room.id] || +room.online || 0)
+    ? Math.max(participants.length, +ROOM_COUNTS[roomId] || +room.online || 0)
     : Math.max(participants.length, +totalOverride || 0);
   const rest = Math.max(0, total - visible.length);
-  return `<div class="room-participants${compact ? ' compact' : ''}" aria-label="الأعضاء المتصلون">
-    ${visible.map(user => `<span class="room-participant" title="${esc(user.username)}">
+  const canToggle = !compact && (participants.length > maxVisible || expanded);
+  return `<div class="room-participants${compact ? ' compact' : ''}" aria-label="صور زوار الغرفة">
+    ${visible.map(user => `<span class="room-participant" role="img" aria-label="${esc(user.username || 'زائر')}">
       <span class="room-participant-avatar">${avatarHtml(user.avatar || '', 'room-participant-photo', user.avatar_frame || '')}</span>
-      <span class="room-participant-name">${esc(user.username || '')}</span>
     </span>`).join('')}
-    ${rest ? `<span class="room-participant-more">+${rest}</span>` : ''}
+    ${canToggle ? `<button class="room-participant-more" type="button" data-room-visitors-toggle="${roomId}" aria-expanded="${expanded ? 'true' : 'false'}" aria-label="${expanded ? 'إخفاء بقية الزوار' : `إظهار ${rest} من الزوار`}" title="${expanded ? 'عرض عدد أقل' : 'إظهار بقية الصور'}">${expanded ? '−' : `+${rest}`}</button>` : ''}
   </div>`;
 }
 function roomRowHtml(r) {
@@ -5733,29 +5794,53 @@ function initUsersSortMenu() {
 }
 const ROOM_STAGE_SEAT_COUNT = 9;
 const ROOM_SEAT_CHAIR_SVG = '<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M10 5h12v11H10zM7 17h18v7H7zM9 24v4m14-4v4M10 13H7v4m15-4h3v4"/></svg>';
+function showRoomSeatEmoji(roomId, userId, image) {
+  if (!CUR_ROOM || +CUR_ROOM.id !== +roomId) return;
+  const uid = +userId;
+  const src = String(image || '');
+  if (!uid || !src.startsWith('/uploads/emojis/') || src.includes('..')) return;
+  let seat = document.querySelector(`#roomStage .room-seat-occupied[data-user-id="${uid}"]`);
+  if (!seat) {
+    renderRoomSeats();
+    seat = document.querySelector(`#roomStage .room-seat-occupied[data-user-id="${uid}"]`);
+  }
+  const ring = seat && seat.querySelector('.room-seat-ring');
+  if (!ring) return;
+  const burst = document.createElement('span');
+  burst.className = 'room-seat-emoji-burst';
+  burst.setAttribute('aria-hidden', 'true');
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = '';
+  img.draggable = false;
+  burst.appendChild(img);
+  ring.appendChild(burst);
+  setTimeout(() => burst.remove(), 2000);
+}
 function roomSeatHtml(user, label, seatNo, isPrimary, locked, canManageSeats, canClimb) {
   const isOwner = !!(user && CUR_ROOM && +user.id === +(CUR_ROOM.creator_id || 0));
   const isMe = !!(user && ME && +user.id === +ME.id);
-  const lockButton = !user && canManageSeats
-    ? `<button class="room-seat-lock" type="button" data-seat-no="${seatNo}" data-next-locked="${locked ? '0' : '1'}" title="${locked ? 'فتح المقعد' : 'إغلاق المقعد'}" aria-label="${locked ? 'فتح المقعد' : 'إغلاق المقعد'}">${locked ? '<i class="f7-icons">lock_open_fill</i>' : '<i class="f7-icons">lock_fill</i>'}</button>`
-    : '';
   if (!user) {
     const disabled = locked || !canClimb;
     const emptyName = locked ? 'مقعد مغلق' : 'مقعد فارغ';
     const caption = locked ? esc(label) : (canClimb ? 'اضغط للصعود' : esc(label));
     const title = locked ? 'هذا المقعد مغلق من صاحب الغرفة' : (canClimb ? 'اضغط للصعود والتحدث' : 'المقعد غير متاح حالياً');
+    const lockIndicator = locked ? '<i class="f7-icons room-seat-lock-indicator" aria-hidden="true">lock_fill</i>' : '';
+    const lockAction = canManageSeats
+      ? `<button class="room-seat-lock-action${locked ? ' is-locked' : ''}" type="button" data-seat-no="${seatNo}" data-next-locked="${locked ? '0' : '1'}" title="${locked ? 'فتح المقعد' : 'إغلاق المقعد'}" aria-label="${locked ? 'فتح المقعد' : 'إغلاق المقعد'}"><i class="f7-icons">${locked ? 'lock_open_fill' : 'lock_fill'}</i></button>`
+      : '';
     return `<div class="room-seat-slot${isPrimary ? ' room-seat-primary-slot' : ''}${locked ? ' is-locked' : ''}">
-      <button class="room-seat room-seat-empty${isPrimary ? ' room-seat-primary-item' : ''}${locked ? ' room-seat-locked' : ''}" type="button" data-seat-no="${seatNo}" aria-label="${esc(label)} — ${emptyName}" title="${title}"${disabled ? ' disabled' : ''}>
-        <span class="room-seat-ring">${ROOM_SEAT_CHAIR_SVG}</span>
+      <div class="room-seat room-seat-empty${isPrimary ? ' room-seat-primary-item' : ''}${locked ? ' room-seat-locked' : ''}" role="button" tabindex="${disabled ? '-1' : '0'}" aria-disabled="${disabled ? 'true' : 'false'}" data-seat-no="${seatNo}" aria-label="${esc(label)} — ${emptyName}" title="${title}">
+        <span class="room-seat-ring">${ROOM_SEAT_CHAIR_SVG}${lockIndicator}${lockAction}</span>
         <span class="room-seat-name">${emptyName}</span>
         <span class="room-seat-caption">${caption}</span>
-      </button>
-      ${lockButton}
+      </div>
     </div>`;
   }
+  const micMuted = !!(user.micMuted || user.muted || user.room_muted);
   return `<div class="room-seat-slot${isPrimary ? ' room-seat-primary-slot' : ''}">
-    <button class="room-seat room-seat-occupied${isPrimary ? ' room-seat-primary-item' : ''}${isOwner ? ' room-seat-owner' : ''}" type="button" data-user-id="${+user.id}" data-seat-no="${seatNo}" aria-label="${esc(label)} — ${esc(user.username)}">
-      <span class="room-seat-ring">${avatarHtml(user.avatar || '', 'room-seat-photo', frameOf(user))}<i class="room-seat-presence" aria-hidden="true"></i></span>
+    <button class="room-seat room-seat-occupied${isPrimary ? ' room-seat-primary-item' : ''}${isOwner ? ' room-seat-owner' : ''}${micMuted ? ' is-mic-muted' : ''}" type="button" data-user-id="${+user.id}" data-seat-no="${seatNo}" aria-label="${esc(label)} — ${esc(user.username)}${micMuted ? ' — الميكروفون مكتوم' : ''}">
+      <span class="room-seat-ring">${avatarHtml(user.avatar || '', 'room-seat-photo', frameOf(user))}<i class="room-seat-presence" aria-hidden="true"></i>${micMuted ? '<span class="room-seat-mute-indicator" title="الميكروفون مكتوم" aria-label="الميكروفون مكتوم"><i class="f7-icons">mic_slash_fill</i></span>' : ''}</span>
       <span class="room-seat-name">${esc(user.username || '')}</span>
       <span class="room-seat-caption">${isOwner ? 'صاحب الغرفة' : (isMe ? 'أنت هنا' : esc(label))}</span>
     </button>
@@ -5799,7 +5884,9 @@ function renderRoomSeats() {
   const speakers = (broadcast && Array.isArray(broadcast.hosts) ? broadcast.hosts : [])
     .map(host => {
       const onlineUser = userById.get(+host.id);
-      return onlineUser ? { ...host, ...onlineUser, seatNo: host.seatNo } : host;
+      return onlineUser
+        ? { ...host, ...onlineUser, seatNo: host.seatNo, micMuted: !!(host.micMuted || onlineUser.micMuted || onlineUser.muted || onlineUser.room_muted) }
+        : host;
     })
     .filter(host => host && +host.id);
   const seatUsers = Array(ROOM_STAGE_SEAT_COUNT).fill(null);
@@ -5831,28 +5918,48 @@ function renderRoomSeats() {
   if (kicksButton) kicksButton.hidden = !isCurrentRoomOwner();
   const hostIds = liveBroadcastHostIds();
   const visitors = users.filter(user => !hostIds.has(+user.id));
-  if (visitorsBox) visitorsBox.innerHTML = roomParticipantsHtml(
-    { id: +CUR_ROOM.id, participants: visitors }, false, visitors.length
-  );
+  if (visitorsBox) {
+    const roomId = +CUR_ROOM.id;
+    if (visitors.length <= 6) ROOM_VISITORS_EXPANDED.delete(roomId);
+    const visitorsExpanded = ROOM_VISITORS_EXPANDED.has(roomId);
+    const visitorsSection = visitorsBox.closest('.room-visitors');
+    if (visitorsSection) visitorsSection.classList.toggle('is-expanded', visitorsExpanded);
+    visitorsBox.innerHTML = roomParticipantsHtml(
+      { id: roomId, participants: visitors }, false, visitors.length
+    );
+    const moreButton = visitorsBox.querySelector('[data-room-visitors-toggle]');
+    if (moreButton) moreButton.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (ROOM_VISITORS_EXPANDED.has(roomId)) ROOM_VISITORS_EXPANDED.delete(roomId);
+      else ROOM_VISITORS_EXPANDED.add(roomId);
+      renderRoomSeats();
+    };
+  }
   $$('#roomStage .room-seat-occupied').forEach(seat => {
     seat.onclick = () => {
       const userId = +seat.dataset.userId;
-      if (ME && userId === +ME.id && liveBroadcastHostIds().has(userId)) {
-        if (BCAST && BCAST.isHost && +BCAST.roomId === +CUR_ROOM.id) return bcastStopAsHost();
-        if (SOCKET && SOCKET.connected) SOCKET.emit('bcast:stop', +CUR_ROOM.id);
+      if (ME && userId === +ME.id) {
+        const name = $('#roomSeatActionsName');
+        if (name) name.textContent = `أنت على ${+seat.dataset.seatNo === 0 ? 'المقعد الرئيسي' : `المقعد رقم ${+seat.dataset.seatNo}`} — يمكنك النزول متى شئت`;
+        openOv('roomSeatActionsOv');
         return;
       }
       openUserSheet(userId);
     };
   });
-  $$('#roomStage .room-seat-empty:not(:disabled)').forEach(seat => {
+  $$('#roomStage .room-seat-empty[aria-disabled="false"]').forEach(seat => {
     seat.onclick = () => {
       if (!CUR_ROOM || CUR_ROOM.type !== 'voice') return;
-      const seatNo = +seat.dataset.seatNo;
-      bcastStart('audio', seatNo);
+      bcastStart('audio', +seat.dataset.seatNo);
+    };
+    seat.onkeydown = event => {
+      if (event.target !== seat || (event.key !== 'Enter' && event.key !== ' ')) return;
+      event.preventDefault();
+      seat.click();
     };
   });
-  $$('#roomStage .room-seat-lock').forEach(button => {
+  $$('#roomStage .room-seat-lock-action').forEach(button => {
     button.onclick = event => {
       event.preventDefault();
       event.stopPropagation();
@@ -5860,6 +5967,15 @@ function renderRoomSeats() {
     };
   });
 }
+$('#roomSeatLeaveBtn').onclick = () => {
+  const roomId = CUR_ROOM ? +CUR_ROOM.id : 0;
+  closeOv('roomSeatActionsOv');
+  if (!roomId || !ME || !liveBroadcastHostIds(roomId).has(+ME.id))
+    return toast('لم تعد على مقعد المذيع', false);
+  if (BCAST && BCAST.isHost && +BCAST.roomId === roomId) return bcastStopAsHost();
+  if (!SOCKET || !SOCKET.connected) return toast('انتظر عودة الاتصال قبل النزول من المقعد', false);
+  SOCKET.emit('bcast:stop', roomId);
+};
 function roomKickExpiryLabel(expiresAt) {
   const seconds = +expiresAt || 0;
   if (!seconds) return 'الطرد دائم';
@@ -12885,15 +13001,17 @@ msgInput.onkeydown = function(e) {
         e.preventDefault();
 
         sendMsg();
-
-        this.value = '';
     }
 };
+let BCAST_SEAT_EMOJI_SEQ = 0;
+let BCAST_SEAT_EMOJI_TIMER = 0;
+let BCAST_SEAT_EMOJI_PENDING = false;
 function sendMsg() {
   if (!ME) return openLogin();
   if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
   if (ME.room_muted) return toast('أنت مكتوم في هذه الغرفة ولا يمكنك الكتابة', false);
-  const t = $('#msgInput').value.trim();
+  const input = $('#msgInput');
+  const t = input.value.trim();
   if (!t) return;
   const maxLength = Math.max(1, Math.min(5000, +(SETTINGS.msg_max || 500)));
   const actualLength = Array.from(t).length;
@@ -12907,9 +13025,44 @@ function sendMsg() {
   }
   if (!canUseMembershipFeature('public_message_allowed_memberships'))
     return toast('عضويتك غير مسموح لها بإرسال الرسائل في العام', false);
-  SOCKET.emit('msg', { roomId: CUR_ROOM.id, text: t, reply: REPLY_TO, color: MY_COLOR || null });
+
+  // الإيموجي وحده من المذيع يتحول إلى مؤثر فوق مقعده، ولا ينشئ رسالة عامة.
+  const seatEmoji = t.match(/^\((\d+)\)$/);
+  const roomId = +CUR_ROOM.id;
+  const isRoomSpeaker = CUR_ROOM.type === 'voice' && liveBroadcastHostIds(roomId).has(+ME.id);
+  if (seatEmoji && isRoomSpeaker) {
+    if (!SOCKET || !SOCKET.connected) return toast('انتظر عودة الاتصال لإرسال الإيموجي', false);
+    if (BCAST_SEAT_EMOJI_PENDING) return;
+    const requestId = ++BCAST_SEAT_EMOJI_SEQ;
+    const sendButton = $('#btnSend');
+    BCAST_SEAT_EMOJI_PENDING = true;
+    if (sendButton) sendButton.disabled = true;
+    const finish = () => {
+      if (requestId !== BCAST_SEAT_EMOJI_SEQ) return;
+      clearTimeout(BCAST_SEAT_EMOJI_TIMER);
+      BCAST_SEAT_EMOJI_TIMER = 0;
+      BCAST_SEAT_EMOJI_PENDING = false;
+      if (sendButton) sendButton.disabled = false;
+    };
+    BCAST_SEAT_EMOJI_TIMER = setTimeout(() => {
+      finish();
+      toast('لم يصل تأكيد الإيموجي — حاول مجدداً', false);
+    }, 7000);
+    SOCKET.emit('bcast:seat_emoji', roomId, +seatEmoji[1], response => {
+      if (requestId !== BCAST_SEAT_EMOJI_SEQ) return;
+      finish();
+      if (!response || !response.ok) return toast((response && response.text) || 'تعذر إرسال الإيموجي للمقعد', false);
+      if (CUR_ROOM && +CUR_ROOM.id === roomId && input.value.trim() === t) {
+        input.value = '';
+        setReply(null);
+      }
+    });
+    return;
+  }
+
+  SOCKET.emit('msg', { roomId, text: t, reply: REPLY_TO, color: MY_COLOR || null });
   setReply(null);
-  $('#msgInput').value = '';
+  input.value = '';
 }
 // الإيموجي المصور المرفوع من لوحة الإدارة فقط
 function insertCustomEmojiToken(id) {

@@ -9794,13 +9794,63 @@ io.on('connection', async (socket) => {
     const existingHosts = [...b.hosts.values()];
     const currentViewers = [...b.viewers];
     b.viewers.delete(uid);
-    const hostInfo = { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me), seatNo: seat.seatNo };
+    const hostInfo = { id: uid, username: me.username, avatar: me.avatar || '', badge: badgeOf(me), seatNo: seat.seatNo, micMuted: false };
     b.hosts.set(uid, { ...hostInfo, socketId: socket.id, startedAt: Date.now() });
     io.to('room_' + roomId).emit(isNewBroadcast ? 'bcast:started' : 'bcast:host_joined', {
       roomId, mode, host: hostInfo, hosts: [...b.hosts.values()], primaryHostId: b.primaryHostId
     });
     ack({ ok: true, mode, isNewBroadcast, seatNo: seat.seatNo, existingHosts, viewers: currentViewers, watching: [] });
   });
+
+  // كتم الميكروفون الشخصي للمذيع: تُحفظ الحالة في بث الغرفة وتُرسل لكل الموجودين كي تظهر على المقعد.
+  socket.on('bcast:host_mute', async (roomId, muted, cb) => {
+    const ack = typeof cb === 'function' ? cb : () => { };
+    roomId = +roomId;
+    if (!socket.data.joinedRooms.has(roomId)) return ack({ ok: false, text: 'يجب دخول الغرفة أولاً' });
+    const b = roomBroadcast[roomId];
+    const host = b && b.mode === 'audio' ? b.hosts.get(uid) : null;
+    if (!host) return ack({ ok: false, text: 'أنت لست مذيعاً في هذه الغرفة' });
+    if (typeof muted !== 'boolean') return ack({ ok: false, text: 'حالة الميكروفون غير صحيحة' });
+    if (!muted) {
+      const currentUser = await q.get(`SELECT id,muted,muted_until FROM users WHERE id=?`, uid);
+      if (mutedActive(currentUser) || await activeRoomMute(roomId, uid))
+        return ack({ ok: false, text: 'لا يمكنك إلغاء الكتم المفروض من الإدارة' });
+      if (roomBroadcast[roomId] !== b || !b.hosts.has(uid) || !socket.data.joinedRooms.has(roomId))
+        return ack({ ok: false, text: 'لم تعد مذيعاً في هذه الغرفة' });
+    }
+    host.micMuted = muted;
+    io.to('room_' + roomId).emit('bcast:host_mute_changed', { roomId, hostId: uid, muted });
+    ack({ ok: true, muted });
+  });
+
+  // إيموجي المذيع مؤثر مقعد فقط، لا يُحوّل إلى رسالة عامة.
+  socket.on('bcast:seat_emoji', async (roomId, emojiId, cb) => {
+    const ack = typeof cb === 'function' ? cb : () => { };
+    roomId = +roomId;
+    emojiId = +emojiId;
+    if (!socket.data.joinedRooms.has(roomId)) return ack({ ok: false, text: 'يجب دخول الغرفة أولاً' });
+    const b = roomBroadcast[roomId];
+    const host = b && b.mode === 'audio' ? b.hosts.get(uid) : null;
+    if (!host) return ack({ ok: false, text: 'يجب أن تكون على مقعد المذيع لإرسال إيموجي للمقعد' });
+    if (!Number.isInteger(emojiId) || emojiId <= 0) return ack({ ok: false, text: 'الإيموجي غير صالح' });
+    const currentUser = await q.get(`SELECT id,muted,muted_until FROM users WHERE id=?`, uid);
+    if (mutedActive(currentUser) || await activeRoomMute(roomId, uid))
+      return ack({ ok: false, text: 'لا يمكنك إرسال إيموجي في هذه الغرفة أثناء الكتم' });
+    if (!await canUseMembershipFeature(uid, 'public_message_allowed_memberships'))
+      return ack({ ok: false, text: 'عضويتك غير مسموح لها بإرسال الإيموجي' });
+    const now = Date.now();
+    if (now - (+host.lastSeatEmojiAt || 0) < 300) return ack({ ok: false, text: 'انتظر لحظة قبل إرسال إيموجي آخر' });
+    const emoji = await q.get(`SELECT id,img FROM custom_emojis WHERE id=?`, emojiId);
+    const image = String((emoji && emoji.img) || '');
+    if (!image.startsWith('/uploads/emojis/') || image.includes('..'))
+      return ack({ ok: false, text: 'الإيموجي غير متاح' });
+    if (roomBroadcast[roomId] !== b || !b.hosts.has(uid) || !socket.data.joinedRooms.has(roomId))
+      return ack({ ok: false, text: 'لم تعد مذيعاً في هذه الغرفة' });
+    host.lastSeatEmojiAt = now;
+    io.to('room_' + roomId).emit('bcast:seat_emoji', { roomId, userId: uid, image });
+    ack({ ok: true });
+  });
+
   // [مستمع] طلب الإذن للتحدث في غرفة صوتية — يصل للمضيف الأساسي فقط ليقبله أو يرفضه
   socket.on('bcast:speak_request', async (roomId, cb) => {
     const ack = typeof cb === 'function' ? cb : () => { };
@@ -9862,7 +9912,7 @@ io.on('connection', async (socket) => {
     const seat = chooseRoomSeatNo(b, locks);
     if (seat.error) return io.to('user_' + targetUserId).emit('bcast:speak_response', { roomId, accept: false, reason: seat.error });
     b.viewers.delete(targetUserId);
-    const hostInfo = { id: targetUserId, username: targetUser.username, avatar: targetUser.avatar || '', badge: badgeOf(targetUser), seatNo: seat.seatNo };
+    const hostInfo = { id: targetUserId, username: targetUser.username, avatar: targetUser.avatar || '', badge: badgeOf(targetUser), seatNo: seat.seatNo, micMuted: false };
     const existingHosts = [...b.hosts.values()];
     const currentViewers = [...b.viewers];
     b.hosts.set(targetUserId, { ...hostInfo, socketId: null, startedAt: Date.now() });
