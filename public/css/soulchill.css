@@ -1383,6 +1383,48 @@ body.sc-room #inputBar { display: none !important; }
 .sc-hour-bar .sc-hb-txt b { font-size: 11.5px; font-weight: 900; }
 .sc-hour-bar .sc-hb-txt small { font-size: 10px; font-weight: 700; opacity: .82; }
 
+/* ---------- الشريط الأخضر (إعلان ربح UEFA) ---------- */
+.sc-win-bar {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 44px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: linear-gradient(100deg, #0b6b2f 0%, #16a34a 45%, #0b6b2f 100%);
+  border: 1.5px solid rgba(190, 255, 214, .6);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .45), 0 0 18px rgba(22, 163, 74, .35);
+  color: #fff;
+  cursor: pointer;
+  overflow: hidden;
+}
+.sc-go-btn.sc-go-green {
+  background: #facc15;
+  color: #1a2e05;
+  border-color: rgba(255, 255, 255, .55);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .35);
+}
+.sc-uefa-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: #0b3b8f;
+  border: 1px solid rgba(255, 255, 255, .45);
+}
+.sc-uefa-badge .sc-fl-art { font-size: 13px; }
+.sc-uefa-badge b { font-size: 8px; letter-spacing: .3px; }
+.sc-win-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; text-align: right; }
+.sc-win-txt b { font-size: 11.5px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-win-txt small { font-size: 10px; font-weight: 700; opacity: .92; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-win-ava { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1.5px solid rgba(255, 255, 255, .8); flex: 0 0 auto; }
+
 /* ---------- المقاعد ---------- */
 .sc-seats {
   position: relative;
@@ -1406,7 +1448,41 @@ body.sc-room #inputBar { display: none !important; }
   box-shadow: 0 0 22px rgba(236, 72, 153, .6);
 }
 .sc-host-ava img, .sc-host-ava span { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
-.sc-host-ava.empty { display: flex; align-items: center; justify-content: center; font-size: 30px; color: rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .12); }
+.sc-host-ava.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: rgba(255, 255, 255, .5);
+  background: rgba(255, 255, 255, .10);
+  border: 1px solid rgba(255, 255, 255, .12);
+  box-shadow: none;
+}
+.sc-host-seat.empty { cursor: pointer; }
+.sc-host-ava.empty i.f7-icons { font-size: 34px; opacity: .55; }
+.sc-host-hand {
+  position: absolute;
+  top: 50%;
+  inset-inline-start: 50%;
+  transform: translate(-30%, -35%);
+  font-size: 26px;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .55));
+  animation: sc-nudge 1.6s ease-in-out infinite;
+}
+.sc-host-prompt { color: #fff !important; font-size: 12px !important; font-weight: 700; margin-top: 8px; opacity: .92; }
+.sc-host-follow {
+  margin-top: 8px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  border: 1px solid rgba(255, 255, 255, .3);
+  box-shadow: 0 8px 20px rgba(124, 58, 237, .45);
+  cursor: pointer;
+}
+.sc-host-follow.on { background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .25); box-shadow: none; }
 .sc-host-star, .sc-seat-star {
   position: absolute;
   bottom: -6px;
@@ -1463,10 +1539,12 @@ body.sc-room #inputBar { display: none !important; }
 .sc-seat.mine .sc-seat-ava { background: linear-gradient(135deg, #a855f7, #7c3aed); }
 .sc-seat.onmic .sc-seat-ava { background: linear-gradient(135deg, #34d399, #059669); box-shadow: 0 0 20px rgba(52, 211, 153, .6); }
 .sc-seat.empty .sc-seat-ava {
-  background: rgba(168, 85, 247, .28);
-  border: 1px dashed rgba(255, 255, 255, .4);
-  animation: sc-nudge 2s ease-in-out infinite;
+  background: rgba(168, 85, 247, .30);
+  border: 0;
+  color: rgba(255, 255, 255, .92);
 }
+.sc-seat.empty .sc-seat-ava svg { width: 30px; height: 30px; opacity: .95; }
+.sc-seat.empty:active .sc-seat-ava { background: rgba(168, 85, 247, .5); }
 .sc-seat.locked .sc-seat-ava {
   background: rgba(255, 255, 255, .10);
   border: 0;
