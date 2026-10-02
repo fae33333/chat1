@@ -3121,8 +3121,12 @@ function connectSocket() {
   });
   // انتقلت صلاحية "المضيف الأساسي" لمذيع آخر (لأن الأساسي السابق غادر البث)
   SOCKET.on('bcast:primary_changed', ({ roomId, primaryHostId }) => {
-    if (!CUR_ROOM || +roomId !== CUR_ROOM.id || !BCAST || BCAST.roomId !== +roomId || !BCAST.isHost) return;
-    BCAST.isPrimary = !!(ME && ME.id === primaryHostId);
+    const state = ROOM_BCAST[roomId];
+    if (state) state.primaryHostId = primaryHostId;
+    if (!CUR_ROOM || +roomId !== CUR_ROOM.id) return;
+    renderRoomSeats();
+    if (!BCAST || BCAST.roomId !== +roomId || !BCAST.isHost) return;
+    BCAST.isPrimary = !!(ME && +ME.id === +primaryHostId);
     bcastRenderSpeakersList();
   });
 }
@@ -5728,7 +5732,7 @@ function roomSeatHtml(user, label, isPrimary = false) {
   if (!user) {
     return `<div class="room-seat${isPrimary ? ' room-seat-primary-item' : ''} room-seat-empty" aria-label="${esc(label)} — مقعد فارغ">
       <span class="room-seat-ring">${ROOM_SEAT_CHAIR_SVG}</span>
-      <span class="room-seat-name">${isPrimary ? 'مقعد الضيف' : 'مقعد فارغ'}</span>
+      <span class="room-seat-name">مقعد فارغ</span>
       <span class="room-seat-caption">${esc(label)}</span>
     </div>`;
   }
@@ -5751,12 +5755,17 @@ function renderRoomSeats() {
     return;
   }
   const users = Array.isArray(ROOM_USERS) ? ROOM_USERS : [];
-  const ownerId = +(CUR_ROOM.creator_id || 0);
-  const primary = users.find(u => ownerId && +u.id === ownerId)
-    || users.find(u => ME && +u.id === +ME.id)
-    || users[0]
-    || null;
-  const others = users.filter(u => !primary || +u.id !== +primary.id).slice(0, 8);
+  // المقاعد تمثل الصاعدين فعلياً كمذيعين فقط؛ وجود المستخدم في الغرفة لا
+  // يخصص له مقعداً تلقائياً. تبقى المقاعد فارغة إلى أن يبدأ البث أو ينضم إليه.
+  const broadcast = ROOM_BCAST[+CUR_ROOM.id] || null;
+  const userById = new Map(users.map(user => [+user.id, user]));
+  const speakers = (broadcast && Array.isArray(broadcast.hosts) ? broadcast.hosts : [])
+    .map(host => userById.get(+host.id) || host)
+    .filter(host => host && +host.id);
+  const primaryHostId = +(broadcast && broadcast.primaryHostId) || 0;
+  if (primaryHostId) speakers.sort((a, b) => (+b.id === primaryHostId) - (+a.id === primaryHostId));
+  const primary = speakers[0] || null;
+  const others = speakers.filter(user => !primary || +user.id !== +primary.id).slice(0, 8);
   primaryBox.innerHTML = roomSeatHtml(primary, 'المقعد الرئيسي', true);
   grid.innerHTML = Array.from({ length: 8 }, (_, index) => roomSeatHtml(others[index] || null, `رقم ${index + 1}`)).join('');
   const count = $('#roomStageCount');
