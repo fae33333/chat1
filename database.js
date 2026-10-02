@@ -912,6 +912,17 @@ db.get(`SELECT COUNT(*) c FROM rooms`, (err, row) => {
   }
 });
 
+// ====== تسجيل الحضور اليومي (واجهة SoulChill) ======
+// يُخزَّن يوم واحد لكل مستخدم (بتاريخ ميلادي) مع مبلغ المكافأة الذي استلمه.
+db.run(`CREATE TABLE IF NOT EXISTS daily_checkins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  day TEXT NOT NULL,
+  reward INTEGER DEFAULT 0,
+  created_at INTEGER DEFAULT (strftime('%s','now')),
+  UNIQUE(user_id, day)
+)`);
+
 // ====== الحسابات الموثقة الافتراضية ======
 db.get(`SELECT COUNT(*) c FROM verified`, (err, row) => {
   if (row && row.c === 0) {

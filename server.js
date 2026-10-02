@@ -2342,6 +2342,110 @@ app.get('/api/rooms', async (req, res) => {
   })));
 });
 
+// =====================================================
+//  واجهة SoulChill: بيانات الكوكب + الملف + الحضور اليومي
+// =====================================================
+// درجات المستوى المعروضة في الواجهة الجديدة (مبنية على العضوية/الرتبة الفعلية)
+function soulchillLevel(u) {
+  if (!u) return 1;
+  const rankLv = { roomadmin: 30, admin: 40, superadmin: 50, supermaster: 60 }[u.rank];
+  if (rankLv) return rankLv;
+  const memLv = { mmez: 8, plus: 12, premium: 18, vip: 26 }[u.membership];
+  if (memLv) return u.registered ? memLv : 1;
+  return u.registered ? 2 : 1;
+}
+// أبرز الأعضاء الظاهرين على الكوكب: الأونلاين أولاً ثم الأعلى عضوية/رتبة
+async function soulchillPlanetUsers(limit = 16) {
+  const onlineIds = new Set();
+  Object.values(roomUsers).forEach(set => set.forEach(id => onlineIds.add(+id)));
+  const roomOfUser = {};
+  Object.entries(roomUsers).forEach(([rid, set]) => set.forEach(id => { roomOfUser[+id] = +rid; }));
+  const ids = [...onlineIds].slice(0, 60);
+  let rows = [];
+  if (ids.length) rows = await q.all(`SELECT * FROM users WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids);
+  if (rows.length < limit) {
+    const extra = await q.all(`SELECT * FROM users WHERE is_bot=0 AND banned=0 ORDER BY CASE membership WHEN 'vip' THEN 5 WHEN 'mmez' THEN 4 WHEN 'premium' THEN 3 WHEN 'plus' THEN 2 ELSE 1 END DESC, id DESC LIMIT ?`, limit * 2);
+    const have = new Set(rows.map(r => +r.id));
+    for (const u of extra) { if (rows.length >= limit) break; if (!have.has(+u.id)) { rows.push(u); have.add(+u.id); } }
+  }
+  const roomNames = {};
+  const roomIds = [...new Set(Object.values(roomOfUser))];
+  if (roomIds.length) {
+    const rrows = await q.all(`SELECT id,name FROM rooms WHERE id IN (${roomIds.map(() => '?').join(',')})`, ...roomIds);
+    rrows.forEach(r => roomNames[+r.id] = r.name);
+  }
+  return rows.slice(0, limit).map(u => ({
+    id: +u.id,
+    username: String(u.username || ''),
+    avatar: String(u.avatar || ''),
+    avatar_frame: String(u.avatar_frame || ''),
+    membership: String(u.membership || 'none'),
+    rank: String(u.rank || 'user'),
+    registered: u.registered ? 1 : 0,
+    verified: VERIFIED_SET.has(u.username) ? 1 : 0,
+    royal: u.royal ? 1 : 0,
+    online: onlineIds.has(+u.id) ? 1 : 0,
+    room: roomNames[roomOfUser[+u.id]] || '',
+    level: soulchillLevel(u),
+    score: soulchillLevel(u)
+  }));
+}
+app.get('/api/soulchill/bootstrap', async (req, res) => {
+  const auth = resolveRequestAuth(req);
+  const uid = auth ? +auth.uid : 0;
+  const onlineIds = new Set();
+  Object.values(roomUsers).forEach(set => set.forEach(id => onlineIds.add(+id)));
+  const roomsOnline = onlineIds.size;
+  let socketsOnline = 0;
+  try { socketsOnline = io.engine ? io.engine.clientsCount : 0; } catch (e) { }
+  const out = {
+    ok: true,
+    online_rooms: roomsOnline,
+    online_total: Math.max(roomsOnline, socketsOnline),
+    online_ids: [...onlineIds],
+    planet_users: await soulchillPlanetUsers(16),
+    me: null,
+    last_notif: null
+  };
+  if (uid) {
+    const [friends, following, followers, visitors, giftsToday, lastNotif] = await Promise.all([
+      q.get(`SELECT COUNT(DISTINCT CASE WHEN from_id=? THEN to_id ELSE from_id END) c FROM private_messages WHERE from_id=? OR to_id=?`, uid, uid, uid),
+      q.get(`SELECT COUNT(DISTINCT profile_id) c FROM profile_likes WHERE user_id=?`, uid),
+      q.get(`SELECT COUNT(DISTINCT user_id) c FROM profile_likes WHERE profile_id=?`, uid),
+      q.get(`SELECT COUNT(DISTINCT viewer_id) c FROM profile_views WHERE profile_id=?`, uid),
+      q.get(`SELECT COUNT(*) c FROM gifts_log WHERE from_id=? AND created_at >= ?`, uid, nowSec() - 86400),
+      q.get(`SELECT id,text,icon,kind,read,created_at FROM notifications WHERE user_id=? AND read=0 ORDER BY id DESC LIMIT 1`, uid)
+    ]);
+    out.me = {
+      friends: +(friends && friends.c) || 0,
+      following: +(following && following.c) || 0,
+      followers: +(followers && followers.c) || 0,
+      visitors: +(visitors && visitors.c) || 0,
+      gifts_today: +(giftsToday && giftsToday.c) || 0,
+      checked_in_today: !!(await q.get(`SELECT id FROM daily_checkins WHERE user_id=? AND day=?`, uid, new Date().toISOString().slice(0, 10)))
+    };
+    out.last_notif = lastNotif ? { id: +lastNotif.id, text: String(lastNotif.text || ''), icon: String(lastNotif.icon || ''), created_at: +lastNotif.created_at || 0 } : null;
+  }
+  res.json(out);
+});
+// تسجيل الحضور اليومي: مكافأة ذهبية مرة واحدة كل يوم
+app.post('/api/soulchill/checkin', requireUser, async (req, res) => {
+  const uid = req.authUid;
+  const day = new Date().toISOString().slice(0, 10);
+  const already = await q.get(`SELECT id,reward FROM daily_checkins WHERE user_id=? AND day=?`, uid, day);
+  if (already) {
+    const u = await q.get(`SELECT balance FROM users WHERE id=?`, uid);
+    return res.json({ ok: true, already: true, reward: 0, balance: +(u && u.balance) || 0 });
+  }
+  const reward = 5;
+  await q.run(`INSERT INTO daily_checkins (user_id, day, reward) VALUES (?,?,?)`, uid, day, reward);
+  await q.run(`UPDATE users SET balance = balance + ? WHERE id=?`, reward, uid);
+  // نرسل صف المستخدم كاملاً كي لا يُستبدل أي حقل في واجهة العضو بلا قيمة
+  const u = await q.get(`SELECT * FROM users WHERE id=?`, uid);
+  io.to('user_' + uid).emit('user_sync', { user: pubUser(u), badge: badgeOf(u) });
+  res.json({ ok: true, reward, balance: +(u && u.balance) || 0 });
+});
+
 app.get('/api/rooms/:id', async (req, res) => {
   const roomId = +req.params.id;
   if (!roomId) return res.status(400).json({ error: 'معرّف الغرفة غير صالح' });
@@ -10178,6 +10282,34 @@ async function emitRoomCounts() {
 }
 
 // =====================================================
+//  منشور رسمي لمسابقة الذكرى السنوية (واجهة SoulChill)
+//  يُنشأ مرة واحدة فقط إن لم يكن موجوداً، ويظهر في شاشة «المنشورات».
+// =====================================================
+const SC_OFFICIAL_POST_IMAGE = '/img/sc-anniversary-6.webp';
+const SC_OFFICIAL_POST_TEXT = `🎉 الذكرى السنوية السادسة لـ${'{SITE}'}!
+
+من 1 إلى 15 سبتمبر نحتفل معكم بست سنوات من الصداقات والأصوات الجميلة 🎂
+• مكافآت خاصة لكل من يسجّل حضوره يومياً.
+• اجمع بطاقات الذكرى بالمشاركة مع أصدقائك وافتح الهدايا.
+• مسابقة المضيفين (9.8 – 9.15) ومسابقة الوكالات (9.1 – 9.7).
+• هدايا النشاط بقيم 6 / 1,666 / 6,666 / 26,666 — وجوائز نقدية وكريستال للأوائل.
+
+شارك البوست مع أصدقائك ولا تفوّت فرصة جمع المكافآت 🎁`;
+async function ensureSoulChillOfficialPost() {
+  try {
+    const exists = await q.get(`SELECT id FROM wall_posts WHERE image=? LIMIT 1`, SC_OFFICIAL_POST_IMAGE);
+    if (exists) return;
+    const admin = await q.get(`SELECT id,username FROM users WHERE rank IN ('superadmin','supermaster','admin') ORDER BY CASE rank WHEN 'supermaster' THEN 0 WHEN 'superadmin' THEN 1 ELSE 2 END, id LIMIT 1`);
+    if (!admin) return;
+    const site = (await getSettings()).site_name || 'نجوم العرب';
+    const text = SC_OFFICIAL_POST_TEXT.replace('{SITE}', site);
+    await q.run(`INSERT INTO wall_posts (user_id,username,text,youtube_url,image,video) VALUES (?,?,?,'',?,?)`,
+      admin.id, admin.username, text, SC_OFFICIAL_POST_IMAGE, '');
+    console.log('    ★ منشور الذكرى السنوية الرسمي جاهز');
+  } catch (e) { }
+}
+
+// =====================================================
 //  محرك رسائل الروبوت المجدولة (نص + لون + حجم + توقيت)
 //  تسلسلي: رسالة واحدة بالدور من الروبوتات، والفاصل الزمني
 //  هو الفاصل الفعلي بين كل رسالة والتي تليها (وليس مؤقّت مستقل لكل روبوت)
@@ -10283,8 +10415,10 @@ async function migrateUploadsToWebP() {
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`★ سيرفر الدردشة يعمل على ${SERVER_PROTOCOL}://0.0.0.0:${PORT}`);
     console.log(`★ لوحة التحكم: ${SERVER_PROTOCOL}://localhost:${PORT}/admin.html  (ax / 123456)`);
+    // منشور الذكرى السنوية الرسمي (واجهة SoulChill) — يُنشأ مرة واحدة
+    ensureSoulChillOfficialPost();
     // تسخين التصغير مسبقاً للملفات الرئيسية حتى لا ينتظر أول مستخدم التصغير.
-    prewarm(['css/style.css', 'css/desktop.css', 'css/fonts.css', 'js/app.js', 'js/skins.js', 'js/desktop.js'])
+    prewarm(['css/style.css', 'css/desktop.css', 'css/fonts.css', 'css/soulchill.css', 'js/app.js', 'js/soulchill.js', 'js/skins.js', 'js/desktop.js'])
       .then(() => console.log('★ تم تصغير JS/CSS وتخزينها مؤقتاً (minify جاهز)'))
       .catch(() => { });
     // تحويل صور المرفوعات القديمة (شعار/SEO/فافيكون/غرف) إلى WebP.

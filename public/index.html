@@ -23,6 +23,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/style.css?v=20260919-usort1">
+<link rel="stylesheet" href="/css/soulchill.css?v=20261002-sc1">
 <link rel="stylesheet" href="/css/desktop.css?v=20260912-dsk20" media="(min-width: 1024px)">
 </head>
 <body>
@@ -222,6 +223,86 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     </div>
   </section>
 
+
+  <!-- ============ واجهة SoulChill: الكوكب ============ -->
+  <section id="planetScreen" class="screen sc-screen">
+    <header class="sc-topbar">
+      <span class="sc-logo"><span class="sc-logo-badge"><i class="f7-icons">planet_fill</i></span><span id="scPlanetLogo">SoulChill</span></span>
+      <span class="sc-role-chip" id="scPlanetRole"><i class="f7-icons">planet_fill</i>المؤدي</span>
+      <span style="flex:1"></span>
+      <button class="sc-icon-btn" id="scCheckinBtn" title="تسجيل الحضور اليومي"><i class="f7-icons">calendar_badge_clock_fill</i></button>
+      <button class="sc-icon-btn" id="scPlanetFilter" title="فلترة وضبط"><i class="f7-icons">slider_horizontal_3</i></button>
+    </header>
+    <div class="sc-scroll">
+      <div class="sc-planet-stage">
+        <div class="sc-planet-glow"></div>
+        <div class="sc-planet-ring"></div>
+        <div class="sc-planet-core"></div>
+        <div id="scOrbit"></div>
+      </div>
+      <div class="sc-online-pill" id="scPlanetOnline"><span class="sc-live-dot"></span>عدد المستخدمين الأونلاين:&nbsp;<b>0</b></div>
+      <div class="sc-promo" id="scPromoTopup">
+        <span class="sc-promo-ico">🎁</span>
+        <span class="sc-promo-txt"><b>مكافآت الشحنة الأولى</b><small>احصل على مكافأة فورية عند أول عملية شحن</small></span>
+        <i class="f7-icons sc-chev">chevron_left</i>
+      </div>
+      <div class="sc-grid2" id="scFeatureGrid"></div>
+      <div class="sc-section-title">أعضاء الكوكب <small>متصلون الآن</small></div>
+      <div class="sc-card" id="scPlanetActiveUsers" style="padding:6px"></div>
+    </div>
+  </section>
+
+  <!-- ============ واجهة SoulChill: حفلة (الغرف) ============ -->
+  <section id="partyScreen" class="screen sc-screen">
+    <header class="sc-topbar">
+      <button class="sc-icon-btn sc-purple" id="scCreateRoom" title="إنشاء غرفة"><i class="f7-icons">house_fill</i></button>
+      <button class="sc-icon-btn" id="scEventsBtn" title="الفعاليات"><i class="f7-icons">flag_fill</i></button>
+      <button class="sc-icon-btn" id="scRoomSearchBtn" title="بحث"><i class="f7-icons">search</i></button>
+      <span class="sc-title">حفلة</span>
+    </header>
+    <div class="sc-scroll">
+      <div class="sc-chips" id="scPartyCats"></div>
+      <div class="sc-chips" id="scCountryStrip"></div>
+      <div class="sc-room-list" id="scRoomList"></div>
+    </div>
+  </section>
+
+  <!-- ============ واجهة SoulChill: المنشورات ============ -->
+  <section id="postsScreen" class="screen sc-screen">
+    <header class="sc-topbar">
+      <div class="sc-seg sc-seg-plain" id="scPostsTabs"></div>
+      <span style="flex:1"></span>
+      <button class="sc-icon-btn sc-pink" id="scNewPost" title="منشور جديد"><i class="f7-icons">plus</i></button>
+    </header>
+    <div class="sc-scroll">
+      <div id="scPostsList"></div>
+    </div>
+  </section>
+
+  <!-- ============ واجهة SoulChill: رسائل ============ -->
+  <section id="msgsScreen" class="screen sc-screen">
+    <header class="sc-topbar">
+      <button class="sc-icon-btn" id="scContactsBtn" title="جهات الاتصال"><i class="f7-icons">person_2_fill</i></button>
+      <button class="sc-icon-btn" id="scMsgSearchBtn" title="بحث"><i class="f7-icons">search</i></button>
+      <span class="sc-title">رسائل</span>
+    </header>
+    <div class="sc-scroll">
+      <div class="sc-seg" id="scMsgFilters" style="margin-bottom:6px"></div>
+      <div class="sc-msg-tip">🔒 محادثاتك الخاصة مشفّرة على مستوى الجلسة — كن لطيفاً مع الجميع</div>
+      <div class="sc-msg-list" id="scMsgsList"></div>
+    </div>
+  </section>
+
+  <!-- ============ واجهة SoulChill: أنت ============ -->
+  <section id="meScreen" class="screen sc-screen">
+    <header class="sc-topbar">
+      <button class="sc-icon-btn" id="scMeSettings" title="الإعدادات"><i class="f7-icons">gear_alt_fill</i><em class="sc-dot" id="scMeSettingsDot" style="display:none"></em></button>
+      <button class="sc-icon-btn" id="scMeBack" title="رجوع"><i class="f7-icons">chevron_right</i></button>
+      <span class="sc-title">أنت</span>
+    </header>
+    <div class="sc-scroll" id="scMeBody"></div>
+  </section>
+
   <!-- ============ التنقل السفلي ============ -->
   <nav class="bottomnav">
     <button class="bn-item active" data-nav="rooms"><i class="f7-icons">house_fill</i><span>الغرف</span></button>
@@ -230,6 +311,10 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     <button class="bn-item" data-nav="wall"><i class="f7-icons">doc_text_fill</i><span>الحائط</span></button>
     <button class="bn-item" data-nav="menu" id="bnMenu"><i class="f7-icons" id="bnMenuIcon">square_grid2x2_fill</i><span>القائمة</span></button>
   </nav>
+
+  <!-- ============ التنقل السفلي (واجهة SoulChill) ============ -->
+  <nav class="sc-nav" id="scNav"></nav>
+
   </main>
 
   <!-- ============ الحالات ============ -->
@@ -1640,6 +1725,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <script src="/js/skins.js?v=20260904-skins" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
 <script src="/js/app.js?v=20260919-usort1" defer></script>
+<script src="/js/soulchill.js?v=20261002-sc1" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
