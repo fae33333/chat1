@@ -163,7 +163,7 @@
     roomsLoaded: false
   };
   window.SC = {
-    build: 'sc9',
+    build: 'sc10',
     get state() { return S; },
     go, refresh: loadAll, sheetOpen, sheetClose,
     refreshRoom() { if (G.curRoom) { renderSeats(); renderRoomSub(); renderRoomHead(); renderVisitors(); syncMicState(); } },
