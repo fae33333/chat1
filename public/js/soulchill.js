@@ -1006,23 +1006,36 @@
   }
 
   /* ==========================================================================
-     داخل الغرفة الصوتية
+     داخل الغرفة الصوتية — مطابقة لتصميم SoulChill في الصور المرجعية
      ========================================================================== */
+  const SC_SEAT_COUNT = 4;
+
+  // خلفية مخصّصة للغرفة (صورة الغرفة تغطي الشاشة) أو خلفية بنفسجية افتراضية
   function applyRoomBackground() {
     const screen = q('#chatScreen');
     if (!screen) return;
     const room = G.curRoom || {};
     const img = room.image && room.image.startsWith('/') ? room.image : '';
-    // خلفية مخصّصة للغرفة تغطي الشاشة كاملة مع تعتيم يحفظ وضوح الرسائل
-    screen.style.backgroundImage = img
-      ? `linear-gradient(180deg, rgba(8,6,16,.80), rgba(8,6,16,.92)), url('${img}')`
-      : '';
+    if (img) {
+      screen.style.backgroundImage = `linear-gradient(180deg, rgba(8,6,16,.72), rgba(8,6,16,.88)), url('${img}')`;
+      screen.style.backgroundColor = '#0a0714';
+    } else {
+      // نفس خلفية الغرفة البنفسجية في الصورة المرجعية
+      screen.style.backgroundImage =
+        'radial-gradient(circle at 50% 22%, rgba(168,85,247,.55) 0%, rgba(109,40,217,.45) 38%, rgba(46,16,101,.85) 72%, rgba(20,8,45,1) 100%),'
+        + 'radial-gradient(circle at 12% 78%, rgba(217,70,239,.22), transparent 45%),'
+        + 'radial-gradient(circle at 88% 62%, rgba(124,58,237,.28), transparent 45%)';
+      screen.style.backgroundColor = '#2b1065';
+    }
+    screen.style.backgroundSize = 'cover';
+    screen.style.backgroundPosition = 'center';
   }
 
   function mountRoom() {
     const screen = q('#chatScreen');
     if (!screen || !G.curRoom) return;
     document.body.classList.add('sc-room');
+    if (S.roomTrackedId !== +G.curRoom.id) { S.roomTrackedId = +G.curRoom.id; S.seenRoomUsers = null; S.newVisitors = 0; }
     applyRoomBackground();
 
     if (!q('#scRoomHead')) {
@@ -1031,15 +1044,20 @@
       head.className = 'sc-room-head';
       screen.insertBefore(head, screen.firstChild);
 
-      const gold = document.createElement('div');
-      gold.id = 'scGoldBar';
-      gold.className = 'sc-gold-bar';
-      head.insertAdjacentElement('afterend', gold);
+      const sub = document.createElement('div');
+      sub.id = 'scRoomSub';
+      sub.className = 'sc-room-sub';
+      head.insertAdjacentElement('afterend', sub);
 
       const seats = document.createElement('div');
       seats.id = 'scSeats';
       seats.className = 'sc-seats';
-      gold.insertAdjacentElement('afterend', seats);
+      sub.insertAdjacentElement('afterend', seats);
+
+      const visitors = document.createElement('div');
+      visitors.id = 'scVisitors';
+      visitors.className = 'sc-visitors';
+      seats.insertAdjacentElement('afterend', visitors);
 
       const floats = document.createElement('div');
       floats.id = 'scFloatCol';
@@ -1051,50 +1069,73 @@
       bar.className = 'sc-room-bar';
       const inputBar = q('#inputBar', screen);
       if (inputBar) inputBar.insertAdjacentElement('beforebegin', bar); else screen.appendChild(bar);
+      buildRoomBar(bar);
     }
     renderRoomHead();
-    renderGoldBar();
+    renderRoomSub();
     renderSeats();
+    renderVisitors();
     renderFloats();
-    renderRoomBar();
-    syncMicButton();
+    syncMicState();
+    ensurePlaceholder();
+    if (!S.placeholderTimer) S.placeholderTimer = setInterval(ensurePlaceholder, 4000);
   }
+
   function unmountRoom() {
     document.body.classList.remove('sc-room');
     const screen = q('#chatScreen');
-    if (screen) screen.style.backgroundImage = '';
+    if (screen) { screen.style.backgroundImage = ''; screen.style.backgroundColor = ''; }
+    if (S.placeholderTimer) { clearInterval(S.placeholderTimer); S.placeholderTimer = null; }
+  }
+
+  // يتتبّع من انضم للغرفة بعد دخولنا — يظهر كرقم صغير بجانب شارة الزوار
+  function trackNewVisitors() {
+    const ids = new Set(G.roomUsers.map(u => +u.id));
+    if (!S.seenRoomUsers) { S.seenRoomUsers = ids; S.newVisitors = 0; return; }
+    let fresh = 0;
+    ids.forEach(id => { if (!S.seenRoomUsers.has(id)) fresh++; });
+    S.seenRoomUsers = ids;
+    if (fresh) S.newVisitors = (S.newVisitors || 0) + fresh;
   }
 
   function roomTopSupporters() {
     return G.roomUsers.slice().sort((a, b) => levelOf(b) - levelOf(a)).slice(0, 3);
   }
+  function roomRankNo() {
+    const list = roomsForRender().slice().sort((a, b) => (+((G.counts || {})[b.id]) || +b.online || 0) - (+((G.counts || {})[a.id]) || +a.online || 0));
+    const idx = list.findIndex(r => +r.id === +(G.curRoom || {}).id);
+    return idx >= 0 ? idx + 1 : 1;
+  }
+  function roomOnline() {
+    const room = G.curRoom || {};
+    return +((G.counts || {})[room.id]) || G.roomUsers.length || +room.online || 0;
+  }
 
+  /* ---------- الشريط العلوي: أدوات + داعمون + بطاقة الغرفة ---------- */
   function renderRoomHead() {
     const head = q('#scRoomHead');
     if (!head) return;
     const room = G.curRoom || {};
-    const me = G.me;
     const sup = roomTopSupporters();
     const roomImg = room.image && room.image.startsWith('/') ? room.image : '';
-    const online = (+((G.counts || {})[room.id]) || G.roomUsers.length || +room.online || 0);
+    const rank = roomRankNo();
     head.innerHTML = `
-      <div class="sc-rh-side">
-        <button class="sc-icon-btn" id="scRoomMore" title="قائمة"><i class="f7-icons">ellipsis_vertical</i></button>
-        <button class="sc-icon-btn" id="scRoomShare" title="مشاركة"><i class="f7-icons">arrowshape_turn_up_right_fill</i></button>
-        <button class="sc-icon-btn" id="scRoomStatus" title="الحالات"><i class="f7-icons">circle_dashed</i></button>
-        <button class="sc-icon-btn" id="scRoomTasks" title="المهام"><i class="f7-icons">checklist</i></button>
+      <div class="sc-rh-tools">
+        <button class="sc-rh-ico" id="scRoomStatus" title="الحالات"><i class="f7-icons">circle_dashed</i></button>
+        <button class="sc-rh-ico" id="scRoomShare" title="مشاركة"><i class="f7-icons">arrowshape_turn_up_right_fill</i></button>
+        <button class="sc-rh-ico" id="scRoomMore" title="قائمة"><i class="f7-icons">ellipsis_vertical</i></button>
       </div>
-      <span class="sc-rh-back" id="scRoomBack" title="رجوع"><i class="f7-icons">chevron_right</i></span>
-      <div class="sc-rh-supporters">
+      <button class="sc-rh-back" id="scRoomBack" title="رجوع"><i class="f7-icons">chevron_right</i></button>
+      <div class="sc-rh-sup-pill">
         ${sup.map((u, i) => `<span class="sc-rh-sup" data-uid="${u.id}" title="${E(u.username)}">${AVI(u, '')}<em>${i + 1}</em></span>`).join('')}
       </div>
       <div class="sc-room-card-mini">
-        <span class="sc-rcm-rank">${Math.min(3, Math.max(1, 4 - Math.min(3, Math.ceil(online / 8))))}</span>
+        <img class="sc-rcm-ava" src="${E(roomImg || '/img/room.png')}" alt="">
         <div class="sc-rcm-info">
           <span class="sc-rcm-name">${E(room.name || '')}</span>
-          <span class="sc-rcm-rid">RID: ${E(room.id || '')}</span>
+          <span class="sc-rcm-rid">RID:${E(room.id || '')}</span>
         </div>
-        <img class="sc-rcm-ava" src="${E(roomImg || '/img/room.png')}" alt="">
+        <span class="sc-rcm-rank"><i>👑</i>${rank}</span>
         <button class="sc-rcm-heart${S.following.has('room_' + room.id) ? ' on' : ''}" id="scRoomHeart" title="متابعة الغرفة"><i class="f7-icons">heart_fill</i></button>
       </div>`;
     const heart = q('#scRoomHeart');
@@ -1107,20 +1148,13 @@
     if (more) more.onclick = () => call('openOv', 'menuOv');
     const back = q('#scRoomBack');
     if (back) back.onclick = () => {
-      // نفس مسار زر الرجوع في التطبيق (يطلب تأكيد الخروج من الغرفة عند وجود مكالمة/بث)
       const b = q('#chatBack');
-      if (b) b.click();
-      else if (fn('attemptLeaveRoom')) call('attemptLeaveRoom');
+      if (b) b.click(); else if (fn('attemptLeaveRoom')) call('attemptLeaveRoom');
     };
     const share = q('#scRoomShare');
     if (share) share.onclick = shareRoom;
-    const tasks = q('#scRoomTasks');
-    if (tasks) tasks.onclick = () => sheetTasks();
     const statusBtn = q('#scRoomStatus');
-    if (statusBtn) statusBtn.onclick = () => {
-      const b = q('#btnAddStatus');
-      if (b) b.click(); else call('openStatuses');
-    };
+    if (statusBtn) statusBtn.onclick = () => { const b = q('#btnAddStatus'); if (b) b.click(); else call('openStatuses'); };
     qa('.sc-rh-sup', head).forEach(el => el.onclick = () => {
       const u = G.roomUsers.find(x => +x.id === +el.dataset.uid);
       if (u) call('openUserSheet', u.id);
@@ -1136,81 +1170,120 @@
     else toastSafe(url);
   }
 
-  function renderGoldBar() {
-    const bar = q('#scGoldBar');
-    if (!bar) return;
+  /* ---------- الصف الثاني: شارة المستوى + الشريط الذهبي / جدول الساعة ---------- */
+  function renderRoomSub() {
+    const box = q('#scRoomSub');
+    if (!box) return;
     const me = G.me;
+    const bal = me ? (+me.balance || 0) : 0;
+    const prog = bal % 7000;
+    const ranked = roomRankNo() <= 3;
     const cost = +((G.settings || {}).call_cost || 0);
-    bar.innerHTML = `
-      <button class="sc-go-btn" id="scGoBtn">GO</button>
-      <span class="sc-pass">${me ? `<img src="${E(me.avatar || '/avatars/default.png')}" alt="">` : '🎫'}<b>Pass</b></span>
-      <span class="sc-gb-txt">${me ? 'فعّل تصريح اللعبة الذهبي واحصل على مكافآت!' : 'سجّل الدخول لتفعيل التصريح'}</span>
-      <span class="sc-gb-left">${cost ? 'التكلفة ' + cost + ' ذهب' : 'مكافأة يومية'}</span>`;
+    const bar = ranked
+      ? `<div class="sc-hour-bar" id="scHourBar">
+           <span class="sc-hb-txt"><b>جدول الساعة ${E(hourWindow())}</b><small>الجدول العام +100.No.</small></span>
+           <span class="sc-hb-icon">🕌</span>
+           <i class="f7-icons sc-hb-chev">chevron_right</i>
+         </div>`
+      : `<div class="sc-gold-bar" id="scGoBar">
+           <span class="sc-gb-txt"><b>${me ? E(me.username) : 'زائر'}</b><small>${me ? 'فعّل تصريح اللعبة الذهبي!' : 'سجّل الدخول لتفعيل التصريح'}${cost ? ' • ' + cost + ' ذهب' : ''}</small></span>
+           ${me ? `<img class="sc-gb-ava" src="${E(me.avatar || '/avatars/default.png')}" alt="">` : ''}
+           <span class="sc-pass"><i class="sc-pass-globe">🌐</i><b>Pass</b></span>
+           <button class="sc-go-btn" id="scGoBtn">GO</button>
+         </div>`;
+    box.innerHTML = `
+      ${bar}
+      <div class="sc-lvbox" id="scLvBox" title="مستواك وتقدمك">
+        <div class="sc-lv-top"><span class="sc-lv-badge">LV${me ? levelOf(me) : 1}</span></div>
+        <div class="sc-lv-num">${num(prog)}/7000</div>
+        <div class="sc-lv-prog"><i style="width:${Math.min(100, Math.round((prog / 7000) * 100))}%"></i></div>
+        <span class="sc-egg" id="scEgg">🥚</span>
+      </div>`;
+    const hour = q('#scHourBar');
+    if (hour) hour.onclick = () => sheetOpen(`<h3>🗓️ جدول الساعة</h3>
+      <p class="sc-sheet-sub">تُحتسب نقاط الغرفة كل ساعة بحسب الهدايا والنشاط — الغرف المتصدرة تحصل على شارة الترتيب.</p>
+      ${roomsForRender().slice().sort((a, b) => (+((G.counts || {})[b.id]) || 0) - (+((G.counts || {})[a.id]) || 0)).slice(0, 6)
+        .map((r, i) => `<div class="sc-sheet-row" data-id="${r.id}"><span style="font-size:16px">${i === 0 ? '👑' : i + 1}</span><b>${E(r.name)}</b><span style="margin-inline-start:auto;font-size:11px;color:var(--sc-gold)">${num(+((G.counts || {})[r.id]) || 0)} 👥</span></div>`).join('')}`);
+    qa('#scSheetCard [data-id]').forEach(row => row.onclick = () => {
+      const id = +row.dataset.id;
+      sheetClose();
+      if (+id !== +((G.curRoom || {}).id)) call('enterRoom', id);
+    });
     const go = q('#scGoBtn');
     if (go) go.onclick = () => call('openBuy');
+    const egg = q('#scEgg');
+    if (egg) egg.onclick = () => sheetOpen(`<h3>🥚 بيضة المستوى</h3>
+      <p class="sc-sheet-sub">بيضة مستواك تفقس مع نشاطك اليومي. حالياً ${num(prog)}/7000 — اجمع الجواهر من الحضور اليومي والهدايا لتفقيسها.</p>
+      <button class="sc-btn-primary" id="scEggCheckin">تسجيل الحضور اليومي</button>`);
+    const ec = q('#scEggCheckin');
+    if (ec) ec.onclick = () => { sheetClose(); doCheckin(); };
+  }
+  function hourWindow() {
+    const h = new Date().getHours();
+    return pad2(h) + ':00-' + pad2((h + 1) % 24) + ':00';
   }
 
+  /* ---------- المقاعد: المضيف في الأعلى + صف المقاعد ---------- */
   function canSpeak() {
     const f = fn('canUseMembershipFeature');
     if (!f) return true;
     try { return !!f('voice_allowed_memberships'); } catch (e) { return true; }
   }
 
+  function seatHtml(u, idx) {
+    if (u) {
+      const mine = G.me && +u.id === +G.me.id;
+      const onMic = !!(G.bcast && G.bcast.isHost && mine);
+      return `<div class="sc-seat filled${mine ? ' mine' : ''}${onMic ? ' onmic' : ''}" data-uid="${u.id}">
+        <div class="sc-seat-ava">${AVI(u, '')}<span class="sc-seat-star">0 ⭐</span></div>
+        <div class="sc-seat-label">${E(u.username)}</div>
+      </div>`;
+    }
+    if (canSpeak()) {
+      return `<div class="sc-seat empty" data-seat="${idx + 1}">
+        <div class="sc-seat-ava"><span class="sc-sofa">🛋️</span></div>
+        <div class="sc-seat-label sc-seat-prompt">انقر للصعود إلى المايك</div>
+      </div>`;
+    }
+    return `<div class="sc-seat locked">
+      <div class="sc-seat-ava"><i class="f7-icons">lock_fill</i></div>
+      <div class="sc-seat-label">رقم ${idx + 1}</div>
+    </div>`;
+  }
+
   function renderSeats() {
     const box = q('#scSeats');
     if (!box) return;
-    const me = G.me;
     const users = G.roomUsers.slice();
     const host = users.find(u => ['roomadmin', 'admin', 'superadmin', 'supermaster'].includes(u.rank)) || users[0] || null;
-    const bcast = G.bcast;
-    const hostIds = (bcast && bcast.hosts && typeof bcast.hosts.keys === 'function') ? Array.from(bcast.hosts.keys()) : [];
     const others = users.filter(u => !host || +u.id !== +host.id);
-    const speakers = others.filter(u => hostIds.includes(+u.id));
-    const rest = others.filter(u => !hostIds.includes(+u.id));
-
     let html = '';
     if (host) {
-      html += `<div class="sc-seat host" data-uid="${host.id}">
-        <div class="sc-seat-ava">${AVI(host, '')}<span class="sc-seat-star">⭐ ${levelOf(host)}</span></div>
-        <div class="sc-seat-name">${E(host.username)}</div>
+      html += `<div class="sc-host-seat" data-uid="${host.id}">
+        <div class="sc-host-ava">${AVI(host, '')}<span class="sc-host-star">0 ⭐</span></div>
+        <div class="sc-host-name">${E(host.username)}</div>
+        <div class="sc-host-label">المضيف</div>
       </div>`;
+    } else {
+      html += `<div class="sc-host-seat"><div class="sc-host-ava empty"><i class="f7-icons">person_fill</i></div>
+        <div class="sc-host-label">المضيف</div></div>`;
     }
-    const totalSeats = 8;
-    for (let i = 0; i < totalSeats; i++) {
-      const seated = speakers[i] || rest[i];
-      const numSeat = i + 1;
-      if (seated) {
-        const mine = me && +seated.id === +me.id;
-        html += `<div class="sc-seat${mine ? ' mine' : ''}" data-uid="${seated.id}">
-          <div class="sc-seat-ava">${AVI(seated, '')}<span class="sc-seat-star">⭐ ${levelOf(seated)}</span></div>
-          <div class="sc-seat-name">${E(seated.username)}</div>
-          <span class="sc-seat-num">${numSeat}</span>
-        </div>`;
-      } else if (!canSpeak()) {
-        html += `<div class="sc-seat locked">
-          <div class="sc-seat-ava"><i class="f7-icons">lock_fill</i><span class="sc-seat-num">${numSeat}</span></div>
-          <div class="sc-seat-name sc-seat-lockhint">مقفل</div>
-        </div>`;
-      } else {
-        html += `<div class="sc-seat empty" data-empty="${numSeat}">
-          <div class="sc-seat-ava"><i class="f7-icons">mic_fill</i><span class="sc-seat-num">${numSeat}</span></div>
-          <div class="sc-seat-name">انقر للصعود</div>
-        </div>`;
-      }
-    }
+    html += '<div class="sc-seat-row">';
+    for (let i = 0; i < SC_SEAT_COUNT; i++) html += seatHtml(others[i], i);
+    html += '</div>';
     box.innerHTML = html;
-    qa('.sc-seat', box).forEach(seat => {
-      seat.onclick = () => {
-        if (seat.classList.contains('locked')) return toastSafe('عضويتك لا تسمح بالصعود للمايك — فعّل بلس أو أعلى', false);
-        if (seat.dataset.uid) {
-          const u = G.roomUsers.find(x => +x.id === +seat.dataset.uid);
-          if (u && (!me || +u.id !== +me.id)) return call('openUserSheet', u.id);
-          return micToggle();
-        }
-        micToggle();
-      };
+
+    qa('.sc-seat, .sc-host-seat', box).forEach(el => el.onclick = () => {
+      if (el.classList.contains('locked')) return toastSafe('عضويتك لا تسمح بالصعود للمايك — فعّل بلس أو أعلى', false);
+      const uid = el.dataset.uid;
+      if (uid) {
+        const u = G.roomUsers.find(x => +x.id === +uid);
+        if (u && (!G.me || +u.id !== +G.me.id)) return call('openUserSheet', u.id);
+        return micToggle();
+      }
+      micToggle();
     });
-    syncMicButton();
+    syncMicState();
   }
 
   function micToggle() {
@@ -1219,109 +1292,253 @@
     if (bcast && bcast.isHost) return call('bcastStopAsHost');
     const btn = q('#btnTalkLive');
     if (btn) { btn.click(); return; }
-    // احتياط: فتح نافذة بدء البث الصوتي مباشرة
     if (fn('bcastOpenStartConfirm')) call('bcastOpenStartConfirm', 'audio');
     else toastSafe('البث الصوتي غير متاح الآن', false);
   }
-
-  function syncMicButton() {
-    const b = q('#scMicBtn');
-    if (!b) return;
-    const bcast = G.bcast;
-    const on = !!(bcast && bcast.isHost);
-    b.classList.toggle('on', on);
-    b.innerHTML = `<i class="f7-icons">${on ? 'mic_fill' : 'mic_fill'}</i>`;
-    b.title = on ? 'إنهاء البث الصوتي' : 'الصعود إلى المايك';
+  function syncMicState() {
+    const on = !!(G.bcast && G.bcast.isHost);
+    qa('.sc-seat.mine').forEach(el => el.classList.toggle('onmic', on));
   }
 
+  /* ---------- شارة الزوار + المنضمون الجدد ---------- */
+  function renderVisitors() {
+    const box = q('#scVisitors');
+    if (!box) return;
+    const total = roomOnline();
+    const fresh = S.newVisitors || 0;
+    box.innerHTML = `
+      <button class="sc-vbox" id="scVisitorsBtn" title="قائمة الزوار">
+        <i class="f7-icons">person_fill</i>
+        <b>${num(total)}</b>
+      </button>
+      <span class="sc-vjoin" id="scVJoin" title="انضم الآن">${num(fresh)}</span>`;
+    const btn = q('#scVisitorsBtn');
+    if (btn) btn.onclick = () => sheetVisitors();
+    const join = q('#scVJoin');
+    if (join) join.onclick = () => sheetVisitors();
+  }
+
+  function sheetVisitors() {
+    const users = G.roomUsers.slice();
+    const me = G.me;
+    const rows = users.map(u => `
+      <div class="sc-user-row" data-uid="${u.id}">
+        ${AVI(u, '')}
+        <div>
+          <div class="sc-ur-name">${E(u.username)}${me && +u.id === +me.id ? ' <small style="color:var(--sc-gold)">(أنت)</small>' : ''}</div>
+          <div class="sc-ur-sub">${levelChip(u)} ${roleChips(u)}</div>
+        </div>
+        <button class="sc-ur-go">متابعة</button>
+      </div>`).join('') || '<div class="sc-empty-card">لا زوار في الغرفة الآن</div>';
+    sheetOpen(`<h3>👥 الزوار (${num(users.length)})</h3>
+      <p class="sc-sheet-sub">كل من هو موجود في الغرفة الآن — انقر على أي عضو لفتح ملفه أو إرسال هدية.</p>
+      <div style="max-height:46vh;overflow:auto">${rows}</div>
+      <div style="height:10px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="sc-btn-ghost" id="scRoomMinimize">تصغير الغرفة</button>
+        <button class="sc-btn-ghost" id="scRoomExit" style="border-color:rgba(239,68,68,.5);color:#fca5a5">الخروج من الغرفة</button>
+      </div>`);
+    qa('.sc-user-row[data-uid]').forEach(r => r.onclick = () => {
+      const u = users.find(x => +x.id === +r.dataset.uid);
+      sheetClose();
+      if (u) call('openUserSheet', u.id);
+    });
+    const min = q('#scRoomMinimize');
+    if (min) min.onclick = () => {
+      sheetClose();
+      const b = q('#chatBack');
+      if (b) b.click();
+      toastSafe('تم تصغير الغرفة — أنت ما زلت متواجداً فيها');
+    };
+    const ex = q('#scRoomExit');
+    if (ex) ex.onclick = () => {
+      sheetClose();
+      if (fn('attemptLeaveRoom')) call('attemptLeaveRoom');
+      else { const b = q('#chatBack'); if (b) b.click(); }
+    };
+  }
+
+  /* ---------- الأيقونات العائمة (يسار الشاشة) ---------- */
   function renderFloats() {
     const box = q('#scFloatCol');
     if (!box) return;
-    const me = G.me;
     const giftsToday = (S.boot && S.boot.me && S.boot.me.gifts_today) || 0;
     const target = Math.max(10, giftsToday + 5);
     const pct = Math.min(100, Math.round((giftsToday / target) * 100));
     box.innerHTML = `
-      <button class="sc-float" data-op="uefa" title="فعالية UEFA">⚽<small>UEFA</small></button>
-      <button class="sc-float" data-op="topup" title="الشحن اليومي">💰<small>شحن</small></button>
-      <button class="sc-float sc-float-gold" data-op="prize" title="المكافأة الكبرى">🏆<small>جوائز</small>
+      <button class="sc-float sc-float-uefa" data-op="uefa" title="فعالية UEFA"><span class="sc-fl-art">⚽</span><small>UEFA</small></button>
+      <button class="sc-float sc-float-topup" data-op="topup" title="الشحن اليومي"><span class="sc-fl-art">💰</span><small>الشحن اليومي</small></button>
+      <button class="sc-float sc-float-prize" data-op="prize" title="المكافأة الكبرى"><span class="sc-fl-art">🎁</span><small>المكافأة الكبرى</small>
         <span class="sc-float-prog"><i style="width:${pct}%"></i></span>
-      </button>`;
+      </button>
+      <button class="sc-float sc-float-coin" data-op="coin" title="الجواهر"><span class="sc-fl-art">🪙</span></button>`;
     qa('[data-op]', box).forEach(b => b.onclick = () => {
       const op = b.dataset.op;
       if (op === 'topup') return call('openBuy');
-      if (op === 'uefa') { S.postTab = 'posts'; go('posts'); sheetClose(); return; }
+      if (op === 'coin') return doCheckin();
+      if (op === 'uefa') {
+        return sheetOpen(`<h3>⚽ تحدي UEFA</h3>
+          <p class="sc-sheet-sub">فعالية كرة القدم — توقّع نتائج المباريات واحصل على جوائز. تُعلَن النتائج في المنشورات الرسمية.</p>
+          <button class="sc-btn-primary" id="scUefaGo">عرض فعاليات UEFA</button>`);
+      }
       sheetOpen(`<h3>🏆 المكافأة الكبرى</h3>
         <p class="sc-sheet-sub">تقدمك اليوم: أرسلت ${num(giftsToday)} من ${num(target)} هدية — أكمل للوصول للمكافأة الكبرى</p>
-        <div style="height:10px;border-radius:6px;background:rgba(255,255,255,.15);overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:var(--sc-grad-gold)"></i></div>
+        <div class="sc-prize-track"><i style="width:${pct}%"></i></div>
         <div style="height:14px"></div>
         <button class="sc-btn-primary" id="scPrizeGift">إرسال هدية الآن</button>`);
       const g = q('#scPrizeGift');
       if (g) g.onclick = () => { sheetClose(); call('openGifts', G.me || undefined); };
+      const u = q('#scUefaGo');
+      if (u) u.onclick = () => { sheetClose(); S.postTab = 'posts'; go('posts'); };
     });
   }
 
-  function renderRoomBar() {
-    const bar = q('#scRoomBar');
-    if (!bar) return;
-    const room = G.curRoom || {};
-    bar.innerHTML = `
-      <button class="sc-rb-btn sc-rb-gift" data-op="gift" title="هدية"><i class="f7-icons">gift_fill</i></button>
-      <button class="sc-rb-btn" data-op="chat" title="دردشة نصية"><i class="f7-icons">chat_bubble_fill</i></button>
-      <button class="sc-rb-btn" data-op="games" title="ألعاب"><i class="f7-icons">gamecontroller_fill</i></button>
+  /* ---------- الشريط السفلي: أيقونات + حقل الكتابة ---------- */
+  function buildRoomBar(bar) {
+    const wrap = document.createElement('div');
+    wrap.className = 'sc-input-wrap';
+    bar.innerHTML = '';
+    bar.appendChild(wrap);
+    const icons = document.createElement('div');
+    icons.className = 'sc-rb-icons';
+    icons.innerHTML = `
+      <button class="sc-rb-btn sc-rb-lucky" data-op="lucky" title="صندوق الحظ"><i class="f7-icons">gift_fill</i></button>
       <button class="sc-rb-btn" data-op="more" title="خيارات"><i class="f7-icons">line_horizontal_3_decrease</i></button>
-      <button class="sc-rb-btn sc-rb-lucky" data-op="lucky" title="صندوق الحظ"><i class="f7-icons">cube_box_fill</i></button>
-      <button class="sc-rb-mic" id="scMicBtn" title="الصعود إلى المايك"><i class="f7-icons">mic_fill</i></button>
-      <button class="sc-rb-btn" data-op="users" title="الزوار"><i class="f7-icons">person_2_fill</i></button>`;
-    qa('[data-op]', bar).forEach(b => b.onclick = () => {
+      <button class="sc-rb-btn" data-op="games" title="ألعاب"><i class="f7-icons">gamecontroller_fill</i></button>
+      <button class="sc-rb-btn" data-op="chat" title="دردشة نصية"><i class="f7-icons">chat_bubble_fill</i></button>
+      <button class="sc-rb-btn sc-rb-gift" data-op="gift" title="هدية"><i class="f7-icons">gift_fill</i></button>`;
+    bar.appendChild(icons);
+
+    // ننقل عناصر الإدخال الأصلية إلى الشريط الجديد حتى تبقى كل وظائفها (الإرسال، الإيموجي، الرد)
+    // الترتيب: حقل الكتابة (يمين) ثم الإيموجي ثم زر الإرسال (يسار) كما في الصورة
+    const input = q('#msgInput'), emoji = q('#btnEmoji'), send = q('#btnSend');
+    [input, emoji, send].forEach(el => { if (el) wrap.appendChild(el); });
+    if (send) { send.classList.add('sc-send-btn'); send.innerHTML = '<i class="f7-icons">arrow_up</i>'; }
+    ensurePlaceholder();
+
+    qa('[data-op]', icons).forEach(b => b.onclick = () => {
       const op = b.dataset.op;
-      if (op === 'gift') call('openGifts', roomMark());
-      else if (op === 'chat') { const inp = q('#msgInput'); if (inp) inp.focus(); }
+      if (op === 'gift') call('openGifts', G.me || undefined);
+      else if (op === 'chat') { if (input) input.focus(); }
       else if (op === 'games') sheetGames();
       else if (op === 'more') call('openOv', 'menuOv');
-      else if (op === 'lucky') call('openGifts', G.me || undefined);
-      else if (op === 'users') openRoomUsers();
+      else if (op === 'lucky') sheetOpen(`<h3>🎁 صندوق الحظ</h3>
+        <p class="sc-sheet-sub">افتح صندوق الحظ واربح جواهر وهدايا — صندوق واحد كل فترة.</p>
+        <button class="sc-btn-primary" id="scLuckyGo">فتح الصندوق</button>`);
     });
-    const mic = q('#scMicBtn');
-    if (mic) mic.onclick = micToggle;
-    syncMicButton();
+    const lucky = q('#scLuckyGo');
+    if (lucky) lucky.onclick = () => { sheetClose(); call('openGifts', G.me || undefined); };
   }
 
-  function roomMark() {
-    const room = G.curRoom || {};
-    const me = G.me;
-    return { id: me ? me.id : 0, username: me ? me.username : 'الغرفة', room: room.name };
+  // النص التوضيحي لحقل الكتابة في الغرفة (كما في الصورة المرجعية)
+  function ensurePlaceholder() {
+    const input = q('#msgInput');
+    if (input && input.getAttribute('placeholder') !== 'مرحبا') input.setAttribute('placeholder', 'مرحبا');
   }
 
+  /* ---------- مستخدمو الغرفة (للقائمة القديمة) ---------- */
   function openRoomUsers() {
-    const f = q('#btnRoomUsers');
-    if (f) return f.click();
-    sheetOpen(`<h3>زوار الغرفة</h3><p class="sc-sheet-sub">${num(G.roomUsers.length)} متواجد الآن</p>
-      ${G.roomUsers.map(u => `<div class="sc-user-row" data-uid="${u.id}">${AVI(u, '')}<div><div class="sc-ur-name">${E(u.username)}</div><div class="sc-ur-sub">${levelChip(u)}</div></div></div>`).join('')}`);
-    qa('.sc-user-row[data-uid]').forEach(r => r.onclick = () => call('openUserSheet', +r.dataset.uid));
+    sheetVisitors();
   }
 
-  // تزيين رسائل الغرفة بمستوى العضو وشارته
-  function decorateMessages() {
+  /* ---------- إعادة بناء الرسائل لتطابق الصورة ---------- */
+  const LV_BY_BADGE = { guest: 1, register: 2, mmez: 8, plus: 12, premium: 18, vip: 26, roomadmin: 30, admin: 40, superadmin: 50 };
+
+  function restructureMessages() {
     const area = q('#msgArea');
     if (!area) return;
     qa('.msg', area).forEach(el => {
-      if (el.dataset.scDecor) return;
-      const mark = q('img.mmark', el);
-      const kind = mark ? (mark.dataset.badgeKind || '') : '';
-      const lvMap = { guest: 1, register: 2, mmez: 8, plus: 12, premium: 18, vip: 26, roomadmin: 30, admin: 40, superadmin: 50 };
-      // بلا شارة (الزوار) → Lv.1، وإلا نستنتج المستوى من شارة الدور
-      const lv = lvMap[kind] || (kind ? 2 : (el.dataset.uid ? 1 : 0));
-      const nameEl = q('.mname', el);
-      if (nameEl && lv) {
+      if (el.dataset.scBuilt) return;
+      const ava = q('.mava', el);
+      const body = q('.mbody', el);
+      if (!ava || !body) return;                    // ليست رسالة مستخدم (نظام/بوت)
+      const nameEl = q('.mname', body);
+      const timeEl = q('.mtime', body);
+      const badgeImg = q('.mmark', body);
+      const line1 = q('.mline1', body);
+
+      // الصف الأول: [الصورة] [الاسم] [الميدالية] [شارات المستوى] [الوقت]
+      const top = document.createElement('div');
+      top.className = 'sc-mtop';
+      top.appendChild(ava);
+      if (nameEl) top.appendChild(nameEl);
+      if (badgeImg) top.appendChild(badgeImg);
+      const chips = document.createElement('span');
+      chips.className = 'sc-mchips';
+      const kind = badgeImg ? String(badgeImg.dataset.badgeKind || '') : '';
+      const lv = LV_BY_BADGE[kind] || (kind ? 2 : (el.dataset.uid ? 1 : 0));
+      if (lv) {
         const chip = document.createElement('span');
-        chip.className = 'sc-lvl-chip';
-        chip.textContent = 'Lv.' + lv;
-        nameEl.insertBefore(chip, nameEl.firstChild);
+        chip.className = 'sc-lv-chip' + (lv >= 26 ? ' high' : (lv >= 8 ? ' mid' : ''));
+        chip.textContent = (lv >= 8 ? '▲ ' : '● ') + 'Lv.' + lv;
+        chips.appendChild(chip);
       }
-      el.dataset.scDecor = '1';
+      if (kind) {
+        const role = document.createElement('span');
+        role.className = 'sc-role-chip-mini'
+          + (/roomadmin|admin|vip|mmez/.test(kind) ? ' gold' : '')
+          + (/register|plus|premium/.test(kind) ? ' green' : '');
+        role.textContent = roleLabelFor(kind);
+        chips.appendChild(role);
+      }
+      if (isActiveStatus(el.dataset.uid) && fn('statusRingClass')) { /* دائرة الحالة تُدار من التطبيق */ }
+      top.appendChild(chips);
+      if (timeEl) top.appendChild(timeEl);
+
+      // نقل الرد المقتبس فوق الصف
+      const rply = q('.mrply', body);
+      if (rply) el.insertBefore(rply, el.firstChild);
+      el.insertBefore(top, rply && rply.nextSibling ? rply.nextSibling : el.firstChild);
+      if (line1 && line1.parentNode) line1.remove();
+
+      // فقاعة ذهبية لأصحاب العضويات/الرتب
+      if (/vip|mmez|premium|roomadmin|admin/.test(kind)) el.classList.add('sc-msg-gold');
+      el.classList.add('sc-built');
+      el.dataset.scBuilt = '1';
+    });
+    highlightMentions(area);
+  }
+
+  function roleLabelFor(kind) {
+    return {
+      vip: 'SVIP', mmez: 'مميز', premium: 'بريميوم', plus: 'بلس',
+      roomadmin: 'مشرف', admin: 'مشرف', superadmin: 'إدارة',
+      register: 'نشيط', guest: 'زائر'
+    }[kind] || 'عضو';
+  }
+
+  function highlightMentions(root) {
+    qa('.mtext', root).forEach(el => {
+      if (el.dataset.scMention) return;
+      el.dataset.scMention = '1';
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach(node => {
+        const value = node.nodeValue || '';
+        if (value.indexOf('@') === -1) return;
+        const re = /@[^\s@]+/g;
+        let m, last = 0, changed = false;
+        const frag = document.createDocumentFragment();
+        while ((m = re.exec(value))) {
+          changed = true;
+          if (m.index > last) frag.appendChild(document.createTextNode(value.slice(last, m.index)));
+          const span = document.createElement('span');
+          span.className = 'sc-mention';
+          span.textContent = m[0];
+          frag.appendChild(span);
+          last = m.index + m[0].length;
+        }
+        if (!changed) return;
+        if (last < value.length) frag.appendChild(document.createTextNode(value.slice(last)));
+        node.parentNode.replaceChild(frag, node);
+      });
     });
   }
+
+  // متوافق مع الاسم القديم
+  function decorateMessages() { restructureMessages(); }
+
 
   /* ==========================================================================
      تحميل البيانات
@@ -1406,8 +1623,13 @@
       const s = G.socket;
       if (!s || s.__scHooked) return false;
       s.__scHooked = true;
-      s.on('roomUsers', () => { if (G.curRoom) { renderSeats(); renderRoomHead(); } });
+      s.on('roomUsers', () => {
+        if (!G.curRoom) return;
+        trackNewVisitors();
+        renderSeats(); renderRoomHead(); renderVisitors(); renderRoomSub();
+      });
       s.on('msg', () => setTimeout(decorateMessages, 60));
+      s.on('bcast:state', () => setTimeout(() => { renderSeats(); }, 200));
       s.on('roomCounts', () => { if (S.tab === 'party') setTimeout(renderRoomList, 120); });
       s.on('private', () => { loadConvs().then(() => { if (S.tab === 'msgs') renderMsgs(); syncNav(); }); });
       s.on('notify', () => setTimeout(syncNav, 300));
