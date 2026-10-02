@@ -58,6 +58,7 @@ let PREFS = { snd_all: 1, snd_msg: 1, snd_join: 1, snd_leave: 1, show_time: 1, p
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); } catch (e) { }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
 let ROOMS = [], ROOM_COUNTS = {}, CUR_ROOM = null, CUR_TAB = 'default';
+let ROOMS_FILTER = 'all';
 let ROOMS_LOAD_ERROR = false;
 let ROOMS_LOAD_SEQ = 0;
 let ROOM_CREATE_IMAGE = '';
@@ -4425,12 +4426,12 @@ function syncRoomCreateButton() {
   const button = $('#createRoomBtn');
   if (!button) return;
   const allowed = !!(ME && ME.registered);
-  button.style.display = allowed ? 'inline-flex' : 'none';
+  button.style.display = allowed ? 'flex' : 'none';
   const ownRoom = myCreatedRoom();
   button.classList.toggle('has-room', !!ownRoom);
   button.innerHTML = ownRoom
-    ? '<i class="f7-icons">house_fill</i><span>غرفتي</span>'
-    : '<i class="f7-icons">plus</i><span>إنشاء غرفة</span>';
+    ? '<span class="rooms-create-icon"><i class="f7-icons">house_fill</i></span><span class="rooms-create-copy"><b>إدارة غرفتي</b><small>احذف غرفتك قبل إنشاء غرفة أخرى</small></span><span class="rooms-create-action">إدارة <i class="f7-icons">arrow_left</i></span>'
+    : '<span class="rooms-create-icon"><i class="f7-icons">plus</i></span><span class="rooms-create-copy"><b>إنشاء غرفة جديدة</b><small>ابدأ جلسة جديدة وادعُ أصدقاءك</small></span><span class="rooms-create-action">ابدأ الآن <i class="f7-icons">arrow_left</i></span>';
   button.title = ownRoom ? 'إدارة غرفتي — احذفها قبل إنشاء غرفة أخرى' : 'إنشاء غرفة جديدة';
 }
 function isMyUserCreatedRoom(room) {
@@ -4456,11 +4457,17 @@ function roomParticipantsHtml(room, compact = false, totalOverride = null) {
   </div>`;
 }
 function roomRowHtml(r) {
-  const online = ROOM_COUNTS[r.id] || 0;
+  const online = Math.max(0, +ROOM_COUNTS[r.id] || 0);
   const mine = isMyUserCreatedRoom(r);
+  const voiceRoom = r.type === 'voice';
+  const typeName = voiceRoom ? 'صوتية' : 'كتابية';
+  const typeIcon = voiceRoom ? 'music_mic' : 'bubble_left_bubble_right_fill';
   return `
   <article class="room-row${mine ? ' room-row-owned' : ''}" data-id="${r.id}">
-    ${roomImgHtml(r)}
+    <div class="room-card-head">
+      ${roomImgHtml(r)}
+      <span class="room-card-type${voiceRoom ? ' is-voice' : ' is-text'}"><i class="f7-icons">${typeIcon}</i><span>${typeName}</span></span>
+    </div>
     <div class="room-info">
       <div class="room-row-heading">
         <div class="room-name">${esc(r.name)}${r.locked ? '<i class="f7-icons room-lock-icon" title="غرفة محمية">lock_fill</i>' : ''}</div>
@@ -4469,9 +4476,12 @@ function roomRowHtml(r) {
       <div class="room-desc">${esc(r.description || `أهلاً وسهلاً بكم في ${SETTINGS.site_name || 'الدردشة'} ★`)}</div>
       <div class="room-created-by"><i class="f7-icons">person_fill</i><span>أنشأها</span><b>${esc(roomCreatorName(r))}</b>${mine ? '<em>غرفتي</em>' : ''}</div>
     </div>
-    <div class="room-side">
-      <div class="room-count"><i class="f7-icons">person_2_fill</i><b>${online}</b><span>متصل</span></div>
-      <i class="f7-icons room-chev">chevron_left</i>
+    <div class="room-card-footer">
+      ${roomParticipantsHtml(r, true, online)}
+      <div class="room-side">
+        <div class="room-count"><i class="f7-icons">person_2_fill</i><b>${online}</b><span>متصل</span></div>
+        <i class="f7-icons room-chev">chevron_left</i>
+      </div>
     </div>
     ${mine ? `<button class="room-owner-delete" type="button" data-room-id="${+r.id}" aria-label="حذف غرفتي"><i class="f7-icons">trash_fill</i><span>حذف غرفتي</span></button>` : ''}
   </article>`;
@@ -4507,25 +4517,53 @@ function renderRoomsPanel() {
     attemptRoomSwitch(+row.dataset.id);
   });
 }
+function bindRoomDirectoryFilters() {
+  const buttons = $$('#roomFilters .room-filter');
+  if (buttons.length && !buttons.some(button => button.dataset.roomFilter === ROOMS_FILTER)) ROOMS_FILTER = 'all';
+  buttons.forEach(button => {
+    const filter = button.dataset.roomFilter || 'all';
+    const active = filter === ROOMS_FILTER;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    button.onclick = () => {
+      if (ROOMS_FILTER === filter) return;
+      ROOMS_FILTER = filter;
+      renderRooms();
+    };
+  });
+}
+function roomDirectoryList(query = '') {
+  const q = String(query || '').trim().toLowerCase();
+  return ROOMS.filter(room => {
+    if (q && !`${room.name || ''} ${room.description || ''} ${room.creator_name || ''}`.toLowerCase().includes(q)) return false;
+    if (ROOMS_FILTER === 'voice') return room.type === 'voice';
+    if (ROOMS_FILTER === 'text') return room.type !== 'voice';
+    if (ROOMS_FILTER === 'members') return room.audience === 'registered';
+    return true;
+  });
+}
 function renderRooms() {
   syncRoomCreateButton();
   const listBox = $('#roomsList');
   if (!listBox) return;
   const searchBar = document.querySelector('#roomsScreen .r-search');
   if (searchBar) searchBar.style.display = '';
+  bindRoomDirectoryFilters();
   listBox.classList.toggle('is-locked', ROOMS_LOAD_ERROR);
+  const resultsCount = $('#roomsResultsCount');
 
   if (ROOMS_LOAD_ERROR) {
+    if (resultsCount) resultsCount.textContent = '—';
     listBox.innerHTML = '<div class="rooms-gate rooms-gate-error"><strong>تعذر تحميل قائمة الغرف</strong><span>تحقق من اتصالك ثم حاول مرة أخرى.</span><button type="button" id="roomsRetry">إعادة المحاولة</button></div>';
     const retry = $('#roomsRetry');
     if (retry) retry.onclick = () => loadRooms();
     renderRoomsPanel();
     return;
   }
-  const q1 = ($('#roomSearch').value || '').trim();
-  // جميع الغرف صوتية الآن — لا يوجد تقسيم إلى أقسام.
-  const list = ROOMS.filter(r => (!q1 || r.name.includes(q1)));
-  listBox.innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
+  const searchInput = $('#roomSearch');
+  const list = roomDirectoryList(searchInput && searchInput.value);
+  if (resultsCount) resultsCount.textContent = `${list.length} غرفة`;
+  listBox.innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty"><div>لا توجد غرف مطابقة</div></div>';
   $$('#roomsList .room-row').forEach(row => row.onclick = event => {
     if (event.target.closest('.room-owner-delete')) return;
     enterRoom(+row.dataset.id);

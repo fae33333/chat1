@@ -22,8 +22,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20261002-room-owner">
-<link rel="stylesheet" href="/css/desktop.css?v=20261002-room-owner" media="(min-width: 1024px)">
+<link rel="stylesheet" href="/css/style.css?v=20261002-room-directory">
+<link rel="stylesheet" href="/css/desktop.css?v=20261002-room-directory" media="(min-width: 1024px)">
 </head>
 <body>
 <div id="frame">
@@ -55,7 +55,6 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <span class="r-logo-ico"><i class="f7-icons">smiley_fill</i></span>
         <span class="r-logo-txt" id="siteName"></span>
       </div>
-      <button class="head-create-room" id="createRoomBtn" type="button" style="display:none"><i class="f7-icons">plus</i><span>إنشاء غرفة</span></button>
       <button class="btn-enter" id="headEnterBtn">دخول</button>
       <button class="head-user" id="headUserBox" style="display:none" aria-label="حسابي">
         <span class="head-ava" id="headAva"></span>
@@ -68,9 +67,30 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
       <button id="dropRegister">إنشاء حساب <i class="f7-icons">chevron_right</i></button>
       <button id="dropLogout">الخروج <i class="f7-icons">chevron_right</i></button>
     </div>
-    <div class="r-search dots-bg">
-      <textarea id="roomSearch" rows="1" placeholder="ابحث عن غرفك"></textarea>
+    <div class="rooms-directory">
+      <div class="rooms-directory-heading">
+        <div class="rooms-directory-title">
+          <span class="rooms-directory-indicator"><i class="f7-icons">square_grid_2x2_fill</i></span>
+          <span>تصنيف الغرف الحالية</span>
+        </div>
+        <span class="rooms-directory-count" id="roomsResultsCount" aria-live="polite">0 غرفة</span>
+      </div>
+      <div class="room-filters" id="roomFilters" role="group" aria-label="تصفية الغرف">
+        <button class="room-filter active" type="button" data-room-filter="all" aria-pressed="true"><i class="f7-icons">square_grid_2x2_fill</i><span>الكل</span></button>
+        <button class="room-filter" type="button" data-room-filter="voice" aria-pressed="false"><i class="f7-icons">music_mic</i><span>صوتية</span></button>
+        <button class="room-filter" type="button" data-room-filter="text" aria-pressed="false"><i class="f7-icons">bubble_left_bubble_right_fill</i><span>كتابية</span></button>
+        <button class="room-filter" type="button" data-room-filter="members" aria-pressed="false"><i class="f7-icons">person_crop_circle_badge_checkmark</i><span>للأعضاء</span></button>
+      </div>
     </div>
+    <div class="r-search dots-bg">
+      <i class="f7-icons" aria-hidden="true">search</i>
+      <textarea id="roomSearch" rows="1" placeholder="ابحث عن غرفة أو موضوع"></textarea>
+    </div>
+    <button class="rooms-create-banner" id="createRoomBtn" type="button" style="display:none" title="إنشاء غرفة جديدة">
+      <span class="rooms-create-icon"><i class="f7-icons">plus</i></span>
+      <span class="rooms-create-copy"><b>إنشاء غرفة جديدة</b><small>ابدأ جلسة جديدة وادعُ أصدقاءك</small></span>
+      <span class="rooms-create-action">ابدأ الآن <i class="f7-icons">arrow_left</i></span>
+    </button>
     <div class="r-list" id="roomsList"></div>
   </section>
 
@@ -1716,7 +1736,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
-<script src="/js/app.js?v=20261002-room-owner" defer></script>
+<script src="/js/app.js?v=20261002-room-directory" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
