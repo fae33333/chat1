@@ -2320,7 +2320,7 @@ app.post('/api/logout', (req, res) => {
 // =====================================================
 //  API - الشات (غرف، مستخدمون، هدايا، ترقية...)
 // =====================================================
-const ROOM_CATEGORY_IDS = new Set(['music', 'chat', 'chill', 'gaming', 'dating']);
+const ROOM_CATEGORY_IDS = new Set(['all', 'music', 'chat', 'chill', 'gaming', 'dating']);
 function normalizeRoomCategory(value) {
   const category = String(value || '').trim().toLowerCase();
   return ROOM_CATEGORY_IDS.has(category) ? category : 'chat';

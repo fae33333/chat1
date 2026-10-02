@@ -61,6 +61,7 @@ let ROOMS = [], ROOM_COUNTS = {}, CUR_ROOM = null, CUR_TAB = 'default';
 let ROOMS_FILTER = 'all';
 let ROOM_CREATE_CATEGORY = 'chat';
 const ROOM_CATEGORY_META = Object.freeze({
+  all: { label: 'الكل', emoji: '🌟' },
   music: { label: 'طرب وموسيقى', emoji: '🎶' },
   chat: { label: 'سوالف وجمعة', emoji: '💬' },
   chill: { label: 'هدوء ورواق', emoji: '☕' },

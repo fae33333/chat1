@@ -22596,6 +22596,11 @@ body.lang-ltr .r-logo {
     font-size: 10px
 }
 
+#roomsScreen .room-card-type.is-all {
+    background: rgba(173,123,222,.14);
+    color: #d3b4ef
+}
+
 #roomsScreen .room-card-type.is-music {
     background: rgba(235,169,91,.12);
     color: #f0c187

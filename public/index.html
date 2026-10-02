@@ -22,8 +22,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20261002-room-categories-theme">
-<link rel="stylesheet" href="/css/desktop.css?v=20261002-room-categories-theme" media="(min-width: 1024px)">
+<link rel="stylesheet" href="/css/style.css?v=20261002-room-categories-theme2">
+<link rel="stylesheet" href="/css/desktop.css?v=20261002-room-categories-theme2" media="(min-width: 1024px)">
 </head>
 <body>
 <div id="frame">
@@ -1425,6 +1425,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
           <textarea class="room-create-input room-create-description" id="roomCreateDescription" maxlength="120" rows="2" placeholder="اكتب نبذة بسيطة عن غرفتك"></textarea>
           <label class="room-create-label">تصنيف الغرفة</label>
           <div class="room-create-categories" id="roomCreateCategories" role="group" aria-label="اختر تصنيف الغرفة">
+            <button class="room-create-category" type="button" data-create-category="all" aria-pressed="false">🌟 الكل</button>
             <button class="room-create-category" type="button" data-create-category="music" aria-pressed="false">🎶 طرب وموسيقى</button>
             <button class="room-create-category active" type="button" data-create-category="chat" aria-pressed="true">💬 سوالف وجمعة</button>
             <button class="room-create-category" type="button" data-create-category="chill" aria-pressed="false">☕ هدوء ورواق</button>
@@ -1744,9 +1745,9 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
   </div>
 </div>
 <script src="/socket.io/socket.io.js" defer></script>
-<script src="/js/skins.js?v=20261002-room-categories-theme" defer></script>
+<script src="/js/skins.js?v=20261002-room-categories-theme2" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
-<script src="/js/app.js?v=20261002-room-categories-theme" defer></script>
+<script src="/js/app.js?v=20261002-room-categories-theme2" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

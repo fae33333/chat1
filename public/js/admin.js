@@ -4238,7 +4238,7 @@ const PAGES = {
     bind: async () => {
       const rooms = await api('/api/admin/rooms');
       ROOMS_CACHE = rooms;
-      const roomCategoryLabels = { music: '🎶 طرب وموسيقى', chat: '💬 سوالف وجمعة', chill: '☕ هدوء ورواق', gaming: '🎮 مسابقات وألعاب', dating: '🔮 كواكب وأبراج' };
+      const roomCategoryLabels = { all: '🌟 الكل', music: '🎶 طرب وموسيقى', chat: '💬 سوالف وجمعة', chill: '☕ هدوء ورواق', gaming: '🎮 مسابقات وألعاب', dating: '🔮 كواكب وأبراج' };
       $('#roomsList').innerHTML = rooms.length ? rooms.map(r => `
         <div class="list-card">
           <div style="display:flex;align-items:center;gap:12px">
@@ -4296,6 +4296,7 @@ const PAGES = {
       </div>
       <div class="fgroup"><label><i class="f7-icons mi" style="color:#a855f7">circle_grid_hex_fill</i> تصنيف الغرفة</label>
         <select class="inp" id="rCategory">
+          <option value="all" ${r.category === 'all' ? 'selected' : ''}>🌟 الكل</option>
           <option value="music" ${r.category === 'music' ? 'selected' : ''}>🎶 طرب وموسيقى</option>
           <option value="chat" ${!r.category || r.category === 'chat' ? 'selected' : ''}>💬 سوالف وجمعة</option>
           <option value="chill" ${r.category === 'chill' ? 'selected' : ''}>☕ هدوء ورواق</option>
