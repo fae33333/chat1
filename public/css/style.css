@@ -22468,3 +22468,29 @@ body.lang-ltr .r-logo {
         font-size: 12px
     }
 }
+
+/* Visitor avatars open that visitor's existing user-action sheet */
+#roomsScreen .room-card-footer .room-participant {
+    appearance: none;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer
+}
+
+#roomsScreen .room-card-footer .room-participant:focus-visible,
+#chatScreen.room-skin .room-visitors-list .room-participant:focus-visible {
+    outline: 2px solid #e7b4ff;
+    outline-offset: 2px
+}
+
+#chatScreen.room-skin .room-visitors-list .room-participant {
+    appearance: none;
+    font: inherit;
+    cursor: pointer;
+    transition: transform .14s ease
+}
+
+#chatScreen.room-skin .room-visitors-list .room-participant:active {
+    transform: scale(.9)
+}

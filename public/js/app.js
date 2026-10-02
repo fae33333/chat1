@@ -4450,9 +4450,9 @@ function roomParticipantsHtml(room, compact = false, totalOverride = null) {
   const rest = Math.max(0, total - visible.length);
   const canToggle = !compact && (participants.length > maxVisible || expanded);
   return `<div class="room-participants${compact ? ' compact' : ''}" aria-label="صور زوار الغرفة">
-    ${visible.map(user => `<span class="room-participant" role="img" aria-label="${esc(user.username || 'زائر')}">
+    ${visible.map(user => `<button class="room-participant" type="button" data-room-visitor-id="${+user.id}" aria-label="عرض خيارات ${esc(user.username || 'زائر')}" title="${esc(user.username || 'زائر')}">
       <span class="room-participant-avatar">${avatarHtml(user.avatar || '', 'room-participant-photo', user.avatar_frame || '')}</span>
-    </span>`).join('')}
+    </button>`).join('')}
     ${canToggle ? `<button class="room-participant-more" type="button" data-room-visitors-toggle="${roomId}" aria-expanded="${expanded ? 'true' : 'false'}" aria-label="${expanded ? 'إخفاء بقية الزوار' : `إظهار ${rest} من الزوار`}" title="${expanded ? 'عرض عدد أقل' : 'إظهار بقية الصور'}">${expanded ? '−' : `+${rest}`}</button>` : ''}
   </div>`;
 }
@@ -4567,6 +4567,19 @@ function renderRooms() {
   $$('#roomsList .room-row').forEach(row => row.onclick = event => {
     if (event.target.closest('.room-owner-delete')) return;
     enterRoom(+row.dataset.id);
+  });
+  $$('#roomsList .room-participant[data-room-visitor-id]').forEach(button => {
+    const row = button.closest('.room-row');
+    const room = row && ROOMS.find(item => +item.id === +row.dataset.id);
+    const user = room && Array.isArray(room.participants)
+      ? room.participants.find(item => +item.id === +button.dataset.roomVisitorId)
+      : null;
+    if (!user) return;
+    button.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openUserSheet(+user.id, user, button);
+    };
   });
   $$('#roomsList .room-owner-delete').forEach(button => button.onclick = event => {
     event.preventDefault();
@@ -5938,6 +5951,15 @@ function renderRoomSeats() {
       else ROOM_VISITORS_EXPANDED.add(roomId);
       renderRoomSeats();
     };
+    visitorsBox.querySelectorAll('.room-participant[data-room-visitor-id]').forEach(button => {
+      const user = visitors.find(item => +item.id === +button.dataset.roomVisitorId);
+      if (!user) return;
+      button.onclick = event => {
+        event.preventDefault();
+        event.stopPropagation();
+        openUserSheet(+user.id, user, button);
+      };
+    });
   }
   $$('#roomStage .room-seat-occupied').forEach(seat => {
     seat.onclick = () => {
