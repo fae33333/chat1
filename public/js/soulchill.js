@@ -159,11 +159,12 @@
     thumbs: {},
     following: (() => { try { return new Set(JSON.parse(localStorage.getItem('sc_follow_rooms') || '[]')); } catch (e) { return new Set(); } })(),
     win: null,
+    visitorsExpanded: false,
     tasks: null,
     roomsLoaded: false
   };
   window.SC = {
-    build: 'sc10',
+    build: 'sc11',
     get state() { return S; },
     go, refresh: loadAll, sheetOpen, sheetClose,
     refreshRoom() { if (G.curRoom) { renderSeats(); renderRoomSub(); renderRoomHead(); renderVisitors(); syncMicState(); } },
@@ -1016,7 +1017,7 @@
   /* ==========================================================================
      داخل الغرفة الصوتية — مطابقة لتصميم SoulChill في الصور المرجعية
      ========================================================================== */
-  const SC_SEAT_COUNT = 4;
+  const SC_SEAT_COUNT = 8;
 
   // خلفية مخصّصة للغرفة (صورة الغرفة تغطي الشاشة) أو خلفية بنفسجية افتراضية
   function applyRoomBackground() {
@@ -1331,12 +1332,9 @@
     return !!(mine && mine.rank === 'roomadmin');
   }
 
-  // أرقام عربية-هندية لأرقام المقاعد كما في الصورة (رقم ١، رقم ٢ ...)
-  const AR_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-  const arNum = n => String(n).split('').map(ch => AR_DIGITS[+ch] || ch).join('');
-
   /* ---------- إنشاء غرفة حقيقية من داخل التطبيق ---------- */
   let SC_NEW_ROOM_IMAGE = '';
+  const ROOM_PRESET_IMAGES = ['/img/room.png', '/img/Video_2025.gif', '/img/announcement.png', '/img/chat_empty.png', '/img/mwave.gif', '/uploads/1787401720671_9e07873cf21eb6b88f502a17.webp'];
   function openCreateRoomSheet() {
     if (!G.me) { call('openLogin'); return; }
     if (!G.me.registered) { sheetOpen(`<h3>إنشاء غرفة</h3><p class="sc-sheet-sub">تحتاج حساباً مسجّلاً لتفتح غرفتك الصوتية.</p><button class="sc-btn-primary" id="scRegGo">تسجيل حساب</button>`); const b = q('#scRegGo'); if (b) b.onclick = () => { sheetClose(); call('openOv', 'registerOv'); }; return; }
@@ -1357,9 +1355,20 @@
           <div class="sc-nr-prev" id="scNRPrev"><i class="f7-icons">photo_fill</i></div>
           <button class="sc-btn-ghost" id="scNRPick">اختيار صورة من الجهاز</button>
         </div>
+        <div class="sc-nr-presets" id="scNRPresets">
+          ${ROOM_PRESET_IMAGES.map((src, i) => `<button class="sc-nr-preset${i === 0 ? ' on' : ''}" type="button" data-src="${E(src)}" title="صورة جاهزة"><img src="${E(src)}" alt=""></button>`).join('')}
+        </div>
+        <div class="sc-msg-tip" style="margin-top:6px">اختر صورة جاهزة أو ارفع صورتك من الجهاز — يمكنك تغييرها لاحقاً.</div>
       </div>
       <button class="sc-btn-primary" id="scNRMake">إنشاء الغرفة</button>
     `);
+    SC_NEW_ROOM_IMAGE = ROOM_PRESET_IMAGES[0] || '';
+    qa('#scNRPresets .sc-nr-preset').forEach(b => b.onclick = () => {
+      qa('#scNRPresets .sc-nr-preset').forEach(x => x.classList.toggle('on', x === b));
+      SC_NEW_ROOM_IMAGE = b.dataset.src || '';
+      const prev = q('#scNRPrev');
+      if (prev) prev.innerHTML = SC_NEW_ROOM_IMAGE ? `<img src="${E(SC_NEW_ROOM_IMAGE)}" alt="">` : '<i class="f7-icons">photo_fill</i>';
+    });
     const typeBox = q('#scNRType');
     if (typeBox) qa('button', typeBox).forEach(b => b.onclick = () => { qa('button', typeBox).forEach(x => x.classList.toggle('on', x === b)); });
     const pick = q('#scNRPick');
@@ -1383,7 +1392,9 @@
           const prev = q('#scNRPrev');
           if (prev) prev.innerHTML = `<img src="${E(d.path)}" alt="">`;
           toastSafe('تم رفع الصورة ✅');
-        } catch (e) { toastSafe(e.message || 'فشل رفع الصورة', false); }
+        } catch (e) {
+          toastSafe('تعذّر رفع الصورة (' + (e.message || '') + ') — اختر صورة جاهزة من الأسفل', false);
+        }
       };
       inp.click();
     };
@@ -1421,14 +1432,16 @@
     if (g) g.onclick = () => { sheetClose(); call('openGifts', G.me || undefined); };
   }
 
-  const CHAIR_SVG = '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11V8.5A2.5 2.5 0 0 1 8.5 6h7A2.5 2.5 0 0 1 18 8.5V11"/><path d="M4.5 11h15v3.5A2.5 2.5 0 0 1 17 17H7a2.5 2.5 0 0 1-2.5-2.5V11z"/><path d="M8 17v2M16 17v2"/></svg>';
+  // أرقام عربية-هندية لأرقام المقاعد (رقم ١، رقم ٢ …)
+  const AR_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  const arNum = n => String(n).split('').map(ch => AR_DIGITS[+ch] || ch).join('');
 
   // ---------- حالة المقاعد ----------
   const HOST_RANKS = ['roomadmin', 'admin', 'superadmin', 'supermaster'];
   function roomOwner() {
     return (G.roomUsers || []).find(u => HOST_RANKS.includes(String(u.rank || ''))) || null;
   }
-  // صف المذيعين: أنا أولاً ثم بقية المذيعين (مالك الغرفة له مقعده الخاص أعلى الصف)
+  // صف المذيعين: أنا أولاً ثم بقية المذيعين (مالك الغرفة له مقعده الرئيسي)
   function micRowHosts() {
     const all = micHosts();
     const owner = roomOwner();
@@ -1454,26 +1467,67 @@
     return seats;
   }
 
-  function seatHtml(state) {
+  // أيقونة المقعد الفارغ — نفس مسار الـSVG في الواجهة المرجعية
+  const CHAIR_SVG = '<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M10 5h12v11H10zM7 17h18v7H7zM9 24v4m14-4v4M10 13H7v4m15-4h3v4"></path></svg>';
+
+  /* ---------- بنية المقاعد (room-stage) كما في الواجهة المرجعية ---------- */
+  function seatSlotHtml(state) {
     const i = state.idx || 0;
-    const numLabel = 'رقم ' + arNum(i + 1);
+    const no = i + 1;
+    const numLabel = 'رقم ' + arNum(no);
     if (state.u) {
       const u = state.u;
       const mine = G.me && +u.id === +G.me.id;
-      return `<div class="sc-seat filled${mine ? ' mine' : ''}${mine && iAmOnMic() ? ' onmic' : ''}" data-uid="${u.id}" data-seat="${i + 1}">
-        <div class="sc-seat-ava">${AVI(u, '')}<span class="sc-seat-star">0 ⭐</span></div>
-        <div class="sc-seat-label">${E(u.username)}</div>
-      </div>`;
+      const cls = 'room-seat' + (mine ? ' room-seat-mine' : '') + (mine && iAmOnMic() ? ' room-seat-live' : '');
+      return `<div class="room-seat-slot">
+      <div class="${cls}" role="button" tabindex="0" aria-disabled="false" data-seat-no="${no}" data-uid="${u.id}"
+        aria-label="${E(numLabel)} — ${E(u.username)}" title="مقعد ${E(u.username)}">
+        <span class="room-seat-ring">${AVI(u, 'room-seat-photo')}</span>
+        <span class="room-seat-name">${E(u.username)}</span>
+        <span class="room-seat-caption">${mine && iAmOnMic() ? 'أنت على المايك' : '0 ⭐'}</span>
+      </div>
+    </div>`;
     }
     if (state.locked) {
-      return `<div class="sc-seat locked" data-seat="${i + 1}">
-        <div class="sc-seat-ava"><i class="f7-icons">lock_fill</i></div>
-        <div class="sc-seat-label">${numLabel}</div>
-      </div>`;
+      return `<div class="room-seat-slot">
+      <div class="room-seat room-seat-locked" role="button" tabindex="0" aria-disabled="true" data-seat-no="${no}"
+        aria-label="${E(numLabel)} — مقعد مقفل" title="مقعد مقفل من الإدارة">
+        <span class="room-seat-ring"><svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M9 14h14v10H9zM12 14v-3a4 4 0 0 1 8 0v3"></path></svg></span>
+        <span class="room-seat-name">${numLabel}</span>
+        <span class="room-seat-caption">مقفل</span>
+      </div>
+    </div>`;
     }
-    return `<div class="sc-seat empty" data-seat="${i + 1}">
-      <div class="sc-seat-ava"><span class="sc-sofa">${CHAIR_SVG}</span></div>
-      <div class="sc-seat-label">${numLabel}</div>
+    return `<div class="room-seat-slot">
+      <div class="room-seat room-seat-empty" role="button" tabindex="0" aria-disabled="false" data-seat-no="${no}"
+        aria-label="${E(numLabel)} — مقعد فارغ" title="اضغط للصعود والتحدث">
+        <span class="room-seat-ring">${CHAIR_SVG}</span>
+        <span class="room-seat-name">مقعد فارغ</span>
+        <span class="room-seat-caption">اضغط للصعود</span>
+      </div>
+    </div>`;
+  }
+
+  // المقعد الرئيسي (المضيف): مالك الغرفة إن كان على المايك، وإلا مقعد فارغ للصعود
+  function primarySeatHtml(host) {
+    if (host) {
+      const mine = G.me && +host.id === +G.me.id;
+      return `<div class="room-seat-slot room-seat-primary-slot">
+      <div class="room-seat room-seat-owner${mine ? ' room-seat-mine' : ''}${mine && iAmOnMic() ? ' room-seat-live' : ''}" role="button" tabindex="0"
+        data-seat-no="0" data-uid="${host.id}" aria-label="المقعد الرئيسي — ${E(host.username)}" title="المضيف ${E(host.username)}">
+        <span class="room-seat-ring">${AVI(host, 'room-seat-photo')}</span>
+        <span class="room-seat-name">${E(host.username)}</span>
+        <span class="room-seat-caption">المضيف</span>
+      </div>
+    </div>`;
+    }
+    return `<div class="room-seat-slot room-seat-primary-slot">
+      <div class="room-seat room-seat-empty room-seat-primary-item" role="button" tabindex="0" aria-disabled="false"
+        data-seat-no="0" aria-label="المقعد الرئيسي — مقعد فارغ" title="اضغط للصعود والتحدث">
+        <span class="room-seat-ring">${CHAIR_SVG}</span>
+        <span class="room-seat-name">مقعد فارغ</span>
+        <span class="room-seat-caption">اضغط للصعود</span>
+      </div>
     </div>`;
   }
 
@@ -1485,43 +1539,39 @@
     const host = (owner && all.find(h => +h.id === +owner.id)) || null;
     const follow = S.following.has('room_' + ((G.curRoom || {}).id || 0));
     const nobody = all.length === 0;
-    let html = '';
-    if (host) {
-      const mine = G.me && +host.id === +G.me.id;
-      html += `<div class="sc-host-seat${mine ? ' mine' : ''}${mine && iAmOnMic() ? ' onmic' : ''}" data-uid="${host.id}">
-        <div class="sc-host-ava">${AVI(host, '')}<span class="sc-host-star">0 ⭐</span></div>
-        <div class="sc-host-name">${E(host.username)}</div>
-        <div class="sc-host-label">المضيف</div>
-      </div>`;
-    } else {
-      // مقعد المضيف فارغ: أريكة + «المضيف» — وزر متابعة يظهر فقط إن لم يكن أحد على المايك
-      html += `<div class="sc-host-seat empty" data-host-empty="1">
-        <div class="sc-host-ava empty"><span class="sc-sofa">${CHAIR_SVG}</span></div>
-        <div class="sc-host-label">المضيف</div>
-        ${nobody ? `<button class="sc-host-follow${follow ? ' on' : ''}" id="scHostFollow">${follow ? '✓ متابعة' : '＋ متابعة'}</button>` : ''}
-      </div>`;
-    }
-    html += '<div class="sc-seat-row">' + seatStates().map(seatHtml).join('') + '</div>';
-    box.innerHTML = html;
+    box.innerHTML = `
+      <section class="room-stage" id="roomStage" aria-label="مقاعد الغرفة" dir="rtl">
+        <div class="room-stage-heading">
+          <span class="room-stage-title"><i class="f7-icons">person_2_square_stack_fill</i> مقاعد الغرفة</span>
+          <span class="room-stage-owner" id="roomStageOwner">صاحب الغرفة: ${E(owner ? owner.username : (G.curRoom && G.curRoom.name) || 'الإدارة')}</span>
+          <div class="room-stage-tools">
+            ${nobody ? `<button class="room-stage-follow${follow ? ' on' : ''}" id="scHostFollow" type="button">${follow ? '✓ متابعة' : '＋ متابعة'}</button>` : ''}
+            <span class="room-stage-count"><i class="f7-icons">person_2_fill</i><b id="roomStageCount">${num(roomOnline())}</b><span>متصل</span></span>
+          </div>
+        </div>
+        <div class="room-seat-primary" id="roomSeatPrimary">${primarySeatHtml(host)}</div>
+        <div class="room-seat-grid" id="roomSeatGrid">${seatStates().map(seatSlotHtml).join('')}</div>
+      </section>`;
     bindSeatEvents(box);
   }
 
   function bindSeatEvents(box) {
-    qa('.sc-seat', box).forEach(el => {
+    qa('.room-seat', box).forEach(el => {
+      const seatNo = +el.dataset.seatNo || 0;
+      const seatIdx = seatNo - 1;
       let pressTimer = null;
-      const seatIdx = (+el.dataset.seat || 1) - 1;
       el.addEventListener('pointerdown', () => {
-        if (!canManageSeats()) return;
+        if (!canManageSeats() || seatNo === 0) return;
         pressTimer = setTimeout(() => {
           pressTimer = null;
           toggleSeatLock(seatIdx);
           renderSeats();
-          toastSafe(lockedSeats().includes(seatIdx + 1) ? 'تم قفل المقعد 🔒' : 'تم فتح المقعد 🔓');
+          toastSafe(lockedSeats().includes(seatNo) ? 'تم قفل المقعد 🔒' : 'تم فتح المقعد 🔓');
         }, 600);
       });
       ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }));
       el.onclick = () => {
-        if (el.classList.contains('locked')) {
+        if (el.classList.contains('room-seat-locked')) {
           if (canManageSeats()) { toggleSeatLock(seatIdx); renderSeats(); return; }
           return toastSafe('هذا المقعد مقفل من إدارة الغرفة', false);
         }
@@ -1535,14 +1585,6 @@
         micToggle();
       };
     });
-    const emptyHost = q('.sc-host-seat.empty', box);
-    if (emptyHost) emptyHost.onclick = ev => { if (ev.target.closest('#scHostFollow')) return; micToggle(); };
-    const hostSeat = q('.sc-host-seat', box);
-    if (hostSeat && !hostSeat.classList.contains('empty')) hostSeat.onclick = () => {
-      const uid = +hostSeat.dataset.uid;
-      if (G.me && uid === +G.me.id) return openSelfSheet();
-      call('openUserSheet', uid);
-    };
     const followBtn = q('#scHostFollow', box);
     if (followBtn) followBtn.onclick = ev => { ev.stopPropagation(); toggleRoomFollow(); };
     syncMicState();
@@ -1750,18 +1792,34 @@
   function renderVisitors() {
     const box = q('#scVisitors');
     if (!box) return;
-    const total = roomOnline();
-    const fresh = S.newVisitors || 0;
+    const users = (G.roomUsers || []).slice();
+    const me = G.me;
+    users.sort((x, y) => {
+      const xm = me && +x.id === +me.id ? -1 : 0, ym = me && +y.id === +me.id ? -1 : 0;
+      return xm - ym;
+    });
+    const shown = S.visitorsExpanded ? users : users.slice(0, 6);
+    const rest = users.length - shown.length;
     box.innerHTML = `
-      <button class="sc-vbox" id="scVisitorsBtn" title="قائمة الزوار">
-        <i class="f7-icons">person_fill</i>
-        <b>${num(total)}</b>
-      </button>
-      <span class="sc-vjoin" id="scVJoin" title="انضم الآن">${num(fresh)}</span>`;
-    const btn = q('#scVisitorsBtn');
-    if (btn) btn.onclick = () => sheetVisitors();
-    const join = q('#scVJoin');
-    if (join) join.onclick = () => sheetVisitors();
+      <div class="room-participants" aria-label="صور زوار الغرفة">
+        ${shown.map(u => `<button class="room-participant" type="button" data-room-visitor-id="${u.id}"
+            aria-label="عرض خيارات ${E(u.username)}" title="${E(u.username)}${me && +u.id === +me.id ? ' (أنت)' : ''}">
+          <span class="room-participant-avatar">${AVI(u, 'room-participant-photo')}</span>
+          ${+u.live_broadcast_host ? '<i class="room-participant-mic f7-icons">mic_fill</i>' : ''}
+        </button>`).join('')}
+        ${rest > 0 ? `<button class="room-participant-more" type="button" data-room-visitors-toggle="${users.length}"
+            aria-expanded="false" aria-label="إظهار ${rest} من الزوار" title="إظهار بقية الصور">+${num(rest)}</button>` : ''}
+        ${S.visitorsExpanded && users.length > 6 ? `<button class="room-participant-more less" type="button" data-room-visitors-collapse="1" title="إخفاء">−</button>` : ''}
+      </div>`;
+    qa('.room-participant[data-room-visitor-id]', box).forEach(b => b.onclick = () => {
+      const uid = +b.dataset.roomVisitorId;
+      if (me && uid === +me.id) return openSelfSheet();
+      call('openUserSheet', uid);
+    });
+    const more = q('[data-room-visitors-toggle]', box);
+    if (more) more.onclick = () => { S.visitorsExpanded = true; renderVisitors(); };
+    const less = q('[data-room-visitors-collapse]', box);
+    if (less) less.onclick = () => { S.visitorsExpanded = false; renderVisitors(); };
   }
 
   function sheetVisitors() {
