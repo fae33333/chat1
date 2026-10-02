@@ -59,6 +59,7 @@ try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
 let ROOMS = [], ROOM_COUNTS = {}, CUR_ROOM = null, CUR_TAB = 'default';
 let ROOMS_LOAD_ERROR = false;
+let ROOMS_LOAD_SEQ = 0;
 let ROOM_CREATE_IMAGE = '';
 let ROOM_PWD = {};                       // كلمات مرور الغرف الصحيحة لهذه الجلسة (لا تُعاد كتابتها)
 let ROOM_HIDDEN = {};                    // اختيار الدخول المخفي لكل غرفة في هذه الصفحة فقط
@@ -4343,23 +4344,21 @@ function pushNotif(icon, text, extra = {}) {
 //  الغرف
 // =====================================================
 async function loadRooms() {
-  if (!ME || !ME.registered) {
-    ROOMS = [];
-    ROOM_COUNTS = {};
-    ROOMS_LOAD_ERROR = false;
-    renderRooms();
-    return;
-  }
-
-  const requestedUserId = +ME.id;
+  const requestId = ++ROOMS_LOAD_SEQ;
+  const identity = ME ? `${ME.registered ? 'member' : 'guest'}:${+ME.id || 0}` : 'public';
+  const isCurrentRequest = () => {
+    const currentIdentity = ME ? `${ME.registered ? 'member' : 'guest'}:${+ME.id || 0}` : 'public';
+    return requestId === ROOMS_LOAD_SEQ && identity === currentIdentity;
+  };
   try {
+    // قائمة الغرف عامة للعرض فقط؛ صلاحية الدخول نفسها تبقى محكومة بتسجيل العضوية.
     const rooms = await api('/api/rooms');
-    // تجاهل ردّ قديم وصل بعد تسجيل الخروج أو تبديل الحساب.
-    if (!ME || !ME.registered || +ME.id !== requestedUserId) return;
+    // تجاهل الردود القديمة بعد الدخول أو الخروج أو تبديل الحساب.
+    if (!isCurrentRequest()) return;
     ROOMS = Array.isArray(rooms) ? rooms : [];
     ROOMS_LOAD_ERROR = false;
   } catch (error) {
-    if (!ME || !ME.registered || +ME.id !== requestedUserId) return;
+    if (!isCurrentRequest()) return;
     ROOMS = [];
     ROOM_COUNTS = {};
     ROOMS_LOAD_ERROR = true;
@@ -4417,27 +4416,6 @@ function roomFeaturesHtml(r) {
 }
 function roomCreatorName(r) {
   return String((r && (r.creator_name || r.owner_name)) || 'الإدارة');
-}
-function roomAccessGateHtml() {
-  const isGuest = !!(ME && !ME.registered);
-  const title = 'الغرف متاحة للأعضاء المسجلين فقط';
-  const description = isGuest
-    ? 'أنشئ عضوية مجانية لتتمكن من مشاهدة الغرف والدخول إليها.'
-    : 'سجّل الدخول بحسابك المسجل أو أنشئ عضوية مجانية لتظهر لك الغرف.';
-  return `<div class="rooms-gate">
-    <div class="rooms-gate-icon"><i class="f7-icons">person_badge_plus_fill</i></div>
-    <strong>${title}</strong>
-    <span>${description}</span>
-    <button type="button" class="rooms-gate-action">${isGuest ? 'إنشاء عضوية' : 'تسجيل الدخول'}</button>
-  </div>`;
-}
-function wireRoomGateAction() {
-  $$('.rooms-gate-action').forEach(action => {
-    action.onclick = () => {
-      if (ME && !ME.registered) openOv('needRegOv');
-      else openLogin();
-    };
-  });
 }
 function myCreatedRoom() {
   if (!ME || !ME.registered) return null;
@@ -4519,14 +4497,8 @@ function renderRoomsPanel() {
   const listBox = $('#roomsList2');
   if (!listBox) return;
   const search = $('#roomSearch2');
-  const isRegistered = !!(ME && ME.registered);
-  if (search && search.parentElement) search.parentElement.style.display = isRegistered ? '' : 'none';
-  if (!isRegistered) {
-    listBox.innerHTML = roomAccessGateHtml();
-    wireRoomGateAction();
-    return;
-  }
-  const q2 = (search.value || '').trim();
+  if (search && search.parentElement) search.parentElement.style.display = '';
+  const q2 = (search && search.value || '').trim();
   // جميع الغرف صوتية الآن — لا يوجد تقسيم إلى أقسام.
   const list = ROOMS.filter(r => (!q2 || r.name.includes(q2)));
   listBox.innerHTML = list.length ? list.map(roomMiniHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
@@ -4540,16 +4512,9 @@ function renderRooms() {
   const listBox = $('#roomsList');
   if (!listBox) return;
   const searchBar = document.querySelector('#roomsScreen .r-search');
-  const isRegistered = !!(ME && ME.registered);
-  if (searchBar) searchBar.style.display = isRegistered ? '' : 'none';
-  listBox.classList.toggle('is-locked', !isRegistered || ROOMS_LOAD_ERROR);
+  if (searchBar) searchBar.style.display = '';
+  listBox.classList.toggle('is-locked', ROOMS_LOAD_ERROR);
 
-  if (!isRegistered) {
-    listBox.innerHTML = roomAccessGateHtml();
-    wireRoomGateAction();
-    renderRoomsPanel();
-    return;
-  }
   if (ROOMS_LOAD_ERROR) {
     listBox.innerHTML = '<div class="rooms-gate rooms-gate-error"><strong>تعذر تحميل قائمة الغرف</strong><span>تحقق من اتصالك ثم حاول مرة أخرى.</span><button type="button" id="roomsRetry">إعادة المحاولة</button></div>';
     const retry = $('#roomsRetry');
@@ -10553,7 +10518,8 @@ async function logoutWithoutReload() {
   SOCKET = null; CHAT_TOKEN = ''; ME = null; MYBADGE = 'guest.png';
   stopUserStatusActionWatcher(); USER_STATUS_REQUEST_ID++;
   CUR_ROOM = null; CUR_TARGET = null; PM_WITH = null; ROOM_USERS = [];
-  ROOMS = []; ROOM_COUNTS = {}; ROOMS_LOAD_ERROR = false;
+  // بيانات بطاقات الغرف عامة؛ احتفظ بها عند الخروج ثم حدّثها دون إعادة إخفاء القائمة.
+  ROOMS_LOAD_ERROR = false;
   IGNORED_USERS = new Set(); STATUSES = []; NOTIFS = []; CURRENT_NOTIFICATIONS = []; READ_NOTIFS = new Set();
   PRIV_UNREAD = 0; NOTIF_UNREAD = 0; STATUS_UNREAD = 0;
   updatePrivBadge(); updateNotifBadge(); updateStatusUnreadBadge();
@@ -10579,6 +10545,7 @@ async function logoutWithoutReload() {
   if (dskPrivBtn) dskPrivBtn.style.display = 'none';
   showScreen('rooms');
   renderRooms();
+  loadRooms();
   refreshNav();
   toast('تم تسجيل الخروج');
 }

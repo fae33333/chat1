@@ -2331,7 +2331,8 @@ function publicRoomParticipants(roomId, creatorId = 0) {
     avatar_frame: String(user.avatar_frame || '')
   }));
 }
-app.get('/api/rooms', requireRegisteredUser, async (req, res) => {
+app.get('/api/rooms', async (req, res) => {
+  // قائمة الغرف للعرض العام قبل الدخول؛ بياناتها وصفية فقط ولا تمنح صلاحية الدخول.
   // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً.
   // اسم المنشئ محفوظ كنسخة احتياطية ويُفضَّل اسم الحساب الحالي إن كان متاحاً.
   const rooms = await q.all(`SELECT r.id, r.name, r.description, r.image, r.type, r.max_users, r.sort, r.status, r.password, r.audience,
