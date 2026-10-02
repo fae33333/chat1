@@ -55,8 +55,8 @@ if (!BEHIND_NGINX && fs.existsSync(HTTPS_KEY_PATH) && fs.existsSync(HTTPS_CERT_P
   }
 }
 if (!server) server = http.createServer(app);
-// يفحص مفتاح key قبل إنشاء جلسة Engine.IO/Socket.IO، أي قبل قبول WebSocket.
-// التحقق والحظر الفعليان موجودان في allowSocketHandshake أدناه.
+// يفحص مفتاح key كطبقة إضافية قبل إنشاء جلسة Engine.IO/Socket.IO.
+// لا ينشئ حظراً؛ مصادقة المستخدم الفعلية تتم لاحقاً برمز جلسة الدردشة.
 // pingTimeout أوسع من الافتراضي (20 ث) ليتحمل انقطاع شبكة الهاتف اللحظي
 // (تحويل شبكة ↔ WiFi) دون فصل الاتصال؛ التبويب المعلق ينقطع من الطرف الآخر على أي حال.
 // مفسّر الحزم المشفّر (parser) يضمن تعمية كل حزمة صاعدة وهابطة داخل غلاف {"_nv":"..."}
@@ -998,15 +998,12 @@ setInterval(() => {
 //  حماية مفتاح اتصال Socket.IO
 // =====================================================
 // يحتفظ الخادم بالمفاتيح المقبولة لمدة 24 ساعة (قابلة للتغيير من البيئة).
-// عند تكرار مفتاح أو إرسال قيمة لا تطابق مولّد العميل يُحظر IP الحقيقي في
-// جدول bans، ولذلك يستمر الحظر بعد إعادة تشغيل الخادم ويظهر في لوحة الإدارة.
+// المفتاح طبقة تحقق إضافية فقط؛ غيابه أو تعذّر نقله عبر وكيل الشبكة لا ينشئ حظراً.
+// هوية Socket.IO الفعلية تُتحقق بعد المصافحة بواسطة رمز جلسة الدردشة.
 const SOCKET_KEY_TTL_MS = Math.max(60 * 1000, Number(process.env.SOCKET_KEY_TTL_MS) || 24 * 60 * 60 * 1000);
 const SOCKET_KEY_MAX_ENTRIES = Math.max(1000, Number(process.env.SOCKET_KEY_MAX_ENTRIES) || 200000);
 const USED_SOCKET_KEYS = new Map(); // key -> { ip, createdAt }
-// عدّاد مخالفات مفاتيح الاتصال لكل IP: مخالفة واحدة (إعادة اتصال لحظية أو
-// خلل شبكة عابر) ترفض المصافحة فقط دون حظر، والحظر التلقائي الدائم لا
-// يحدث إلا بعد 5 مخالفات خلال 60 ثانية (نمط هجوم حقيقي) — كي لا يُحظر
-// هاتف عادي بسبب إعادة اتصال واحدة أثناء تجميد التبويب واستئنافه.
+// عدّاد تشخيصي فقط: المخالفة ترفض المصافحة عند وجود مفتاح غير صالح، ولا تُنشئ حظراً آلياً.
 const SOCKET_KEY_VIOLATIONS = new Map(); // ip -> { count, firstAt }
 const SOCKET_KEY_VIOLATION_LIMIT = 5;
 const SOCKET_KEY_VIOLATION_WINDOW_MS = 60 * 1000;
@@ -1079,36 +1076,34 @@ function rememberSocketKey(key, ip, now = Date.now()) {
   USED_SOCKET_KEYS.set(key, { ip, createdAt: now });
 }
 
-async function autoBanSocketKeyIp(ip, reason, deviceId = '') {
-  ip = validIp(ip);
-  deviceId = validDeviceId(deviceId);
-  if (!ip) return;
-  const cleanReason = String(reason || 'مخالفة مفتاح اتصال WebSocket').slice(0, 150);
-  const existing = await q.get(`SELECT id,device_id FROM bans WHERE ip=? LIMIT 1`, ip);
-  if (!existing) {
-    await q.run(`INSERT INTO bans (username,ip,device_id,reason) VALUES (?,?,?,?)`, 'حظر تلقائي WebSocket', ip, deviceId, cleanReason);
-  } else if (deviceId && !validDeviceId(existing.device_id)) {
-    await q.run(`UPDATE bans SET device_id=? WHERE id=?`, deviceId, existing.id);
+// أزل فقط الحظر القديم الذي أنشأته آلية Socket.IO بسبب فشل/تكرار مفتاح المصافحة؛
+// الحظر الإداري أو التلقائي لأسباب أخرى لا يُمسّ. يشمل ذلك أي سجل قديم على localhost.
+async function clearLegacySocketKeyBans() {
+  const falseBanReasons = ['لا يوجد key في رابط الاتصال', 'مفتاح الاتصال key مفقود أو فارغ'];
+  const rows = await q.all(
+    `SELECT id,ip,device_id FROM bans WHERE username=?
+      AND (reason IN (?,?) OR ip=? OR reason LIKE '%مفتاح%' OR LOWER(reason) LIKE '%key%')`,
+    'حظر تلقائي WebSocket', ...falseBanReasons, '127.0.0.1'
+  );
+  const now = Math.floor(Date.now() / 1000);
+  for (const row of rows) {
+    const ip = validIp(row.ip);
+    const deviceId = validDeviceId(row.device_id);
+    await q.run(`DELETE FROM bans WHERE id=?`, row.id);
+    if (!ip && !deviceId) continue;
+    // فك حالة الزائر فقط إن لم يبقَ أي حظر فعّال آخر على عنوانه/جهازه،
+    // وإن لم تكن لديه عقوبة مؤقتة مستقلة ما زالت سارية.
+    await q.run(`UPDATE users SET banned=0,banned_until=0
+      WHERE registered=0 AND banned=1
+        AND ((?<>'' AND ip=?) OR (?<>'' AND device_id=?))
+        AND (COALESCE(banned_until,0)=0 OR banned_until<=?)
+        AND NOT EXISTS (
+          SELECT 1 FROM bans active
+          WHERE (active.ip=users.ip OR (active.device_id<>'' AND active.device_id=users.device_id))
+            AND (COALESCE(active.expires_at,0)=0 OR active.expires_at>?)
+        )`, ip, ip, deviceId, deviceId, now, now);
   }
-  await q.run(`UPDATE users SET banned=1 WHERE registered=0 AND (ip=? OR (?<>'' AND device_id=?))`, ip, deviceId, deviceId);
-
-  // إبطال رموز الصفحات المفتوحة وفصل كل اتصالات العنوان/الجهاز فوراً.
-  for (const [token, auth] of CHAT_TOKENS) {
-    if (validIp(auth.ip) === ip || (deviceId && validDeviceId(auth.deviceId) === deviceId)) CHAT_TOKENS.delete(token);
-  }
-  for (const activeSocket of [...io.sockets.sockets.values()]) {
-    const sameIp = validIp(activeSocket.data.clientIp) === ip;
-    const sameDevice = deviceId && validDeviceId(activeSocket.data.deviceId) === deviceId;
-    if (!sameIp && !sameDevice) continue;
-    activeSocket.emit('banned', {
-      banned: true,
-      persistent: true,
-      text: 'تم حظرك بسبب سلوكك السيئ',
-      reason: cleanReason
-    });
-    setTimeout(() => activeSocket.disconnect(true), 80);
-  }
-  console.warn(`🔴 [AUTO-BAN WebSocket] ${ip} — ${cleanReason}`);
+  if (rows.length) console.warn(`🟢 [Socket key] أُزيلت ${rows.length} حالة حظر قديمة ناتجة عن فشل مصافحة المفتاح.`);
 }
 
 // Socket.IO/Engine.IO يستدعي هذه الدالة في طلب المصافحة الأول فقط. طلب ترقية
@@ -1134,25 +1129,31 @@ async function allowSocketHandshake(req, callback) {
     if (currentBan) return done('هذا المستخدم أو الجهاز محظور', false);
 
     const received = readSocketKey(req);
+    const missingKey = (received.malformed && received.reason === 'لا يوجد key في رابط الاتصال')
+      || (!received.malformed && !received.key);
+    if (missingKey) {
+      // بعض الوكلاء/النسخ القديمة لا تمرر query إلى Engine.IO. لا نرفض الاتصال
+      // ولا نسجّل مخالفة؛ رمز الدردشة في handshake.auth يظل مطلوباً بعد ذلك.
+      if (ip !== '127.0.0.1') console.warn(`🟡 [Socket key] key غير موجود من ${ip} — متابعة المصافحة دون حظر.`);
+      return done(null, true);
+    }
+
     const validation = received.malformed
       ? { ok: false, reason: received.reason }
       : validateGeneratedSocketKey(received.key);
 
     if (!validation.ok) {
       const violations = recordSocketKeyViolation(ip);
-      if (violations >= SOCKET_KEY_VIOLATION_LIMIT) await autoBanSocketKeyIp(ip, validation.reason, deviceId);
-      else console.warn(`🟡 [Socket key] مصافحة مرفوضة (${violations}/${SOCKET_KEY_VIOLATION_LIMIT}) من ${ip} — ${validation.reason}`);
+      if (ip !== '127.0.0.1') console.warn(`🟡 [Socket key] مصافحة مرفوضة (${violations}/${SOCKET_KEY_VIOLATION_LIMIT}) من ${ip} — ${validation.reason}؛ دون حظر.`);
       return done('مفتاح اتصال غير صالح', false);
     }
 
     const now = Date.now();
     const previous = USED_SOCKET_KEYS.get(validation.key);
     if (previous && now - previous.createdAt <= SOCKET_KEY_TTL_MS) {
-      // إعادة اتصال واحدة بالمفتاح نفسه (تجميد التبويب ثم استئنافه) لا تعني
-      // هجوماً: نرفض المصافحة فقط، والمحاولة التالية بمفتاح جديد تمر.
+      // رفض إعادة استخدام المفتاح فقط؛ فشل المصافحة لا يترتب عليه حظر IP/جهاز.
       const violations = recordSocketKeyViolation(ip);
-      if (violations >= SOCKET_KEY_VIOLATION_LIMIT) await autoBanSocketKeyIp(ip, `مفتاح اتصال مكرر: ${validation.key}`, deviceId);
-      else console.warn(`🟡 [Socket key] مفتاح مكرر (${violations}/${SOCKET_KEY_VIOLATION_LIMIT}) من ${ip} — رُفضت المصافحة دون حظر`);
+      if (ip !== '127.0.0.1') console.warn(`🟡 [Socket key] مفتاح مكرر (${violations}/${SOCKET_KEY_VIOLATION_LIMIT}) من ${ip} — رُفضت المصافحة دون حظر.`);
       return done('مفتاح اتصال مكرر', false);
     }
     if (previous) USED_SOCKET_KEYS.delete(validation.key);
@@ -1677,6 +1678,7 @@ function pubUser(u) {
     bio_audio: String(u.bio_audio || ''),
     bio_audio_duration: +u.bio_audio_duration || 0,
     muted: mutedActive(u) ? 1 : 0,
+    global_muted: mutedActive(u) ? 1 : 0,
     color: String(u.color || ''),
     is_bot: u.is_bot ? 1 : 0,
     broadcast_banned: u.broadcast_banned ? 1 : 0,
@@ -1782,18 +1784,26 @@ async function requireModerator(req, res, next) {
     const roomId = +((req.body && req.body.room_id) || (req.query && req.query.room_id) || (req.params && req.params.room_id) || 0);
     const isGlobalStaff = ['admin', 'superadmin', 'supermaster'].includes(moderator.rank);
     let isRoomAdminHere = false;
+    let isRoomOwner = false;
     if (roomId) {
       const ra = await q.get(`SELECT id FROM room_admins WHERE room_id=? AND user_id=?`, roomId, moderator.id);
       if (ra) isRoomAdminHere = true;
+      const ownedRoom = await q.get(`SELECT id FROM rooms WHERE id=? AND creator_id=? AND user_created=1`, roomId, moderator.id);
+      isRoomOwner = !!ownedRoom;
     }
 
-    if (!isGlobalStaff && !isRoomAdminHere && moderator.rank !== 'roomadmin')
+    if (!isGlobalStaff && !isRoomAdminHere && !isRoomOwner && moderator.rank !== 'roomadmin')
       return res.status(403).json({ error: 'لا تملك صلاحية الإشراف في هذه الغرفة' });
 
     req.authUid = +moderator.id;
-    req.authRank = isGlobalStaff ? moderator.rank : (isRoomAdminHere ? 'roomadmin' : moderator.rank);
-    if (auth.source === 'session') req.session.rank = req.authRank;
-    else if (auth.token && CHAT_TOKENS.has(auth.token)) CHAT_TOKENS.get(auth.token).rank = req.authRank;
+    req.isRoomOwner = isRoomOwner;
+    req.roomOwnerOnly = isRoomOwner && !isGlobalStaff && !isRoomAdminHere && moderator.rank !== 'roomadmin';
+    req.authRank = isGlobalStaff ? moderator.rank : ((isRoomAdminHere || isRoomOwner) ? 'roomadmin' : moderator.rank);
+    // لا نحوّل رتبة مالك الغرفة في الجلسة/الرمز العالمي؛ صلاحية المالك محصورة بهذه الغرفة فقط.
+    if (!isRoomOwner) {
+      if (auth.source === 'session') req.session.rank = req.authRank;
+      else if (auth.token && CHAT_TOKENS.has(auth.token)) CHAT_TOKENS.get(auth.token).rank = req.authRank;
+    }
     req.moderator = { ...moderator, rank: req.authRank };
     next();
   } catch (e) { res.status(500).json({ error: 'تعذر التحقق من الصلاحية' }); }
@@ -1859,6 +1869,23 @@ function badgeOf(u) {
 //  العقوبات المؤقتة (كتم/حظر/طرد بمدة بالدقائق) — تُفك تلقائياً عند انتهاء المدة
 // =====================================================
 const nowSec = () => Math.floor(Date.now() / 1000);
+function activeRoomMute(roomId, userId) {
+  return q.get(`SELECT id,expires_at FROM room_mutes WHERE room_id=? AND user_id=? AND (expires_at=0 OR expires_at>?) LIMIT 1`, +roomId, +userId, nowSec());
+}
+async function activeRoomMuteMap(roomId) {
+  const rows = await q.all(`SELECT user_id,expires_at FROM room_mutes WHERE room_id=? AND (expires_at=0 OR expires_at>?)`, +roomId, nowSec());
+  return new Map(rows.map(row => [+row.user_id, row]));
+}
+function applyRoomMuteState(publicUser, userId, muteMap) {
+  if (!publicUser) return publicUser;
+  const globallyMuted = publicUser.global_muted !== undefined ? !!publicUser.global_muted : !!publicUser.muted;
+  const roomMute = muteMap && muteMap.get(+userId);
+  publicUser.global_muted = globallyMuted ? 1 : 0;
+  publicUser.room_muted = roomMute ? 1 : 0;
+  publicUser.room_muted_until = roomMute ? (+roomMute.expires_at || 0) : 0;
+  publicUser.muted = globallyMuted || !!roomMute ? 1 : 0;
+  return publicUser;
+}
 // مدة العقوبة بالدقائق من جسم الطلب: 0 أو غيابها = دائم. الحد الأقصى سنة كاملة.
 function moderationMinutes(body) {
   const m = Math.floor(+((body && body.minutes) || 0));
@@ -2293,11 +2320,22 @@ app.post('/api/logout', (req, res) => {
 // =====================================================
 //  API - الشات (غرف، مستخدمون، هدايا، ترقية...)
 // =====================================================
+function publicRoomParticipants(roomId, creatorId = 0) {
+  const ids = [...(roomUsers[+roomId] || new Set())];
+  const ownerIndex = ids.findIndex(id => +id === +creatorId);
+  if (ownerIndex > 0) ids.unshift(ids.splice(ownerIndex, 1)[0]);
+  return ids.map(id => onlineUsers[id]).filter(user => user && user.rank !== 'supermaster').slice(0, 8).map(user => ({
+    id: +user.id,
+    username: String(user.username || ''),
+    avatar: String(user.avatar || ''),
+    avatar_frame: String(user.avatar_frame || '')
+  }));
+}
 app.get('/api/rooms', requireRegisteredUser, async (req, res) => {
   // الغرف المخفية (غرف SEO المرئية لمحركات البحث فقط) لا تظهر للمستخدمين أبداً.
   // اسم المنشئ محفوظ كنسخة احتياطية ويُفضَّل اسم الحساب الحالي إن كان متاحاً.
   const rooms = await q.all(`SELECT r.id, r.name, r.description, r.image, r.type, r.max_users, r.sort, r.status, r.password, r.audience,
-    r.creator_id, COALESCE(NULLIF(u.username,''), NULLIF(r.creator_name,''), 'الإدارة') AS creator_name
+    r.creator_id, r.user_created, COALESCE(NULLIF(u.username,''), NULLIF(r.creator_name,''), 'الإدارة') AS creator_name
     FROM rooms r LEFT JOIN users u ON u.id=r.creator_id
     WHERE COALESCE(r.hidden,0)=0 ORDER BY r.sort,r.id`);
   const counts = {};
@@ -2316,15 +2354,102 @@ app.get('/api/rooms', requireRegisteredUser, async (req, res) => {
     creator_id: +r.creator_id || 0,
     creator_name: String(r.creator_name || 'الإدارة'),
     owner_name: String(r.creator_name || 'الإدارة'),
+    user_created: +r.user_created ? 1 : 0,
+    participants: publicRoomParticipants(r.id, r.creator_id),
     locked: !!(r.password && String(r.password).trim().length > 0)
   })));
+});
+
+app.post('/api/rooms/upload-cover', requireRegisteredUser, (req, res) => {
+  uploadMedia.single('file')(req, res, async (err) => {
+    if (err || !req.file) return res.status(400).json({ error: 'تعذر رفع الصورة: ' + (err ? err.message : 'لم يتم اختيار ملف') });
+    const imageExt = path.extname(req.file.originalname || '').toLowerCase();
+    if (!String(req.file.mimetype || '').startsWith('image/') || !['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(imageExt)) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      return res.status(400).json({ error: 'غلاف الغرفة يجب أن يكون JPG أو PNG أو WebP أو GIF' });
+    }
+    try {
+      const converted = await toWebP(req.file.path, 512);
+      const finalPath = converted || req.file.path;
+      res.json({ ok: true, path: '/uploads/rooms/' + path.basename(finalPath) });
+    } catch (error) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      res.status(500).json({ error: 'تعذر تجهيز صورة الغرفة' });
+    }
+  });
+});
+
+app.post('/api/rooms', requireRegisteredUser, async (req, res) => {
+  const name = String((req.body && req.body.name) || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (name.length < 2 || name.length > 32) return res.status(400).json({ error: 'اسم الغرفة يجب أن يكون بين حرفين و32 حرفاً' });
+  const description = String((req.body && req.body.description) || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+  const image = String((req.body && req.body.image) || '').trim().slice(0, 200);
+  if (image && !/^\/uploads\/rooms\/[a-zA-Z0-9_.-]+$/.test(image)) return res.status(400).json({ error: 'مسار صورة الغرفة غير صالح' });
+  const roomType = req.body && req.body.type === 'default' ? 'default' : 'voice';
+  const owner = await q.get(`SELECT id,username FROM users WHERE id=? AND registered=1`, req.authUid);
+  if (!owner) return res.status(403).json({ error: 'إنشاء الغرف متاح للأعضاء المسجلين فقط' });
+  const existing = await q.get(`SELECT id,name FROM rooms WHERE creator_id=? AND user_created=1 LIMIT 1`, owner.id);
+  if (existing) return res.status(409).json({ error: 'لديك غرفة بالفعل — احذف غرفتك الحالية قبل إنشاء غرفة أخرى', room_id: +existing.id, room_name: existing.name });
+  try {
+    const out = await q.run(`INSERT INTO rooms
+      (name,description,image,type,max_users,status,sound,video,bots,gifts,games,locked,welcome,welcome_enabled,audience,creator_id,creator_name,user_created)
+      VALUES (?,?,?,?,100,'open',1,0,0,1,0,0,'',1,'registered',?,?,1)`,
+      name, description || `أهلاً وسهلاً بكم في غرفة ${name}`, image, roomType, +owner.id, String(owner.username || '').slice(0, 40));
+    io.emit('sync');
+    return res.status(201).json({ ok: true, id: +out.lastID, name });
+  } catch (error) {
+    if (error && (error.code === 'SQLITE_CONSTRAINT' || /unique constraint/i.test(String(error.message || '')))) {
+      const mine = await q.get(`SELECT id,name FROM rooms WHERE creator_id=? AND user_created=1 LIMIT 1`, owner.id);
+      return res.status(409).json({ error: 'لديك غرفة بالفعل — احذف غرفتك الحالية قبل إنشاء غرفة أخرى', room_id: mine ? +mine.id : 0, room_name: mine ? mine.name : '' });
+    }
+    throw error;
+  }
+});
+
+app.delete('/api/rooms/:id', requireRegisteredUser, async (req, res) => {
+  const roomId = Math.floor(+req.params.id || 0);
+  if (!roomId) return res.status(400).json({ error: 'معرّف الغرفة غير صالح' });
+  const room = await q.get(`SELECT id,name,creator_id FROM rooms WHERE id=? AND user_created=1`, roomId);
+  if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة أو لا يمكن حذفها' });
+  if (+room.creator_id !== +req.authUid) return res.status(403).json({ error: 'يمكن لمالك الغرفة وحده حذفها' });
+
+  const channel = 'room_' + roomId;
+  io.to(channel).emit('room_deleted', { roomId, roomName: room.name });
+  endBroadcast(roomId, 'room_deleted');
+  const affectedIds = new Set(roomUsers[roomId] || []);
+  for (const socket of [...io.sockets.sockets.values()]) {
+    if (!socket.rooms.has(channel)) continue;
+    const uid = +socket.data.userId || 0;
+    if (uid) affectedIds.add(uid);
+    if (socket.data.joinedRooms) socket.data.joinedRooms.delete(roomId);
+    if (socket.data.hiddenRooms) socket.data.hiddenRooms.delete(roomId);
+    socket.leave(channel);
+  }
+  for (const uid of affectedIds) {
+    cancelPendingRoomLeave(uid, roomId);
+    cancelPendingBroadcastCleanup(uid, roomId);
+    cleanupBroadcastForUser(roomId, uid);
+  }
+  delete roomUsers[roomId];
+  await q.run(`UPDATE room_bots SET active=0 WHERE room_id=?`, roomId);
+  await q.run(`DELETE FROM messages WHERE room_id=?`, roomId);
+  await q.run(`DELETE FROM room_admins WHERE room_id=?`, roomId);
+  await q.run(`DELETE FROM room_kicks WHERE room_id=?`, roomId);
+  await q.run(`DELETE FROM room_mutes WHERE room_id=?`, roomId);
+  await q.run(`DELETE FROM room_welcome_hides WHERE room_id=?`, roomId);
+  const deleted = await q.run(`DELETE FROM rooms WHERE id=? AND creator_id=? AND user_created=1`, roomId, req.authUid);
+  if (!deleted.changes) return res.status(404).json({ error: 'تم حذف الغرفة مسبقاً' });
+  await syncRoomBots();
+  await emitRoomCounts();
+  io.emit('sync');
+  res.json({ ok: true, id: roomId });
 });
 
 app.get('/api/rooms/:id', requireRegisteredUser, async (req, res) => {
   const roomId = +req.params.id;
   if (!roomId) return res.status(400).json({ error: 'معرّف الغرفة غير صالح' });
   const room = await q.get(`SELECT r.id, r.name, r.description, r.image, r.type, r.max_users, r.sort, r.status, r.password, r.audience,
-    r.creator_id, COALESCE(NULLIF(u.username,''), NULLIF(r.creator_name,''), 'الإدارة') AS creator_name
+    r.creator_id, r.user_created, COALESCE(NULLIF(u.username,''), NULLIF(r.creator_name,''), 'الإدارة') AS creator_name
     FROM rooms r LEFT JOIN users u ON u.id=r.creator_id
     WHERE r.id=? AND COALESCE(r.hidden,0)=0`, roomId);
   if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
@@ -2342,6 +2467,8 @@ app.get('/api/rooms/:id', requireRegisteredUser, async (req, res) => {
     creator_id: +room.creator_id || 0,
     creator_name: String(room.creator_name || 'الإدارة'),
     owner_name: String(room.creator_name || 'الإدارة'),
+    user_created: +room.user_created ? 1 : 0,
+    participants: publicRoomParticipants(room.id, room.creator_id),
     locked: !!(room.password && String(room.password).trim().length > 0)
   });
 });
@@ -2364,6 +2491,7 @@ app.get('/api/rooms/:id/users', requireRegisteredUser, requireRoomNotKicked, asy
   if (!set) return res.json([]);
   const roomAdmins = await q.all(`SELECT user_id FROM room_admins WHERE room_id=?`, roomId);
   const roomAdminIds = new Set(roomAdmins.map(ra => +ra.user_id));
+  const roomMuteMap = await activeRoomMuteMap(roomId);
   const users = [];
   for (const uid of set) {
     const user = await q.get(`SELECT * FROM users WHERE id=?`, uid);
@@ -2372,6 +2500,7 @@ app.get('/api/rooms/:id/users', requireRegisteredUser, requireRoomNotKicked, asy
     const isRoomAdminHere = !isGlobalStaff && roomAdminIds.has(+user.id);
     const pub = pubUser(user);
     pub.status = (onlineUsers[uid] || {}).status || user.status;
+    applyRoomMuteState(pub, user.id, roomMuteMap);
     if (isRoomAdminHere) {
       pub.rank = 'roomadmin';
       pub.badge = 'roomadmin.png';
@@ -5033,6 +5162,7 @@ app.post('/api/rooms/:id/hide-welcome', requireRegisteredUser, async (req, res) 
 // تُستخدم requireModerator (رمز الدردشة) كي يعمل الزر من داخل الدردشة نفسها،
 // ويُقيَّد أدمن الغرفة بغرفته هو فقط بينما الإدارة العامة تحذف من أي غرفة.
 app.post('/api/admin/rooms/:room_id/wipe-welcome', requireModerator, async (req, res) => {
+  if (req.roomOwnerOnly) return res.status(403).json({ error: 'هذه الصلاحية متاحة للإدارة وأدمن الغرفة فقط' });
   const room = await q.get(`SELECT id FROM rooms WHERE id=?`, +req.params.room_id);
   if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
   await q.run(`UPDATE rooms SET welcome='',welcome_enabled=0 WHERE id=?`, room.id);
@@ -5317,6 +5447,7 @@ app.post('/api/admin/users/:id/ban', requireModerator, async (req, res) => {
   const banned = req.body.banned ? 1 : 0;
   const target = await q.get(`SELECT id,username,rank,registered,ip,device_id FROM users WHERE id=?`, +req.params.id);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  if (req.roomOwnerOnly) return res.status(403).json({ error: 'مالك الغرفة يستطيع كتم المستخدم أو طرده من غرفته فقط' });
   if (!allowModerationAction(req, res, target)) return;
   const reason = String(req.body.reason || 'سلوك سيئ داخل الدردشة').slice(0, 150);
   const banMinutes = moderationMinutes(req.body);
@@ -5445,6 +5576,31 @@ app.post('/api/admin/users/:id/mute', requireModerator, async (req, res) => {
   const target = await q.get(`SELECT id,username,rank,registered,ip FROM users WHERE id=?`, uid);
   if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
   if (!allowModerationAction(req, res, target)) return;
+  if (req.isRoomOwner) {
+    const roomId = +req.body.room_id;
+    if (!roomUsers[roomId] || !roomUsers[roomId].has(+target.id))
+      return res.status(400).json({ error: 'المستخدم لم يعد موجوداً في الغرفة' });
+    if (!target.registered) return res.status(403).json({ error: 'الكتم داخل غرفة العضو متاح للأعضاء المسجلين فقط' });
+    const minutes = moderationMinutes(req.body);
+    const expiresAt = muted ? moderationExpiry(minutes) : 0;
+    if (muted) {
+      await q.run(`INSERT INTO room_mutes (room_id,user_id,username,reason,muted_by,expires_at)
+        VALUES (?,?,?,?,?,?) ON CONFLICT(room_id,user_id) DO UPDATE SET
+        username=excluded.username,reason=excluded.reason,muted_by=excluded.muted_by,expires_at=excluded.expires_at`,
+        roomId, +target.id, target.username, String(req.body.reason || 'كتم من مالك الغرفة').slice(0, 150), req.moderator.username, expiresAt);
+      // إنهاء بث هذا العضو في هذه الغرفة تحديداً يمنع تجاوز الكتم عبر WebRTC.
+      removeHostFromBroadcast(roomId, +target.id, 'room_muted');
+    } else {
+      await q.run(`DELETE FROM room_mutes WHERE room_id=? AND user_id=?`, roomId, +target.id);
+    }
+    io.to('user_' + target.id).emit('room_mute_changed', { roomId, userId: +target.id, muted: !!muted, minutes, expires_at: expiresAt, by: req.moderator.username });
+    emitRoomSystemEvent(roomId, 'mute', muted
+      ? `تم كتم ${target.username} في هذه الغرفة بواسطة ${req.moderator.username}${minutes > 0 ? ` (لمدة: ${formatDurationAr(minutes)})` : ''}`
+      : `تم إلغاء كتم ${target.username} في هذه الغرفة بواسطة ${req.moderator.username}`,
+      { muted: !!muted, room_muted: true, target_id: +target.id, minutes, expires_at: expiresAt });
+    await emitRoomUsers(roomId);
+    return res.json({ ok: true, muted: !!muted, room_scoped: 1, minutes, expires_at: expiresAt });
+  }
   const byIp = isIpModeratedGuest(target);
   const ip = normalizeIp(target.ip);
   const muteMinutes = moderationMinutes(req.body);
@@ -5570,7 +5726,16 @@ async function sweepExpiredModeration() {
       else if (b.username) await q.run(`UPDATE users SET banned=0, banned_until=0 WHERE username=?`, b.username);
     }
     await q.run(`UPDATE users SET banned=0, banned_until=0 WHERE banned=1 AND banned_until>0 AND banned_until<=?`, now);
-    // 4) الطرد المنتهي من الغرف
+    // 4) الكتم الخاص بالغرفة المنتهي — لا يغيّر كتم الحساب في بقية المنصة.
+    const expiredRoomMutes = await q.all(`SELECT id,room_id,user_id FROM room_mutes WHERE expires_at>0 AND expires_at<=?`, now);
+    const changedRoomIds = new Set();
+    for (const mute of expiredRoomMutes) {
+      await q.run(`DELETE FROM room_mutes WHERE id=?`, mute.id);
+      changedRoomIds.add(+mute.room_id);
+      io.to('user_' + mute.user_id).emit('room_mute_changed', { roomId: +mute.room_id, userId: +mute.user_id, muted: false, expired: true });
+    }
+    for (const roomId of changedRoomIds) await emitRoomUsers(roomId);
+    // 5) الطرد المنتهي من الغرف
     await q.run(`DELETE FROM room_kicks WHERE expires_at>0 AND expires_at<=?`, now);
   } catch (e) { console.error('[sweepExpiredModeration]', e && e.message); }
 }
@@ -9332,6 +9497,7 @@ io.on('connection', async (socket) => {
   socket.data.userId = uid;
   socket.data.userRank = me.rank;
   socket.data.registered = me.registered ? 1 : 0;
+  if (me.registered) socket.join('registered_users');
   socket.data.clientIp = clientIp;
   socket.data.deviceId = clientDeviceId;
   socket.data.connectedAt = Date.now();
@@ -9476,10 +9642,11 @@ io.on('connection', async (socket) => {
     if (room.type !== 'voice') return ack({ ok: false, text: 'هذه الغرفة كتابية فقط — البث غير متاح فيها' });
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
     const mode = room.type === 'voice' ? 'audio' : 'video';
-    const allowed = mode === 'video' ? await canStartVideoBroadcast(me) : await canStartAudioBroadcast(me);
+    const roomMute = await activeRoomMute(roomId, uid);
+    const allowed = !roomMute && (mode === 'video' ? await canStartVideoBroadcast(me) : await canStartAudioBroadcast(me));
     if (!allowed) return ack({
       ok: false,
-      text: me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (mutedActive(me) ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع')
+      text: roomMute ? 'أنت مكتوم في هذه الغرفة ولا يمكنك الصعود كمذيع' : (me.broadcast_banned ? 'منعت الإدارة صعودك إلى البث' : (mutedActive(me) ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع'))
     });
     let b = roomBroadcast[roomId];
     if (b && b.hosts.has(uid)) return ack({ ok: false, text: 'أنت تبث بالفعل في هذه الغرفة' });
@@ -9533,6 +9700,7 @@ io.on('connection', async (socket) => {
     if (b.hosts.has(uid)) return ack({ ok: false, text: 'أنت أحد المذيعين بالفعل' });
     if (b.speakPending.has(uid)) return ack({ ok: true, pending: true });
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
+    if (await activeRoomMute(roomId, uid)) return ack({ ok: false, text: 'أنت مكتوم في هذه الغرفة ولا يمكنك طلب التحدث' });
     if (!await canStartAudioBroadcast(me)) return ack({ ok: false, text: mutedActive(me) ? 'أنت مكتوم ولا يمكنك الصعود كمذيع' : 'عضويتك غير مسموح لها بالصعود كمذيع' });
     b.speakPending.set(uid, { username: me.username, avatar: me.avatar || '' });
     io.to('user_' + b.primaryHostId).emit('bcast:speak_request', {
@@ -9558,6 +9726,8 @@ io.on('connection', async (socket) => {
     if (!accept) return io.to('user_' + targetUserId).emit('bcast:speak_response', { roomId, accept: false });
     const targetUser = await q.get(`SELECT * FROM users WHERE id=?`, targetUserId);
     if (!targetUser || b.hosts.has(targetUserId)) return;
+    if (await activeRoomMute(roomId, targetUserId))
+      return io.to('user_' + targetUserId).emit('bcast:speak_response', { roomId, accept: false, reason: 'أنت مكتوم في هذه الغرفة ولا يمكنك الصعود كمذيع' });
     // إعادة فحص حد المذيعين (قد امتلأت الميكروفونات بين الطلب والرد)
     const bs2 = await getSettings();
     const maxSpeakers2 = Math.max(1, Math.min(10, parseInt(bs2.max_live_speakers) || 4));
@@ -9766,6 +9936,7 @@ io.on('connection', async (socket) => {
     if (!socket.data.joinedRooms.has(roomId)) return socket.emit('err', 'يجب دخول الغرفة قبل الكتابة');
     me = await q.get(`SELECT * FROM users WHERE id=?`, uid);
     if (mutedActive(me)) return socket.emit('err', 'أنت مكتوم ولا يمكنك الكتابة');
+    if (await activeRoomMute(roomId, uid)) return socket.emit('err', 'أنت مكتوم في هذه الغرفة ولا يمكنك الكتابة');
     const hiddenAdmin = socket.data.hiddenRooms.has(roomId) && (me.rank === 'superadmin' || me.rank === 'admin' || me.rank === 'supermaster');
     const rawText = String(text || '').trim();
     const textLength = Array.from(rawText).length;
@@ -10147,6 +10318,7 @@ async function emitRoomUsers(roomId) {
   const list = [];
   const roomAdmins = await q.all(`SELECT user_id FROM room_admins WHERE room_id=?`, roomId);
   const roomAdminIds = new Set(roomAdmins.map(ra => +ra.user_id));
+  const roomMuteMap = await activeRoomMuteMap(roomId);
 
   for (const id of set) {
     const u = await q.get(`SELECT * FROM users WHERE id=?`, id);
@@ -10156,6 +10328,7 @@ async function emitRoomUsers(roomId) {
 
       const p = pubUser(u);
       p.status = (onlineUsers[id] || {}).status || u.status;
+      applyRoomMuteState(p, u.id, roomMuteMap);
 
       if (isRoomAdminHere) {
         p.rank = 'roomadmin';
@@ -10169,6 +10342,11 @@ async function emitRoomUsers(roomId) {
     }
   }
   io.to('room_' + roomId).emit('roomUsers', { roomId: +roomId, users: list, count: list.length });
+  const room = await q.get(`SELECT creator_id FROM rooms WHERE id=?`, roomId);
+  if (room) io.to('registered_users').emit('roomParticipants', {
+    roomId,
+    participants: publicRoomParticipants(roomId, room.creator_id)
+  });
 }
 async function emitRoomCounts() {
   const counts = {};
@@ -10273,6 +10451,7 @@ async function migrateUploadsToWebP() {
 }
 
 (async () => {
+  await clearLegacySocketKeyBans().catch(error => console.error('[Socket key] تعذر تنظيف الحظر الخاطئ القديم:', error));
   await syncRoomBots(false).catch(() => { });
   try {
     const s = await getSettings();

@@ -59,6 +59,7 @@ try { Object.assign(PREFS, JSON.parse(localStorage.getItem('prefs') || '{}')); }
 function savePrefs() { localStorage.setItem('prefs', JSON.stringify(PREFS)); }
 let ROOMS = [], ROOM_COUNTS = {}, CUR_ROOM = null, CUR_TAB = 'default';
 let ROOMS_LOAD_ERROR = false;
+let ROOM_CREATE_IMAGE = '';
 let ROOM_PWD = {};                       // كلمات مرور الغرف الصحيحة لهذه الجلسة (لا تُعاد كتابتها)
 let ROOM_HIDDEN = {};                    // اختيار الدخول المخفي لكل غرفة في هذه الصفحة فقط
 let HIDDEN_ENTRY_PENDING = null;
@@ -145,6 +146,8 @@ const canModerateRank = () => {
   }
   return false;
 };
+const isCurrentRoomOwner = () => !!(ME && ME.registered && CUR_ROOM && +CUR_ROOM.user_created === 1 && +CUR_ROOM.creator_id === +ME.id);
+const canModerateRoomMembers = () => canModerateRank() || isCurrentRoomOwner();
 function canUsePrivateSettings() {
   if (!ME) return false;
   if (['roomadmin', 'admin', 'superadmin', 'supermaster'].includes(ME.rank)) return true;
@@ -2483,13 +2486,49 @@ function connectSocket() {
     }
   });
   SOCKET.on('roomUsers', ({ roomId, users, count }) => {
-    if (CUR_ROOM && roomId === CUR_ROOM.id) { ROOM_USERS = users; renderUsers(); }
+    if (CUR_ROOM && +roomId === +CUR_ROOM.id) {
+      ROOM_USERS = users;
+      const myRoomUser = ROOM_USERS.find(user => ME && +user.id === +ME.id);
+      if (ME) ME.room_muted = myRoomUser ? (+myRoomUser.room_muted || 0) : 0;
+      renderUsers();
+    }
+  });
+  SOCKET.on('room_mute_changed', payload => {
+    if (!payload || !ME || +ME.id !== +payload.userId || !CUR_ROOM || +CUR_ROOM.id !== +payload.roomId) return;
+    ME.room_muted = payload.muted ? 1 : 0;
+    const ownRoomUser = ROOM_USERS.find(user => +user.id === +ME.id);
+    if (ownRoomUser) {
+      ownRoomUser.room_muted = ME.room_muted;
+      ownRoomUser.muted = !!(ownRoomUser.global_muted || ownRoomUser.room_muted) ? 1 : 0;
+    }
+    renderUsers();
+    if (payload.expired) toast('انتهت مدة كتمك في هذه الغرفة ✅');
+    else toast(payload.muted ? 'تم كتمك في هذه الغرفة — لن يؤثر ذلك على بقية الغرف' : 'تم إلغاء كتمك في هذه الغرفة', !payload.muted);
   });
   SOCKET.on('hidden_mode_changed', ({ roomId, hidden }) => {
     ROOM_HIDDEN[+roomId] = !!hidden;
     if (!hidden && CUR_ROOM && +roomId === CUR_ROOM.id) toast('تم إيقاف الدخول المخفي من لوحة الإدارة');
   });
   SOCKET.on('roomCounts', (c) => { ROOM_COUNTS = c; renderRooms(); });
+  SOCKET.on('roomParticipants', payload => {
+    if (!ME || !ME.registered || !payload) return;
+    const room = ROOMS.find(item => +item.id === +payload.roomId);
+    if (!room) return;
+    room.participants = Array.isArray(payload.participants) ? payload.participants : [];
+    renderRooms();
+  });
+  SOCKET.on('room_deleted', payload => {
+    const roomId = +(payload && payload.roomId) || 0;
+    if (!roomId) return;
+    delete ROOM_COUNTS[roomId];
+    if (CUR_ROOM && +CUR_ROOM.id === roomId) {
+      const deletedName = (payload && payload.roomName) || CUR_ROOM.name || 'الغرفة';
+      leaveRoom();
+      showScreen('rooms');
+      toast(`حُذفت غرفة «${deletedName}» من مالكها`);
+    }
+    loadRooms();
+  });
   SOCKET.on('private', (p) => {
     // حماية إضافية للواجهة؛ المنع الأساسي والمتبادل مطبق على الخادم.
     if (p.from_id !== ME.id && IGNORED_USERS.has(+p.from_id)) return;
@@ -4335,22 +4374,60 @@ function wireRoomGateAction() {
     };
   });
 }
+function myCreatedRoom() {
+  if (!ME || !ME.registered) return null;
+  return ROOMS.find(r => +r.user_created === 1 && +r.creator_id === +ME.id) || null;
+}
+function syncRoomCreateButton() {
+  const button = $('#createRoomBtn');
+  if (!button) return;
+  const allowed = !!(ME && ME.registered);
+  button.style.display = allowed ? 'inline-flex' : 'none';
+  const ownRoom = myCreatedRoom();
+  button.classList.toggle('has-room', !!ownRoom);
+  button.innerHTML = ownRoom
+    ? '<i class="f7-icons">house_fill</i><span>غرفتي</span>'
+    : '<i class="f7-icons">plus</i><span>إنشاء غرفة</span>';
+  button.title = ownRoom ? 'إدارة غرفتي — احذفها قبل إنشاء غرفة أخرى' : 'إنشاء غرفة جديدة';
+}
+function isMyUserCreatedRoom(room) {
+  return !!(ME && ME.registered && room && +room.user_created === 1 && +room.creator_id === +ME.id);
+}
+function roomParticipantsHtml(room, compact = false) {
+  const participants = Array.isArray(room && room.participants) ? room.participants : [];
+  const visible = participants.slice(0, compact ? 4 : 6);
+  if (!visible.length) return `<div class="room-participants empty${compact ? ' compact' : ''}"><span>لا يوجد متصلون الآن</span></div>`;
+  const total = Math.max(participants.length, +ROOM_COUNTS[room.id] || +room.online || 0);
+  const rest = Math.max(0, total - visible.length);
+  return `<div class="room-participants${compact ? ' compact' : ''}" aria-label="الأعضاء المتصلون">
+    ${visible.map(user => `<span class="room-participant" title="${esc(user.username)}">
+      <span class="room-participant-avatar">${avatarHtml(user.avatar || '', 'room-participant-photo', user.avatar_frame || '')}</span>
+      <span class="room-participant-name">${esc(user.username || '')}</span>
+    </span>`).join('')}
+    ${rest ? `<span class="room-participant-more">+${rest}</span>` : ''}
+  </div>`;
+}
 function roomRowHtml(r) {
   const online = ROOM_COUNTS[r.id] || 0;
+  const mine = isMyUserCreatedRoom(r);
   return `
-  <div class="room-row" data-id="${r.id}">
+  <article class="room-row${mine ? ' room-row-owned' : ''}" data-id="${r.id}">
     ${roomImgHtml(r)}
     <div class="room-info">
-      <div class="room-name">${esc(r.name)}</div>
+      <div class="room-row-heading">
+        <div class="room-name">${esc(r.name)}${r.locked ? '<i class="f7-icons room-lock-icon" title="غرفة محمية">lock_fill</i>' : ''}</div>
+        ${roomFeaturesHtml(r)}
+      </div>
       <div class="room-desc">${esc(r.description || `أهلاً وسهلاً بكم في ${SETTINGS.site_name || 'الدردشة'} ★`)}</div>
-      <div class="room-created-by"><i class="f7-icons">person_fill</i><span>أنشأها:</span><b>${esc(roomCreatorName(r))}</b></div>
+      <div class="room-created-by"><i class="f7-icons">person_fill</i><span>أنشأها</span><b>${esc(roomCreatorName(r))}</b>${mine ? '<em>غرفتي</em>' : ''}</div>
+      ${roomParticipantsHtml(r)}
     </div>
     <div class="room-side">
-      <div class="room-count"><i class="f7-icons">person_2_fill</i><b>${online}</b>/${r.max_users || 1000}</div>
-      <i class="f7-icons room-chev">chevron_right</i>
-      ${roomFeaturesHtml(r)}
+      <div class="room-count"><i class="f7-icons">person_2_fill</i><b>${online}</b><span>متصل</span></div>
+      <i class="f7-icons room-chev">chevron_left</i>
     </div>
-  </div>`;
+    ${mine ? `<button class="room-owner-delete" type="button" data-room-id="${+r.id}" aria-label="حذف غرفتي"><i class="f7-icons">trash_fill</i><span>حذف غرفتي</span></button>` : ''}
+  </article>`;
 }
 function roomMiniHtml(r) {
   const online = ROOM_COUNTS[r.id] || 0;
@@ -4362,10 +4439,11 @@ function roomMiniHtml(r) {
       <div class="rm-name">${esc(r.name)} ${r.locked ? '<i class="f7-icons" style="font-size:12px;color:#d946a6">lock_fill</i>' : ''}${r.status !== 'open' ? ' <span style="font-size:10px;color:#dc2626;font-weight:800">مغلقة 🔒</span>' : ''}</div>
       <div class="rm-desc">${esc(r.description || ('غرفة مستخدمين ' + roomCreatorName(r)))}</div>
       <div class="rm-created-by">أنشأها: <b>${esc(roomCreatorName(r))}</b></div>
+      ${roomParticipantsHtml(r, true)}
     </div>
     <div class="rm-side">
       ${isCur ? '<span class="rm-here">أنت هنا</span>' : `<span class="rm-count"><i class="f7-icons">person_2_fill</i>${online}/${r.max_users || 1000}</span>`}
-      <i class="f7-icons rm-chev">chevron_right</i>
+      <i class="f7-icons rm-chev">chevron_left</i>
     </div>
   </div>`;
 }
@@ -4390,6 +4468,7 @@ function renderRoomsPanel() {
   });
 }
 function renderRooms() {
+  syncRoomCreateButton();
   const listBox = $('#roomsList');
   if (!listBox) return;
   const searchBar = document.querySelector('#roomsScreen .r-search');
@@ -4414,9 +4493,141 @@ function renderRooms() {
   // جميع الغرف صوتية الآن — لا يوجد تقسيم إلى أقسام.
   const list = ROOMS.filter(r => (!q1 || r.name.includes(q1)));
   listBox.innerHTML = list.length ? list.map(roomRowHtml).join('') : '<div class="pv-empty" style="padding:50px 10px"><div>لا توجد غرف هنا</div></div>';
-  $$('#roomsList .room-row').forEach(row => row.onclick = () => enterRoom(+row.dataset.id));
+  $$('#roomsList .room-row').forEach(row => row.onclick = event => {
+    if (event.target.closest('.room-owner-delete')) return;
+    enterRoom(+row.dataset.id);
+  });
+  $$('#roomsList .room-owner-delete').forEach(button => button.onclick = event => {
+    event.preventDefault();
+    event.stopPropagation();
+    deleteMyCreatedRoom(+button.dataset.roomId);
+  });
   renderRoomsPanel();
 }
+function resetRoomCreateForm() {
+  ROOM_CREATE_IMAGE = '';
+  const name = $('#roomCreateName');
+  const description = $('#roomCreateDescription');
+  const type = $('#roomCreateType');
+  const file = $('#roomCreateImageFile');
+  const preview = $('#roomCreatePreview');
+  const error = $('#roomCreateError');
+  if (name) name.value = '';
+  if (description) description.value = '';
+  if (type) type.value = 'voice';
+  if (file) file.value = '';
+  if (preview) preview.innerHTML = '<i class="f7-icons">music_mic</i>';
+  if (error) { error.hidden = true; error.textContent = ''; }
+}
+function openRoomCreate() {
+  if (!ME || !ME.registered) return openOv('needRegOv');
+  const ownRoom = myCreatedRoom();
+  const existing = $('#roomCreateExisting');
+  const form = $('#roomCreateForm');
+  const actions = $('#roomCreateButtons');
+  const existingClose = $('#roomCreateExistingClose');
+  $('#roomCreateTitle').textContent = ownRoom ? 'إدارة غرفتي' : 'إنشاء غرفة جديدة';
+  existing.hidden = !ownRoom;
+  form.hidden = !!ownRoom;
+  actions.style.display = ownRoom ? 'none' : 'flex';
+  existingClose.hidden = !ownRoom;
+  if (ownRoom) {
+    $('#roomExistingName').textContent = ownRoom.name || 'غرفتي';
+    $('#roomExistingDescription').textContent = ownRoom.description || 'غرفتك الخاصة';
+    $('#roomDeleteOwnBtn').dataset.roomId = String(ownRoom.id);
+    $('#roomExistingCover').innerHTML = ownRoom.image
+      ? `<img src="${esc(thumbUrl(ownRoom.image, 104))}" alt="${esc(ownRoom.name)}">`
+      : '<i class="f7-icons">music_mic</i>';
+  } else {
+    resetRoomCreateForm();
+  }
+  openOv('roomCreateOv');
+  if (!ownRoom) setTimeout(() => { const input = $('#roomCreateName'); if (input) input.focus(); }, 40);
+}
+async function deleteMyCreatedRoom(roomId) {
+  const ownRoom = myCreatedRoom();
+  if (!ownRoom || +ownRoom.id !== +roomId) return toast('هذه الغرفة ليست مملوكة لحسابك', false);
+  if (!confirm(`حذف غرفتك «${ownRoom.name}»؟ سيتم إخراج جميع الموجودين منها ولا يمكن التراجع عن ذلك.`)) return;
+  const buttons = $$('.room-owner-delete, #roomDeleteOwnBtn');
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    await api(`/api/rooms/${roomId}`, 'DELETE');
+    closeOv('roomCreateOv');
+    await loadRooms();
+    toast('تم حذف غرفتك، يمكنك الآن إنشاء غرفة أخرى');
+  } catch (error) {
+    toast(error.error || 'تعذر حذف الغرفة', false);
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+$('#createRoomBtn').onclick = event => {
+  event.preventDefault();
+  event.stopPropagation();
+  openRoomCreate();
+};
+$('#roomCreateImageButton').onclick = () => $('#roomCreateImageFile').click();
+$('#roomCreateImageFile').onchange = async () => {
+  const file = $('#roomCreateImageFile').files && $('#roomCreateImageFile').files[0];
+  if (!file) return;
+  if (!String(file.type || '').startsWith('image/')) {
+    $('#roomCreateError').textContent = 'اختر ملف صورة صالحاً';
+    $('#roomCreateError').hidden = false;
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    $('#roomCreateError').textContent = 'حجم الصورة يجب ألا يتجاوز 8 ميغابايت';
+    $('#roomCreateError').hidden = false;
+    return;
+  }
+  const uploadButton = $('#roomCreateImageButton');
+  uploadButton.disabled = true;
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const result = await api('/api/rooms/upload-cover', 'POST', form, true, 'جارٍ رفع صورة الغرفة...');
+    ROOM_CREATE_IMAGE = String(result.path || '');
+    $('#roomCreatePreview').innerHTML = `<img src="${esc(thumbUrl(ROOM_CREATE_IMAGE, 96))}" alt="معاينة صورة الغرفة">`;
+    $('#roomCreateError').hidden = true;
+    $('#roomCreateError').textContent = '';
+  } catch (error) {
+    $('#roomCreateError').textContent = error.error || 'تعذر رفع صورة الغرفة';
+    $('#roomCreateError').hidden = false;
+  } finally {
+    uploadButton.disabled = false;
+  }
+};
+$('#roomCreateSubmit').onclick = async () => {
+  const button = $('#roomCreateSubmit');
+  const name = $('#roomCreateName').value.trim();
+  const errorBox = $('#roomCreateError');
+  if (name.length < 2 || name.length > 32) {
+    errorBox.textContent = 'اسم الغرفة يجب أن يكون بين حرفين و32 حرفاً';
+    errorBox.hidden = false;
+    return;
+  }
+  button.disabled = true;
+  errorBox.hidden = true;
+  try {
+    const result = await api('/api/rooms', 'POST', {
+      name,
+      description: $('#roomCreateDescription').value.trim(),
+      type: $('#roomCreateType').value,
+      image: ROOM_CREATE_IMAGE
+    });
+    closeOv('roomCreateOv');
+    await loadRooms();
+    toast('تم إنشاء غرفتك بنجاح ✨');
+    if (ROOMS.some(room => +room.id === +result.id)) enterRoom(+result.id);
+  } catch (error) {
+    errorBox.textContent = error.error || 'تعذر إنشاء الغرفة';
+    errorBox.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+};
+$('#roomDeleteOwnBtn').onclick = () => deleteMyCreatedRoom(+$('#roomDeleteOwnBtn').dataset.roomId);
+
 function enterRoom(id, pwd, hiddenChoice) {
   if (!ME) { openLogin(); return; }
   if (!ME.registered) { openOv('needRegOv'); return; }
@@ -4443,6 +4654,7 @@ function enterRoom(id, pwd, hiddenChoice) {
   if (CUR_ROOM && CUR_ROOM.id !== id) leaveRoom();
   CUR_ROOM = r;
   ROOM_USERS = [];
+  if (ME) ME.room_muted = 0;
   renderRoomSeats();
   updateVoiceRoomBarUI();
   $('#chatRoomName').textContent = r.name;
@@ -4472,7 +4684,12 @@ function enterRoom(id, pwd, hiddenChoice) {
       if (res.lastMsgId) ROOM_SYNC_BASE[id] = +res.lastMsgId;
       bcastApplyJoinState(id, res.broadcast || null);
       // لا نحمّل سجل الرسائل القديم؛ يبدأ العام برسالة ترحيب من مالك الغرفة.
-      api('/api/rooms/' + id + '/users').then(u => { ROOM_USERS = u; renderUsers(); });
+      api('/api/rooms/' + id + '/users').then(u => {
+        ROOM_USERS = u;
+        const myRoomUser = ROOM_USERS.find(user => ME && +user.id === +ME.id);
+        if (ME) ME.room_muted = myRoomUser ? (+myRoomUser.room_muted || 0) : 0;
+        renderUsers();
+      });
       if (res.hidden && !(ME && ME.rank === 'supermaster')) toast('تم الدخول إلى الغرفة بشكل مخفي');
       return;
     }
@@ -5654,8 +5871,9 @@ function syncUserActionSheet() {
   $('#usMembership').textContent = userSheetMembership(CUR_TARGET);
   $('#usMembership').style.color = userSheetMembershipColor(CUR_TARGET);
   $('#usIgnoreLabel').textContent = IGNORED_USERS.has(+CUR_TARGET.id) ? 'إلغاء التجاهل' : 'تجاهل';
-  $('#usMuteLabel').textContent = CUR_TARGET.muted ? 'إلغاء الكتم' : 'كتم المستخدم';
-  $('#usMuteIcon').textContent = CUR_TARGET.muted ? 'mic_fill' : 'mic_slash_fill';
+  const targetMutedHere = isCurrentRoomOwner() ? !!CUR_TARGET.room_muted : !!CUR_TARGET.muted;
+  $('#usMuteLabel').textContent = targetMutedHere ? 'إلغاء الكتم' : 'كتم المستخدم';
+  $('#usMuteIcon').textContent = targetMutedHere ? 'mic_fill' : 'mic_slash_fill';
   const privateBtn = $('#usPrivate');
   if (privateBtn) {
     const myRank = String((ME && ME.rank) || 'user');
@@ -5677,10 +5895,15 @@ function syncUserActionSheet() {
     replyBtn.style.display = (US_MSG && US_MSG.text !== undefined && US_MSG.text !== null) ? 'flex' : 'none';
   }
 
-  // أدوات الإشراف تظهر للسوبر/الادمن/ادمن الغرفة، ويعيد الخادم التحقق من النطاق والرتبة.
-  $$('.user-action-sheet .us-moderation').forEach(b => { b.style.display = canModerateRank() ? 'flex' : 'none'; });
-  // أدوات التحكم بالمذيع (سحب المايك / سحب مع منع صعود) تظهر لمشرف على مذيعٍ يبث فعلاً الآن،
-  // و«فك من البث» تظهر لمشرف على مستخدمٍ ممنوع من الصعود.
+  // مالك الغرفة المنشأة من عضو يستطيع كتم وطرد الموجودين في غرفته فقط؛
+  // الحظر وكشف العناوين والتحكم بالبث تبقى للإدارة/أدمن الغرفة.
+  $$('.user-action-sheet .us-moderation').forEach(b => { b.style.display = 'none'; });
+  if (canModerateRoomMembers()) {
+    $('#usMute').style.display = 'flex';
+    if (CUR_ROOM) $('#usKick').style.display = 'flex';
+  }
+  if (canModerateRank()) $('#usBan').style.display = 'flex';
+  // أدوات التحكم بالمذيع (سحب المايك / سحب مع منع صعود) تبقى للإدارة/أدمن الغرفة.
   syncUserBroadcastControlButtons();
   // «كشف نكات» للإدارة العامة فقط (ادمن / سوبر ادمن / سوبر ماستر) وليس لأدمن الغرفة،
   // ولا يظهر عند النقر على النفس. الخادم يعيد التحقق من الرتبة أيضاً.
@@ -5944,9 +6167,13 @@ $('#modTimeOk').onclick = async () => {
       const body = { muted: true, room_id: roomId, minutes };
       if (reason) body.reason = reason;
       const d = await api(`/api/admin/users/${st.target.id}/mute`, 'POST', body);
-      const roomUser = ROOM_USERS.find(u => u.id === st.target.id);
-      if (roomUser) roomUser.muted = 1;
-      toast(`تم كتم ${st.target.username}${durText}` + (d.by_ip ? ' حسب عنوان IP' : ''));
+      const roomUser = ROOM_USERS.find(u => +u.id === +st.target.id);
+      if (roomUser) {
+        if (d.room_scoped) roomUser.room_muted = d.muted ? 1 : 0;
+        else roomUser.global_muted = d.muted ? 1 : 0;
+        roomUser.muted = roomUser.global_muted || roomUser.room_muted ? 1 : 0;
+      }
+      toast(`تم كتم ${st.target.username}${d.room_scoped ? ' في هذه الغرفة' : ''}${durText}` + (d.by_ip ? ' حسب عنوان IP' : ''));
     } else if (st.action === 'kick') {
       const body = { room_id: roomId, minutes };
       if (reason) body.reason = reason;
@@ -5960,19 +6187,27 @@ $('#modTimeOk').onclick = async () => {
   } catch (e) { toast(e.error || 'تعذر تنفيذ الإجراء', false); }
 };
 $('#usMute').onclick = async () => {
-  if (!CUR_TARGET || !canModerateRank()) return toast('لا تملك صلاحية الكتم', false);
+  if (!CUR_TARGET || !canModerateRoomMembers()) return toast('لا تملك صلاحية الكتم في هذه الغرفة', false);
   const button = $('#usMute');
   const target = CUR_TARGET;
+  const roomScoped = isCurrentRoomOwner();
+  const mutedHere = roomScoped ? !!target.room_muted : !!target.muted;
   closeOv('userSheet');
-  // فك الكتم مباشرة، والكتم الجديد يمر بنافذة اختيار المدة
-  if (target.muted) {
+  // كتم مالك الغرفة خاص بهذه الغرفة؛ كتم الإدارة يبقى على مستوى الحساب/IP.
+  if (mutedHere) {
     button.disabled = true;
     try {
       const d = await api(`/api/admin/users/${target.id}/mute`, 'POST', { muted: false, room_id: CUR_ROOM ? CUR_ROOM.id : 0 });
-      target.muted = d.muted ? 1 : 0;
-      const roomUser = ROOM_USERS.find(u => u.id === target.id);
-      if (roomUser) roomUser.muted = target.muted;
-      toast(`تم إلغاء كتم ${target.username}`);
+      if (d.room_scoped) target.room_muted = d.muted ? 1 : 0;
+      else target.global_muted = d.muted ? 1 : 0;
+      target.muted = target.global_muted || target.room_muted ? 1 : 0;
+      const roomUser = ROOM_USERS.find(u => +u.id === +target.id);
+      if (roomUser) {
+        roomUser.room_muted = target.room_muted ? 1 : 0;
+        roomUser.global_muted = target.global_muted ? 1 : 0;
+        roomUser.muted = roomUser.global_muted || roomUser.room_muted ? 1 : 0;
+      }
+      toast(`تم إلغاء كتم ${target.username}${d.room_scoped ? ' في هذه الغرفة' : ''}`);
     } catch (e) { toast(e.error || 'تعذر إلغاء الكتم', false); }
     finally { button.disabled = false; }
     return;
@@ -5980,7 +6215,7 @@ $('#usMute').onclick = async () => {
   openModTime('mute', target);
 };
 $('#usKick').onclick = async () => {
-  if (!CUR_TARGET || !CUR_ROOM || !canModerateRank()) return toast('لا تملك صلاحية الطرد', false);
+  if (!CUR_TARGET || !CUR_ROOM || !canModerateRoomMembers()) return toast('لا تملك صلاحية الطرد من هذه الغرفة', false);
   closeOv('userSheet');
   openModTime('kick', CUR_TARGET);
 };
@@ -11954,6 +12189,7 @@ function onLoggedIn() {
   // الهيدر: إخفاء زر الدخول وإظهار الصورة + الاسم
   $('#headEnterBtn').style.display = 'none';
   $('#headUserBox').style.display = 'flex';
+  syncRoomCreateButton();
   $('#headAva').innerHTML = avatarHtml(ME.avatar, '', frameOf(ME));
   syncInputBarAvatar();
   $('#headName').textContent = ME.username;
@@ -12365,6 +12601,7 @@ function leaveRoom() {
   }
   CUR_ROOM = null;
   ROOM_USERS = [];
+  if (ME) ME.room_muted = 0;
   renderRoomSeats();
   updateVoiceRoomBarUI();
   closeOv('usersPanel');
@@ -12508,6 +12745,7 @@ msgInput.onkeydown = function(e) {
 function sendMsg() {
   if (!ME) return openLogin();
   if (!CUR_ROOM) return toast('اختر غرفة أولا', false);
+  if (ME.room_muted) return toast('أنت مكتوم في هذه الغرفة ولا يمكنك الكتابة', false);
   const t = $('#msgInput').value.trim();
   if (!t) return;
   const maxLength = Math.max(1, Math.min(5000, +(SETTINGS.msg_max || 500)));

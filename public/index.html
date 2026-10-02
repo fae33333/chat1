@@ -22,8 +22,8 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <link rel="preload" href="/fonts/NotoSansArabic-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansArabic-Bold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/style.css?v=20261002-room-clean">
-<link rel="stylesheet" href="/css/desktop.css?v=20261002-room-clean" media="(min-width: 1024px)">
+<link rel="stylesheet" href="/css/style.css?v=20261002-room-owner">
+<link rel="stylesheet" href="/css/desktop.css?v=20261002-room-owner" media="(min-width: 1024px)">
 </head>
 <body>
 <div id="frame">
@@ -55,6 +55,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
         <span class="r-logo-ico"><i class="f7-icons">smiley_fill</i></span>
         <span class="r-logo-txt" id="siteName"></span>
       </div>
+      <button class="head-create-room" id="createRoomBtn" type="button" style="display:none"><i class="f7-icons">plus</i><span>إنشاء غرفة</span></button>
       <button class="btn-enter" id="headEnterBtn">دخول</button>
       <button class="head-user" id="headUserBox" style="display:none" aria-label="حسابي">
         <span class="head-ava" id="headAva"></span>
@@ -1360,6 +1361,54 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
     </div>
   </div>
 
+  <!-- إنشاء غرفة للأعضاء المسجلين وإدارة الغرفة الوحيدة التي يملكها العضو -->
+  <div class="overlay center room-create-overlay" id="roomCreateOv">
+    <div class="dialog room-create-dialog" role="dialog" aria-modal="true" aria-labelledby="roomCreateTitle">
+      <div class="dlg-title" id="roomCreateTitle">إنشاء غرفة جديدة</div>
+      <div class="dlg-body">
+        <div class="room-create-existing" id="roomCreateExisting" hidden>
+          <div class="room-existing-card">
+            <div class="room-existing-cover" id="roomExistingCover"><i class="f7-icons">music_mic</i></div>
+            <div class="room-existing-info">
+              <b id="roomExistingName">غرفتي</b>
+              <span id="roomExistingDescription"></span>
+              <small>أنشأتها أنت · غرفة واحدة لكل عضو</small>
+            </div>
+          </div>
+          <div class="room-create-limit"><i class="f7-icons">info_circle_fill</i><span>لا يمكنك إنشاء غرفة أخرى قبل حذف غرفتك الحالية.</span></div>
+          <button class="room-delete-own" id="roomDeleteOwnBtn" type="button"><i class="f7-icons">trash_fill</i> حذف غرفتي</button>
+        </div>
+        <div id="roomCreateForm">
+          <label class="room-create-label" for="roomCreateName">اسم الغرفة</label>
+          <input class="room-create-input" id="roomCreateName" type="text" maxlength="32" autocomplete="off" placeholder="مثال: أصدقاء الأردن">
+          <label class="room-create-label" for="roomCreateDescription">وصف قصير</label>
+          <textarea class="room-create-input room-create-description" id="roomCreateDescription" maxlength="120" rows="2" placeholder="اكتب نبذة بسيطة عن غرفتك"></textarea>
+          <label class="room-create-label" for="roomCreateType">نوع الغرفة</label>
+          <select class="room-create-input" id="roomCreateType">
+            <option value="voice">غرفة صوتية</option>
+            <option value="default">غرفة كتابية</option>
+          </select>
+          <label class="room-create-label">صورة الغرفة (اختياري)</label>
+          <div class="room-create-image-row">
+            <div class="room-create-preview" id="roomCreatePreview"><i class="f7-icons">music_mic</i></div>
+            <div class="room-create-image-actions">
+              <button type="button" id="roomCreateImageButton"><i class="f7-icons">square_arrow_up_fill</i> اختيار صورة</button>
+              <input type="file" id="roomCreateImageFile" accept="image/*" hidden>
+              <small>JPG أو PNG أو WebP · حتى 8 ميغابايت</small>
+            </div>
+          </div>
+          <div class="room-create-hint"><i class="f7-icons">person_badge_plus_fill</i><span>الغرف متاحة للأعضاء المسجلين فقط، وسيظهر اسمك كمنشئ للغرفة.</span></div>
+          <div class="room-create-error" id="roomCreateError" role="alert" hidden></div>
+        </div>
+      </div>
+      <div class="dlg-btns room-create-buttons" id="roomCreateButtons">
+        <button type="button" data-close="roomCreateOv">إلغاء</button>
+        <button type="button" id="roomCreateSubmit">إنشاء الغرفة</button>
+      </div>
+      <button class="room-create-close" id="roomCreateExistingClose" type="button" data-close="roomCreateOv" hidden>إغلاق</button>
+    </div>
+  </div>
+
   <!-- تأكيد الخروج من الغرفة -->
   <!-- نافذة مدة العقوبة: كتم / طرد / حظر مؤقت -->
   <div class="overlay center" id="modTimeOv">
@@ -1649,7 +1698,7 @@ html,body,button,input,textarea,select{font-family:"Noto Sans Arabic","SF Arabic
 <script src="/socket.io/socket.io.js" defer></script>
 <script src="/js/skins.js?v=20260904-skins" defer></script>
 <script src="/js/i18n-words.js?v=20260919-usort1" defer></script>
-<script src="/js/app.js?v=20261002-room-clean" defer></script>
+<script src="/js/app.js?v=20261002-room-owner" defer></script>
 <script src="/js/desktop.js?v=20260911-dsk7" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {

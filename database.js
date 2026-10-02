@@ -115,6 +115,7 @@ db.serialize(() => {
     sort INTEGER DEFAULT 0,
     creator_id INTEGER DEFAULT 0,
     creator_name TEXT DEFAULT 'الإدارة',
+    user_created INTEGER DEFAULT 0,       -- غرفة أنشأها عضو مسجل (غرفة واحدة لكل مالك)
     created_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
   // ترقية: كلمة مرور الغرفة (تُضاف للقواعد القديمة فقط)
@@ -124,6 +125,8 @@ db.serialize(() => {
   db.run(`ALTER TABLE rooms ADD COLUMN welcome_enabled INTEGER DEFAULT 1`, () => { });
   db.run(`ALTER TABLE rooms ADD COLUMN creator_id INTEGER DEFAULT 0`, () => { });
   db.run(`ALTER TABLE rooms ADD COLUMN creator_name TEXT DEFAULT 'الإدارة'`, () => { });
+  db.run(`ALTER TABLE rooms ADD COLUMN user_created INTEGER DEFAULT 0`, () => { });
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_rooms_one_user_created_per_owner ON rooms(creator_id) WHERE user_created=1 AND creator_id>0`, () => { });
   db.run(`UPDATE rooms SET audience='all' WHERE audience IS NULL OR audience NOT IN ('all','registered')`, () => { });
   // الغرف القديمة أُنشئت من لوحة الإدارة قبل حفظ اسم المنشئ.
   db.run(`UPDATE rooms SET creator_name='الإدارة' WHERE creator_name IS NULL OR TRIM(creator_name)=''`, () => { });
@@ -508,6 +511,19 @@ db.serialize(() => {
   db.run(`ALTER TABLE room_kicks ADD COLUMN expires_at INTEGER DEFAULT 0`, () => { });
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_kicks_room_ip ON room_kicks (room_id, ip)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_room_kicks_room_user ON room_kicks (room_id, user_id)`);
+  // ---------- الكتم الخاص بكل غرفة (مالك الغرفة يدير أعضاء غرفته فقط) ----------
+  db.run(`CREATE TABLE IF NOT EXISTS room_mutes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    username TEXT DEFAULT '',
+    reason TEXT DEFAULT '',
+    muted_by TEXT DEFAULT '',
+    expires_at INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    UNIQUE(room_id, user_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_room_mutes_room_user ON room_mutes (room_id, user_id)`);
   // ---------- إخفاء «العام» (رسالة الترحيب) لمستخدم واحد ----------
   // المستخدم العادي يحذف الرسالة له فقط: تُخزن النسخة المخفية كي لا تُعرض له
   // عند دخوله الغرفة مجدداً، ما لم تغيّر الإدارة نصها.
