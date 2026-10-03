@@ -41,7 +41,8 @@
     countriesList: [],
     selectedCountry: 'all',
     selectedCategory: 'all',
-    unreadMessagesCount: 0
+    unreadMessagesCount: 0,
+    favoriteRoomIds: []
   };
 
   function isPlatformStaff(user) {
@@ -389,6 +390,30 @@
       if (window.giftEffectsEngine) {
         window.giftEffectsEngine.showGiftAnimation(payload.gift, payload.sender, payload.receiver);
       }
+      if (payload && payload.receiver && payload.receiver.id) {
+        const openGiftsBoxes = document.querySelectorAll(`.user-received-gifts-box[data-user-id="${payload.receiver.id}"]`);
+        openGiftsBoxes.forEach(box => {
+          loadAndRenderUserGiftsSection(payload.receiver.id, box, state.currentUser && state.currentUser.id === payload.receiver.id);
+        });
+      }
+    });
+
+    state.socket.on('user_gift_received', (payload) => {
+      if (!payload || !payload.receiver) return;
+      if (state.currentUser && payload.receiver.id === state.currentUser.id) {
+        fetchCurrentUserProfile();
+        if (!state.activeRoom || state.activeRoom.id !== payload.room_id) {
+          showToast(`🎁 وصلتك هدية "${payload.gift.name}" ${payload.gift.icon} من ${payload.sender?.name || 'صديق'} وتم حفظها في هداياك! ✨`);
+        }
+      }
+      const openGiftsBoxes = document.querySelectorAll(`.user-received-gifts-box[data-user-id="${payload.receiver.id}"]`);
+      openGiftsBoxes.forEach(box => {
+        loadAndRenderUserGiftsSection(payload.receiver.id, box, state.currentUser && state.currentUser.id === payload.receiver.id);
+      });
+    });
+
+    state.socket.on('room_entry_effect', ({ user, effectId }) => {
+      showRoomEntryEffectBanner(user, effectId);
     });
 
     state.socket.on('dice_rolled', ({ user, value }) => {
@@ -828,6 +853,9 @@
     // Refresh User Profile from DB to ensure freshest stats
     fetchCurrentUserProfile();
 
+    // Load User's Favorite Rooms
+    loadFavoriteRooms();
+
     // Switch to Planet Tab
     switchTab(state.currentTab || 'planet');
 
@@ -851,6 +879,140 @@
       // Never wipe localStorage on network latency to guarantee device persistence
     } catch (err) {
       console.warn('Silent profile sync error:', err);
+    }
+  }
+
+  // Favorite Rooms Helpers ("المفضلة")
+  async function loadFavoriteRooms() {
+    try {
+      const raw = localStorage.getItem('soulchill_favorite_rooms');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          state.favoriteRoomIds = parsed;
+        }
+      }
+    } catch (e) {}
+
+    if (!state.currentUser || !state.currentUser.id) return;
+    try {
+      const res = await fetch('/api/rooms/favorites', {
+        headers: { 'x-user-id': state.currentUser.id }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.favoriteRoomIds)) {
+          const merged = Array.from(new Set([...state.favoriteRoomIds, ...data.favoriteRoomIds]));
+          state.favoriteRoomIds = merged;
+          localStorage.setItem('soulchill_favorite_rooms', JSON.stringify(merged));
+        }
+      }
+    } catch (err) {
+      console.warn('Silent favorite rooms sync error:', err);
+    }
+  }
+
+  function isRoomFavorited(roomId) {
+    if (!roomId) return false;
+    if (!Array.isArray(state.favoriteRoomIds)) state.favoriteRoomIds = [];
+    return state.favoriteRoomIds.includes(roomId);
+  }
+
+  async function toggleFavoriteRoom(roomId, btnEl) {
+    if (!roomId) return;
+    if (!Array.isArray(state.favoriteRoomIds)) state.favoriteRoomIds = [];
+
+    const currentlyFav = state.favoriteRoomIds.includes(roomId);
+    let nowFav = !currentlyFav;
+
+    if (nowFav) {
+      state.favoriteRoomIds.push(roomId);
+    } else {
+      state.favoriteRoomIds = state.favoriteRoomIds.filter(id => id !== roomId);
+    }
+    localStorage.setItem('soulchill_favorite_rooms', JSON.stringify(state.favoriteRoomIds));
+
+    // Update UI button immediately
+    const updateBtnVisual = (el, favState) => {
+      if (!el) return;
+      el.classList.toggle('favorited', favState);
+      el.title = favState ? 'إزالة الغرفة من المفضلة' : 'إضافة الغرفة إلى المفضلة';
+      const iconEl = el.querySelector('.fav-heart-icon') || el;
+      iconEl.innerText = favState ? '❤️' : '🤍';
+    };
+
+    updateBtnVisual(btnEl, nowFav);
+    document.querySelectorAll(`.room-fav-heart-btn[data-room-id="${roomId}"], .room-card-fav-btn[data-room-id="${roomId}"]`).forEach(el => {
+      updateBtnVisual(el, nowFav);
+    });
+
+    showToast(nowFav ? '❤️ تمت إضافة الغرفة إلى المفضلة!' : '🤍 تمت إزالة الغرفة من المفضلة');
+
+    if (state.currentUser && state.currentUser.id) {
+      try {
+        const res = await fetch(`/api/rooms/${roomId}/favorite`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': state.currentUser.id
+          },
+          body: JSON.stringify({ user_id: state.currentUser.id })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.favoriteRoomIds)) {
+            state.favoriteRoomIds = data.favoriteRoomIds;
+            localStorage.setItem('soulchill_favorite_rooms', JSON.stringify(data.favoriteRoomIds));
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (state.currentTab === 'rooms' && state.selectedCategory === 'favorites') {
+      applyRoomsFilters();
+    }
+  }
+
+  // User Received Gifts Wall Renderer ("هداياه")
+  async function loadAndRenderUserGiftsSection(userId, containerEl, isSelf = false) {
+    if (!userId || !containerEl) return;
+    try {
+      const res = await fetch(`/api/users/${userId}/gifts`);
+      if (!res.ok) throw new Error('Failed to load user gifts');
+      const data = await res.json();
+      const summary = Array.isArray(data.summary) ? data.summary : [];
+      const totalCount = data.totalCount || 0;
+
+      if (summary.length === 0) {
+        containerEl.innerHTML = `
+          <div class="user-gifts-wall-header">
+            <span>🎁 ${isSelf ? 'خزانة هداياي (الهدايا المستلمة)' : 'هداياه المستلمة (خزانة الهدايا)'}</span>
+            <span class="user-gifts-count-badge">0 هدية</span>
+          </div>
+          <div class="user-gifts-empty-state">
+            ${isSelf ? 'لم تستلم هدايا بعد.. شارك في الغرف الصوتية واستقبل الهدايا الفاخرة! ✨' : 'لم يستلم هدايا بعد.. كن أول من يهديه الآن! 🎁✨'}
+          </div>
+        `;
+        return;
+      }
+
+      containerEl.innerHTML = `
+        <div class="user-gifts-wall-header">
+          <span>🎁 ${isSelf ? 'خزانة هداياي (الهدايا المستلمة)' : 'هداياه المستلمة (خزانة الهدايا)'}</span>
+          <span class="user-gifts-count-badge">${totalCount} هدية</span>
+        </div>
+        <div class="user-gifts-wall-grid">
+          ${summary.map(g => `
+            <div class="user-gift-wall-item" title="${g.gift_name} (العدد: ${g.count})">
+              <span class="user-gift-wall-qty">×${g.count}</span>
+              <div class="user-gift-wall-icon">${g.gift_icon}</div>
+              <div class="user-gift-wall-name">${g.gift_name}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } catch (err) {
+      containerEl.innerHTML = '';
     }
   }
 
@@ -885,8 +1047,27 @@
   }
 
   // 3. Tab Navigation
+  let planetSphereAnimFrame = null;
+  let planetCounterInterval = null;
+
   function switchTab(tabName) {
     state.currentTab = tabName;
+
+    const appContainer = document.getElementById('main-app-container');
+    if (appContainer) {
+      appContainer.classList.toggle('tab-planet-active', tabName === 'planet');
+    }
+
+    if (tabName !== 'planet') {
+      if (planetSphereAnimFrame) {
+        cancelAnimationFrame(planetSphereAnimFrame);
+        planetSphereAnimFrame = null;
+      }
+      if (planetCounterInterval) {
+        clearInterval(planetCounterInterval);
+        planetCounterInterval = null;
+      }
+    }
 
     if (tabName === 'chat') {
       state.unreadMessagesCount = 0;
@@ -919,7 +1100,7 @@
   }
 
   // ============================================
-  // TAB 1: SOUL PLANET (SOULCHILL GALAXY & VOICE MATCH)
+  // TAB 1: SOUL PLANET (SOULCHILL 3D SPHERE & VOICE MATCH)
   // ============================================
   let activeVoiceMatchSession = null;
   let voiceMatchTimerInterval = null;
@@ -931,108 +1112,408 @@
   let voiceMatchAnalyser = null;
   let voiceMatchSimInterval = null;
 
+  function toArabicNumerals(num) {
+    const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    return String(num).replace(/[0-9]/g, d => arabicDigits[parseInt(d, 10)]);
+  }
+
+  function getOrnateSphereFrameSvg(frameStyle) {
+    switch (frameStyle) {
+      case 'gold_wings':
+        return `<svg viewBox="0 0 100 100" class="sphere-ornate-frame-svg">
+          <defs>
+            <linearGradient id="gwGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fef08a"/>
+              <stop offset="50%" stop-color="#f59e0b"/>
+              <stop offset="100%" stop-color="#b45309"/>
+            </linearGradient>
+          </defs>
+          <circle cx="50" cy="50" r="38" fill="none" stroke="url(#gwGrad)" stroke-width="3.5"/>
+          <path d="M12 52 C4 40, 6 24, 20 18 C14 28, 16 40, 22 48 Z" fill="url(#gwGrad)"/>
+          <path d="M88 52 C96 40, 94 24, 80 18 C86 28, 84 40, 78 48 Z" fill="url(#gwGrad)"/>
+          <path d="M36 14 L43 22 L50 9 L57 22 L64 14 L60 25 L40 25 Z" fill="url(#gwGrad)"/>
+          <circle cx="50" cy="11" r="2.5" fill="#ef4444"/>
+          <path d="M26 80 Q50 92 74 80" fill="none" stroke="url(#gwGrad)" stroke-width="3" stroke-linecap="round"/>
+        </svg>`;
+      case 'silver_crystal':
+        return `<svg viewBox="0 0 100 100" class="sphere-ornate-frame-svg">
+          <defs>
+            <linearGradient id="scGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="50%" stop-color="#93c5fd"/>
+              <stop offset="100%" stop-color="#3b82f6"/>
+            </linearGradient>
+          </defs>
+          <circle cx="50" cy="50" r="38" fill="none" stroke="url(#scGrad)" stroke-width="3.2"/>
+          <path d="M10 48 C4 34, 12 20, 24 16 C18 28, 16 38, 20 48 Z" fill="url(#scGrad)"/>
+          <path d="M90 48 C96 34, 88 20, 76 16 C82 28, 84 38, 80 48 Z" fill="url(#scGrad)"/>
+          <polygon points="50,7 55,18 45,18" fill="#e0f2fe"/>
+          <polygon points="38,12 44,20 35,21" fill="#93c5fd"/>
+          <polygon points="62,12 65,21 56,20" fill="#93c5fd"/>
+          <path d="M24 76 Q50 90 76 76" fill="none" stroke="#e0f2fe" stroke-width="3" stroke-linecap="round"/>
+        </svg>`;
+      case 'purple_floral':
+        return `<svg viewBox="0 0 100 100" class="sphere-ornate-frame-svg">
+          <defs>
+            <linearGradient id="pfGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#f5d0fe"/>
+              <stop offset="50%" stop-color="#d946ef"/>
+              <stop offset="100%" stop-color="#7e22ce"/>
+            </linearGradient>
+          </defs>
+          <circle cx="50" cy="50" r="38" fill="none" stroke="url(#pfGrad)" stroke-width="3.5"/>
+          <circle cx="20" cy="24" r="5" fill="#f472b6"/>
+          <circle cx="80" cy="24" r="5" fill="#f472b6"/>
+          <circle cx="50" cy="11" r="5.5" fill="#e879f9"/>
+          <circle cx="13" cy="50" r="4" fill="#c084fc"/>
+          <circle cx="87" cy="50" r="4" fill="#c084fc"/>
+          <path d="M25 80 Q50 92 75 80" fill="none" stroke="url(#pfGrad)" stroke-width="3.5" stroke-linecap="round"/>
+        </svg>`;
+      case 'emerald_leaf':
+        return `<svg viewBox="0 0 100 100" class="sphere-ornate-frame-svg">
+          <defs>
+            <linearGradient id="elGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#bbf7d0"/>
+              <stop offset="50%" stop-color="#4ade80"/>
+              <stop offset="100%" stop-color="#15803d"/>
+            </linearGradient>
+          </defs>
+          <circle cx="50" cy="50" r="38" fill="none" stroke="url(#elGrad)" stroke-width="3.4"/>
+          <path d="M12 56 C8 36, 16 20, 30 14 C20 26, 18 42, 20 54 Z" fill="url(#elGrad)"/>
+          <path d="M88 56 C92 36, 84 20, 70 14 C80 26, 82 42, 80 54 Z" fill="url(#elGrad)"/>
+          <circle cx="50" cy="11" r="4" fill="#fef08a"/>
+          <circle cx="36" cy="14" r="3" fill="#f9a8d4"/>
+          <circle cx="64" cy="14" r="3" fill="#f9a8d4"/>
+        </svg>`;
+      default:
+        return `<svg viewBox="0 0 100 100" class="sphere-ornate-frame-svg">
+          <defs>
+            <linearGradient id="rgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fde68a"/>
+              <stop offset="50%" stop-color="#fb923c"/>
+              <stop offset="100%" stop-color="#e11d48"/>
+            </linearGradient>
+          </defs>
+          <circle cx="50" cy="50" r="38" fill="none" stroke="url(#rgGrad)" stroke-width="3.5"/>
+          <path d="M34 15 L43 22 L50 10 L57 22 L66 15 L62 25 L38 25 Z" fill="url(#rgGrad)"/>
+          <path d="M14 44 C8 32, 14 20, 24 18 C18 28, 18 38, 22 44 Z" fill="url(#rgGrad)"/>
+          <path d="M86 44 C92 32, 86 20, 76 18 C82 28, 82 38, 78 44 Z" fill="url(#rgGrad)"/>
+        </svg>`;
+    }
+  }
+
   async function renderPlanetTab(container) {
+    if (planetSphereAnimFrame) {
+      cancelAnimationFrame(planetSphereAnimFrame);
+      planetSphereAnimFrame = null;
+    }
+    if (planetCounterInterval) {
+      clearInterval(planetCounterInterval);
+      planetCounterInterval = null;
+    }
+
     container.innerHTML = `
       <div class="planet-soulchill-screen">
-        <!-- Top Bar matching SoulChill -->
+        <!-- Top Header Bar matching SoulChill GIF -->
         <div class="planet-top-bar">
-          <button class="soul-test-chip" id="open-soul-test-btn">
-            <span>✨</span> Soul Test
-          </button>
-
-          <div class="one-time-offer-banner" id="planet-one-time-offer-btn">
-            <span>🎁</span> One Time Offer
+          <!-- Right Side: SoulChill Logo + المؤدي Pill -->
+          <div class="planet-top-brand-group">
+            <span class="planet-brand-logo-text">SoulChill</span>
+            <button class="soul-performer-pill" id="open-soul-test-btn" title="اختبار الروح">
+              <span class="soul-performer-orb">
+                <svg viewBox="0 0 28 28" width="18" height="18">
+                  <defs>
+                    <radialGradient id="perfOrbGrad" cx="35%" cy="30%" r="70%">
+                      <stop offset="0%" stop-color="#f3e8ff" />
+                      <stop offset="50%" stop-color="#c084fc" />
+                      <stop offset="100%" stop-color="#581c87" />
+                    </radialGradient>
+                  </defs>
+                  <polygon points="14,2 23,8 25,18 18,26 9,26 3,18 5,8" fill="url(#perfOrbGrad)" stroke="#e9d5ff" stroke-width="0.8"/>
+                  <polyline points="5,8 14,13 23,8" fill="none" stroke="#f3e8ff" stroke-width="0.8" opacity="0.7"/>
+                  <polyline points="14,13 14,26" fill="none" stroke="#f3e8ff" stroke-width="0.8" opacity="0.7"/>
+                </svg>
+              </span>
+              <span class="soul-performer-text">المؤدي</span>
+            </button>
           </div>
 
+          <!-- Left Side: Golden Calendar Check-in & Purple Filter Sliders -->
           <div class="planet-top-actions">
-            <button class="planet-icon-btn" id="planet-filter-toggle-btn" title="تصفية الأرواح">🌪️</button>
-            <button class="planet-icon-btn" id="planet-refresh-souls-btn" title="تحديث المجرة">🔄</button>
+            <button class="planet-golden-calendar-btn" id="planet-daily-checkin-btn" title="مكافأة الحضور اليومي">
+              <svg viewBox="0 0 32 32" width="24" height="24">
+                <defs>
+                  <linearGradient id="calGoldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#fef08a" />
+                    <stop offset="50%" stop-color="#facc15" />
+                    <stop offset="100%" stop-color="#ca8a04" />
+                  </linearGradient>
+                </defs>
+                <rect x="4" y="6" width="24" height="22" rx="5" fill="url(#calGoldGrad)" stroke="#fef9c3" stroke-width="1"/>
+                <rect x="6" y="12" width="20" height="14" rx="3" fill="#fffbeb"/>
+                <rect x="9" y="3" width="3" height="5" rx="1.5" fill="#fef08a"/>
+                <rect x="20" y="3" width="3" height="5" rx="1.5" fill="#fef08a"/>
+                <path d="M12 19.5l2.8 2.8 5.5-5.6" fill="none" stroke="#d97706" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+
+            <button class="planet-sliders-filter-btn" id="planet-filter-toggle-btn" title="تصفية الأرواح">
+              <svg viewBox="0 0 28 28" width="22" height="22">
+                <line x1="4" y1="9" x2="24" y2="9" stroke="#c4b5fd" stroke-width="2.4" stroke-linecap="round"/>
+                <circle cx="17" cy="9" r="3.6" fill="#e9d5ff" stroke="#7c3aed" stroke-width="1.5"/>
+                <line x1="4" y1="19" x2="24" y2="19" stroke="#c4b5fd" stroke-width="2.4" stroke-linecap="round"/>
+                <circle cx="11" cy="19" r="3.6" fill="#e9d5ff" stroke="#7c3aed" stroke-width="1.5"/>
+              </svg>
+            </button>
           </div>
         </div>
 
-        <!-- Bonus Coin Badge -->
-        <div class="bonus-coin-pill" id="planet-coin-bonus-btn">
-          <span>🪙</span> Chat & Get $0.05
-        </div>
-
-        <!-- Floating Souls Galaxy Cluster -->
+        <!-- 3D Rotating Spherical Souls Galaxy Cluster -->
         <div class="soulers-galaxy-cluster" id="soulers-galaxy-cluster">
-          <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: 13px;">
-            <span>جارِ تحميل مجرة الأرواح المتوافقة... 🌌</span>
-          </div>
+          <div class="planet-starfield-layer" id="planet-starfield-layer"></div>
+          <div class="soulers-3d-sphere-stage" id="soulers-3d-sphere-stage"></div>
         </div>
 
-        <!-- Matched Live Souler Floating Bubble -->
-        <div class="matched-live-bubble" id="matched-live-bubble-btn">
-          <img src="/avatars/avatar-4.png" onerror="this.src='/avatars/avatar-1.png'" alt="Live" />
-          <span>📹 6 matched Soulers are LIVE! ›</span>
-        </div>
-
-        <!-- Online Souls Counter -->
+        <!-- Online Souls Counter (Exact match to GIF: عدد المستخدمين الاونلاين 540413) -->
         <div class="online-soulers-counter">
-          <span>☙</span> Online Soulers <strong id="online-soulers-counter-num">435,610</strong> <span>❧</span>
+          <span class="counter-wing right-wing"></span>
+          <span class="online-counter-label">عدد المستخدمين الاونلاين</span>
+          <strong id="online-soulers-counter-num">540413</strong>
+          <span class="counter-wing left-wing"></span>
         </div>
 
-        <!-- Bottom 4 Action Cards matching Screenshot -->
-        <div class="planet-action-cards-grid">
-          <!-- Card 1: Events -->
-          <div class="planet-action-card card-events" id="planet-card-events">
-            <div class="action-card-top-icon">🎈</div>
-            <div>
-              <div class="action-card-title">Events</div>
-              <div class="action-card-sub">Join & Discover</div>
+        <!-- First Top-Up / Recharge Rewards Banner (مكافآت الشحنة الاولى <) -->
+        <div class="first-recharge-banner" id="planet-one-time-offer-btn">
+          <div class="first-recharge-text-side">
+            <span class="first-recharge-title">مكافآت الشحنة الاولى</span>
+            <span class="first-recharge-chevron">‹</span>
+          </div>
+
+          <!-- 3D Purple Gift Box with White Ribbon Bow on the Left -->
+          <div class="first-recharge-gift-illustration">
+            <svg viewBox="0 0 120 96" width="96" height="78">
+              <defs>
+                <linearGradient id="boxFrontGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#c084fc" />
+                  <stop offset="100%" stop-color="#7e22ce" />
+                </linearGradient>
+                <linearGradient id="boxSideGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#9333ea" />
+                  <stop offset="100%" stop-color="#581c87" />
+                </linearGradient>
+                <linearGradient id="boxLidGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#e9d5ff" />
+                  <stop offset="100%" stop-color="#a855f7" />
+                </linearGradient>
+                <linearGradient id="ribbonWhiteGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#ffffff" />
+                  <stop offset="60%" stop-color="#f3e8ff" />
+                  <stop offset="100%" stop-color="#d8b4fe" />
+                </linearGradient>
+              </defs>
+              <!-- Sparkles -->
+              <circle cx="18" cy="22" r="2" fill="#fff" opacity="0.8"/>
+              <circle cx="104" cy="18" r="1.8" fill="#f5d0fe" opacity="0.7"/>
+              <circle cx="96" cy="68" r="1.5" fill="#fff" opacity="0.6"/>
+              <g transform="rotate(-8 60 54)">
+                <!-- Gift Box Base 3D -->
+                <polygon points="24,44 64,52 64,90 24,80" fill="url(#boxSideGrad)" />
+                <polygon points="64,52 100,42 100,78 64,90" fill="url(#boxFrontGrad)" />
+                <!-- White Vertical Ribbons on Box Body -->
+                <polygon points="40,47 48,49 48,86 40,84" fill="url(#ribbonWhiteGrad)" />
+                <polygon points="79,48 87,45 87,82 79,85" fill="url(#ribbonWhiteGrad)" />
+                <!-- Gift Box Lid 3D -->
+                <polygon points="20,34 64,43 64,54 20,44" fill="url(#boxFrontGrad)" />
+                <polygon points="64,43 104,32 104,43 64,54" fill="url(#boxLidGrad)" />
+                <polygon points="20,34 60,24 104,32 64,43" fill="#d8b4fe" />
+                <!-- White Ribbon on Lid -->
+                <polygon points="38,38 47,40 47,50 38,48" fill="#ffffff" />
+                <polygon points="80,38 89,36 89,47 80,49" fill="#ffffff" />
+                <!-- Big 3D White Silk Bow on Top -->
+                <path d="M62,33 C46,12 28,18 38,32 C44,36 54,35 62,33 Z" fill="url(#ribbonWhiteGrad)" stroke="#f3e8ff" stroke-width="1"/>
+                <path d="M62,33 C78,10 96,18 86,31 C80,35 70,35 62,33 Z" fill="url(#ribbonWhiteGrad)" stroke="#f3e8ff" stroke-width="1"/>
+                <path d="M56,33 L46,45 L54,46 L62,35 Z" fill="#f3e8ff"/>
+                <path d="M66,33 L76,44 L68,46 L62,35 Z" fill="#ffffff"/>
+                <ellipse cx="62" cy="32" rx="6" ry="4.5" fill="#ffffff" />
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 2x2 Feature Cards Grid matching GIF -->
+        <div class="planet-2x2-cards-grid">
+          <!-- Card 1 (Top-Right in RTL): مكالمة صوتية -->
+          <div class="planet-feature-card" id="planet-card-voice-match">
+            <div class="planet-card-top-pill speed-pill">
+              <span>بطاقة التسريع جاهزة للاستخدام</span>
+              <span class="pill-bolt">⚡</span>
+            </div>
+            <div class="planet-card-header">
+              <div class="planet-card-title">مكالمة صوتية</div>
+              <div class="planet-card-sub">انضم لقائمة المكالمات</div>
+            </div>
+            <div class="planet-card-footer">
+              <button type="button" class="planet-card-start-btn">
+                <span>إبدأ</span>
+                <span class="start-arrow">◂</span>
+              </button>
+              <div class="planet-card-3d-icon">
+                <!-- 3D Glowing Cyan/Blue Ringed Planet -->
+                <svg viewBox="0 0 80 70" width="66" height="58">
+                  <defs>
+                    <radialGradient id="cyanPlanetGrad" cx="35%" cy="30%" r="70%">
+                      <stop offset="0%" stop-color="#a7f3d0" />
+                      <stop offset="38%" stop-color="#38bdf8" />
+                      <stop offset="75%" stop-color="#2563eb" />
+                      <stop offset="100%" stop-color="#1e1b4b" />
+                    </radialGradient>
+                    <linearGradient id="cyanRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stop-color="#cbd5e1" stop-opacity="0.85" />
+                      <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.35" />
+                      <stop offset="100%" stop-color="#94a3b8" stop-opacity="0.8" />
+                    </linearGradient>
+                  </defs>
+                  <ellipse cx="40" cy="36" rx="35" ry="11" fill="none" stroke="url(#cyanRingGrad)" stroke-width="5" transform="rotate(-18 40 36)" opacity="0.75" />
+                  <circle cx="40" cy="35" r="20" fill="url(#cyanPlanetGrad)" />
+                  <path d="M23 30 Q40 24 57 31" fill="none" stroke="#bae6fd" stroke-width="2" opacity="0.45" />
+                  <path d="M21 39 Q40 33 59 40" fill="none" stroke="#7dd3fc" stroke-width="1.6" opacity="0.35" />
+                  <path d="M8 46 A35 11 0 0 0 72 26" fill="none" stroke="url(#cyanRingGrad)" stroke-width="4.5" transform="rotate(-18 40 36)" />
+                </svg>
+              </div>
             </div>
           </div>
 
-          <!-- Card 2: Party On -->
-          <div class="planet-action-card card-party" id="planet-card-party">
-            <div class="action-card-top-icon">🥳</div>
-            <div>
-              <div class="action-card-title">Party On</div>
-              <div class="action-card-sub">Chat & Mingle</div>
+          <!-- Card 2 (Top-Left in RTL): رفيق الروح -->
+          <div class="planet-feature-card" id="planet-card-soul-match">
+            <div class="planet-card-header">
+              <div class="planet-card-title">رفيق الروح</div>
+              <div class="planet-card-sub">تحدث مع من يفهمك</div>
+            </div>
+            <div class="planet-card-footer">
+              <span class="planet-card-remaining">تبقى 2</span>
+              <div class="planet-card-3d-icon">
+                <!-- 3D Glowing Pink/Magenta Heart Padlock & Silver Key -->
+                <svg viewBox="0 0 84 70" width="68" height="58">
+                  <defs>
+                    <radialGradient id="heartLockGrad" cx="35%" cy="30%" r="70%">
+                      <stop offset="0%" stop-color="#f5d0fe" />
+                      <stop offset="45%" stop-color="#e879f9" />
+                      <stop offset="80%" stop-color="#a21caf" />
+                      <stop offset="100%" stop-color="#581c87" />
+                    </radialGradient>
+                    <linearGradient id="silverShackleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stop-color="#ffffff" />
+                      <stop offset="50%" stop-color="#e2e8f0" />
+                      <stop offset="100%" stop-color="#94a3b8" />
+                    </linearGradient>
+                  </defs>
+                  <g transform="rotate(-12 36 38)">
+                    <!-- Padlock Shackle -->
+                    <path d="M25 28 V19 A9 9 0 0 1 43 19 V28" fill="none" stroke="url(#silverShackleGrad)" stroke-width="4.2" stroke-linecap="round" />
+                    <!-- 3D Heart Body -->
+                    <path d="M34 56 C34 56 14 44 14 30 C14 22 21 18 28 22 C31 24 33 26 34 28 C35 26 37 24 40 22 C47 18 54 22 54 30 C54 44 34 56 34 56 Z" fill="url(#heartLockGrad)" stroke="#f5d0fe" stroke-width="0.8" />
+                    <!-- Keyhole -->
+                    <circle cx="34" cy="36" r="2.8" fill="#3b0764" />
+                    <path d="M33 38 L32 44 L36 44 L35 38 Z" fill="#3b0764" />
+                  </g>
+                  <!-- Silver Key on the Right -->
+                  <g transform="translate(44, 30) rotate(-18)">
+                    <line x1="0" y1="8" x2="18" y2="8" stroke="url(#silverShackleGrad)" stroke-width="3.2" stroke-linecap="round" />
+                    <line x1="3" y1="8" x2="3" y2="13" stroke="url(#silverShackleGrad)" stroke-width="2.5" stroke-linecap="round" />
+                    <line x1="8" y1="8" x2="8" y2="12" stroke="url(#silverShackleGrad)" stroke-width="2.5" stroke-linecap="round" />
+                    <circle cx="22" cy="8" r="5.5" fill="none" stroke="url(#silverShackleGrad)" stroke-width="3.2" />
+                  </g>
+                </svg>
+              </div>
             </div>
           </div>
 
-          <!-- Card 3: Voice Match (5-Min Anonymous Call) -->
-          <div class="planet-action-card card-voice-match" id="planet-card-voice-match">
-            <div class="action-card-badge">Chat & Get $0.05</div>
-            <div class="action-card-top-icon">👥</div>
-            <div>
-              <div class="action-card-title">Voice Match</div>
-              <div class="action-card-sub">10 Times Left</div>
+          <!-- Card 3 (Bottom-Right in RTL): الأحداث -->
+          <div class="planet-feature-card" id="planet-card-events">
+            <div class="planet-card-top-pill blue-pill">
+              <span>مكافآت وتحديات يومية</span>
+              <span class="pill-bolt">🔥</span>
+            </div>
+            <div class="planet-card-header">
+              <div class="planet-card-title">الأحداث</div>
+              <div class="planet-card-sub">شارك واربح جوائز قيمة</div>
+            </div>
+            <div class="planet-card-footer">
+              <button type="button" class="planet-card-start-btn">
+                <span>إبدأ</span>
+                <span class="start-arrow">◂</span>
+              </button>
+              <div class="planet-card-3d-icon">
+                <svg viewBox="0 0 80 70" width="62" height="54">
+                  <defs>
+                    <radialGradient id="goldStarGrad" cx="35%" cy="30%" r="70%">
+                      <stop offset="0%" stop-color="#fef9c3" />
+                      <stop offset="50%" stop-color="#facc15" />
+                      <stop offset="100%" stop-color="#b45309" />
+                    </radialGradient>
+                  </defs>
+                  <circle cx="38" cy="36" r="19" fill="#312e81" stroke="#818cf8" stroke-width="1.5" />
+                  <polygon points="38,17 43,29 56,30 46,39 49,51 38,44 27,51 30,39 20,30 33,29" fill="url(#goldStarGrad)" />
+                </svg>
+              </div>
             </div>
           </div>
 
-          <!-- Card 4: Soul Match (Blind Call 5 Min) -->
-          <div class="planet-action-card card-soul-match" id="planet-card-soul-match">
-            <div class="action-card-top-icon">🪐💖</div>
-            <div>
-              <div class="action-card-title">Soul Match</div>
-              <div class="action-card-sub">Blind Call 5 Min</div>
+          <!-- Card 4 (Bottom-Left in RTL): غرف الدردشة -->
+          <div class="planet-feature-card" id="planet-card-party">
+            <div class="planet-card-header">
+              <div class="planet-card-title">غرف الدردشة</div>
+              <div class="planet-card-sub">تحدث واستمتع مع الأصدقاء</div>
+            </div>
+            <div class="planet-card-footer">
+              <button type="button" class="planet-card-start-btn">
+                <span>إبدأ</span>
+                <span class="start-arrow">◂</span>
+              </button>
+              <div class="planet-card-3d-icon">
+                <svg viewBox="0 0 80 70" width="62" height="54">
+                  <defs>
+                    <linearGradient id="micPartyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stop-color="#f472b6" />
+                      <stop offset="50%" stop-color="#a855f7" />
+                      <stop offset="100%" stop-color="#6366f1" />
+                    </linearGradient>
+                  </defs>
+                  <rect x="29" y="14" width="18" height="26" rx="9" fill="url(#micPartyGrad)" />
+                  <path d="M23 30 A15 15 0 0 0 53 30" fill="none" stroke="#e9d5ff" stroke-width="3" stroke-linecap="round" />
+                  <line x1="38" y1="45" x2="38" y2="54" stroke="#e9d5ff" stroke-width="3" stroke-linecap="round" />
+                  <line x1="29" y1="54" x2="47" y2="54" stroke="#e9d5ff" stroke-width="3" stroke-linecap="round" />
+                </svg>
+              </div>
             </div>
           </div>
         </div>
       </div>
     `;
 
-    // Load users and populate galaxy cluster
+    // Initialize Starfield in the Galaxy Cluster
+    initPlanetStarfield();
+
+    // Load users and populate 3D rotating sphere
     try {
       const res = await fetch('/api/users');
       state.allUsers = await res.json();
       populateSoulGalaxyCluster();
     } catch (err) {
       console.error('Error fetching users for galaxy:', err);
+      populateSoulGalaxyCluster();
     }
 
-    // Dynamic Online Soulers counter fluctuation
+    // Dynamic Online Soulers counter fluctuation around 540413
     const counterEl = container.querySelector('#online-soulers-counter-num');
     if (counterEl) {
-      let count = 435610 + Math.floor(Math.random() * 50);
-      setInterval(() => {
-        if (!document.getElementById('online-soulers-counter-num')) return;
+      let count = 540413;
+      planetCounterInterval = setInterval(() => {
+        const el = document.getElementById('online-soulers-counter-num');
+        if (!el) return;
         count += Math.floor(Math.random() * 5) - 2;
-        counterEl.innerText = count.toLocaleString('en-US');
-      }, 4000);
+        el.innerText = String(count);
+      }, 3500);
     }
 
     // Wire Card Clicks
@@ -1066,141 +1547,226 @@
       offerBanner.onclick = () => showOneTimeOfferModal();
     }
 
-    const coinBonus = container.querySelector('#planet-coin-bonus-btn');
-    if (coinBonus) {
-      coinBonus.onclick = () => {
-        showToast('🪙 يمكنك كسب $0.05 وعملات مجانية عند إكمال مكالمات التوافق الصوتي (Voice Match)!');
-      };
-    }
-
-    const liveSoulerBubble = container.querySelector('#matched-live-bubble-btn');
-    if (liveSoulerBubble) {
-      liveSoulerBubble.onclick = () => {
-        showToast('جارِ الانتقال إلى البثوث المباشرة للأرواح المتوافقة 📹');
-        const liveBtn = document.getElementById('open-stream-view-btn');
-        if (liveBtn) liveBtn.click();
-      };
-    }
-
-    const refreshSoulsBtn = container.querySelector('#planet-refresh-souls-btn');
-    if (refreshSoulsBtn) {
-      refreshSoulsBtn.onclick = () => {
-        refreshSoulsBtn.style.transform = 'rotate(360deg)';
-        setTimeout(() => refreshSoulsBtn.style.transform = '', 500);
-        populateSoulGalaxyCluster(true);
-        showToast('تم تحديث مجرة الأرواح المتوافقة 🌌');
-      };
+    const dailyCheckinBtn = container.querySelector('#planet-daily-checkin-btn');
+    if (dailyCheckinBtn) {
+      dailyCheckinBtn.onclick = () => handleDailyCheckIn();
     }
 
     const filterBtn = container.querySelector('#planet-filter-toggle-btn');
     if (filterBtn) {
       let filterMode = 0; // 0: all, 1: high match, 2: same planet
-      const modes = ['جميع الأرواح 🪐', 'توافق عالي +90% 🔥', 'نفس كوكبي 🌌'];
+      const modes = ['جميع الأرواح 🪐', 'توافق عالي +٨٢٪ 🔥', 'نفس كوكبي 🌌'];
       filterBtn.onclick = () => {
         filterMode = (filterMode + 1) % modes.length;
         showToast(`فلترة المجرة: ${modes[filterMode]}`);
-        populateSoulGalaxyCluster(false, filterMode);
+        populateSoulGalaxyCluster(true, filterMode);
       };
     }
   }
 
-  // Populate organic cluster of Soul avatars matching screenshot
+  function initPlanetStarfield() {
+    const starLayer = document.getElementById('planet-starfield-layer');
+    if (!starLayer) return;
+    starLayer.innerHTML = '';
+    for (let i = 0; i < 42; i++) {
+      const star = document.createElement('span');
+      star.className = 'planet-bg-star';
+      const size = (Math.random() * 2.2 + 1).toFixed(1);
+      star.style.width = `${size}px`;
+      star.style.height = `${size}px`;
+      star.style.left = `${(Math.random() * 96 + 2).toFixed(1)}%`;
+      star.style.top = `${(Math.random() * 94 + 3).toFixed(1)}%`;
+      star.style.animationDelay = `${(Math.random() * 4).toFixed(2)}s`;
+      star.style.animationDuration = `${(Math.random() * 2.5 + 2).toFixed(2)}s`;
+      starLayer.appendChild(star);
+    }
+  }
+
+  // Populate 3D Rotating Sphere of Soul Avatars matching GIF
   function populateSoulGalaxyCluster(reshuffle = false, filterMode = 0) {
-    const cluster = document.getElementById('soulers-galaxy-cluster');
-    if (!cluster) return;
+    const stage = document.getElementById('soulers-3d-sphere-stage');
+    if (!stage) return;
 
-    // Constellation layout positions (%)
-    const baseCoords = [
-      { x: 50, y: 13, size: 48 }, // Nour 82%
-      { x: 26, y: 19, size: 44 }, // Saad 81%
-      { x: 74, y: 20, size: 44 }, // Ibn Iraq 72%
-      { x: 13, y: 34, size: 44 }, // Roqa 84%
-      { x: 87, y: 35, size: 44 }, // Fanan 75%
-      { x: 38, y: 33, size: 54 }, // Hamoudi 90%
-      { x: 62, y: 36, size: 56 }, // Layla Queen 95%
-      { x: 23, y: 50, size: 42 }, // Ghassan 81%
-      { x: 77, y: 52, size: 46 }, // Tariq 91%
-      { x: 42, y: 52, size: 54 }, // Saqr 93%
-      { x: 58, y: 58, size: 56 }, // Sarah 93%
-      { x: 15, y: 68, size: 44 }, // Nour Qamar 88%
-      { x: 85, y: 70, size: 44 }, // Faisal King 84%
-      { x: 34, y: 72, size: 48 }, // Majid 96%
-      { x: 68, y: 74, size: 46 }, // Omar 87%
-      { x: 50, y: 84, size: 58 }  // Salman 98%
-    ];
+    if (planetSphereAnimFrame) {
+      cancelAnimationFrame(planetSphereAnimFrame);
+      planetSphereAnimFrame = null;
+    }
 
-    // Seed/database soulers with authentic real portrait photography
+    // Authentic SoulChill users matching the names, frames, and percentages in the GIF
     const mockSoulers = [
-      { id: 'souler-1', name: 'Nour 🍒', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80', avatar_frame: 'vip-crown', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'أحب الموسيقى والضحك واللقاءات الرايقة', matchRate: 82 },
-      { id: 'souler-2', name: 'سعد أحمد', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80', avatar_frame: '', soul_planet: 'كوكب المغامر الشجاع 🚀', bio: 'عشاق السفر والمغامرات', matchRate: 81 },
-      { id: 'souler-3', name: 'ابن العراق', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80', avatar_frame: '', soul_planet: 'كوكب الفيلسوف الحكيم 🔮', bio: 'أهلاً بالجميع في غرفتي', matchRate: 72 },
-      { id: 'souler-4', name: 'روقه 😉', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80', avatar_frame: 'vip-neon', soul_planet: 'كوكب المرح والبهجة 🎈', bio: 'الحياة حلوة وبسيطة', matchRate: 84 },
-      { id: 'souler-5', name: 'الفنان 🎨', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&q=80', avatar_frame: '', soul_planet: 'كوكب المبدع والفنون 🎭', bio: 'فن ورسم وتصاميم', matchRate: 75 },
-      { id: 'souler-6', name: 'حمودي 👑', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=300&q=80', avatar_frame: 'vip-gold', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'هنا للأصدقاء الحقيقيين', matchRate: 90 },
-      { id: 'souler-7', name: 'ليلى | Soul 👑', avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&q=80', avatar_frame: 'imperial', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'Soul Queen 💫 أهلاً بالناس الرايقة', matchRate: 95 },
-      { id: 'souler-8', name: 'غسان', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80', avatar_frame: '', soul_planet: 'كوكب المغامر الشجاع 🚀', bio: 'كرة قدم وتحديات', matchRate: 81 },
-      { id: 'souler-9', name: 'طارق الدوسري 🎸', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=300&q=80', avatar_frame: 'vip-gold', soul_planet: 'كوكب الموسيقى والوتر 🎵', bio: 'عزف وغناء مباشر', matchRate: 91 },
-      { id: 'souler-10', name: 'صقر قريش 🦅', avatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=300&q=80', avatar_frame: 'vip-crown', soul_planet: 'كوكب الفيلسوف الحكيم 🔮', bio: 'هدوء وحكمة وشعر', matchRate: 93 },
-      { id: 'souler-11', name: 'سارة الحكيمة 🔮', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80', avatar_frame: 'vip-neon', soul_planet: 'كوكب الفيلسوف الحكيم 🔮', bio: 'أحب القراءة والتحليل الفلكي', matchRate: 93 },
-      { id: 'souler-12', name: 'نور القمر 🌙', avatar: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=300&q=80', avatar_frame: '', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'الهدوء سر السعادة', matchRate: 88 },
-      { id: 'souler-13', name: 'فيصل King 👑', avatar: 'https://images.unsplash.com/photo-1534308983496-4fabb1a015ee?auto=format&fit=crop&w=300&q=80', avatar_frame: 'vip-gold', soul_planet: 'كوكب المرح والبهجة 🎈', bio: 'أجواء حماسية 24/7', matchRate: 84 },
-      { id: 'souler-14', name: 'كابتن ماجد ⚽', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=300&q=80', avatar_frame: 'vip-crown', soul_planet: 'كوكب المغامر الشجاع 🚀', bio: 'طموح وشغف', matchRate: 96 },
-      { id: 'souler-15', name: 'عمر Chill Guy ☕', avatar: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&w=300&q=80', avatar_frame: '', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'فنجان قهوة وسوالف دافية', matchRate: 87 },
-      { id: 'souler-16', name: 'سلمان الحكيم 🌟', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=300&q=80', avatar_frame: 'imperial', soul_planet: 'كوكب الفيلسوف الحكيم 🔮', bio: 'تطوير الذات والتأمل', matchRate: 98 }
+      { id: 'souler-1', name: '🇯🇴 كـينـدا', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80', sphere_frame: 'gold_wings', avatar_frame: 'royal_gold', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'أحب الموسيقى والضحك واللقاءات الرايقة', matchRate: 84 },
+      { id: 'souler-2', name: 'مـوناليزا...', avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&q=80', sphere_frame: 'gold_wings', avatar_frame: 'fire_dragon', soul_planet: 'كوكب الفنان الملهم 🎨', bio: 'الجمال في التفاصيل الصغيرة ✨', matchRate: 83 },
+      { id: 'souler-3', name: 'ملك', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80', sphere_frame: 'gold_wings', avatar_frame: 'royal_gold', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'أهلاً بالجميع في كوكبي الملكي 👑', matchRate: 80 },
+      { id: 'souler-4', name: 'حنان S...', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&q=80', sphere_frame: 'gold_wings', avatar_frame: 'royal_gold', soul_planet: 'كوكب الفيلسوف الحكيم 🔮', bio: 'هدوء الليل والقهوة ☕', matchRate: 83 },
+      { id: 'souler-5', name: 'SaMo...', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80', sphere_frame: 'silver_crystal', avatar_frame: 'cyber_neon', soul_planet: 'كوكب المغامر الشجاع 🚀', bio: 'عشاق السفر والمغامرات', matchRate: 83 },
+      { id: 'souler-6', name: 'مشاكس...', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80', sphere_frame: 'silver_crystal', avatar_frame: 'cyber_neon', soul_planet: 'كوكب المرح والبهجة 🎈', bio: 'سوالف ووناسة ٢٤ ساعة 🔥', matchRate: 80 },
+      { id: 'souler-7', name: 'ANG7...', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=300&q=80', sphere_frame: 'purple_floral', avatar_frame: 'galaxy_halo', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'موسيقى وسهر مع الأصدقاء 🎶', matchRate: 80 },
+      { id: 'souler-8', name: 'الجوهر...', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80', sphere_frame: 'purple_floral', avatar_frame: 'galaxy_halo', soul_planet: 'كوكب الفيلسوف الحكيم 🔮', bio: 'الكلمة الطيبة جواز سفر للقلوب', matchRate: 83 },
+      { id: 'souler-9', name: 'لانا (٠٠٠)', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80', sphere_frame: 'purple_floral', avatar_frame: 'angel_wings', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'أحب الهدوء والنجوم 🌙', matchRate: 83 },
+      { id: 'souler-10', name: 'ريـتاج', avatar: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=300&q=80', sphere_frame: 'emerald_leaf', avatar_frame: 'angel_wings', soul_planet: 'كوكب النسمة الهادئة 🍃', bio: 'صباحات جميلة وروح صافية 🌸', matchRate: 83 },
+      { id: 'souler-11', name: 'نـور ❀', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=300&q=80', sphere_frame: 'gold_wings', avatar_frame: 'royal_gold', soul_planet: 'كوكب الفنان الملهم 🎨', bio: 'عاشقة الفن والموسيقى 🎨', matchRate: 81 },
+      { id: 'souler-12', name: '✨ Sok...', avatar: 'https://images.unsplash.com/photo-1534308983496-4fabb1a015ee?auto=format&fit=crop&w=300&q=80', sphere_frame: 'rose_crown', avatar_frame: 'fire_dragon', soul_planet: 'كوكب المغامر الشجاع 🚀', bio: 'طاقة إيجابية وأجواء حماسية', matchRate: 83 },
+      { id: 'souler-13', name: 'هاجر...', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=300&q=80', sphere_frame: 'purple_floral', avatar_frame: 'galaxy_halo', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'أهلاً بالجميع في عالمي 💜', matchRate: 80 },
+      { id: 'souler-14', name: '💎 وكـ K', avatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=300&q=80', sphere_frame: 'gold_wings', avatar_frame: 'royal_gold', soul_planet: 'كوكب الإمبراطور الفلكي 👑', bio: 'الفخامة عنواننا 👑', matchRate: 79 },
+      { id: 'souler-15', name: '..The', avatar: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&w=300&q=80', sphere_frame: 'silver_crystal', avatar_frame: 'cyber_neon', soul_planet: 'كوكب الفيلسوف الحكيم 🔮', bio: 'سوالف رايقة وموسيقى هادئة', matchRate: 82 },
+      { id: 'souler-16', name: '🎀 سما', avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=300&q=80', sphere_frame: 'purple_floral', avatar_frame: 'angel_wings', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'الحياة أجمل مع الأصدقاء', matchRate: 80 },
+      { id: 'souler-17', name: 'لوليتا 🖤', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=300&q=80', sphere_frame: 'gold_wings', avatar_frame: 'royal_gold', soul_planet: 'كوكب الرومانسي الحالم 🌌', bio: 'سهر وطرب وأجواء فخمة', matchRate: 84 },
+      { id: 'souler-18', name: 'دهـ🌺ـب', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=300&q=80', sphere_frame: 'silver_crystal', avatar_frame: 'cyber_neon', soul_planet: 'كوكب النسمة الهادئة 🍃', bio: 'قلوب صافية وأرواح متآلفة', matchRate: 83 },
+      { id: 'souler-19', name: 'سـارة 🔮', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&q=80', sphere_frame: 'emerald_leaf', avatar_frame: 'angel_wings', soul_planet: 'كوكب الفيلسوف الحكيم 🔮', bio: 'أبراج وفلك وسوالف السول', matchRate: 82 },
+      { id: 'souler-20', name: 'طـارق 🎸', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80', sphere_frame: 'silver_crystal', avatar_frame: 'cyber_neon', soul_planet: 'كوكب المغامر الشجاع 🚀', bio: 'عزف جيتار وغناء مباشر', matchRate: 84 }
     ];
 
-    // Combine with real users if available
     let allSouls = [...mockSoulers];
     if (state.allUsers && state.allUsers.length > 0) {
+      const frameChoices = ['gold_wings', 'silver_crystal', 'purple_floral', 'emerald_leaf', 'rose_crown'];
       state.allUsers.forEach((u, idx) => {
         if (state.currentUser && u.id === state.currentUser.id) return;
-        const exists = allSouls.find(s => s.id === u.id);
-        if (!exists) {
+        if (!allSouls.find(s => s.id === u.id) && allSouls.length < 24) {
           allSouls.push({
             id: u.id,
-            name: u.name,
-            avatar: u.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=300&q=80',
-            avatar_frame: u.avatar_frame || '',
+            name: u.name.length > 10 ? u.name.slice(0, 9) + '...' : u.name,
+            avatar: u.avatar || '/avatars/avatar-1.png',
+            sphere_frame: frameChoices[idx % frameChoices.length],
+            avatar_frame: u.avatar_frame || 'royal_gold',
             soul_planet: u.soul_planet || 'كوكب الروح 🌌',
             bio: u.bio || 'روح رائعة في SoulChill',
-            matchRate: 85 + (idx % 14)
+            matchRate: 79 + (idx % 6)
           });
         }
       });
     }
 
-    // Apply Filter
     if (filterMode === 1) {
-      allSouls = allSouls.filter(s => s.matchRate >= 90);
+      allSouls = allSouls.filter(s => s.matchRate >= 82);
     } else if (filterMode === 2 && state.currentUser) {
-      allSouls = allSouls.filter(s => s.soul_planet === state.currentUser.soul_planet);
+      const filtered = allSouls.filter(s => s.soul_planet === state.currentUser.soul_planet);
+      if (filtered.length >= 8) allSouls = filtered;
     }
 
-    cluster.innerHTML = '';
+    stage.innerHTML = '';
 
-    const displayCount = Math.min(baseCoords.length, allSouls.length);
-    for (let i = 0; i < displayCount; i++) {
+    const count = allSouls.length;
+    const sphereNodes = [];
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+
+    for (let i = 0; i < count; i++) {
       const souler = allSouls[i];
-      const coord = baseCoords[i];
-      const jitterX = reshuffle ? (Math.random() * 4 - 2) : 0;
-      const jitterY = reshuffle ? (Math.random() * 4 - 2) : 0;
+      // Fibonacci sphere 3D unit coordinates (-1..1)
+      const y = 1 - (i / (count - 1)) * 2;
+      const radiusAtY = Math.sqrt(1 - y * y);
+      const theta = goldenAngle * i + (reshuffle ? Math.random() * 0.8 : 0);
+      const x = Math.cos(theta) * radiusAtY;
+      const z = Math.sin(theta) * radiusAtY;
 
       const itemEl = document.createElement('div');
-      itemEl.className = 'souler-galaxy-item';
-      itemEl.style.left = `${coord.x + jitterX}%`;
-      itemEl.style.top = `${coord.y + jitterY}%`;
+      itemEl.className = 'souler-sphere-node';
+
+      const arabicPercent = `${toArabicNumerals(souler.matchRate)}٪`;
+      const ornateFrameSvg = getOrnateSphereFrameSvg(souler.sphere_frame);
 
       itemEl.innerHTML = `
-        <div class="souler-galaxy-avatar" style="width: ${coord.size}px; height: ${coord.size}px;">
-          <img src="${souler.avatar}" class="${souler.avatar_frame ? 'avatar-frame-' + souler.avatar_frame : ''}" onerror="this.onerror=null; this.src='/avatars/avatar-1.png';" />
-          <div class="souler-match-pill">${souler.matchRate}%</div>
+        <div class="souler-sphere-avatar-wrap">
+          <img src="${souler.avatar}" class="souler-sphere-img" onerror="this.onerror=null; this.src='/avatars/avatar-1.png';" />
+          ${ornateFrameSvg}
         </div>
-        <div class="souler-galaxy-name">${souler.name}</div>
+        <div class="souler-sphere-name">${souler.name}</div>
+        <div class="souler-sphere-match-pill">${arabicPercent}</div>
       `;
 
-      itemEl.onclick = () => openSoulProfileCard(souler, souler.matchRate);
-      cluster.appendChild(itemEl);
+      itemEl.onclick = (e) => {
+        e.stopPropagation();
+        if (window.soundManager) window.soundManager.playClick();
+        openSoulProfileCard(souler, souler.matchRate);
+      };
+
+      stage.appendChild(itemEl);
+      sphereNodes.push({ el: itemEl, x, y, z });
     }
+
+    // 3D Rotation State & Interactive Dragging
+    let rotY = 0;
+    let rotX = 0.08;
+    let velY = -0.0055; // Smooth continuous rotation matching GIF
+    let velX = 0;
+    let isDragging = false;
+    let lastClientX = 0;
+    let lastClientY = 0;
+
+    const onPointerDown = (e) => {
+      isDragging = true;
+      lastClientX = e.touches ? e.touches[0].clientX : e.clientX;
+      lastClientY = e.touches ? e.touches[0].clientY : e.clientY;
+    };
+
+    const onPointerMove = (e) => {
+      if (!isDragging) return;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const dx = clientX - lastClientX;
+      const dy = clientY - lastClientY;
+      lastClientX = clientX;
+      lastClientY = clientY;
+      rotY += dx * 0.007;
+      rotX = Math.max(-0.5, Math.min(0.5, rotX - dy * 0.005));
+      velY = dx * 0.0012 || -0.0055;
+    };
+
+    const onPointerUp = () => {
+      isDragging = false;
+      if (Math.abs(velY) < 0.003) velY = -0.0055;
+    };
+
+    stage.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+    stage.addEventListener('touchstart', onPointerDown, { passive: true });
+    stage.addEventListener('touchmove', onPointerMove, { passive: true });
+    stage.addEventListener('touchend', onPointerUp, { passive: true });
+
+    const renderSphereFrame = () => {
+      if (!document.getElementById('soulers-3d-sphere-stage')) return;
+
+      if (!isDragging) {
+        rotY += velY;
+        velY += (-0.0055 - velY) * 0.03;
+      }
+
+      const rect = stage.getBoundingClientRect();
+      const rxRadius = Math.min(148, (rect.width || 360) * 0.39);
+      const ryRadius = Math.min(142, (rect.height || 350) * 0.39);
+
+      const cosY = Math.cos(rotY);
+      const sinY = Math.sin(rotY);
+      const cosX = Math.cos(rotX);
+      const sinX = Math.sin(rotX);
+
+      for (let i = 0; i < sphereNodes.length; i++) {
+        const n = sphereNodes[i];
+        // Rotate around Y
+        const x1 = n.x * cosY - n.z * sinY;
+        const z1 = n.z * cosY + n.x * sinY;
+        // Rotate around X
+        const y2 = n.y * cosX - z1 * sinX;
+        const z2 = z1 * cosX + n.y * sinX;
+
+        // Depth normalized 0 (back) to 1 (front)
+        const depth = (z2 + 1) / 2;
+        const scale = (0.48 + depth * 0.58).toFixed(3);
+        const opacity = (0.16 + Math.pow(depth, 1.45) * 0.84).toFixed(3);
+        const zIdx = Math.round(depth * 100);
+
+        const px = (x1 * rxRadius).toFixed(1);
+        const py = (y2 * ryRadius).toFixed(1);
+
+        n.el.style.transform = `translate3d(calc(-50% + ${px}px), calc(-50% + ${py}px), 0) scale(${scale})`;
+        n.el.style.opacity = opacity;
+        n.el.style.zIndex = zIdx;
+      }
+
+      planetSphereAnimFrame = requestAnimationFrame(renderSphereFrame);
+    };
+
+    renderSphereFrame();
   }
 
   // Common Profile Card Modal
@@ -1291,8 +1857,13 @@
             "${user.bio || 'أحب الحياة والموسيقى الهادئة واللقاءات الرايقة'}"
           </div>
 
-          <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; margin-bottom: 16px;">
+          <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; margin-bottom: 12px;">
             ${tagsHtml}
+          </div>
+
+          <!-- User's Received Gifts Wall ("هداياه") -->
+          <div class="user-received-gifts-box" data-user-id="${user.id}" id="soul-card-gifts-box">
+            <div style="font-size: 11px; color: var(--text-muted); padding: 6px;">جارِ تحميل الهدايا... 🎁</div>
           </div>
 
           <!-- Action Buttons -->
@@ -1319,6 +1890,11 @@
 
     document.body.appendChild(modal);
 
+    const cardGiftsBox = modal.querySelector('#soul-card-gifts-box');
+    if (cardGiftsBox && user.id) {
+      loadAndRenderUserGiftsSection(user.id, cardGiftsBox, !!(state.currentUser && state.currentUser.id === user.id));
+    }
+
     modal.querySelector('#close-card-btn').onclick = () => modal.remove();
 
     // Say Hi
@@ -1338,7 +1914,7 @@
     // Send Gift
     modal.querySelector('#card-send-gift-btn').onclick = () => {
       modal.remove();
-      openGiftStoreModal(user.id, null, user);
+      openGiftStoreModal(user.id, state.activeRoom ? state.activeRoom.id : null, user);
     };
 
     // Voice Match direct with this user
@@ -1867,7 +2443,7 @@
     modal.querySelector('#close-events-btn-bottom').onclick = () => modal.remove();
   }
 
-  // One Time Offer Modal
+  // First Recharge Rewards Modal (مكافآت الشحنة الاولى)
   function showOneTimeOfferModal() {
     const modal = document.createElement('div');
     modal.className = 'soul-modal-backdrop';
@@ -1876,16 +2452,16 @@
       <div class="soul-modal-content" style="max-width: 360px; text-align: center; padding: 24px;">
         <button class="soul-modal-close-btn" id="close-offer-btn">✕</button>
         <div style="font-size: 44px; margin-bottom: 8px;">🎁✨</div>
-        <div style="font-size: 18px; font-weight: 900; color: #fff; margin-bottom: 4px;">عرض حصري لمرة واحدة (One Time Offer)</div>
-        <div style="font-size: 12px; color: #fde047; font-weight: 700; margin-bottom: 16px;">خصم 70% + 5,000 كوينز إضافية وإطار مجري مجاناً!</div>
+        <div style="font-size: 18px; font-weight: 900; color: #fff; margin-bottom: 4px;">مكافآت الشحنة الاولى</div>
+        <div style="font-size: 12px; color: #fde047; font-weight: 700; margin-bottom: 16px;">خصم 70% + 5,000 كوينز إضافية وإطار ملكي فاخر مجاناً!</div>
 
         <div style="background: rgba(0,0,0,0.4); border: 1.5px dashed #fbbf24; border-radius: 16px; padding: 14px; margin-bottom: 16px;">
           <div style="font-size: 24px; font-weight: 900; color: #fff;">10,000 🪙 + إطار VIP</div>
-          <div style="font-size: 13px; color: #10b981; font-weight: 800; margin-top: 4px;">فقط $0.99 بدلاً من $9.99</div>
+          <div style="font-size: 13px; color: #10b981; font-weight: 800; margin-top: 4px;">استلم هدايا الشحنة الأولى فوراً</div>
         </div>
 
         <button class="wallet-btn primary" id="claim-offer-btn" style="width: 100%; padding: 12px; font-size: 14px; font-weight: 800;">
-          ⚡ شحن العرض الآن
+          ⚡ استلام وشحن العرض الآن
         </button>
       </div>
     `;
@@ -2079,6 +2655,7 @@
         <!-- Room Categories Bar (Voice Rooms Only) -->
         <div class="rooms-category-bar">
           <button class="cat-pill ${state.selectedCategory === 'all' ? 'active' : ''}" data-cat="all">🌟 الكل</button>
+          <button class="cat-pill ${state.selectedCategory === 'favorites' ? 'active' : ''}" data-cat="favorites">❤️ المفضلة</button>
           <button class="cat-pill ${state.selectedCategory === 'music' ? 'active' : ''}" data-cat="music">🎶 طرب وموسيقى</button>
           <button class="cat-pill ${state.selectedCategory === 'chat' ? 'active' : ''}" data-cat="chat">💬 سوالف وجمعة</button>
           <button class="cat-pill ${state.selectedCategory === 'chill' ? 'active' : ''}" data-cat="chill">☕ هدوء ورواق</button>
@@ -2153,8 +2730,10 @@
       filtered = filtered.filter(r => r.country_code === state.selectedCountry || r.country_code === 'GLOBAL');
     }
 
-    // 2. Category filter
-    if (state.selectedCategory && state.selectedCategory !== 'all') {
+    // 2. Category / Favorites filter
+    if (state.selectedCategory === 'favorites') {
+      filtered = filtered.filter(r => isRoomFavorited(r.id));
+    } else if (state.selectedCategory && state.selectedCategory !== 'all') {
       filtered = filtered.filter(r => r.category === state.selectedCategory);
     }
 
@@ -2163,6 +2742,7 @@
 
   async function loadRoomsList() {
     try {
+      await loadFavoriteRooms();
       const res = await fetch('/api/rooms');
       state.rooms = await res.json();
       applyRoomsFilters();
@@ -2178,7 +2758,9 @@
     if (rooms.length === 0) {
       grid.innerHTML = `
         <div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-muted);">
-          لا توجد غرف صوتية نشطة في هذا القسم حالياً.. كن أول من ينشئ غرفة صوتية! 🎙️🌟
+          ${state.selectedCategory === 'favorites' 
+            ? 'لا توجد غرف مضافة إلى المفضلة حالياً.. اضغط على ❤️ بجانب اسم أي غرفة لإضافتها للمفضلة!' 
+            : 'لا توجد غرف صوتية نشطة في هذا القسم حالياً.. كن أول من ينشئ غرفة صوتية! 🎙️🌟'}
         </div>
       `;
       return;
@@ -2186,6 +2768,7 @@
 
     grid.innerHTML = rooms.map(room => {
       const countryBadgeHtml = `<span class="room-country-badge">${room.country_flag || '🇯🇴'} ${room.country_name || 'الأردن'}</span>`;
+      const isFav = isRoomFavorited(room.id);
 
       // Voice Party Room Card (All rooms are voice rooms)
       const speakersHtml = (room.seats || [])
@@ -2201,7 +2784,12 @@
           <div class="room-card-header" style="margin-top: 24px;">
             <img src="${room.host_avatar}" class="room-host-avatar ${room.host_frame ? 'avatar-frame-' + room.host_frame : ''}" />
             <div class="room-card-info">
-              <div class="room-card-title">${room.title}</div>
+              <div class="room-card-title-row">
+                <div class="room-card-title" title="${room.title}">${room.title}</div>
+                <button type="button" class="room-card-fav-btn ${isFav ? 'favorited' : ''}" data-room-id="${room.id}" title="${isFav ? 'إزالة من المفضلة' : 'إضافة للمفضلة'}">
+                  <span class="fav-heart-icon">${isFav ? '❤️' : '🤍'}</span>
+                </button>
+              </div>
               <div class="room-host-name">المضيف: ${room.host_name}</div>
             </div>
           </div>
@@ -2215,6 +2803,13 @@
         </div>
       `;
     }).join('');
+
+    grid.querySelectorAll('.room-card-fav-btn').forEach(favBtn => {
+      favBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleFavoriteRoom(favBtn.dataset.roomId, favBtn);
+      };
+    });
 
     grid.querySelectorAll('.room-card').forEach(card => {
       card.onclick = () => {
@@ -3551,16 +4146,19 @@
       const room = await res.json();
       state.activeRoom = room;
 
-      // Join socket room
-      state.socket.emit('join_room', { roomId, user: state.currentUser });
-
       // Determine if current user is already in a seat
       const userSeat = (room.seats || []).find(s => state.currentUser && s.user_id === state.currentUser.id);
       state.userSeatIndex = userSeat ? userSeat.seat_index : null;
       state.isMuted = userSeat ? !!userSeat.is_muted : false;
 
-      // Render Live Room Modal
+      // Render Live Room Modal first so chat stream and entry effect slot are ready in DOM
       renderLiveRoomModal(room);
+
+      // Fetch Chat Messages first so the entry effect integrates directly at the bottom of the chat stream
+      await loadRoomChatMessages(roomId);
+
+      // Join socket room (broadcasts entry effect to all room participants)
+      state.socket.emit('join_room', { roomId, user: state.currentUser });
 
       // WebRTC real audio stream
       if (window.soulRtc) {
@@ -3569,9 +4167,6 @@
           window.soulRtc.startBroadcastingVoice(roomId);
         }
       }
-
-      // Fetch Chat Messages
-      loadRoomChatMessages(roomId);
     } catch (err) {
       console.error('Error opening room:', err);
     }
@@ -3747,7 +4342,7 @@
     const isSittingOnMic = state.userSeatIndex !== null && state.userSeatIndex !== undefined;
 
     if (btn) {
-      btn.style.display = isSittingOnMic ? 'flex' : 'none';
+      btn.style.display = 'flex';
     }
     if (!isSittingOnMic && drawer) {
       drawer.style.display = 'none';
@@ -3847,7 +4442,7 @@
             }
             <div class="seat-number-badge">${idx}</div>
             ${isOccupied 
-              ? `<div class="seat-mic-status ${seat.is_muted ? '' : 'unmuted'}">${seat.is_muted ? '🔇' : '🎙️'}</div>` 
+              ? `<div class="seat-mic-status ${seat.is_muted ? 'muted' : 'unmuted'}" style="display: ${seat.is_muted ? 'flex' : 'none'};">🔇</div>` 
               : ''
             }
           </div>
@@ -3862,7 +4457,11 @@
         <div class="live-room-header">
           <div class="live-room-title-box">
             <div class="live-room-name">
-              <span>🎙️</span> ${room.title}
+              <span class="live-room-mic-icon">🎙️</span>
+              <span class="live-room-title-text" title="${room.title}">${room.title}</span>
+              <button type="button" class="room-fav-heart-btn ${isRoomFavorited(room.id) ? 'favorited' : ''}" id="room-fav-toggle-btn" data-room-id="${room.id}" title="${isRoomFavorited(room.id) ? 'إزالة الغرفة من المفضلة' : 'إضافة الغرفة إلى المفضلة'}">
+                <span class="fav-heart-icon">${isRoomFavorited(room.id) ? '❤️' : '🤍'}</span>
+              </button>
               ${headerRoleBadge}
             </div>
             <div class="live-room-id-tag">ID: ${room.id} • 👥 <span id="live-audience-counter">${room.audience_count !== undefined ? room.audience_count : 1}</span> مستمع</div>
@@ -3874,14 +4473,19 @@
         </div>
 
         ${isRoomAdmin ? `
-          <!-- Host & Admin Toolbar -->
-          <div class="host-admin-toolbar" style="display: flex; gap: 6px; justify-content: center; background: rgba(0,0,0,0.45); padding: 6px 10px; border-radius: 12px; margin-bottom: 8px; flex-wrap: wrap;">
-            <span style="font-size: 11px; font-weight: 800; color: #fbbf24; align-self: center;">👑 صلاحيات المضيف:</span>
-            <button class="host-tool-mini-btn" id="btn-admin-edit-announcement" style="background: rgba(255,255,255,0.08); border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer;">📢 تعديل الإعلان</button>
-            <button class="host-tool-mini-btn" id="btn-admin-lock-all-seats" style="background: rgba(245,158,11,0.2); border: 1px solid rgba(245,158,11,0.4); color: #fbbf24; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer;">🔒 قفل جميع المقاعد</button>
-            <button class="host-tool-mini-btn" id="btn-admin-unlock-all-seats" style="background: rgba(16,185,129,0.2); border: 1px solid rgba(16,185,129,0.4); color: #10b981; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer;">🔓 فتح جميع المقاعد</button>
-            <button class="host-tool-mini-btn" id="btn-admin-start-pk" style="background: rgba(255,255,255,0.08); border: 1px solid var(--border-glass); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer;">⚔️ بدء PK</button>
-            <button class="host-tool-mini-btn danger" id="btn-admin-close-room" style="background: rgba(244,63,94,0.2); border: 1px solid rgba(244,63,94,0.4); color: #f43f5e; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer;">🛑 إغلاق الغرفة</button>
+          <!-- Host & Admin Toolbar (Sleek organized single-row bar) -->
+          <div class="host-admin-toolbar">
+            <div class="host-toolbar-badge">
+              <span>👑</span>
+              <span>الإدارة</span>
+            </div>
+            <div class="host-toolbar-actions">
+              <button class="host-tool-mini-btn" id="btn-admin-edit-announcement" title="تعديل الإعلان">📢 الإعلان</button>
+              <button class="host-tool-mini-btn lock" id="btn-admin-lock-all-seats" title="قفل جميع المقاعد">🔒 قفل المقاعد</button>
+              <button class="host-tool-mini-btn unlock" id="btn-admin-unlock-all-seats" title="فتح جميع المقاعد">🔓 فتح المقاعد</button>
+              <button class="host-tool-mini-btn pk" id="btn-admin-start-pk" title="بدء تحدي PK">⚔️ PK</button>
+              <button class="host-tool-mini-btn danger" id="btn-admin-close-room" title="إغلاق الغرفة">🛑 إغلاق</button>
+            </div>
           </div>
         ` : ''}
 
@@ -3909,9 +4513,9 @@
             <div class="host-avatar-box ${isHostSeatOccupied ? '' : 'empty-host-seat'}" style="${isHostSeatOccupied ? '' : 'border: 2px dashed rgba(251, 191, 36, 0.6); background: rgba(251, 191, 36, 0.08); display: flex; align-items: center; justify-content: center;'}">
               ${isHostSeatOccupied 
                 ? `<img src="${hostOccupant.avatar || room.host_avatar}" class="${hostOccupant.avatar_frame ? 'avatar-frame-' + hostOccupant.avatar_frame : ''}" />
-                   <div class="seat-mic-status ${hostOccupant.is_muted ? '' : 'unmuted'}" id="host-mic-badge" style="position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">${hostOccupant.is_muted ? '🔇' : '🎙️'}</div>` 
+                   <div class="seat-mic-status ${hostOccupant.is_muted ? 'muted' : 'unmuted'}" id="host-mic-badge" style="display: ${hostOccupant.is_muted ? 'flex' : 'none'}; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>` 
                 : `<span class="seat-empty-plus" style="font-size: 26px; color: #fbbf24; font-weight: 800;">+</span>
-                   <div class="seat-mic-status" id="host-mic-badge" style="display: none; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>`
+                   <div class="seat-mic-status unmuted" id="host-mic-badge" style="display: none; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>`
               }
             </div>
             <div class="host-name-label" style="${isHostSeatOccupied ? '' : 'color: #fbbf24;'}">
@@ -3925,31 +4529,22 @@
           </div>
         </div>
 
-        <!-- SoulChill Visitors / Audience Strip under the seats -->
+        <!-- Compact SoulChill Visitors / Audience Strip under the seats -->
         <div class="room-audience-strip-container">
-          <div class="audience-strip-header">
-            <div class="audience-strip-title">
-              <span>👥</span>
-              <span>الزوار والمستمعون في الروم</span>
-              <span class="audience-count-pill" id="room-audience-badge">0</span>
-            </div>
-            <div class="audience-strip-hint">انقر على أي زائر للإدارة أو إرسال هدية</div>
+          <div class="audience-strip-badge-pill" title="المتواجدون في الغرفة">
+            <span class="audience-person-icon">👤</span>
+            <span class="audience-count-pill" id="room-audience-badge">0</span>
           </div>
           <div class="room-audience-scroll-track" id="room-audience-list">
             <!-- Dynamic visitor avatars rendered here -->
           </div>
         </div>
 
-        <!-- Soundboard Drawer -->
-        <div class="soundboard-drawer">
-          <button class="soundboard-btn" data-sound="applause">👏 تصفيق</button>
-          <button class="soundboard-btn" data-sound="cheer">🎉 هتاف</button>
-          <button class="soundboard-btn" data-sound="laughter">😂 ضحك</button>
-          <button class="soundboard-btn" data-sound="drumroll">🥁 طبول</button>
-        </div>
+        <!-- Entry Effect Banner Container -->
+        <div class="room-entry-effect-slot" id="room-entry-effect-slot"></div>
 
-        <!-- Live Chat Messages Stream -->
-        <div class="room-chat-stream" id="room-chat-messages-container">
+        <!-- Live Chat Messages Stream (Swipe Right to Hide, Swipe Left to Restore) -->
+        <div class="room-chat-stream" id="room-chat-messages-container" title="اسحب لليمين لإخفاء الرسائل، واسحب لليسار لإظهارها">
           <div class="room-chat-bubble system-notice">
             🌟 مرحباً بكم في الروم! الرجاء الالتزام بالاحترام المتبادل والمحبة.
           </div>
@@ -3960,26 +4555,61 @@
           ` : ''}
         </div>
 
-        <!-- Room Bottom Controls Bar -->
+        <!-- Floating Restore Chat Hint when Public Chat is Swiped Hidden -->
+        <button type="button" class="room-chat-restore-pill" id="room-chat-restore-pill" style="display: none;">
+          <span>💬 اسحب لليسار أو اضغط لإظهار العام</span>
+        </button>
+
+        <!-- Room Bottom Controls Bar (Exact SoulChill Layout matching image-1.png & image-2.png) -->
         <div class="room-bottom-controls">
+          <!-- Rightmost in RTL: Pill Input ("مرحبًا" + Smiley Icon on Left inside pill) -->
           <div class="room-chat-input-wrapper">
-            <button type="button" class="room-chat-emoji-btn" id="room-chat-emoji-toggle-btn" title="سمايلات وتفاعلات المايك" style="display: ${state.userSeatIndex !== null ? 'flex' : 'none'};">😊</button>
-            <input type="text" class="room-chat-input" id="room-chat-text-input" placeholder="اكتب رسالة في الروم..." />
-            <button class="room-chat-send-btn" id="room-send-chat-btn">➤</button>
+            <input type="text" class="room-chat-input" id="room-chat-text-input" placeholder="مرحبًا" />
+            <button type="button" class="room-chat-send-btn" id="room-send-chat-btn" title="إرسال">➤</button>
+            <button type="button" class="room-chat-emoji-btn" id="room-chat-emoji-toggle-btn" title="سمايلات وتفاعلات">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                <circle cx="12" cy="12" r="9.5" stroke="#ffffff" stroke-width="1.8"/>
+                <circle cx="9" cy="10" r="1.3" fill="#ffffff"/>
+                <circle cx="15" cy="10" r="1.3" fill="#ffffff"/>
+                <path d="M8.5 14.2C9.4 15.8 10.6 16.5 12 16.5C13.4 16.5 14.6 15.8 15.5 14.2" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
           </div>
 
-          <!-- Mic Toggle Button -->
-          <button class="room-tool-btn mic-btn ${state.userSeatIndex !== null && !state.isMuted ? 'active' : ''}" id="room-mic-toggle-btn" title="المايكروفون">
-            ${state.userSeatIndex !== null && !state.isMuted ? '🎙️' : '🔇'}
+          <!-- 1. Royal Treasure / Privilege Box Button -->
+          <button type="button" class="room-tool-btn chest-btn" id="room-open-chest-btn" title="صندوق المكافآت والامتيازات">
+            <span class="chest-3d-icon">👑💎</span>
           </button>
 
-          <!-- Virtual Gift Button -->
-          <button class="room-tool-btn gift-btn" id="room-open-gifts-btn" title="إرسال هدية فاخرة">🎁</button>
+          <!-- 2. Accessories Button (Exact image-2.png: 3 horizontal lines short-long-short) -->
+          <button type="button" class="room-tool-btn accessories-btn" id="room-accessories-btn" title="إكسسوارات (إطارات الرسالة وتأثيرات الدخول)">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+              <path d="M8 7.5H16M5 12H19M8 16.5H16" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round"/>
+            </svg>
+          </button>
 
-          <!-- In-Room Private Messages (Next to Gifts) -->
-          <button class="room-tool-btn inroom-msg-btn" id="room-inroom-messages-btn" title="الرسائل والمحادثات الخاصة 💬" style="position: relative;">
-            <span>💬</span>
+          <!-- 3. Golden Gamepad Button (Games Selector) -->
+          <button type="button" class="room-tool-btn games-btn" id="room-open-games-btn" title="ألعاب وتحديات الغرفة">
+            <span class="gamepad-3d-icon">🎮</span>
+          </button>
+
+          <!-- 4. In-Room Private Messages Button (Speech Bubble with 2 lines) -->
+          <button type="button" class="room-tool-btn inroom-msg-btn" id="room-inroom-messages-btn" title="الرسائل والمحادثات الخاصة 💬" style="position: relative;">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+              <path d="M6 5H18C19.6569 5 21 6.34315 21 8V14C21 15.6569 19.6569 17 18 17H14L12 19.5L10 17H6C4.34315 17 3 15.6569 3 14V8C3 6.34315 4.34315 5 6 5Z" stroke="#e9d5ff" stroke-width="1.9" stroke-linejoin="round"/>
+              <path d="M8.5 9.5H15.5M8.5 13H13.5" stroke="#e9d5ff" stroke-width="1.9" stroke-linecap="round"/>
+            </svg>
             <span class="inroom-unread-dot" id="inroom-unread-dot" style="display: none; position: absolute; top: 2px; right: 2px; width: 9px; height: 9px; background: #ef4444; border-radius: 50%; border: 1.5px solid #000;"></span>
+          </button>
+
+          <!-- 5. Virtual Gift Box Button -->
+          <button type="button" class="room-tool-btn gift-btn" id="room-open-gifts-btn" title="إرسال هدية فاخرة">
+            <span class="gift-3d-icon">🎁</span>
+          </button>
+
+          <!-- 6. Mic Toggle Button (Strictly shown only when sitting on a seat) -->
+          <button type="button" class="room-tool-btn mic-btn ${state.userSeatIndex !== null && state.userSeatIndex !== undefined && !state.isMuted ? 'active' : ''}" id="room-mic-toggle-btn" title="المايكروفون" style="display: ${state.userSeatIndex !== null && state.userSeatIndex !== undefined ? 'flex' : 'none'};">
+            ${state.userSeatIndex !== null && state.userSeatIndex !== undefined && !state.isMuted ? '🎙️' : '🔇'}
           </button>
         </div>
 
@@ -3996,26 +4626,22 @@
 
     document.body.appendChild(modal);
 
-    // Initial check of emoji button visibility based on whether user is on mic
-    updateRoomMicEmojiButtonState();
+    // Initial check of mic & emoji button visibility based on whether user is on mic
+    updateMicButtonUI();
+
+    // Event: Favorite Room Heart Button inside live-room-title-box
+    const favToggleBtn = modal.querySelector('#room-fav-toggle-btn');
+    if (favToggleBtn) {
+      favToggleBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleFavoriteRoom(room.id, favToggleBtn);
+      };
+    }
 
     // Event: Leave Room
     modal.querySelector('#leave-room-btn').onclick = () => {
       leaveActiveVoiceRoom();
     };
-
-    // Event: Soundboard buttons
-    modal.querySelectorAll('.soundboard-btn').forEach(btn => {
-      btn.onclick = () => {
-        const sound = btn.dataset.sound;
-        state.socket.emit('play_sound_effect', {
-          roomId: room.id,
-          effect: sound,
-          soundName: btn.innerText,
-          senderName: state.currentUser.name
-        });
-      };
-    });
 
     // Event: Chill Music toggle
     const musicBtn = modal.querySelector('#room-chill-music-btn');
@@ -4044,6 +4670,30 @@
       };
     }
 
+    // Event: Treasure / Privilege Box Button
+    const chestBtn = modal.querySelector('#room-open-chest-btn');
+    if (chestBtn) {
+      chestBtn.onclick = () => {
+        showOneTimeOfferModal();
+      };
+    }
+
+    // Event: Accessories Button (image-2.png -> Opens Message Frames & Entry Effects)
+    const accessoriesBtn = modal.querySelector('#room-accessories-btn');
+    if (accessoriesBtn) {
+      accessoriesBtn.onclick = () => {
+        openRoomAccessoriesModal(room);
+      };
+    }
+
+    // Event: Games Button (Golden Gamepad)
+    const gamesBtn = modal.querySelector('#room-open-games-btn');
+    if (gamesBtn) {
+      gamesBtn.onclick = () => {
+        showRoomGamesSelectorModal(room);
+      };
+    }
+
     // Event: Mic Emoji Stickers Toggle & Selection
     const emojiToggleBtn = modal.querySelector('#room-chat-emoji-toggle-btn');
     const emojisDrawer = modal.querySelector('#seat-emojis-picker-drawer');
@@ -4060,7 +4710,14 @@
       emojiToggleBtn.onclick = (e) => {
         e.stopPropagation();
         if (state.userSeatIndex === null || state.userSeatIndex === undefined) {
-          showToast('سمايلات وتفاعلات المايك تظهر فقط عندما تكون على المقعد! 🎙️');
+          // If not on mic seat, insert a quick smile emoji or let user know
+          const inputEl = modal.querySelector('#room-chat-text-input');
+          if (inputEl && !inputEl.disabled) {
+            inputEl.value += ' 😊';
+            inputEl.focus();
+          } else {
+            showToast('سمايلات وتفاعلات المايك تظهر عندما تكون على المقعد! 🎙️');
+          }
           return;
         }
         const isHidden = emojisDrawer.style.display === 'none' || !emojisDrawer.style.display;
@@ -4072,6 +4729,9 @@
         }
       };
     }
+
+    // Setup Swipe Right to Hide Public Chat & Swipe Left to Restore
+    setupRoomChatSwipeToggle(modal);
 
     // Event: Host & Admin Control Actions
     const editAnnounceBtn = modal.querySelector('#btn-admin-edit-announcement');
@@ -4191,6 +4851,520 @@
     updateRoomChatInputState();
   }
 
+  // Swipe Right on #room-chat-messages-container to Hide Public Chat, Swipe Left to Restore
+  function setupRoomChatSwipeToggle(modal) {
+    const chatContainer = modal.querySelector('#room-chat-messages-container');
+    const restorePill = modal.querySelector('#room-chat-restore-pill');
+    const roomContainer = modal.querySelector('.live-room-container');
+    if (!chatContainer || !roomContainer) return;
+
+    let startX = null;
+    let startY = null;
+
+    const setChatHidden = (hidden) => {
+      chatContainer.classList.toggle('chat-stream-hidden-right', hidden);
+      if (restorePill) {
+        restorePill.style.display = hidden ? 'inline-flex' : 'none';
+      }
+      showToast(hidden ? 'تم إخفاء رسائل العام 👈 اسحب لليسار لإرجاعها' : 'تم إرجاع رسائل الدردشة العامة 💬');
+    };
+
+    if (restorePill) {
+      restorePill.onclick = () => setChatHidden(false);
+    }
+
+    const handleGestureEnd = (endX, endY) => {
+      if (startX === null || startY === null) return;
+      const dx = endX - startX;
+      const dy = endY - startY;
+      startX = null;
+      startY = null;
+
+      // Require clear horizontal swipe (at least 45px and mostly horizontal)
+      if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+        const isCurrentlyHidden = chatContainer.classList.contains('chat-stream-hidden-right');
+        if (dx > 0 && !isCurrentlyHidden) {
+          // Swiped Right -> Hide public chat messages
+          setChatHidden(true);
+        } else if (dx < 0 && isCurrentlyHidden) {
+          // Swiped Left -> Restore public chat messages
+          setChatHidden(false);
+        }
+      }
+    };
+
+    roomContainer.addEventListener('touchstart', (e) => {
+      if (!e.touches || e.touches.length !== 1) return;
+      // Ignore swipes inside horizontal scroll tracks
+      if (e.target.closest('#room-audience-list, .host-toolbar-actions')) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    }, { passive: true });
+
+    roomContainer.addEventListener('touchend', (e) => {
+      if (!e.changedTouches || e.changedTouches.length === 0) return;
+      handleGestureEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+    }, { passive: true });
+
+    roomContainer.addEventListener('mousedown', (e) => {
+      if (e.target.closest('button, input, #room-audience-list, .host-toolbar-actions')) return;
+      startX = e.clientX;
+      startY = e.clientY;
+    });
+
+    roomContainer.addEventListener('mouseup', (e) => {
+      handleGestureEnd(e.clientX, e.clientY);
+    });
+  }
+
+  // Room Accessories Modal (Opened by clicking the 3-lines button image-2.png)
+  // Displays: 1. إطارات الرسالة (Message Frames for .room-chat-bubble)  2. تأثيرات الدخول (Entry Effects)
+  const ROOM_CHAT_BUBBLE_FRAMES = [
+    { id: '', name: 'الإطار الكلاسيكي (بنفسجي سول)', icon: '💜', desc: 'إطار الرسائل الافتراضي الأنيق', previewClass: '' },
+    { id: 'royal_gold', name: 'إطار الإمبراطور الذهبي', icon: '👑', desc: 'إطار ملكي ذهبي متوهج للرسائل', previewClass: 'chat-frame-royal_gold' },
+    { id: 'cyber_neon', name: 'إطار النيون السماوي', icon: '⚡', desc: 'إطار نيون مضيء بتدرج أزرق وبنفسجي', previewClass: 'chat-frame-cyber_neon' },
+    { id: 'fire_dragon', name: 'إطار لهب التنين', icon: '🔥', desc: 'إطار ناري متوهج يلفت الأنظار في العام', previewClass: 'chat-frame-fire_dragon' },
+    { id: 'emerald_vip', name: 'إطار الزمرد الملكي VIP', icon: '🟢', desc: 'إطار زمردي فاخر لأصحاب الثروة العالية', previewClass: 'chat-frame-emerald_vip' },
+    { id: 'rose_romance', name: 'إطار الياقوت الوردي', icon: '🌸', desc: 'إطار رومانسي ناعم متألق', previewClass: 'chat-frame-rose_romance' }
+  ];
+
+  const ROOM_ENTRY_EFFECTS = [
+    {
+      id: 'royal_eagle',
+      name: 'دخولية الصقر الملكي المتحركة (GIF)',
+      gifUrl: '/uploads/royal_eagle.gif',
+      crestCode: 'M✪H',
+      ribbonText: 'وكالة مملكة الاخوه',
+      badge: 'صورة متحركة 🦅',
+      primaryGold: '#facc15',
+      secondaryAccent: '#10b981'
+    },
+    {
+      id: 'royal_wings_moh',
+      name: 'أجنحة وكالة مملكة الأخوة (M✪H)',
+      gifUrl: '/uploads/royal_eagle.gif',
+      crestCode: 'M✪H',
+      ribbonText: 'وكالة مملكة الاخوه',
+      badge: 'ملكي 👑',
+      primaryGold: '#facc15',
+      secondaryAccent: '#10b981'
+    },
+    {
+      id: 'golden_lambo',
+      name: 'أجنحة الإمبراطور الذهبية (VIP)',
+      crestCode: 'V✪I✪P',
+      ribbonText: 'موكب الإمبراطور الذهبي',
+      badge: 'VIP 7',
+      primaryGold: '#fbbf24',
+      secondaryAccent: '#ec4899'
+    },
+    {
+      id: 'royal_dragon',
+      name: 'أجنحة تنين المجرة الناري',
+      crestCode: 'K✪I✪N✪G',
+      ribbonText: 'تنين المجرة الناري',
+      badge: 'أسطوري 🔥',
+      primaryGold: '#f97316',
+      secondaryAccent: '#ef4444'
+    },
+    {
+      id: 'imperial_crown',
+      name: 'شعار عرش الملوك المجنح',
+      crestCode: 'R✪O✪Y✪L',
+      ribbonText: 'مملكة الملوك والأمراء',
+      badge: 'الملكي',
+      primaryGold: '#fde047',
+      secondaryAccent: '#8b5cf6'
+    },
+    {
+      id: 'luxury_yacht',
+      name: 'أجنحة يخت السول الماسي',
+      crestCode: 'S✪O✪U✪L',
+      ribbonText: 'أسطول السول الماسي',
+      badge: 'VIP 5',
+      primaryGold: '#38bdf8',
+      secondaryAccent: '#06b6d4'
+    }
+  ];
+
+  // Generates the exact Ornate 3D Golden Feathered Wings + M✪H Shield (with animated GIF support) + Crown + "وكالة مملكة الاخوه" Ribbon
+  function getOrnateWingedEntryCrestSvg(eff) {
+    const item = eff || ROOM_ENTRY_EFFECTS[0];
+    const uid = (item.id || 'moh') + '-' + Math.floor(Math.random() * 10000);
+    const gemColor = item.secondaryAccent || '#10b981';
+    const customGif = localStorage.getItem('soulchill_custom_entry_gif');
+    const activeGifUrl = (item.id === 'custom_gif' && customGif) ? customGif : item.gifUrl;
+
+    return `
+      <svg viewBox="0 0 300 185" class="ornate-winged-crest-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="goldWingGrad-${uid}" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#fffbeb"/>
+            <stop offset="28%" stop-color="#fde047"/>
+            <stop offset="62%" stop-color="#eab308"/>
+            <stop offset="88%" stop-color="#b45309"/>
+            <stop offset="100%" stop-color="#451a03"/>
+          </linearGradient>
+          <linearGradient id="goldDarkGrad-${uid}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#fde047"/>
+            <stop offset="50%" stop-color="#ca8a04"/>
+            <stop offset="100%" stop-color="#713f12"/>
+          </linearGradient>
+          <radialGradient id="shieldCore-${uid}" cx="50%" cy="45%" r="55%">
+            <stop offset="0%" stop-color="#2e1d08"/>
+            <stop offset="70%" stop-color="#120a02"/>
+            <stop offset="100%" stop-color="#050200"/>
+          </radialGradient>
+          <radialGradient id="goldBackGlow-${uid}" cx="50%" cy="52%" r="48%">
+            <stop offset="0%" stop-color="#facc15" stop-opacity="0.55"/>
+            <stop offset="65%" stop-color="#a855f7" stop-opacity="0.22"/>
+            <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+          </radialGradient>
+          <clipPath id="shieldGifClip-${uid}">
+            <circle cx="150" cy="92" r="35"/>
+          </clipPath>
+          <filter id="goldDropShadow-${uid}" x="-15%" y="-15%" width="130%" height="130%">
+            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.75"/>
+          </filter>
+        </defs>
+
+        <!-- Ambient Golden & Royal Aura -->
+        <ellipse cx="150" cy="95" rx="135" ry="75" fill="url(#goldBackGlow-${uid})" />
+
+        <!-- LEFT ORNATE 3D GOLDEN EAGLE WING -->
+        <g class="sc-wing-left" filter="url(#goldDropShadow-${uid})">
+          <path d="M115 95 C 75 75, 38 42, 14 14 C 24 38, 48 64, 98 92 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M112 100 C 68 85, 28 58, 8 34 C 22 56, 52 80, 96 98 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M110 105 C 64 96, 25 76, 10 56 C 26 74, 56 92, 96 104 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M110 110 C 68 106, 30 94, 16 78 C 34 92, 62 104, 98 110 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M112 115 C 74 115, 40 108, 26 98 C 44 108, 70 114, 102 116 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M115 120 C 82 124, 54 120, 40 114 C 58 120, 80 122, 106 121 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M118 92 C 88 76, 62 52, 44 30 C 54 52, 74 72, 106 94 Z" fill="url(#goldDarkGrad-${uid})" stroke="#fef08a" stroke-width="0.6"/>
+          <path d="M116 98 C 86 88, 58 70, 42 52 C 56 70, 78 86, 106 100 Z" fill="url(#goldDarkGrad-${uid})" stroke="#fef08a" stroke-width="0.6"/>
+          <path d="M116 104 C 88 98, 62 86, 48 74 C 62 86, 82 96, 108 106 Z" fill="url(#goldDarkGrad-${uid})" stroke="#fef08a" stroke-width="0.6"/>
+        </g>
+
+        <!-- RIGHT ORNATE 3D GOLDEN EAGLE WING (Mirrored) -->
+        <g class="sc-wing-right" filter="url(#goldDropShadow-${uid})">
+          <path d="M185 95 C 225 75, 262 42, 286 14 C 276 38, 252 64, 202 92 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M188 100 C 232 85, 272 58, 292 34 C 278 56, 248 80, 204 98 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M190 105 C 236 96, 275 76, 290 56 C 274 74, 244 92, 204 104 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M190 110 C 232 106, 270 94, 284 78 C 266 92, 238 104, 202 110 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M188 115 C 226 115, 260 108, 274 98 C 256 108, 230 114, 198 116 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M185 120 C 218 124, 246 120, 260 114 C 242 120, 220 122, 194 121 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="0.8"/>
+          <path d="M182 92 C 212 76, 238 52, 256 30 C 246 52, 226 72, 194 94 Z" fill="url(#goldDarkGrad-${uid})" stroke="#fef08a" stroke-width="0.6"/>
+          <path d="M184 98 C 214 88, 242 70, 258 52 C 244 70, 222 86, 194 100 Z" fill="url(#goldDarkGrad-${uid})" stroke="#fef08a" stroke-width="0.6"/>
+          <path d="M184 104 C 212 98, 238 86, 252 74 C 238 86, 218 96, 192 106 Z" fill="url(#goldDarkGrad-${uid})" stroke="#fef08a" stroke-width="0.6"/>
+        </g>
+
+        <!-- TOP ROYAL GOLDEN CROWN -->
+        <g filter="url(#goldDropShadow-${uid})">
+          <path d="M124 48 L132 30 L142 42 L150 24 L158 42 L168 30 L176 48 Z" fill="url(#goldWingGrad-${uid})" stroke="#fef08a" stroke-width="1"/>
+          <circle cx="150" cy="22" r="2.8" fill="#ef4444" stroke="#fef08a" stroke-width="0.8"/>
+          <circle cx="132" cy="29" r="2.2" fill="${gemColor}" stroke="#fef08a" stroke-width="0.7"/>
+          <circle cx="168" cy="29" r="2.2" fill="${gemColor}" stroke="#fef08a" stroke-width="0.7"/>
+        </g>
+
+        <!-- CENTRAL ROYAL SHIELD MEDALLION (M✪H + Animated GIF inside Shield) -->
+        <g filter="url(#goldDropShadow-${uid})">
+          <circle cx="150" cy="92" r="44" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="1.5"/>
+          <circle cx="150" cy="92" r="39" fill="none" stroke="#fef08a" stroke-width="1.2" stroke-dasharray="3 2"/>
+          <circle cx="150" cy="92" r="36" fill="url(#shieldCore-${uid})" stroke="url(#goldWingGrad-${uid})" stroke-width="2"/>
+          ${activeGifUrl ? `
+            <image href="${activeGifUrl}" x="114" y="56" width="72" height="72" preserveAspectRatio="xMidYMid slice" clip-path="url(#shieldGifClip-${uid})" />
+            <circle cx="150" cy="92" r="35" fill="rgba(0,0,0,0.22)" />
+          ` : ''}
+          <circle cx="150" cy="92" r="31" fill="none" stroke="rgba(253, 224, 71, 0.55)" stroke-width="1"/>
+          <text x="150" y="${activeGifUrl ? '116' : '98'}" text-anchor="middle" fill="url(#goldWingGrad-${uid})" stroke="#1c1004" stroke-width="0.6" font-size="${activeGifUrl ? '15' : '19'}" font-weight="900" font-family="serif" letter-spacing="1.5">${item.crestCode}</text>
+        </g>
+
+        <!-- LOWER ORNATE 3D RIBBON BANNER ("وكالة مملكة الاخوه") -->
+        <g filter="url(#goldDropShadow-${uid})">
+          <circle cx="54" cy="144" r="12" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="1.2"/>
+          <circle cx="54" cy="144" r="7.5" fill="${gemColor}" stroke="#fef08a" stroke-width="1"/>
+          <circle cx="246" cy="144" r="12" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="1.2"/>
+          <circle cx="246" cy="144" r="7.5" fill="${gemColor}" stroke="#fef08a" stroke-width="1"/>
+
+          <path d="M58 132 Q 150 122 242 132 L 248 158 Q 150 148 52 158 Z" fill="url(#goldWingGrad-${uid})" stroke="#78350f" stroke-width="1.4"/>
+          <path d="M63 135 Q 150 126 237 135 L 241 154 Q 150 145 59 154 Z" fill="#1c1004" stroke="#fde047" stroke-width="1"/>
+
+          <text x="150" y="149" text-anchor="middle" fill="url(#goldWingGrad-${uid})" font-size="15.5" font-weight="900" font-family="'Cairo', 'Tajawal', sans-serif">${item.ribbonText}</text>
+        </g>
+
+        <!-- Floating Golden Sparkles -->
+        <circle cx="42" cy="28" r="2.2" fill="#fef08a" opacity="0.9"/>
+        <circle cx="258" cy="26" r="2.2" fill="#fef08a" opacity="0.9"/>
+        <circle cx="85" cy="22" r="1.6" fill="#fde047" opacity="0.8"/>
+        <circle cx="215" cy="22" r="1.6" fill="#fde047" opacity="0.8"/>
+        <circle cx="28" cy="122" r="1.8" fill="#fef08a" opacity="0.85"/>
+        <circle cx="272" cy="122" r="1.8" fill="#fef08a" opacity="0.85"/>
+      </svg>
+    `;
+  }
+
+  function openRoomAccessoriesModal(room) {
+    if (!requireAuth()) return;
+    const existing = document.getElementById('room-accessories-modal');
+    if (existing) existing.remove();
+
+    let activeAccTab = 'chat_frames'; // 'chat_frames' | 'entry_effects'
+
+    const modal = document.createElement('div');
+    modal.className = 'soul-modal-backdrop';
+    modal.id = 'room-accessories-modal';
+
+    const renderAccContent = () => {
+      const bodyEl = modal.querySelector('#accessories-tab-body');
+      if (!bodyEl) return;
+
+      if (activeAccTab === 'chat_frames') {
+        const selectedFrame = (state.currentUser && state.currentUser.chat_frame) || localStorage.getItem('soulchill_chat_frame') || '';
+        bodyEl.innerHTML = `
+          <div style="font-size: 11px; color: #cbd5e1; margin-bottom: 10px; text-align: center;">
+            اختر إطار رسالتك ليظهر لجميع المتواجدين في الدردشة العامة داخل الغرفة 💬✨
+          </div>
+          <div class="accessories-grid">
+            ${ROOM_CHAT_BUBBLE_FRAMES.map(f => {
+              const isEquipped = selectedFrame === f.id;
+              return `
+                <div class="accessory-card-item ${isEquipped ? 'equipped' : ''}" data-chat-frame-id="${f.id}">
+                  <div class="acc-preview-bubble ${f.previewClass}">
+                    <span style="font-size: 16px;">${f.icon}</span>
+                    <span style="font-size: 10px; font-weight: 700; color: #fff;">أهلاً بكم ✨</span>
+                  </div>
+                  <div class="acc-item-title">${f.name}</div>
+                  <div class="acc-item-desc">${f.desc}</div>
+                  <button type="button" class="acc-equip-btn ${isEquipped ? 'active' : ''}">
+                    ${isEquipped ? '✅ مفعل الآن' : 'تفعيل الإطار'}
+                  </button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+
+        bodyEl.querySelectorAll('.accessory-card-item').forEach(card => {
+          card.onclick = async () => {
+            const frameId = card.dataset.chatFrameId;
+            localStorage.setItem('soulchill_chat_frame', frameId);
+            if (state.currentUser) {
+              state.currentUser.chat_frame = frameId;
+              localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
+              try {
+                await fetch('/api/users/accessories', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': state.currentUser.id
+                  },
+                  body: JSON.stringify({ chat_frame: frameId })
+                });
+              } catch (e) {}
+            }
+            const frameObj = ROOM_CHAT_BUBBLE_FRAMES.find(x => x.id === frameId);
+            showToast(`💬 تم تفعيل "${frameObj ? frameObj.name : 'إطار الرسالة'}" لرسائلك في الغرفة! ✨`);
+            renderAccContent();
+          };
+        });
+      } else {
+        const selectedEntry = (state.currentUser && state.currentUser.entry_effect) || localStorage.getItem('soulchill_entry_effect') || 'royal_eagle';
+        bodyEl.innerHTML = `
+          <div style="font-size: 11px; color: #cbd5e1; margin-bottom: 10px; text-align: center;">
+            اختر دخوليتك المتحركة (GIF) أو شعار الأجنحة الملكية ليظهر عند دخول الغرفة أو اضغط للتجربة الآن 🦅👑
+          </div>
+          <div class="accessories-grid">
+            ${ROOM_ENTRY_EFFECTS.map(eff => {
+              const isEquipped = selectedEntry === eff.id;
+              return `
+                <div class="accessory-card-item ${isEquipped ? 'equipped' : ''}" data-entry-id="${eff.id}">
+                  <div class="acc-entry-badge">${eff.badge}</div>
+                  ${eff.id === 'royal_eagle' ? `
+                    <div class="acc-gif-preview-card">
+                      <img src="${eff.gifUrl}" alt="${eff.name}" class="acc-gif-preview-img" />
+                    </div>
+                  ` : `
+                    <div class="acc-winged-preview-box">${getOrnateWingedEntryCrestSvg(eff)}</div>
+                  `}
+                  <div class="acc-item-title">${eff.name}</div>
+                  <button type="button" class="acc-equip-btn ${isEquipped ? 'active' : ''}">
+                    ${isEquipped ? '🚀 مفعل (اضغط للتجربة)' : 'تفعيل وتجربة الدخول'}
+                  </button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+
+        bodyEl.querySelectorAll('.accessory-card-item').forEach(card => {
+          card.onclick = async () => {
+            const entryId = card.dataset.entryId;
+            localStorage.setItem('soulchill_entry_effect', entryId);
+            if (state.currentUser) {
+              state.currentUser.entry_effect = entryId;
+              localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
+              try {
+                await fetch('/api/users/accessories', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': state.currentUser.id
+                  },
+                  body: JSON.stringify({ entry_effect: entryId })
+                });
+              } catch (e) {}
+            }
+            if (room && room.id && state.socket) {
+              state.socket.emit('trigger_entry_effect', {
+                roomId: room.id,
+                user: state.currentUser,
+                effectId: entryId
+              });
+            } else {
+              showRoomEntryEffectBanner(state.currentUser, entryId);
+            }
+            modal.remove();
+          };
+        });
+      }
+    };
+
+    modal.innerHTML = `
+      <div class="soul-modal-content accessories-modal-box" style="max-width: 420px;">
+        <button class="soul-modal-close-btn" id="close-accessories-modal-btn">✕</button>
+        <div class="modal-header-title">
+          ✨ إكسسوارات الغرفة الملكية
+        </div>
+
+        <div class="accessories-tabs-bar">
+          <button type="button" class="acc-tab-btn active" id="tab-btn-chat-frames">
+            💬 إطارات الرسالة
+          </button>
+          <button type="button" class="acc-tab-btn" id="tab-btn-entry-effects">
+            🦅 تأثيرات الدخول (GIF)
+          </button>
+        </div>
+
+        <div id="accessories-tab-body" style="margin-top: 10px;"></div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    modal.querySelector('#close-accessories-modal-btn').onclick = () => modal.remove();
+
+    const tabChatBtn = modal.querySelector('#tab-btn-chat-frames');
+    const tabEntryBtn = modal.querySelector('#tab-btn-entry-effects');
+
+    tabChatBtn.onclick = () => {
+      activeAccTab = 'chat_frames';
+      tabChatBtn.classList.add('active');
+      tabEntryBtn.classList.remove('active');
+      renderAccContent();
+    };
+
+    tabEntryBtn.onclick = () => {
+      activeAccTab = 'entry_effects';
+      tabEntryBtn.classList.add('active');
+      tabChatBtn.classList.remove('active');
+      renderAccContent();
+    };
+
+    renderAccContent();
+  }
+
+  let entryEffectTimeoutId = null;
+
+  function showRoomEntryEffectBanner(user, effectId) {
+    const slot = document.getElementById('room-entry-effect-slot');
+    const chatStream = document.getElementById('room-chat-messages-container');
+    const eff = ROOM_ENTRY_EFFECTS.find(e => e.id === effectId) || ROOM_ENTRY_EFFECTS[0];
+    if (!slot || !user) return;
+
+    if (entryEffectTimeoutId) {
+      clearTimeout(entryEffectTimeoutId);
+      entryEffectTimeoutId = null;
+    }
+
+    const userAvatar = user.avatar || '/avatars/avatar-1.png';
+    const userName = user.name || 'عضو ملكي';
+    const wealthLevel = user.wealth_level || (user.role === 'owner' ? 99 : 11);
+    const userLevel = user.level || 7;
+    const gifToPlay = eff.gifUrl || '/uploads/royal_eagle.gif';
+
+    // Remove any previous full-room seamless layer
+    const oldSeamlessLayer = document.getElementById('soulchill-seamless-room-entry-layer');
+    if (oldSeamlessLayer) oldSeamlessLayer.remove();
+
+    // 1. Frameless Full-Room Seamless Animation Layer (بدون أي قالب أو إطار صندوقي - مدمج مباشرة في خلفية/شاشة قالب الدردشة نفسه)
+    const roomContainer = slot.closest('.live-room-container') || document.body;
+    const seamlessLayer = document.createElement('div');
+    seamlessLayer.id = 'soulchill-seamless-room-entry-layer';
+    seamlessLayer.className = 'soulchill-seamless-room-entry-layer';
+    seamlessLayer.innerHTML = `
+      <img src="${gifToPlay}" alt="${eff.name}" class="seamless-room-entry-gif" />
+    `;
+    roomContainer.appendChild(seamlessLayer);
+
+    // 2. Frameless Entry Stream Strip inside #room-entry-effect-slot (part of the chat area itself, no card/box frame)
+    const strip = document.createElement('div');
+    strip.className = 'chat-inline-entry-strip';
+    strip.innerHTML = `
+      <img src="${gifToPlay}" alt="" class="chat-inline-entry-gif-bg" />
+      <div class="chat-inline-entry-content">
+        <img src="${userAvatar}" class="chat-inline-entry-avatar" onerror="this.src='/avatars/avatar-1.png'" />
+        <span class="room-chat-wealth-pill wealth-tier-gold">
+          <span class="wealth-emblem">✪</span>
+          <span>Lv.${wealthLevel}</span>
+        </span>
+        <span class="room-chat-level-pill level-tier-purple">
+          <span class="level-triangle">△</span>
+          <span>Lv.${userLevel}</span>
+        </span>
+        <span class="chat-inline-entry-name">${userName}</span>
+        <span class="chat-inline-entry-verb">دخل الغرفة ✨</span>
+      </div>
+    `;
+    slot.innerHTML = '';
+    slot.appendChild(strip);
+
+    // 3. Also append directly inside #room-chat-messages-container (من ضمن قالب الدردشة نفسه) as an inline chat message with the animated GIF blended into the chat bubble
+    if (chatStream) {
+      const chatEntryEl = document.createElement('div');
+      chatEntryEl.className = 'room-chat-bubble chat-entry-gif-bubble';
+      chatEntryEl.innerHTML = `
+        <img src="${gifToPlay}" alt="" class="chat-bubble-embedded-gif" />
+        <div class="room-chat-card-inner" style="position: relative; z-index: 2;">
+          <div class="room-chat-header-row">
+            <img src="${userAvatar}" class="room-chat-avatar" onerror="this.src='/avatars/avatar-1.png'" />
+            <span class="room-chat-sender-name">${userName}</span>
+            <span class="room-chat-wealth-pill wealth-tier-gold">
+              <span class="wealth-emblem">✪</span>
+              <span>Lv.${wealthLevel}</span>
+            </span>
+            <span class="room-chat-level-pill level-tier-purple">
+              <span class="level-triangle">△</span>
+              <span>Lv.${userLevel}</span>
+            </span>
+          </div>
+          <div class="room-chat-text" style="color: #fde047; font-weight: 800;">
+            🦅 دخل إلى الغرفة (${eff.name}) ✨
+          </div>
+        </div>
+      `;
+      chatStream.appendChild(chatEntryEl);
+      chatStream.scrollTop = chatStream.scrollHeight;
+    }
+
+    entryEffectTimeoutId = setTimeout(() => {
+      seamlessLayer.classList.add('fade-out');
+      strip.classList.add('fade-out');
+      setTimeout(() => {
+        if (seamlessLayer.parentElement) seamlessLayer.remove();
+        if (strip.parentElement) strip.remove();
+      }, 450);
+    }, 5200);
+  }
+
   async function loadRoomChatMessages(roomId) {
     if (!state.currentUser) return;
     try {
@@ -4208,30 +5382,83 @@
     if (!stream) return;
 
     const el = document.createElement('div');
-    el.className = `room-chat-bubble ${msg.message_type === 'gift' ? 'gift-notice' : ''}`;
-    
-    let roleBadgeHtml = '';
-    if (msg.sender_role === 'owner') {
-      roleBadgeHtml = '<span style="background: linear-gradient(135deg, #ec4899, #f43f5e); color: #fff; font-size: 9px; font-weight: 800; padding: 1px 7px; border-radius: 999px; margin-right: 4px; box-shadow: 0 0 6px rgba(244,63,94,0.5);">👑 المالك</span>';
-    } else if (msg.sender_role === 'super_master') {
-      roleBadgeHtml = '<span style="background: linear-gradient(135deg, #a855f7, #6366f1); color: #fff; font-size: 9px; font-weight: 800; padding: 1px 7px; border-radius: 999px; margin-right: 4px; box-shadow: 0 0 6px rgba(168,85,247,0.5);">💎 سوبر ماستر</span>';
-    } else if (msg.sender_role === 'super_admin') {
-      roleBadgeHtml = '<span style="background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; font-size: 9px; font-weight: 800; padding: 1px 7px; border-radius: 999px; margin-right: 4px; box-shadow: 0 0 6px rgba(245,158,11,0.5);">⚡ سوبر ادمن</span>';
-    } else if (msg.sender_role === 'admin' || msg.sender_role === 'moderator') {
-      roleBadgeHtml = '<span style="background: linear-gradient(135deg, #3b82f6, #06b6d4); color: #fff; font-size: 9px; font-weight: 800; padding: 1px 7px; border-radius: 999px; margin-right: 4px; box-shadow: 0 0 6px rgba(59,130,246,0.5);">🛡️ ادمن الدردشة</span>';
+
+    // Determine equipped chat bubble frame
+    let chatFrame = msg.sender_chat_frame || '';
+    if (!chatFrame && state.currentUser && msg.sender_id === state.currentUser.id) {
+      chatFrame = state.currentUser.chat_frame || localStorage.getItem('soulchill_chat_frame') || '';
     }
+    const frameClass = chatFrame ? `chat-frame-${chatFrame}` : '';
+
+    el.className = `room-chat-bubble ${msg.message_type === 'gift' ? 'gift-notice' : ''} ${frameClass}`.trim();
+
+    // Calculate Wealth Level (الثروة) and User Level (الليفيل) matching image-3.png
+    const isSelf = state.currentUser && msg.sender_id === state.currentUser.id;
+    const wealthLevel = msg.sender_wealth_level || (isSelf ? state.currentUser.wealth_level : null) || (msg.sender_role === 'owner' ? 99 : 11);
+    const userLevel = msg.sender_level || (isSelf ? state.currentUser.level : null) || 7;
+
+    // Wealth badge color tier based on wealth_level
+    let wealthTierClass = 'wealth-tier-green';
+    if (wealthLevel >= 50) wealthTierClass = 'wealth-tier-imperial';
+    else if (wealthLevel >= 25) wealthTierClass = 'wealth-tier-gold';
+    else if (wealthLevel >= 15) wealthTierClass = 'wealth-tier-cyan';
+
+    // Level badge color tier based on level
+    let levelTierClass = 'level-tier-purple';
+    if (userLevel >= 50) levelTierClass = 'level-tier-royal';
+    else if (userLevel >= 20) levelTierClass = 'level-tier-magenta';
+
+    // Format @mentions in warm gold like image-3.png ("أهلاً، @mratab")
+    const safeContent = String(msg.content || '').replace(/(@[\w\u0600-\u06FF._-]+)/g, '<span class="chat-mention-highlight">$1</span>');
 
     el.innerHTML = `
-      <img src="${msg.sender_avatar}" class="room-chat-avatar ${msg.sender_frame ? 'avatar-frame-' + msg.sender_frame : ''}" />
-      <div class="room-chat-body">
-        <div class="room-chat-sender">
-          <span>${msg.sender_name}</span>
-          ${roleBadgeHtml}
-          <span class="room-chat-level-tag">Lv.${msg.sender_level || 5}</span>
+      <div class="room-chat-card-inner">
+        <!-- Top Header Row (RTL: Avatar -> Name + Clan Tag -> Medals -> Gold Host Icon -> Green Wealth Level Pill) -->
+        <div class="room-chat-header-row">
+          <img src="${msg.sender_avatar}" class="room-chat-avatar ${msg.sender_frame ? 'avatar-frame-' + msg.sender_frame : ''}" onerror="this.src='/avatars/avatar-1.png'" />
+          <span class="room-chat-sender-name">${msg.sender_name || 'عضو'}</span>
+          <span class="room-chat-clan-badges">
+            <span class="clan-crown-emoji">👑</span>
+            <span class="clan-square-char">S</span>
+            <span class="clan-square-char">R</span>
+            <span class="clan-heart-wing">❥</span>
+          </span>
+          <span class="room-chat-medals-capsule">
+            <span class="mini-medal blue">🛡️</span>
+            <span class="mini-medal green">🏛️</span>
+          </span>
+          <span class="room-chat-gold-seat-badge">👤</span>
+          <span class="room-chat-wealth-pill ${wealthTierClass}">
+            <span class="wealth-emblem">✪</span>
+            <span>Lv.${wealthLevel}</span>
+          </span>
         </div>
-        <div class="room-chat-text">${msg.content}</div>
+
+        <!-- Second Row: Purple Level Badge (△ Lv.7) -->
+        <div class="room-chat-sublevel-row">
+          <span class="room-chat-level-pill ${levelTierClass}">
+            <span class="level-triangle">△</span>
+            <span>Lv.${userLevel}</span>
+          </span>
+        </div>
+
+        <!-- Third Row: Message Text -->
+        <div class="room-chat-text">${safeContent}</div>
       </div>
     `;
+
+    // Clicking sender avatar/name mentions @username in input
+    const avatarEl = el.querySelector('.room-chat-avatar');
+    if (avatarEl && msg.sender_name) {
+      avatarEl.style.cursor = 'pointer';
+      avatarEl.onclick = () => {
+        const inputEl = document.getElementById('room-chat-text-input');
+        if (inputEl && !inputEl.disabled) {
+          inputEl.value = `أهلاً، @${msg.sender_name.split(' ')[0]} `;
+          inputEl.focus();
+        }
+      };
+    }
 
     stream.appendChild(el);
     stream.scrollTop = stream.scrollHeight;
@@ -4657,7 +5884,7 @@
             <div class="host-crown-badge">👑</div>
             <div class="host-avatar-box">
               <img src="${user.avatar}" class="${user.avatar_frame ? 'avatar-frame-' + user.avatar_frame : ''}" />
-              <div class="seat-mic-status ${isMuted ? '' : 'unmuted'}" id="host-mic-badge" style="position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">${isMuted ? '🔇' : '🎙️'}</div>
+              <div class="seat-mic-status ${isMuted ? 'muted' : 'unmuted'}" id="host-mic-badge" style="display: ${isMuted ? 'flex' : 'none'}; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>
             </div>
             <div class="host-name-label">${user.name}</div>
           `;
@@ -4668,7 +5895,7 @@
             <div class="host-crown-badge">👑</div>
             <div class="host-avatar-box empty-host-seat" style="border: 2px dashed rgba(251, 191, 36, 0.6); background: rgba(251, 191, 36, 0.08); display: flex; align-items: center; justify-content: center;">
               <span class="seat-empty-plus" style="font-size: 26px; color: #fbbf24; font-weight: 800;">+</span>
-              <div class="seat-mic-status" id="host-mic-badge" style="display: none; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>
+              <div class="seat-mic-status unmuted" id="host-mic-badge" style="display: none; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>
             </div>
             <div class="host-name-label" style="color: #fbbf24;">مقعد المضيف (فارغ)</div>
           `;
@@ -4687,7 +5914,7 @@
         <div class="seat-avatar-container">
           <img src="${user.avatar}" class="${user.avatar_frame ? 'avatar-frame-' + user.avatar_frame : ''}" />
           <div class="seat-number-badge">${seatIndex}</div>
-          <div class="seat-mic-status ${isMuted ? '' : 'unmuted'}">${isMuted ? '🔇' : '🎙️'}</div>
+          <div class="seat-mic-status ${isMuted ? 'muted' : 'unmuted'}" style="display: ${isMuted ? 'flex' : 'none'};">🔇</div>
         </div>
         <div class="seat-user-name">${user.name}</div>
       `;
@@ -4709,8 +5936,9 @@
     if (seatIndex === 0) {
       const hostBadge = document.getElementById('host-mic-badge');
       if (hostBadge) {
-        hostBadge.className = `seat-mic-status ${isMuted ? '' : 'unmuted'}`;
-        hostBadge.innerText = isMuted ? '🔇' : '🎙️';
+        hostBadge.className = `seat-mic-status ${isMuted ? 'muted' : 'unmuted'}`;
+        hostBadge.style.display = isMuted ? 'flex' : 'none';
+        hostBadge.innerText = '🔇';
       }
       return;
     }
@@ -4718,8 +5946,9 @@
     if (!seatEl) return;
     const micStatus = seatEl.querySelector('.seat-mic-status');
     if (micStatus) {
-      micStatus.className = `seat-mic-status ${isMuted ? '' : 'unmuted'}`;
-      micStatus.innerText = isMuted ? '🔇' : '🎙️';
+      micStatus.className = `seat-mic-status ${isMuted ? 'muted' : 'unmuted'}`;
+      micStatus.style.display = isMuted ? 'flex' : 'none';
+      micStatus.innerText = '🔇';
     }
   }
 
@@ -4861,12 +6090,8 @@
     });
     updateMicButtonUI();
 
-    if (state.userSeatIndex === 0) {
-      const hostBadge = document.getElementById('host-mic-badge');
-      if (hostBadge) {
-        hostBadge.className = `seat-mic-status ${state.isMuted ? '' : 'unmuted'}`;
-        hostBadge.innerText = state.isMuted ? '🔇' : '🎙️';
-      }
+    if (state.userSeatIndex !== null && state.userSeatIndex !== undefined) {
+      updateSeatMuteUI(state.userSeatIndex, state.isMuted);
     }
 
     showToast(state.isMuted ? 'تم كتم المايكروفون 🔇' : 'المايكروفون مفعل الآن والصوت يتدفق لجميع الحضور عبر WebRTC 🎙️✨');
@@ -4874,8 +6099,10 @@
 
   function updateMicButtonUI() {
     const btn = document.getElementById('room-mic-toggle-btn');
+    const isSittingOnMic = state.userSeatIndex !== null && state.userSeatIndex !== undefined;
     if (btn) {
-      const active = state.userSeatIndex !== null && !state.isMuted;
+      btn.style.display = isSittingOnMic ? 'flex' : 'none';
+      const active = isSittingOnMic && !state.isMuted;
       btn.className = `room-tool-btn mic-btn ${active ? 'active' : ''}`;
       btn.innerText = active ? '🎙️' : '🔇';
     }
@@ -4941,9 +6168,7 @@
 
     if (!audience || audience.length === 0) {
       container.innerHTML = `
-        <div style="font-size: 11px; color: var(--text-muted); padding: 8px 12px; width: 100%; text-align: center;">
-          لا يوجد زوار حالياً، مرحباً بك كأول الحاضرين في الغرفة! 🌟
-        </div>
+        <div class="audience-empty-hint">لا يوجد زوار حالياً 🌟</div>
       `;
       return;
     }
@@ -4954,14 +6179,13 @@
       const isHost = v.id === hostId || v.role === 'owner';
       const isChatMuted = state.activeRoomMutedChatUsers && state.activeRoomMutedChatUsers.has(v.id);
       return `
-        <div class="audience-strip-item ${isHost ? 'is-host' : ''}" data-user-id="${v.id}" title="${v.name} (${v.soul_planet || 'SoulChill'})">
+        <div class="audience-strip-item ${isHost ? 'is-host' : ''}" data-user-id="${v.id}" title="${v.name} (Lv.${v.level || 1})">
           <div class="audience-strip-avatar-box">
-            <img src="${v.avatar}" class="${v.avatar_frame ? 'avatar-frame-' + v.avatar_frame : ''}" />
+            <img src="${v.avatar}" class="${v.avatar_frame ? 'avatar-frame-' + v.avatar_frame : ''}" onerror="this.src='/avatars/avatar-1.png'" />
             ${isHost ? '<span class="audience-host-badge">👑</span>' : ''}
-            ${isChatMuted ? '<span style="position: absolute; top: -4px; left: -2px; font-size: 10px; background: rgba(239,68,68,0.9); border-radius: 50%; width: 15px; height: 15px; display: flex; align-items: center; justify-content: center;">🔇</span>' : ''}
-            <span class="audience-level-badge">Lv.${v.level || 1}</span>
+            ${isChatMuted ? '<span class="audience-muted-dot">🔇</span>' : ''}
           </div>
-          <div class="audience-strip-name">${v.name}</div>
+          <span class="audience-strip-name">${v.name}</span>
         </div>
       `;
     }).join('');
@@ -4994,9 +6218,14 @@
         </div>
         <div style="font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 2px;">${visitor.name}</div>
         <div style="font-size: 11px; color: #fbbf24; margin-bottom: 6px;">${visitor.soul_planet || 'كوكب السول 🪐'} • Lv.${visitor.level || 1}</div>
-        <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4;">${visitor.bio || 'مستمع متفاعل في غرفة السول 🎧'}</p>
+        <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.4;">${visitor.bio || 'مستمع متفاعل في غرفة السول 🎧'}</p>
 
-        <div style="display: flex; flex-direction: column; gap: 8px;">
+        <!-- Visitor's Received Gifts Wall ("هداياه") -->
+        <div class="user-received-gifts-box" data-user-id="${visitor.id}" id="audience-visitor-gifts-box">
+          <div style="font-size: 10px; color: var(--text-muted); padding: 4px;">جارِ تحميل الهدايا... 🎁</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
           ${!isTargetSelf ? `
             <button class="seat-admin-action-btn" id="btn-audience-send-gift" style="background: linear-gradient(135deg, rgba(236,72,153,0.2), rgba(139,92,246,0.2)); border: 1px solid rgba(236,72,153,0.4);">
               <span>🎁 إرسال هدية فاخرة لهذا الزائر</span>
@@ -5022,6 +6251,11 @@
     `;
 
     document.body.appendChild(modal);
+
+    const visitorGiftsBox = modal.querySelector('#audience-visitor-gifts-box');
+    if (visitorGiftsBox && visitor.id) {
+      loadAndRenderUserGiftsSection(visitor.id, visitorGiftsBox, isTargetSelf);
+    }
 
     modal.querySelector('#btn-close-audience-modal').onclick = () => modal.remove();
 
@@ -5845,10 +7079,11 @@
 
     // Load conversations
     try {
-      const res = await fetch('/api/conversations', {
-        headers: { 'x-user-id': state.currentUser?.id }
+      const res = await fetch('/api/messages/conversations', {
+        headers: { 'x-user-id': state.currentUser?.id || '' }
       });
-      const convs = await res.json();
+      const data = await res.json();
+      const convs = Array.isArray(data) ? data : [];
       state.conversations = convs;
 
       const listContainer = drawer.querySelector('#inroom-conversations-list');
@@ -5861,21 +7096,24 @@
         return;
       }
 
-      listContainer.innerHTML = convs.map(c => `
+      listContainer.innerHTML = convs.map(c => {
+        const lastMsg = c.lastMessage || c.last_message;
+        return `
         <div class="inroom-conv-item" data-user-id="${c.user.id}" style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.04); cursor: pointer; transition: background 0.2s;">
-          <img src="${c.user.avatar}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--primary);" />
+          <img src="${c.user.avatar}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--primary);" onerror="this.src='/avatars/avatar-1.png'" />
           <div style="flex: 1; min-width: 0;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span style="font-size: 13px; font-weight: 700; color: #fff;">${c.user.name}</span>
-              <span style="font-size: 10px; color: var(--text-muted);">${formatTime(c.last_message ? c.last_message.created_at : '')}</span>
+              <span style="font-size: 10px; color: var(--text-muted);">${formatTime(lastMsg ? lastMsg.created_at : '')}</span>
             </div>
             <div style="font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              ${c.last_message ? (c.last_message.message_type === 'voice' ? '🎙️ رسالة صوتية' : c.last_message.content) : 'رسالة جديدة'}
+              ${lastMsg ? (lastMsg.message_type === 'voice' ? '🎙️ رسالة صوتية' : lastMsg.content) : 'رسالة جديدة'}
             </div>
           </div>
           <button class="inroom-reply-fast-btn" style="background: var(--primary); border: none; color: #fff; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">رد 💬</button>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       listContainer.querySelectorAll('.inroom-conv-item').forEach(item => {
         item.onclick = () => {
@@ -6362,6 +7600,13 @@
           </div>
         </div>
 
+        <!-- User's Own Received Gifts Wall ("هداياي المستلمة") -->
+        <div class="vip-store-card">
+          <div class="user-received-gifts-box" data-user-id="${user.id}" id="my-profile-gifts-box">
+            <div style="font-size: 11px; color: var(--text-muted); padding: 8px;">جارِ تحميل هداياك... 🎁</div>
+          </div>
+        </div>
+
         <!-- VIP Store: Avatar Frames Shelf -->
         <div class="vip-store-card">
           <div class="vip-store-title">
@@ -6431,6 +7676,12 @@
     // Wallet actions
     container.querySelector('#wallet-topup-btn').onclick = () => showTopUpModal();
     container.querySelector('#wallet-checkin-btn').onclick = () => handleDailyCheckIn();
+
+    // Load My Received Gifts Wall ("هداياي")
+    const myGiftsBox = container.querySelector('#my-profile-gifts-box');
+    if (myGiftsBox && user.id) {
+      loadAndRenderUserGiftsSection(user.id, myGiftsBox, true);
+    }
 
     // Frames shelf clicks
     container.querySelectorAll('.frame-shelf-item').forEach(item => {
@@ -6792,8 +8043,75 @@
   function openGiftStoreModal(receiverId = null, roomId = null, targetUser = null) {
     if (!requireAuth()) return;
     let selectedGift = state.gifts[0] || null;
-    let currentReceiverId = receiverId;
-    let currentTargetUser = targetUser;
+    let currentReceiverId = receiverId || (targetUser && targetUser.id ? targetUser.id : null);
+    let currentTargetUser = targetUser || null;
+
+    // Build list of available recipients in the room (Host + Mic Seats + Audience + Users)
+    const recipientsMap = new Map();
+    const addRecipientCandidate = (u, roleTag) => {
+      if (!u || !u.id) return;
+      if (!recipientsMap.has(u.id)) {
+        recipientsMap.set(u.id, {
+          id: u.id,
+          name: u.name || 'عضو الغرفة',
+          avatar: u.avatar || '/avatars/avatar-1.png',
+          roleTag: roleTag || '👤 عضو'
+        });
+      }
+    };
+
+    if (currentTargetUser && currentReceiverId) {
+      addRecipientCandidate({ id: currentReceiverId, name: currentTargetUser.name, avatar: currentTargetUser.avatar }, '🎁 المستلم');
+    }
+
+    if (state.activeRoom) {
+      if (state.activeRoom.host_id) {
+        addRecipientCandidate({
+          id: state.activeRoom.host_id,
+          name: state.activeRoom.host_name || 'مضيف الغرفة',
+          avatar: state.activeRoom.host_avatar || '/avatars/avatar-1.png'
+        }, '👑 المضيف');
+      }
+      (state.activeRoom.seats || []).forEach(s => {
+        if (s && s.user_id) {
+          addRecipientCandidate({
+            id: s.user_id,
+            name: s.name,
+            avatar: s.avatar
+          }, s.seat_index === 0 ? '👑 المضيف' : `🎙️ مايك #${s.seat_index}`);
+        }
+      });
+      (state.activeRoomAudience || []).forEach(v => {
+        if (v && v.id) {
+          const isHost = state.activeRoom && v.id === state.activeRoom.host_id;
+          addRecipientCandidate({
+            id: v.id,
+            name: v.name,
+            avatar: v.avatar
+          }, isHost ? '👑 المضيف' : '👤 مستمع');
+        }
+      });
+    }
+
+    // Also include online users if list is small or outside a room
+    (state.allUsers || []).forEach(u => {
+      if (u && u.id && (!state.currentUser || u.id !== state.currentUser.id)) {
+        if (recipientsMap.size < 12) {
+          addRecipientCandidate(u, '🪐 صديق');
+        }
+      }
+    });
+
+    // Put other users before current user
+    const allRecipients = Array.from(recipientsMap.values()).sort((a, b) => {
+      const aIsSelf = state.currentUser && a.id === state.currentUser.id ? 1 : 0;
+      const bIsSelf = state.currentUser && b.id === state.currentUser.id ? 1 : 0;
+      return aIsSelf - bIsSelf;
+    });
+
+    if (currentReceiverId && !currentTargetUser) {
+      currentTargetUser = recipientsMap.get(currentReceiverId) || null;
+    }
 
     // Check if we are in a live video broadcast with an active co-host (PK)
     const hasCohostPk = state.activeRoom && state.activeRoom.room_type === 'video' && state.activeCohostUser;
@@ -6810,6 +8128,9 @@
       }
     }
 
+    const existingModal = document.getElementById('gift-store-modal');
+    if (existingModal) existingModal.remove();
+
     const modal = document.createElement('div');
     modal.className = 'soul-modal-backdrop';
     modal.id = 'gift-store-modal';
@@ -6819,8 +8140,8 @@
         <button class="soul-modal-close-btn" id="close-gifts-modal-btn">✕</button>
         <div class="modal-header-title">
           🎁 متجر الهدايا الفاخرة
-          <div style="font-size: 11px; color: var(--text-secondary); font-weight: 500;" id="gift-modal-target-desc">
-            ${currentTargetUser ? `الإهداء إلى: ${selectedTargetTeam === 'challenger' ? '🔵 ' : '🔴 '}${currentTargetUser.name}` : (roomId ? 'الإهداء داخل الروم الصوتي' : 'أرسل هدية للأصدقاء')}
+          <div style="font-size: 11px; color: var(--text-secondary); font-weight: 600;" id="gift-modal-target-desc">
+            ${currentTargetUser ? `الإهداء إلى: 🎁 ${currentTargetUser.name}` : 'يرجى تحديد الشخص المستلم للهدية من القائمة أدناه 👇'}
           </div>
         </div>
 
@@ -6838,7 +8159,31 @@
               </button>
             </div>
           </div>
-        ` : ''}
+        ` : `
+          <!-- Recipient Person Selector (تحديد الشخص المستلم للهدية) -->
+          <div class="gift-recipient-selector-box" id="gift-recipient-selector-box">
+            <div class="gift-recipient-header">
+              <span>👤 حدد الشخص المستلم للهدية:</span>
+              <span class="gift-selected-person-pill ${currentTargetUser ? 'has-target' : ''}" id="gift-selected-person-pill">
+                ${currentTargetUser ? `✅ ${currentTargetUser.name}` : '⚠️ لم يتم التحديد'}
+              </span>
+            </div>
+            <div class="gift-recipients-track" id="gift-recipients-track">
+              ${allRecipients.map(p => `
+                <div class="gift-recipient-chip ${currentReceiverId === p.id ? 'selected' : ''}" data-user-id="${p.id}" data-user-name="${p.name}" data-user-avatar="${p.avatar}">
+                  <div class="gift-recipient-avatar-wrap">
+                    <img src="${p.avatar}" onerror="this.src='/avatars/avatar-1.png'" />
+                    <span class="gift-recipient-check">✓</span>
+                  </div>
+                  <div class="gift-recipient-info">
+                    <div class="gift-recipient-name">${p.name}</div>
+                    <div class="gift-recipient-role">${p.roleTag}</div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `}
 
         <div class="gift-shelf-grid">
           ${state.gifts.map((g, idx) => `
@@ -6855,7 +8200,7 @@
             رصيدك: <strong style="color: #fbbf24;">${state.currentUser.coins} 🪙</strong> | <strong style="color: #38bdf8;">${state.currentUser.diamonds} 💎</strong>
           </div>
           <button class="soul-submit-btn" id="send-gift-action-btn" style="padding: 6px 16px; font-size: 12px;">
-            إرسال الهدية ودعم الفريق 🎁
+            ${currentTargetUser ? `إرسال إلى ${currentTargetUser.name} 🎁` : 'إرسال الهدية 🎁'}
           </button>
         </div>
       </div>
@@ -6865,10 +8210,37 @@
 
     modal.querySelector('#close-gifts-modal-btn').onclick = () => modal.remove();
 
+    const descEl = modal.querySelector('#gift-modal-target-desc');
+    const selectedPillEl = modal.querySelector('#gift-selected-person-pill');
+    const sendBtnEl = modal.querySelector('#send-gift-action-btn');
+    const selectorBoxEl = modal.querySelector('#gift-recipient-selector-box');
+
+    // Recipient Chip Clicks
+    modal.querySelectorAll('.gift-recipient-chip').forEach(chip => {
+      chip.onclick = () => {
+        modal.querySelectorAll('.gift-recipient-chip').forEach(c => c.classList.remove('selected'));
+        chip.classList.add('selected');
+        currentReceiverId = chip.dataset.userId;
+        currentTargetUser = {
+          id: chip.dataset.userId,
+          name: chip.dataset.userName,
+          avatar: chip.dataset.userAvatar
+        };
+        if (selectorBoxEl) selectorBoxEl.classList.remove('shake-warning');
+        if (descEl) descEl.innerText = `الإهداء إلى: 🎁 ${currentTargetUser.name} (تُحفظ في هداياه)`;
+        if (selectedPillEl) {
+          selectedPillEl.innerText = `✅ ${currentTargetUser.name}`;
+          selectedPillEl.classList.add('has-target');
+        }
+        if (sendBtnEl) {
+          sendBtnEl.innerText = `إرسال إلى ${currentTargetUser.name} 🎁`;
+        }
+      };
+    });
+
     if (hasCohostPk) {
       const targetHostBtn = modal.querySelector('#gift-target-host-btn');
       const targetChallengerBtn = modal.querySelector('#gift-target-challenger-btn');
-      const descEl = modal.querySelector('#gift-modal-target-desc');
 
       targetHostBtn.onclick = () => {
         selectedTargetTeam = 'host';
@@ -6900,6 +8272,16 @@
     modal.querySelector('#send-gift-action-btn').onclick = async () => {
       if (!selectedGift) return;
 
+      if (!currentReceiverId) {
+        if (selectorBoxEl) {
+          selectorBoxEl.classList.remove('shake-warning');
+          void selectorBoxEl.offsetWidth;
+          selectorBoxEl.classList.add('shake-warning');
+        }
+        showToast('⚠️ يرجى تحديد الشخص المستلم للهدية أولاً من القائمة أعلاه! 👤🎁');
+        return;
+      }
+
       try {
         const res = await fetch('/api/gifts/send', {
           method: 'POST',
@@ -6920,13 +8302,22 @@
           localStorage.setItem('soulchill_user', JSON.stringify(data.sender));
           updateHeaderUI();
 
+          const finalReceiver = data.receiver || currentTargetUser;
+
           // Trigger local animation
           if (window.giftEffectsEngine) {
-            window.giftEffectsEngine.showGiftAnimation(selectedGift, state.currentUser, currentTargetUser);
+            window.giftEffectsEngine.showGiftAnimation(selectedGift, state.currentUser, finalReceiver);
+          }
+
+          // Refresh receiver's gift wall if visible
+          if (currentReceiverId) {
+            document.querySelectorAll(`.user-received-gifts-box[data-user-id="${currentReceiverId}"]`).forEach(box => {
+              loadAndRenderUserGiftsSection(currentReceiverId, box, state.currentUser && state.currentUser.id === currentReceiverId);
+            });
           }
 
           modal.remove();
-          showToast(`أرسلت ${selectedGift.name} ${selectedGift.icon} لدعم ${currentTargetUser?.name || 'الفريق'}! ✨`);
+          showToast(`🎁 أرسلت ${selectedGift.name} ${selectedGift.icon} إلى ${finalReceiver?.name || 'المستلم'} وتم حفظها في هداياه! ✨`);
         } else {
           showToast(data.error || 'فشل إرسال الهدية');
         }

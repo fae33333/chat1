@@ -14,20 +14,20 @@
 
   <!-- Main Viewport Wrapper -->
   <div class="app-viewport">
-    <div class="app-container" id="main-app-container">
+    <div class="app-container tab-planet-active" id="main-app-container">
 
       <!-- Simulated Mobile Phone Status Bar -->
       <div class="phone-status-bar">
         <span>9:41</span>
         <div class="status-bar-notch"></div>
-        <div style="display: flex; gap: 4px; align-items: center;">
+        <div style="display: flex; gap: 6px; align-items: center;">
           <span>5G</span>
           <span>100% 🔋</span>
         </div>
       </div>
 
-      <!-- App Top Header -->
-      <header class="app-top-header">
+      <!-- App Top Header (Shown on secondary tabs; Planet tab uses its own authentic SoulChill header) -->
+      <header class="app-top-header" id="main-app-top-header">
         <div class="brand-wrapper">
           <div class="brand-logo-icon">🪐</div>
           <div>
@@ -64,7 +64,7 @@
       </header>
 
       <!-- Daily Bonus Quick Bar -->
-      <div class="daily-banner-strip">
+      <div class="daily-banner-strip" id="main-daily-banner-strip">
         <div class="bonus-text">
           <span>🎁</span>
           <span>سجل حضورك اليومي واحصل على <strong>+500 عملة مجاناً!</strong></span>
@@ -77,37 +77,74 @@
         <!-- Tab content injected here via app.js -->
       </main>
 
-      <!-- App Bottom Navigation Bar (5 iconic tabs) -->
+      <!-- App Bottom Navigation Bar (5 iconic SoulChill tabs matching the GIF) -->
       <nav class="app-bottom-nav">
-        <!-- Tab 1: Soul Planet -->
+        <!-- Tab 1 (Rightmost in RTL): الكوكب -->
         <button class="nav-tab-item active" data-tab="planet">
-          <span class="tab-icon">🪐</span>
-          <span class="tab-label">كوكب الروح</span>
+          <span class="tab-icon planet-orb-nav-icon">
+            <svg viewBox="0 0 36 36" width="26" height="26">
+              <defs>
+                <radialGradient id="navPlanetGrad" cx="35%" cy="30%" r="70%">
+                  <stop offset="0%" stop-color="#f5d0fe" />
+                  <stop offset="40%" stop-color="#a855f7" />
+                  <stop offset="75%" stop-color="#6366f1" />
+                  <stop offset="100%" stop-color="#31105a" />
+                </radialGradient>
+                <linearGradient id="navPlanetRing" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#e879f9" stop-opacity="0.9" />
+                  <stop offset="50%" stop-color="#818cf8" stop-opacity="0.5" />
+                  <stop offset="100%" stop-color="#c084fc" stop-opacity="0.85" />
+                </linearGradient>
+              </defs>
+              <circle cx="18" cy="18" r="12" fill="url(#navPlanetGrad)" />
+              <ellipse cx="18" cy="18" rx="16.5" ry="5.2" fill="none" stroke="url(#navPlanetRing)" stroke-width="2" transform="rotate(-22 18 18)" />
+              <circle cx="14" cy="13.5" r="2.2" fill="#ffffff" opacity="0.55" />
+            </svg>
+          </span>
+          <span class="tab-label">الكوكب</span>
         </button>
 
-        <!-- Tab 2: Voice Party Rooms -->
+        <!-- Tab 2: حفلة -->
         <button class="nav-tab-item" data-tab="rooms">
-          <span class="tab-icon">🎙️</span>
-          <span class="tab-label">غرف صوتية</span>
+          <span class="tab-icon">
+            <svg viewBox="0 0 28 28" width="24" height="24" fill="currentColor">
+              <path d="M14 3.2L4.2 11.2a2.2 2.2 0 00-.7 2.2l1.8 9.2a2.4 2.4 0 002.35 1.9h12.7a2.4 2.4 0 002.35-1.9l1.8-9.2a2.2 2.2 0 00-.7-2.2L14 3.2zm-3.6 13.3a1 1 0 011.4-.15c1.25 1.05 3.15 1.05 4.4 0a1 1 0 111.3 1.52c-2.02 1.7-4.98 1.7-7 0a1 1 0 01-.1-1.37z" />
+            </svg>
+          </span>
+          <span class="tab-label">حفلة</span>
         </button>
 
-        <!-- Tab 3: Direct Messages -->
+        <!-- Tab 3 (Center): المنشورات -->
+        <button class="nav-tab-item" data-tab="moments">
+          <span class="tab-icon">
+            <svg viewBox="0 0 28 28" width="24" height="24" fill="currentColor">
+              <path d="M14 2.5l3.1 4.2 5.1-.6-2 4.8 3.6 3.7-4.8 1.9.5 5.1-4.3-3-3.2 4.1-1.9-4.8-5.1.5 3-4.3-4.1-3.1 4.8-2-.5-5.1 4.3 3L14 2.5zm-2.8 13.8a.95.95 0 011.34-.1c.9.75 2.22.75 3.12 0a.95.95 0 111.22 1.45c-1.62 1.35-3.94 1.35-5.56 0a.95.95 0 01-.12-1.35z" />
+            </svg>
+          </span>
+          <span class="tab-label">المنشورات</span>
+        </button>
+
+        <!-- Tab 4: رسائل -->
         <button class="nav-tab-item" data-tab="chat">
-          <span class="tab-icon">💬</span>
-          <span class="tab-label">الرسائل</span>
+          <span class="tab-icon">
+            <svg viewBox="0 0 28 28" width="24" height="24" fill="currentColor">
+              <path d="M6.5 4.5h15A3.5 3.5 0 0125 8v9.5a3.5 3.5 0 01-3.5 3.5H16l-4.2 3.3a1 1 0 01-1.6-.8V21H6.5A3.5 3.5 0 013 17.5V8a3.5 3.5 0 013.5-3.5zm3.9 9.7a1 1 0 011.4-.15c1.25 1.05 3.15 1.05 4.4 0a1 1 0 111.3 1.52c-2.02 1.7-4.98 1.7-7 0a1 1 0 01-.1-1.37z" />
+            </svg>
+          </span>
+          <span class="tab-label">رسائل</span>
           <span class="unread-badge" id="nav-chat-unread-badge" style="display: none;">0</span>
         </button>
 
-        <!-- Tab 4: Moments Feed -->
-        <button class="nav-tab-item" data-tab="moments">
-          <span class="tab-icon">🌟</span>
-          <span class="tab-label">لحظات</span>
-        </button>
-
-        <!-- Tab 5: Profile & VIP Store -->
+        <!-- Tab 5 (Leftmost in RTL): انا -->
         <button class="nav-tab-item" data-tab="profile">
-          <span class="tab-icon">👤</span>
-          <span class="tab-label">حسابي</span>
+          <span class="tab-icon" style="position: relative;">
+            <span class="profile-nav-red-dot"></span>
+            <svg viewBox="0 0 28 28" width="24" height="24" fill="currentColor">
+              <circle cx="14" cy="9.5" r="5" />
+              <path d="M5.5 22.5c0-4.2 3.8-7.2 8.5-7.2s8.5 3 8.5 7.2a1.5 1.5 0 01-1.5 1.5H7a1.5 1.5 0 01-1.5-1.5zm6-3.7a.9.9 0 00-.2 1.26c1.58 1.32 3.82 1.32 5.4 0a.9.9 0 10-1.15-1.38c-.9.75-2.2.75-3.1 0a.9.9 0 00-.95.12z" />
+            </svg>
+          </span>
+          <span class="tab-label">انا</span>
         </button>
       </nav>
 

@@ -460,7 +460,7 @@ app.put('/api/users/profile', async (req, res) => {
     const userId = req.headers['x-user-id'];
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-    const { name, bio, gender, age, avatar, avatar_frame, soul_planet, soul_tags } = req.body;
+    const { name, bio, gender, age, avatar, avatar_frame, chat_frame, entry_effect, soul_planet, soul_tags } = req.body;
 
     await run(`
       UPDATE users SET
@@ -470,10 +470,35 @@ app.put('/api/users/profile', async (req, res) => {
         age = COALESCE(?, age),
         avatar = COALESCE(?, avatar),
         avatar_frame = COALESCE(?, avatar_frame),
+        chat_frame = COALESCE(?, chat_frame),
+        entry_effect = COALESCE(?, entry_effect),
         soul_planet = COALESCE(?, soul_planet),
         soul_tags = COALESCE(?, soul_tags)
       WHERE id = ?
-    `, [name, bio, gender, age, avatar, avatar_frame, soul_planet, soul_tags, userId]);
+    `, [name, bio, gender, age, avatar, avatar_frame, chat_frame, entry_effect, soul_planet, soul_tags, userId]);
+
+    const updatedUser = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3a. Equip User Accessories (Chat Bubble Frame, Entry Effect, Avatar Frame)
+app.post('/api/users/accessories', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'] || req.body?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { chat_frame, entry_effect, avatar_frame } = req.body;
+
+    await run(`
+      UPDATE users SET
+        chat_frame = COALESCE(?, chat_frame),
+        entry_effect = COALESCE(?, entry_effect),
+        avatar_frame = COALESCE(?, avatar_frame)
+      WHERE id = ?
+    `, [chat_frame, entry_effect, avatar_frame, userId]);
 
     const updatedUser = await get('SELECT * FROM users WHERE id = ?', [userId]);
     res.json({ success: true, user: updatedUser });
@@ -590,18 +615,20 @@ app.post('/api/users/soul-test', async (req, res) => {
 });
 
 // 6. Recharge / Top-up simulated
-app.post('/api/users/recharge', async (req, res) => {
+app.post(['/api/users/recharge', '/api/wallet/recharge'], async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-    const { amountCoins, amountDiamonds } = req.body;
+    const { amountCoins, amountDiamonds, coins, diamonds } = req.body;
+    const addCoins = Number(amountCoins ?? coins ?? 0);
+    const addDiamonds = Number(amountDiamonds ?? diamonds ?? 0);
     await run(`
       UPDATE users SET
         coins = coins + ?,
         diamonds = diamonds + ?
       WHERE id = ?
-    `, [amountCoins || 0, amountDiamonds || 0, userId]);
+    `, [addCoins, addDiamonds, userId]);
 
     const updated = await get('SELECT * FROM users WHERE id = ?', [userId]);
     res.json({ success: true, user: updated });
@@ -902,6 +929,21 @@ app.delete('/api/rooms/:id', async (req, res) => {
   }
 });
 
+// 9b. Get Favorite Rooms ("المفضلة")
+app.get(['/api/rooms/favorites', '/api/favorite-rooms'], async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'] || req.query.user_id;
+    if (!userId) return res.json({ favoriteRoomIds: [] });
+
+    const rows = await all('SELECT room_id FROM favorite_rooms WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+    res.json({
+      favoriteRoomIds: rows.map(r => r.room_id)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 10. Get Specific Room Details & Seats
 app.get('/api/rooms/:id', async (req, res) => {
   try {
@@ -935,7 +977,7 @@ app.get('/api/rooms/:id/messages', async (req, res) => {
   try {
     const roomId = req.params.id;
     const messages = await all(`
-      SELECT m.*, u.name as sender_name, u.avatar as sender_avatar, u.level as sender_level, u.avatar_frame as sender_frame, u.role as sender_role
+      SELECT m.*, u.name as sender_name, u.avatar as sender_avatar, u.level as sender_level, u.wealth_level as sender_wealth_level, u.charm_level as sender_charm_level, u.avatar_frame as sender_frame, u.chat_frame as sender_chat_frame, u.role as sender_role
       FROM messages m
       JOIN users u ON m.sender_id = u.id
       WHERE m.room_id = ?
@@ -950,10 +992,10 @@ app.get('/api/rooms/:id/messages', async (req, res) => {
 });
 
 // 12. Direct Messages Conversations List
-app.get('/api/messages/conversations', async (req, res) => {
+app.get(['/api/messages/conversations', '/api/conversations'], async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
-    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!userId) return res.json([]);
 
     // Find distinct conversation partners
     const conversations = await all(`
@@ -981,6 +1023,7 @@ app.get('/api/messages/conversations', async (req, res) => {
       result.push({
         user: otherUser,
         lastMessage: lastMsg || null,
+        last_message: lastMsg || null,
         unreadCount: 0
       });
     }
@@ -1203,6 +1246,10 @@ app.post('/api/gifts/send', async (req, res) => {
     if (!senderId) return res.status(401).json({ error: 'Unauthorized' });
 
     const { receiver_id, room_id, gift_id } = req.body;
+    if (!receiver_id) {
+      return res.status(400).json({ error: 'يرجى تحديد الشخص المستلم للهدية أولاً! 👤🎁' });
+    }
+
     const gift = GIFTS.find(g => g.id === gift_id);
     if (!gift) return res.status(400).json({ error: 'Invalid gift' });
 
@@ -1227,15 +1274,15 @@ app.post('/api/gifts/send', async (req, res) => {
       await run('UPDATE users SET charm_level = charm_level + 1, coins = coins + ? WHERE id = ?', [Math.floor(gift.cost * 0.4), receiver_id]);
     }
 
-    // Record gift history
-    const historyId = `gift-${Date.now()}`;
+    // Record gift history (Saved in receiver's gifts wall)
+    const historyId = `gift-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     await run(`
       INSERT INTO gifts_history (id, sender_id, receiver_id, room_id, gift_id, gift_name, gift_icon, cost, currency)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [historyId, senderId, receiver_id, room_id, gift.id, gift.name, gift.icon, gift.cost, gift.currency]);
 
     const updatedSender = await get('SELECT * FROM users WHERE id = ?', [senderId]);
-    const receiver = receiver_id ? await get('SELECT id, name, avatar FROM users WHERE id = ?', [receiver_id]) : null;
+    const receiver = receiver_id ? await get('SELECT id, name, avatar, charm_level FROM users WHERE id = ?', [receiver_id]) : null;
 
     const giftEventPayload = {
       gift,
@@ -1244,6 +1291,9 @@ app.post('/api/gifts/send', async (req, res) => {
       room_id,
       timestamp: Date.now()
     };
+
+    // Notify all clients so receiver's gifts wall updates in real time
+    io.emit('user_gift_received', giftEventPayload);
 
     // Broadcast in room
     if (room_id) {
@@ -1305,6 +1355,69 @@ app.post('/api/gifts/send', async (req, res) => {
   }
 });
 
+// 21b. Get User's Received Gifts ("هداياه")
+app.get('/api/users/:id/gifts', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const summary = await all(`
+      SELECT gift_id, gift_name, gift_icon, cost, currency, COUNT(*) as count, MAX(created_at) as last_received_at
+      FROM gifts_history
+      WHERE receiver_id = ?
+      GROUP BY gift_id
+      ORDER BY count DESC, cost DESC
+    `, [userId]);
+
+    const recent = await all(`
+      SELECT gh.*, u.name as sender_name, u.avatar as sender_avatar
+      FROM gifts_history gh
+      LEFT JOIN users u ON gh.sender_id = u.id
+      WHERE gh.receiver_id = ?
+      ORDER BY gh.created_at DESC
+      LIMIT 30
+    `, [userId]);
+
+    const totalCount = summary.reduce((acc, g) => acc + (g.count || 0), 0);
+    const totalValue = summary.reduce((acc, g) => acc + ((g.cost || 0) * (g.count || 0)), 0);
+
+    res.json({
+      summary,
+      recent,
+      totalCount,
+      totalValue
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 21c. Toggle Favorite Rooms ("المفضلة")
+app.post('/api/rooms/:id/favorite', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'] || req.body?.user_id;
+    const roomId = req.params.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const existing = await get('SELECT * FROM favorite_rooms WHERE user_id = ? AND room_id = ?', [userId, roomId]);
+    let favorited = false;
+    if (existing) {
+      await run('DELETE FROM favorite_rooms WHERE user_id = ? AND room_id = ?', [userId, roomId]);
+      favorited = false;
+    } else {
+      await run('INSERT INTO favorite_rooms (user_id, room_id) VALUES (?, ?)', [userId, roomId]);
+      favorited = true;
+    }
+
+    const rows = await all('SELECT room_id FROM favorite_rooms WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+    res.json({
+      success: true,
+      favorited,
+      favoriteRoomIds: rows.map(r => r.room_id)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==========================================
 // ADMIN CONTROL PANEL ROUTES & API
 // ==========================================
@@ -1341,7 +1454,7 @@ app.post('/api/admin/login', async (req, res) => {
     }
 
     // Check if user has role 'admin' (strictly blocked from control panel)
-    const adminRoleUser = await get('SELECT * FROM users WHERE (email = ? OR name = ? OR id = ?) AND role = "admin"', [username, username, username]);
+    const adminRoleUser = await get("SELECT * FROM users WHERE (email = ? OR name = ? OR id = ?) AND role = 'admin'", [username, username, username]);
     if (adminRoleUser) {
       return res.status(403).json({
         error: 'صلاحية دخول لوحة الإدارة مخصصة فقط للسوبر ادمن والسوبر ماستر والمالك! رتبة الأدمن تمتلك صلاحيات الإشراف داخل الغرف الصوتية فقط.'
@@ -1349,7 +1462,7 @@ app.post('/api/admin/login', async (req, res) => {
     }
 
     // B. Check in users table for owner, super_master, or super_admin accounts ONLY
-    const user = await get('SELECT * FROM users WHERE (email = ? OR name = ? OR id = ? OR (role = "owner" AND ? IN ("owner", "owner@gmail.com"))) AND (role IN ("owner", "super_master", "super_admin"))', [username, username, username, username]);
+    const user = await get("SELECT * FROM users WHERE (email = ? OR name = ? OR id = ? OR (role = 'owner' AND ? IN ('owner', 'owner@gmail.com'))) AND (role IN ('owner', 'super_master', 'super_admin'))", [username, username, username, username]);
     if (user && (password === 'admin123456' || password === 'admin' || password === 'owner123' || password === 'owner123456' || password === 'owner')) {
       const token = `adm_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
       adminSessions.set(token, { username: user.name, role: user.role, userId: user.id, loginTime: Date.now() });
@@ -1393,7 +1506,7 @@ app.get('/api/admin/stats', async (req, res) => {
   try {
     const totalUsersRow = await get('SELECT COUNT(*) as count FROM users');
     const totalRoomsRow = await get('SELECT COUNT(*) as count FROM rooms');
-    const totalModsRow = await get('SELECT COUNT(*) as count FROM users WHERE role = "moderator"');
+    const totalModsRow = await get("SELECT COUNT(*) as count FROM users WHERE role = 'moderator'");
     const totalCoinsRow = await get('SELECT SUM(coins) as total_coins, SUM(diamonds) as total_diamonds FROM users');
     const totalGiftsRow = await get('SELECT COUNT(*) as count, SUM(cost) as total_value FROM gifts_history');
 
@@ -2129,8 +2242,10 @@ io.on('connection', (socket) => {
       return socket.emit('room_kicked_notice', { message: 'لقد تم طردك من هذه الغرفة بواسطة إدارة الروم!' });
     }
 
+    let joinedUserObj = user;
     if (user && user.id) {
-      const dbUser = await get('SELECT id, name, avatar, avatar_frame, level, charm_level, soul_planet, bio, role FROM users WHERE id = ?', [user.id]) || user;
+      const dbUser = await get('SELECT id, name, avatar, avatar_frame, chat_frame, entry_effect, level, wealth_level, charm_level, soul_planet, bio, role FROM users WHERE id = ?', [user.id]) || user;
+      joinedUserObj = dbUser;
       roomState.activeAudience.set(user.id, dbUser);
     }
 
@@ -2139,10 +2254,17 @@ io.on('connection', (socket) => {
 
     // Notify room occupants
     io.to(`room:${roomId}`).emit('user_joined_room', {
-      user,
+      user: joinedUserObj,
       audienceCount: audienceList.length,
       audience: audienceList
     });
+
+    if (joinedUserObj) {
+      io.to(`room:${roomId}`).emit('room_entry_effect', {
+        user: joinedUserObj,
+        effectId: joinedUserObj.entry_effect || 'royal_eagle'
+      });
+    }
 
     // Notify lobby of accurate real occupants count
     io.emit('room_occupants_updated', {
@@ -2231,7 +2353,10 @@ io.on('connection', (socket) => {
         sender_name: user.name,
         sender_avatar: user.avatar,
         sender_frame: user.avatar_frame,
+        sender_chat_frame: user.chat_frame || '',
         sender_level: user.level,
+        sender_wealth_level: user.wealth_level || 3,
+        sender_charm_level: user.charm_level || 4,
         sender_role: user.role,
         message_type: 'text',
         content,
@@ -2242,6 +2367,15 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('Room message error:', err);
     }
+  });
+
+  // 4b. Trigger Room Entry Effect (from Accessories Menu)
+  socket.on('trigger_entry_effect', ({ roomId, user, effectId }) => {
+    if (!roomId || !effectId) return;
+    io.to(`room:${roomId}`).emit('room_entry_effect', {
+      user,
+      effectId
+    });
   });
 
   // 5. Take Seat (Up to stage)

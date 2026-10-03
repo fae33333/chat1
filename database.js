@@ -1,9 +1,65 @@
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
 const DB_PATH = path.join(__dirname, 'soulchill.sqlite');
-const db = new sqlite3.Database(DB_PATH);
+
+let db;
+try {
+  const sqlite3 = require('sqlite3').verbose();
+  db = new sqlite3.Database(DB_PATH);
+} catch (err) {
+  const { DatabaseSync } = require('node:sqlite');
+  const syncDb = new DatabaseSync(DB_PATH);
+  const normalizeParams = (params) => {
+    const arr = Array.isArray(params) ? params : [params];
+    return arr.map(p => (p === undefined ? null : (typeof p === 'boolean' ? (p ? 1 : 0) : p)));
+  };
+  db = {
+    run(sql, params = [], cb) {
+      if (typeof params === 'function') {
+        cb = params;
+        params = [];
+      }
+      try {
+        const stmt = syncDb.prepare(sql);
+        const res = stmt.run(...normalizeParams(params));
+        const ctx = {
+          lastID: Number(res.lastInsertRowid || 0),
+          changes: Number(res.changes || 0)
+        };
+        if (cb) cb.call(ctx, null);
+      } catch (e) {
+        if (cb) cb(e);
+      }
+    },
+    get(sql, params = [], cb) {
+      if (typeof params === 'function') {
+        cb = params;
+        params = [];
+      }
+      try {
+        const stmt = syncDb.prepare(sql);
+        const row = stmt.get(...normalizeParams(params));
+        if (cb) cb(null, row ? { ...row } : undefined);
+      } catch (e) {
+        if (cb) cb(e);
+      }
+    },
+    all(sql, params = [], cb) {
+      if (typeof params === 'function') {
+        cb = params;
+        params = [];
+      }
+      try {
+        const stmt = syncDb.prepare(sql);
+        const rows = stmt.all(...normalizeParams(params));
+        if (cb) cb(null, Array.isArray(rows) ? rows.map(r => ({ ...r })) : []);
+      } catch (e) {
+        if (cb) cb(e);
+      }
+    }
+  };
+}
 
 // Helper for db promises
 function run(sql, params = []) {
@@ -85,7 +141,9 @@ async function initDB() {
     )
   `);
 
-  // Migrations for rooms country & IP
+  // Migrations for rooms country & IP & user accessories
+  try { await run(`ALTER TABLE users ADD COLUMN chat_frame TEXT DEFAULT ''`); } catch (e) {}
+  try { await run(`ALTER TABLE users ADD COLUMN entry_effect TEXT DEFAULT ''`); } catch (e) {}
   try { await run(`ALTER TABLE rooms ADD COLUMN country_code TEXT DEFAULT 'JO'`); } catch (e) {}
   try { await run(`ALTER TABLE rooms ADD COLUMN country_name TEXT DEFAULT 'الأردن'`); } catch (e) {}
   try { await run(`ALTER TABLE rooms ADD COLUMN country_flag TEXT DEFAULT '🇯🇴'`); } catch (e) {}
@@ -180,6 +238,15 @@ async function initDB() {
       cost INTEGER NOT NULL,
       currency TEXT DEFAULT 'coins',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS favorite_rooms (
+      user_id TEXT NOT NULL,
+      room_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, room_id)
     )
   `);
 
@@ -304,7 +371,7 @@ async function initDB() {
   try { await run(`ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0`); } catch (e) {}
 
   // Seed default admin credentials if not set
-  const adminRow = await get('SELECT * FROM admin_credentials WHERE username = "owner"');
+  const adminRow = await get("SELECT * FROM admin_credentials WHERE username = 'owner'");
   if (!adminRow) {
     await run(`
       INSERT OR IGNORE INTO admin_credentials (username, password, role)
