@@ -91,6 +91,12 @@ async function initDB() {
   try { await run(`ALTER TABLE rooms ADD COLUMN country_flag TEXT DEFAULT '🇯🇴'`); } catch (e) {}
   try { await run(`ALTER TABLE rooms ADD COLUMN creator_ip TEXT DEFAULT '127.0.0.1'`); } catch (e) {}
 
+  // Migrations for ROOM V2 settings (عدد المقاعد / خلفية الروم / إطارات المقاعد / نمط المايك)
+  try { await run(`ALTER TABLE rooms ADD COLUMN seat_count INTEGER DEFAULT 8`); } catch (e) {}
+  try { await run(`ALTER TABLE rooms ADD COLUMN room_bg TEXT DEFAULT 'cosmic_purple'`); } catch (e) {}
+  try { await run(`ALTER TABLE rooms ADD COLUMN seat_style TEXT DEFAULT 'auto'`); } catch (e) {}
+  try { await run(`ALTER TABLE rooms ADD COLUMN mic_mode TEXT DEFAULT 'open'`); } catch (e) {}
+
   // Update existing rooms if needed
   try {
     await run(`UPDATE rooms SET country_code = 'JO', country_name = 'الأردن', country_flag = '🇯🇴' WHERE id = 'room-soul-1'`);
@@ -304,7 +310,7 @@ async function initDB() {
   try { await run(`ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0`); } catch (e) {}
 
   // Seed default admin credentials if not set
-  const adminRow = await get('SELECT * FROM admin_credentials WHERE username = "owner"');
+  const adminRow = await get("SELECT * FROM admin_credentials WHERE username = 'owner'");
   if (!adminRow) {
     await run(`
       INSERT OR IGNORE INTO admin_credentials (username, password, role)

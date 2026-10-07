@@ -292,32 +292,18 @@
         });
       }
 
-      for (let i = 1; i <= 8; i++) {
+      const totalSeats = getRoomSeatCount(state.activeRoom);
+      for (let i = 1; i <= totalSeats; i++) {
         const seatEl = document.getElementById(`stage-seat-${i}`);
         if (!seatEl) continue;
+        const seat = (state.activeRoom.seats || []).find(s => s.seat_index === i) || { seat_index: i, user_id: null, is_locked: 0 };
         if (isLocked) {
-          seatEl.classList.remove('occupied');
-          seatEl.classList.add('locked');
-          seatEl.innerHTML = `
-            <div class="seat-avatar-container">
-              <span class="seat-empty-plus">🔒</span>
-              <div class="seat-number-badge">${i}</div>
-            </div>
-            <div class="seat-user-name">مقعد مقفل</div>
-          `;
+          seat.is_locked = 1;
+          seat.user_id = null;
+          paintSeatElement(seatEl, i, seat, state.activeRoom);
         } else {
-          seatEl.classList.remove('locked');
-          const seat = (state.activeRoom.seats || []).find(s => s.seat_index === i);
-          if (!seat || !seat.user_id) {
-            seatEl.classList.remove('occupied');
-            seatEl.innerHTML = `
-              <div class="seat-avatar-container">
-                <span class="seat-empty-plus">+</span>
-                <div class="seat-number-badge">${i}</div>
-              </div>
-              <div class="seat-user-name">مقعد فارغ</div>
-            `;
-          }
+          seat.is_locked = 0;
+          if (!seat.user_id) paintSeatElement(seatEl, i, seat, state.activeRoom);
         }
       }
 
@@ -433,22 +419,11 @@
     // Admin & Moderation Events
     state.socket.on('seat_lock_changed', ({ seatIndex, isLocked, vacatedUserId }) => {
       const seatEl = document.getElementById(`stage-seat-${seatIndex}`);
-      if (seatEl) {
-        seatEl.classList.toggle('locked', isLocked);
-        if (isLocked) {
-          seatEl.classList.remove('occupied');
-          seatEl.querySelector('.seat-avatar-container').innerHTML = `
-            <span class="seat-empty-plus">🔒</span>
-            <div class="seat-number-badge">${seatIndex}</div>
-          `;
-          seatEl.querySelector('.seat-user-name').innerText = 'مقعد مقفل';
-        } else {
-          seatEl.querySelector('.seat-avatar-container').innerHTML = `
-            <span class="seat-empty-plus">+</span>
-            <div class="seat-number-badge">${seatIndex}</div>
-          `;
-          seatEl.querySelector('.seat-user-name').innerText = 'مقعد فارغ';
-        }
+      if (seatEl && seatIndex !== 0) {
+        const seat = (state.activeRoom && state.activeRoom.seats || []).find(s => s.seat_index === seatIndex) || { seat_index: seatIndex, user_id: null };
+        seat.is_locked = isLocked ? 1 : 0;
+        if (isLocked) seat.user_id = null;
+        paintSeatElement(seatEl, seatIndex, seat, state.activeRoom || {});
       }
 
       if (isLocked) {
@@ -656,6 +631,63 @@
           applyRoomsFilters();
         }
       }
+    });
+
+    // ROOM V2: live room settings sync (خلفية الروم / عدد المقاعد / الاسم / الإعلان / إطارات المقاعد)
+    state.socket.on('room_settings_updated', (payload) => {
+      if (!payload || !payload.roomId) return;
+      const incoming = payload.room || null;
+
+      const roomInList = state.rooms.find(r => r.id === payload.roomId);
+      if (roomInList && incoming) Object.assign(roomInList, incoming);
+
+      if (!state.activeRoom || state.activeRoom.id !== payload.roomId) return;
+
+      const seatCountBefore = getRoomSeatCount(state.activeRoom);
+
+      if (incoming) {
+        ['room_bg', 'seat_count', 'title', 'announcement', 'seat_style', 'mic_mode', 'is_locked'].forEach(key => {
+          if (incoming[key] !== undefined) state.activeRoom[key] = incoming[key];
+        });
+        if (Array.isArray(incoming.seats)) {
+          state.activeRoom.seats = incoming.seats;
+        }
+      } else if (Array.isArray(payload.seats)) {
+        state.activeRoom.seats = payload.seats;
+        if (payload.seatCount) state.activeRoom.seat_count = payload.seatCount;
+      }
+
+      // Apply new room background instantly for everyone inside the room
+      if (payload.roomBg || (incoming && incoming.room_bg)) {
+        applyRoomBackgroundToActiveRoom(getRoomBgId(state.activeRoom));
+      }
+
+      // Update room title in the top bar
+      const titleEl = document.getElementById('rv-top-room-title');
+      if (titleEl && state.activeRoom.title) {
+        titleEl.innerText = state.activeRoom.title;
+        titleEl.title = state.activeRoom.title;
+      }
+
+      // Re-render the stage (seat count / seat frames may have changed)
+      refreshRoomStage();
+
+      const seatCountAfter = getRoomSeatCount(state.activeRoom);
+      if (seatCountAfter !== seatCountBefore) {
+        showToast(`تم تحديث مقاعد الغرفة إلى ${seatCountAfter} مقعداً 🪑✨`);
+        // If my seat no longer exists, step down safely
+        if (state.userSeatIndex !== null && state.userSeatIndex > seatCountAfter) {
+          state.userSeatIndex = null;
+          state.isMuted = true;
+          stopLocalMicCapture();
+          if (window.soulRtc) window.soulRtc.stopBroadcastingVoice();
+          updateMicButtonUI();
+        }
+      }
+    });
+
+    state.socket.on('room_settings_error', ({ message }) => {
+      if (message) showToast(message);
     });
 
     // Realtime Accurate Occupant Counts Sync (Lobby & In-Room)
@@ -3793,6 +3825,834 @@
     });
   }
 
+  // ==========================================================================
+  // ROOM V2 — SOULCHILL PREMIUM STAGE
+  // خلفية الروم • عدد المقاعد • إعدادات الغرفة • إطارات المقاعد الفخمة
+  // ==========================================================================
+  const ROOM_V2_DEFAULT_SEATS = 8;
+
+  const ROOM_V2_SEAT_PLANS = [
+    { count: 6,  label: '6 مقاعد',  desc: 'روم صغير وحميمي',        tag: '' },
+    { count: 8,  label: '8 مقاعد',  desc: 'الوضع الافتراضي للروم',   tag: 'الأكثر استخداماً' },
+    { count: 12, label: '12 مقعداً', desc: 'روم متوسط لجمهور أوسع',   tag: 'موصى به' },
+    { count: 16, label: '16 مقعداً', desc: 'حفلات ومهرجانات كبيرة',   tag: 'VIP', upsell: true }
+  ];
+
+  const ROOM_V2_BG_CATEGORIES = [
+    { id: 'all',      label: '✨ الكل' },
+    { id: 'featured', label: '🌟 مميزة' },
+    { id: 'anime',    label: '🌸 أنمي' },
+    { id: 'nature',   label: '🌿 طبيعة' },
+    { id: 'neon',     label: '💜 نيون وحفلات' },
+    { id: 'vip',      label: '👑 حصرية VIP' }
+  ];
+
+  const ROOM_V2_BACKGROUNDS = [
+    { id: 'cosmic_purple',   name: 'سديم سول',      cat: 'featured' },
+    { id: 'vip_galaxy_hd',   name: 'مجرّة سول HD',   cat: 'vip' },
+    { id: 'midnight_gold',   name: 'ملكي ذهبي',     cat: 'featured' },
+    { id: 'vip_gold_palace', name: 'قصر الذهب',     cat: 'vip' },
+    { id: 'starlight_blue',  name: 'ضياء النجوم',   cat: 'featured' },
+    { id: 'aurora_lights',   name: 'الشفق القطبي',  cat: 'featured' },
+    { id: 'cyber_purple',    name: 'سايبر بنفسجي',  cat: 'neon' },
+    { id: 'neon_tokyo',      name: 'نيون طوكيو',    cat: 'anime' },
+    { id: 'laser_show',      name: 'ليزر شو',       cat: 'neon' },
+    { id: 'disco_pulse',     name: 'ديسكو نابض',    cat: 'neon' },
+    { id: 'anime_sky',       name: 'سماء الأنمي',   cat: 'anime' },
+    { id: 'sakura_dream',    name: 'حلم الساكورا',  cat: 'anime' },
+    { id: 'moe_pink',        name: 'وردي كاواي',    cat: 'anime' },
+    { id: 'forest_night',    name: 'غابة الليل',    cat: 'nature' },
+    { id: 'ocean_deep',      name: 'أعماق المحيط',  cat: 'nature' },
+    { id: 'desert_dusk',     name: 'غروب الصحراء',  cat: 'nature' },
+    { id: 'vip_diamond',     name: 'ألماس ملكي',    cat: 'vip' },
+    { id: 'vip_rose_crown',  name: 'تاج الورد',     cat: 'vip' }
+  ];
+
+  const ROOM_V2_ORNAMENTS = {
+    gold:    { frame: '/assets/frames/frame-royal-gold.svg',   gem: '/assets/frames/badge-gem-pink.svg',  cls: 'gold' },
+    legend:  { frame: '/assets/frames/frame-crown-legend.svg', gem: '/assets/frames/badge-gem-pink.svg',  cls: 'legend' },
+    winged:  { frame: '/assets/frames/frame-winged-blue.svg',  gem: '/assets/frames/badge-star-blue.svg', cls: 'winged' },
+    neon:    { frame: '/assets/frames/frame-neon-purple.svg',  gem: '/assets/frames/badge-star-blue.svg', cls: 'neon' },
+    classic: { frame: '/assets/frames/frame-classic.svg',      gem: '',                                   cls: 'classic' }
+  };
+
+  function isRoomManager(room) {
+    if (!room || !state.currentUser) return false;
+    return room.host_id === state.currentUser.id || isPlatformStaff(state.currentUser);
+  }
+
+  function getRoomSeatCount(room) {
+    if (!room) return ROOM_V2_DEFAULT_SEATS;
+    const declared = parseInt(room.seat_count, 10) || 0;
+    const maxSeat = (room.seats || []).reduce((max, s) => Math.max(max, parseInt(s.seat_index, 10) || 0), 0);
+    const count = Math.max(declared, maxSeat);
+    return Math.min(16, Math.max(2, count || ROOM_V2_DEFAULT_SEATS));
+  }
+
+  function setRoomSeatCountLocal(count) {
+    if (!state.activeRoom) return;
+    state.activeRoom.seat_count = count;
+    const roomInList = state.rooms.find(r => r.id === state.activeRoom.id);
+    if (roomInList) roomInList.seat_count = count;
+  }
+
+  function getRoomBgId(room) {
+    const id = room && room.room_bg ? String(room.room_bg) : '';
+    return id && ROOM_V2_BACKGROUNDS.some(b => b.id === id) ? id : 'cosmic_purple';
+  }
+
+  function getRoomBgName(bgId) {
+    const found = ROOM_V2_BACKGROUNDS.find(b => b.id === bgId);
+    return found ? found.name : 'سديم سول';
+  }
+
+  function getOrnamentKey(user, isHostSeat, room) {
+    const forced = room && room.seat_style && room.seat_style !== 'auto' ? room.seat_style : null;
+    if (forced && ROOM_V2_ORNAMENTS[forced]) {
+      return isHostSeat ? 'gold' : forced;
+    }
+    if (isHostSeat) return 'gold';
+    if (!user) return 'classic';
+    const role = user.role || '';
+    if (role === 'owner' || role === 'super_master' || role === 'super_admin') return 'legend';
+    if (role === 'admin' || role === 'moderator') return 'gold';
+    if (room && room.host_id && user.user_id && room.host_id === user.user_id) return 'gold';
+    const level = parseInt(user.level, 10) || 0;
+    const charm = parseInt(user.charm_level, 10) || 0;
+    const power = Math.max(level, charm);
+    if (power >= 40) return 'legend';
+    const frame = user.avatar_frame || '';
+    if (frame === 'imperial_owner') return 'legend';
+    if (frame === 'royal_gold') return 'gold';
+    if (frame === 'fire_dragon' || frame === 'angel_wings') return 'winged';
+    if (frame === 'galaxy_halo' || frame === 'cyber_neon') return 'neon';
+    if (power >= 18) return 'winged';
+    if (power >= 8) return 'neon';
+    return 'classic';
+  }
+
+  // Builds the inner markup of a single seat (host seat 0 OR guest seat N).
+  function buildSeatInnerHtml(idx, seat, room) {
+    const isHostSeat = idx === 0;
+    const occupant = seat && seat.user_id ? seat : null;
+    const isLocked = Boolean(seat && seat.is_locked);
+    const ornKey = getOrnamentKey(occupant, isHostSeat, room);
+    const orn = ROOM_V2_ORNAMENTS[ornKey] || ROOM_V2_ORNAMENTS.classic;
+    const gemValue = occupant ? (parseInt(occupant.charm_level, 10) || parseInt(occupant.level, 10) || 1) : 0;
+    const frameImg = `<img class="rv-frame rv-frame--${orn.cls}" src="${orn.frame}" alt="" aria-hidden="true" />`;
+    const gemHtml = (occupant && orn.gem)
+      ? `<div class="rv-seat-gem" title="مستوى الكاريزما"><img src="${orn.gem}" alt="" /><span class="rv-gem-value">${gemValue}</span></div>`
+      : '';
+    const avatarFrameCls = occupant && occupant.avatar_frame ? `avatar-frame-${occupant.avatar_frame}` : '';
+
+    if (isHostSeat) {
+      return `
+        <div class="host-crown-badge">👑</div>
+        <div class="host-seat-visual">
+          <div class="host-avatar-box ${occupant ? '' : 'empty-host-seat'}" style="${occupant ? '' : 'border: 2px dashed rgba(247, 195, 60, 0.55); background: rgba(247, 195, 60, 0.08); display: flex; align-items: center; justify-content: center;'}">
+            ${occupant
+              ? `<img src="${occupant.avatar || room.host_avatar}" class="${avatarFrameCls}" alt="" />`
+              : `<span class="seat-empty-plus" style="font-size: 26px; color: #f7c33c; font-weight: 800;">+</span>`}
+            <div class="seat-mic-status ${occupant && occupant.is_muted ? '' : 'unmuted'}" id="host-mic-badge" style="${occupant ? '' : 'display: none;'} position: absolute; bottom: -4px; right: -4px; width: 21px; height: 21px; font-size: 10px;">${occupant ? (occupant.is_muted ? '🔇' : '🎙️') : '🔇'}</div>
+          </div>
+          ${frameImg}
+          ${gemHtml}
+        </div>
+        <div class="host-name-label">
+          <span class="rv-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          ${occupant ? (occupant.name || room.host_name) : 'مقعد المضيف (فارغ)'}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="rv-seat-shell">
+        <div class="seat-avatar-container">
+          ${occupant
+            ? `<img src="${occupant.avatar}" class="${avatarFrameCls}" alt="" />`
+            : `<span class="seat-empty-plus">${isLocked ? '🔒' : '+'}</span>`}
+          <div class="seat-mic-status ${occupant && occupant.is_muted ? '' : 'unmuted'}" style="${occupant ? '' : 'display: none;'}">${occupant && occupant.is_muted ? '🔇' : '🎙️'}</div>
+        </div>
+        ${frameImg}
+        ${gemHtml}
+        <div class="seat-number-badge">${idx}</div>
+      </div>
+      <div class="seat-user-name">
+        <span class="rv-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="rv-name-text">${occupant ? occupant.name : (isLocked ? 'مقعد مقفل' : 'مقعد ' + idx)}</span>
+        ${occupant ? `<span class="rv-level-chip">Lv.${parseInt(occupant.level, 10) || 1}</span>` : ''}
+      </div>
+    `;
+  }
+
+  function buildRoomStageInnerHtml(room) {
+    const seatCount = getRoomSeatCount(room);
+    const hostSeat = (room.seats || []).find(s => s.seat_index === 0) || { seat_index: 0, user_id: null, is_locked: 0 };
+    const hostOccupant = Boolean(hostSeat.user_id);
+
+    const guests = [];
+    for (let i = 1; i <= seatCount; i++) {
+      guests.push((room.seats || []).find(s => s.seat_index === i) || { seat_index: i, user_id: null, is_locked: 0 });
+    }
+
+    const seatsClass = seatCount === 12 ? 'rv-seats-12' : (seatCount === 16 ? 'rv-seats-16' : '');
+
+    return `
+      <div class="rv-stage-brand" aria-hidden="true"></div>
+      <div class="rv-stage-brandtext" aria-hidden="true">SoulChill</div>
+
+      <div class="host-seat-wrapper ${hostOccupant ? 'occupied' : 'empty'}" id="host-seat-0" data-seat-idx="0">
+        ${buildSeatInnerHtml(0, hostSeat, room)}
+      </div>
+
+      <div class="guest-seats-grid ${seatsClass}">
+        ${guests.map(seat => `
+          <div class="stage-seat ${seat.user_id ? 'occupied' : ''} ${(!seat.user_id && seat.is_locked) ? 'locked' : ''}" id="stage-seat-${seat.seat_index}" data-seat-idx="${seat.seat_index}">
+            ${buildSeatInnerHtml(seat.seat_index, seat, room)}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function seatElementForIndex(seatIndex) {
+    return document.getElementById(seatIndex === 0 ? 'host-seat-0' : `stage-seat-${seatIndex}`);
+  }
+
+  function setActiveRoomSeat(seatIndex, patch) {
+    if (!state.activeRoom) return;
+    if (!state.activeRoom.seats) state.activeRoom.seats = [];
+    const existing = state.activeRoom.seats.find(s => s.seat_index === seatIndex);
+    if (existing) {
+      Object.assign(existing, patch);
+    } else {
+      state.activeRoom.seats.push(Object.assign({ seat_index: seatIndex }, patch));
+    }
+  }
+
+  // Repaints one seat element with the premium SoulChill look
+  function paintSeatElement(el, seatIndex, seatData, room) {
+    if (!el) return;
+    const occupied = Boolean(seatData && seatData.user_id);
+    el.classList.toggle('occupied', occupied);
+    el.classList.toggle('locked', Boolean(!occupied && seatData && seatData.is_locked));
+    el.innerHTML = buildSeatInnerHtml(seatIndex, seatData, room || state.activeRoom || {});
+  }
+
+  function refreshRoomStage() {
+    const root = document.getElementById('rv-stage-root');
+    if (!root || !state.activeRoom) return;
+    root.innerHTML = buildRoomStageInnerHtml(state.activeRoom);
+  }
+
+  function buildRoomTopBarHtml(room) {
+    const seatCount = getRoomSeatCount(room);
+    const canManage = isRoomManager(room);
+    const hostAvatar = room.host_avatar || (state.currentUser ? state.currentUser.avatar : '/avatars/avatar-1.png');
+    const occupants = room.audience_count !== undefined ? room.audience_count : 1;
+    return `
+      <div class="rv-host-chip">
+        <div class="rv-chip-avatar">
+          <img src="${hostAvatar}" alt="" />
+          <span class="rv-chip-crown">👑</span>
+        </div>
+        <div class="rv-chip-meta">
+          <div class="rv-chip-title" id="rv-top-room-title" title="${room.title}">${room.title}</div>
+          <div class="rv-chip-sub">ID: ${room.id} • 👥 <span id="live-audience-counter">${occupants}</span> • 🪑 ${seatCount}</div>
+        </div>
+      </div>
+
+      <div class="rv-top-actions">
+        <button type="button" class="rv-top-btn" id="rv-audience-btn" title="المتواجدون في الروم">👥</button>
+        <button type="button" class="rv-top-btn" id="room-chill-music-btn" title="موسيقى هادئة لوفاي">🎵</button>
+        <button type="button" class="rv-top-btn" id="room-inroom-messages-btn" title="الرسائل والمحادثات الخاصة">
+          <span>💬</span>
+          <span class="inroom-unread-dot" id="inroom-unread-dot" style="display: none; position: absolute; top: 2px; right: 2px; width: 9px; height: 9px; background: #ef4444; border-radius: 50%; border: 1.5px solid #000;"></span>
+        </button>
+        <button type="button" class="rv-top-btn settings gold" id="rv-open-settings-btn" title="إعدادات الغرفة">⚙️${canManage ? '' : '<span class="rv-btn-badge" style="background: linear-gradient(135deg,#94a3b8,#475569);">🔒</span>'}</button>
+        <button type="button" class="rv-top-btn exit" id="leave-room-btn" title="خروج من الغرفة">🚪</button>
+      </div>
+    `;
+  }
+
+  function applyRoomBackgroundToActiveRoom(bgId) {
+    const container = document.querySelector('#live-voice-room-modal .live-room-container');
+    if (!container) return;
+    ROOM_V2_BACKGROUNDS.forEach(b => container.classList.remove(`rv-bg-${b.id}`));
+    container.classList.add(`rv-bg-${bgId}`);
+    if (state.activeRoom) state.activeRoom.room_bg = bgId;
+  }
+
+  function emitRoomSettingsUpdate(patch) {
+    if (!state.activeRoom || !state.currentUser) return;
+    if (!isRoomManager(state.activeRoom)) {
+      showToast('هذه الإعدادات متاحة لمدير الغرفة فقط 🛡️');
+      return;
+    }
+    state.socket.emit('admin_update_room_settings', Object.assign({
+      roomId: state.activeRoom.id,
+      adminId: state.currentUser.id
+    }, patch));
+  }
+
+  // --------------------------------------------------------------------------
+  // Room settings sheet  (زر إعدادات الغرفة)
+  // --------------------------------------------------------------------------
+  const ROOM_V2_TILES = [
+    { id: 'bg',           icon: '🖼️', label: 'خلفية الغرفة',  adminOnly: true, gold: true },
+    { id: 'seats',        icon: '🪑', label: 'عدد المقاعد',    adminOnly: true, gold: true },
+    { id: 'theme',        icon: '🎨', label: 'إطارات المقاعد', adminOnly: true },
+    { id: 'announcement', icon: '📢', label: 'إعلان الروم',    adminOnly: true },
+    { id: 'title',        icon: '✏️', label: 'اسم الغرفة',     adminOnly: true },
+    { id: 'mic',          icon: '🎙️', label: 'نمط المايك',     adminOnly: true },
+    { id: 'music',        icon: '🎵', label: 'موسيقى الروم' },
+    { id: 'lock',         icon: '🔒', label: 'قفل الغرفة',     adminOnly: true },
+    { id: 'games',        icon: '🎮', label: 'ألعاب الروم' },
+    { id: 'manage',       icon: '🛡️', label: 'إدارة الأعضاء',  adminOnly: true },
+    { id: 'share',        icon: '🔗', label: 'مشاركة الغرفة' },
+    { id: 'close',        icon: '🛑', label: 'إغلاق الغرفة',   adminOnly: true, danger: true }
+  ];
+
+  function openRoomSettingsSheet(room) {
+    if (!state.currentUser) return;
+    const existing = document.getElementById('rv-settings-overlay');
+    if (existing) existing.remove();
+
+    const canManage = isRoomManager(room);
+    const seatCount = getRoomSeatCount(room);
+    const bgId = getRoomBgId(room);
+    const listeners = room.audience_count !== undefined ? room.audience_count : 1;
+
+    const tilesHtml = (tiles) => tiles.map(t => {
+      const locked = t.adminOnly && !canManage;
+      return `
+        <button type="button" class="rv-tile ${t.gold ? 'gold' : ''} ${t.danger ? 'danger' : ''} ${locked ? 'locked' : ''}" data-id="${t.id}">
+          ${locked ? '<span class="rv-tile-lock">🔒</span>' : ''}
+          <span class="rv-tile-icon">${t.icon}</span>
+          <span class="rv-tile-label">${t.label}</span>
+        </button>
+      `;
+    }).join('');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'rv-overlay';
+    overlay.id = 'rv-settings-overlay';
+    overlay.innerHTML = `
+      <div class="rv-sheet">
+        <div class="rv-sheet-grabber"></div>
+        <div class="rv-sheet-head">
+          <div class="rv-sheet-title">
+            <span>⚙️</span>
+            <span>إعدادات الغرفة
+              <span class="rv-sheet-subtitle">${canManage ? 'أنت مدير الغرفة — كل الإعدادات متاحة لك 👑' : 'عرض فقط • الإدارة لمدير الغرفة 🛡️'}</span>
+            </span>
+          </div>
+          <button type="button" class="rv-sheet-close" id="rv-settings-close">✕</button>
+        </div>
+
+        <div class="rv-sheet-body">
+          <div class="rv-room-idcard">
+            <img class="rv-idcard-cover" src="${room.cover_image || room.host_avatar || '/avatars/avatar-1.png'}" alt="" />
+            <div class="rv-idcard-meta">
+              <div class="rv-idcard-title">${room.title}</div>
+              <div class="rv-idcard-row">
+                <span class="rv-mini-pill">🆔 ${room.id}</span>
+                <span class="rv-mini-pill">👥 ${listeners} متواجد</span>
+                <span class="rv-mini-pill gold">🪑 ${seatCount} مقعد</span>
+                <span class="rv-mini-pill">🖼️ ${getRoomBgName(bgId)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="rv-section-label">🎛️ إعدادات الغرفة الصوتية</div>
+          <div class="rv-tile-grid" id="rv-settings-tiles">
+            ${tilesHtml(ROOM_V2_TILES)}
+          </div>
+
+          ${canManage ? `
+            <div class="rv-section-label">⚡ اختصارات المدير</div>
+            <div class="rv-tile-grid">
+              <button type="button" class="rv-tile" data-quick="unlock-all"><span class="rv-tile-icon">🔓</span><span class="rv-tile-label">فتح كل المقاعد</span></button>
+              <button type="button" class="rv-tile" data-quick="lock-all"><span class="rv-tile-icon">🔒</span><span class="rv-tile-label">قفل كل المقاعد</span></button>
+              <button type="button" class="rv-tile" data-quick="pk"><span class="rv-tile-icon">⚔️</span><span class="rv-tile-label">بدء تحدي PK</span></button>
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="rv-sheet-footer">
+          <button type="button" class="rv-btn ghost" id="rv-settings-close-btn">إغلاق</button>
+          <button type="button" class="rv-btn gold" id="rv-settings-goto-bg">🖼️ تغيير الخلفية</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#rv-settings-close').onclick = close;
+    overlay.querySelector('#rv-settings-close-btn').onclick = close;
+    overlay.querySelector('#rv-settings-goto-bg').onclick = () => {
+      if (!canManage) { showToast('تغيير الخلفية متاح لمدير الغرفة فقط 🛡️'); return; }
+      close();
+      openRoomBgPicker(room);
+    };
+    overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+    overlay.querySelectorAll('.rv-tile[data-id]').forEach(tile => {
+      tile.onclick = () => {
+        if (tile.classList.contains('locked')) {
+          showToast('هذه الإعدادات متاحة لمدير الغرفة فقط 🛡️');
+          return;
+        }
+        close();
+        handleRoomSettingsTile(tile.dataset.id, room);
+      };
+    });
+
+    overlay.querySelectorAll('.rv-tile[data-quick]').forEach(tile => {
+      tile.onclick = () => {
+        const quick = tile.dataset.quick;
+        if (quick === 'pk') { close(); showRoomGamesSelectorModal(room); return; }
+        state.socket.emit('admin_lock_all_seats', {
+          roomId: room.id,
+          adminId: state.currentUser.id,
+          isLocked: quick === 'lock-all'
+        });
+        showToast(quick === 'lock-all' ? 'تم قفل جميع مقاعد المايك 🔒' : 'تم فتح جميع المقاعد للجمهور 🔓');
+        close();
+      };
+    });
+  }
+
+  function handleRoomSettingsTile(id, room) {
+    switch (id) {
+      case 'bg': openRoomBgPicker(room); break;
+      case 'seats': openRoomSeatsPicker(room); break;
+      case 'theme': openRoomSeatStyleSheet(room); break;
+      case 'announcement': openRoomAnnouncementSheet(room); break;
+      case 'title': openRoomTitleSheet(room); break;
+      case 'mic': openRoomMicModeSheet(room); break;
+      case 'music':
+        if (window.soundManager) {
+          window.soundManager.toggleChillMusic(
+            () => showToast('🎵 تم تشغيل موسيقى لوفاي الهادئة للروم'),
+            () => showToast('تم إيقاف موسيقى الروم')
+          );
+        }
+        break;
+      case 'lock': {
+        const nextLocked = !room.is_locked;
+        emitRoomSettingsUpdate({ isLocked: nextLocked });
+        room.is_locked = nextLocked ? 1 : 0;
+        showToast(nextLocked ? 'تم قفل الغرفة أمام الدخول الجديد 🔒' : 'تم فتح الغرفة للجميع 🔓');
+        break;
+      }
+      case 'games': showRoomGamesSelectorModal(room); break;
+      case 'manage': {
+        const strip = document.querySelector('.room-audience-strip-container');
+        if (strip) {
+          strip.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          strip.style.boxShadow = '0 0 0 2px rgba(247,195,60,.75)';
+          setTimeout(() => { strip.style.boxShadow = ''; }, 1800);
+        }
+        showToast('انقر على أي زائر في الشريط لإدارته أو منحه المايك 👥');
+        break;
+      }
+      case 'share': {
+        const link = `${window.location.origin}/?room=${room.id}`;
+        try {
+          if (navigator.clipboard) navigator.clipboard.writeText(link);
+          showToast('تم نسخ رابط الغرفة لمشاركتها 🔗');
+        } catch (e) {
+          showToast('رابط الغرفة: ' + link);
+        }
+        break;
+      }
+      case 'close': {
+        if (confirm('هل أنت متأكد من إغلاق الغرفة وحذفها نهائياً؟ 🛑')) {
+          deleteRoomById(room.id).then(ok => {
+            if (ok) {
+              if (window.soulRtc) window.soulRtc.leaveCurrentRoom();
+              leaveActiveVoiceRoom();
+            }
+          });
+        }
+        break;
+      }
+      default: break;
+    }
+  }
+
+  // Generic sub-sheet skeleton so every panel shares the same premium look
+  function createRoomV2SubSheet(id, title, subtitle, bodyHtml, footerHtml) {
+    const existing = document.getElementById(id);
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'rv-overlay';
+    overlay.id = id;
+    overlay.innerHTML = `
+      <div class="rv-sheet">
+        <div class="rv-sheet-grabber"></div>
+        <div class="rv-sheet-head">
+          <div class="rv-sheet-title">
+            <span>${title}</span>
+            ${subtitle ? `<span class="rv-sheet-subtitle">${subtitle}</span>` : ''}
+          </div>
+          <button type="button" class="rv-sheet-close" id="${id}-close">✕</button>
+        </div>
+        <div class="rv-sheet-body">${bodyHtml}</div>
+        ${footerHtml ? `<div class="rv-sheet-footer">${footerHtml}</div>` : ''}
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector(`#${id}-close`).onclick = () => overlay.remove();
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    return overlay;
+  }
+
+  // --------------------------------------------------------------------------
+  // Background picker  (data-id="bg")
+  // --------------------------------------------------------------------------
+  function openRoomBgPicker(room) {
+    if (!state.currentUser) return;
+    if (!isRoomManager(room)) { showToast('تغيير خلفية الغرفة متاح لمدير الغرفة فقط 🛡️'); return; }
+
+    let selected = getRoomBgId(room);
+    let activeCat = 'all';
+
+    const previewSeats = `
+      <div class="rv-preview-seat"></div>
+      <div class="rv-preview-seat host">👑</div>
+      <div class="rv-preview-seat"></div>
+    `;
+
+    const overlay = createRoomV2SubSheet(
+      'rv-bg-overlay',
+      '🖼️ خلفية الغرفة',
+      'اختر خلفية فخمة لرومك — يشاهدها كل من في الغرفة',
+      `
+        <div class="rv-bg-preview rv-bg-${selected}" id="rv-bg-preview">
+          <div class="rv-preview-bar">
+            <span class="rv-preview-dot">🪐</span>
+            <span>${room.title}</span>
+            <span class="rv-preview-dot" style="margin-inline-start: auto;">👥 ${room.audience_count !== undefined ? room.audience_count : 1}</span>
+          </div>
+          <div>
+            <div class="rv-preview-stage">${previewSeats}</div>
+            <div class="rv-preview-name" id="rv-bg-preview-name">${getRoomBgName(selected)}</div>
+          </div>
+        </div>
+
+        <div class="rv-tabs" id="rv-bg-tabs">
+          ${ROOM_V2_BG_CATEGORIES.map(c => `<button type="button" class="rv-tab ${c.id === 'all' ? 'active' : ''}" data-cat="${c.id}">${c.label}</button>`).join('')}
+        </div>
+
+        <div class="rv-bg-grid" id="rv-bg-grid"></div>
+      `,
+      `
+        <button type="button" class="rv-btn ghost" id="rv-bg-cancel">إلغاء</button>
+        <button type="button" class="rv-btn gold" id="rv-bg-apply">تطبيق الخلفية ✨</button>
+      `
+    );
+
+    const grid = overlay.querySelector('#rv-bg-grid');
+    const preview = overlay.querySelector('#rv-bg-preview');
+    const previewName = overlay.querySelector('#rv-bg-preview-name');
+
+    const renderGrid = () => {
+      const list = activeCat === 'all'
+        ? ROOM_V2_BACKGROUNDS
+        : ROOM_V2_BACKGROUNDS.filter(b => b.cat === activeCat);
+      grid.innerHTML = list.map(b => `
+        <button type="button" class="rv-bg-card ${b.id === selected ? 'selected' : ''}" data-bg-id="${b.id}" title="${b.name}">
+          <div class="rv-bg-thumb rv-bg-${b.id}" data-bg="${b.id}">
+            ${b.cat === 'vip' ? '<span class="rv-vip-ribbon">VIP</span>' : ''}
+            <div class="rv-thumb-seats">
+              <span class="rv-thumb-seat"></span><span class="rv-thumb-seat host"></span><span class="rv-thumb-seat"></span>
+              <span class="rv-thumb-seat"></span><span class="rv-thumb-seat"></span><span class="rv-thumb-seat"></span>
+            </div>
+          </div>
+          <span class="rv-bg-name">${b.name}</span>
+        </button>
+      `).join('');
+
+      grid.querySelectorAll('.rv-bg-card').forEach(card => {
+        card.onclick = () => {
+          selected = card.dataset.bgId;
+          grid.querySelectorAll('.rv-bg-card').forEach(c => c.classList.toggle('selected', c.dataset.bgId === selected));
+          ROOM_V2_BACKGROUNDS.forEach(b => preview.classList.remove(`rv-bg-${b.id}`));
+          preview.classList.add(`rv-bg-${selected}`);
+          previewName.innerText = getRoomBgName(selected);
+        };
+      });
+    };
+
+    renderGrid();
+
+    overlay.querySelectorAll('#rv-bg-tabs .rv-tab').forEach(tab => {
+      tab.onclick = () => {
+        activeCat = tab.dataset.cat;
+        overlay.querySelectorAll('#rv-bg-tabs .rv-tab').forEach(t => t.classList.toggle('active', t === tab));
+        renderGrid();
+      };
+    });
+
+    overlay.querySelector('#rv-bg-cancel').onclick = () => overlay.remove();
+    overlay.querySelector('#rv-bg-apply').onclick = () => {
+      applyRoomBackgroundToActiveRoom(selected);
+      emitRoomSettingsUpdate({ roomBg: selected });
+      showToast(`تم تطبيق خلفية «${getRoomBgName(selected)}» على الغرفة! 🖼️✨`);
+      overlay.remove();
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // Seat-count picker  (data-id="seats")
+  // --------------------------------------------------------------------------
+  function seatmapPositions(count, radius, centerX, centerY) {
+    const positions = [];
+    for (let i = 0; i < count; i++) {
+      const angle = (-90 + (360 / count) * i) * (Math.PI / 180);
+      positions.push({
+        x: centerX + radius * Math.cos(angle),
+        y: centerY + radius * Math.sin(angle)
+      });
+    }
+    return positions;
+  }
+
+  function buildSeatmapHtml(count) {
+    const positions = seatmapPositions(count, 64, 79, 79);
+    return `
+      <div class="rv-seatmap-ring"></div>
+      <div class="rv-seatmap-host">👑</div>
+      ${positions.map((p, i) => `<span class="rv-seatmap-seat" style="left: ${p.x.toFixed(1)}px; top: ${p.y.toFixed(1)}px; animation-delay: ${(i * 0.035).toFixed(2)}s;"></span>`).join('')}
+    `;
+  }
+
+  function buildCountDiagramHtml(count) {
+    const positions = seatmapPositions(count, 26, 38, 31);
+    return `
+      <div class="rv-cd-host"></div>
+      ${positions.map(p => `<span class="rv-cd-seat" style="left: ${p.x.toFixed(1)}px; top: ${p.y.toFixed(1)}px;"></span>`).join('')}
+    `;
+  }
+
+  function openRoomSeatsPicker(room) {
+    if (!state.currentUser) return;
+    if (!isRoomManager(room)) { showToast('تغيير عدد المقاعد متاح لمدير الغرفة فقط 🛡️'); return; }
+
+    const currentCount = getRoomSeatCount(room);
+    let selected = currentCount;
+
+    const overlay = createRoomV2SubSheet(
+      'rv-seats-overlay',
+      '🪑 عدد المقاعد',
+      'اختر عدد مقاعد المايك في غرفتك الصوتية',
+      `
+        <div class="rv-seatmap">
+          <div class="rv-seatmap-inner" id="rv-seatmap-inner">${buildSeatmapHtml(selected)}</div>
+          <div class="rv-seatmap-legend" id="rv-seatmap-legend">المضيف + ${selected} مقعد مايك</div>
+        </div>
+
+        <div class="rv-section-label">📐 خطط المقاعد المتاحة</div>
+        <div class="rv-count-grid" id="rv-count-grid">
+          ${ROOM_V2_SEAT_PLANS.map(plan => `
+            <button type="button" class="rv-count-card ${plan.upsell ? 'upsell' : ''} ${plan.count === selected ? 'selected' : ''}" data-count="${plan.count}">
+              ${plan.tag ? `<span class="rv-count-tag">${plan.tag}</span>` : ''}
+              <div class="rv-count-diagram">${buildCountDiagramHtml(plan.count)}</div>
+              <div class="rv-count-num">${plan.count} مقاعد</div>
+              <div class="rv-count-label">${plan.desc}</div>
+            </button>
+          `).join('')}
+        </div>
+
+        <div style="margin-top: 12px; padding: 10px 12px; border-radius: 14px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.32); font-size: 10.5px; line-height: 1.6; color: #fde68a;">
+          ⚠️ عند تقليل عدد المقاعد سيتم إنزال المتحدثين من المقاعد المحذوفة تلقائياً، وعند زيادتها تُضاف مقاعد مايك جديدة فوراً لكل الحضور.
+        </div>
+      `,
+      `
+        <button type="button" class="rv-btn ghost" id="rv-seats-cancel">إلغاء</button>
+        <button type="button" class="rv-btn primary" id="rv-seats-apply">تطبيق عدد المقاعد 🪑</button>
+      `
+    );
+
+    const inner = overlay.querySelector('#rv-seatmap-inner');
+    const legend = overlay.querySelector('#rv-seatmap-legend');
+    const grid = overlay.querySelector('#rv-count-grid');
+
+    const selectCount = (count) => {
+      selected = count;
+      inner.innerHTML = buildSeatmapHtml(count);
+      legend.innerText = `المضيف + ${count} مقعد مايك`;
+      grid.querySelectorAll('.rv-count-card').forEach(c => c.classList.toggle('selected', parseInt(c.dataset.count, 10) === count));
+    };
+
+    grid.querySelectorAll('.rv-count-card').forEach(card => {
+      card.onclick = () => selectCount(parseInt(card.dataset.count, 10));
+    });
+
+    overlay.querySelector('#rv-seats-cancel').onclick = () => overlay.remove();
+    overlay.querySelector('#rv-seats-apply').onclick = () => {
+      if (selected === currentCount) {
+        showToast('عدد المقاعد الحالي هو نفسه المختار 🪑');
+        return;
+      }
+      if (selected < currentCount) {
+        const vacating = (room.seats || []).filter(s => s.user_id && s.seat_index > selected).length;
+        if (vacating > 0 && !confirm(`سيتم إنزال ${vacating} متحدث من المقاعد المحذوفة. هل تريد المتابعة؟`)) return;
+      }
+      setRoomSeatCountLocal(selected);
+      emitRoomSettingsUpdate({ seatCount: selected });
+      showToast(`تم تحديث مقاعد الغرفة إلى ${selected} مقعداً 🪑✨`);
+      overlay.remove();
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // Small helper sheets: seat frames style / announcement / title / mic mode
+  // --------------------------------------------------------------------------
+  function openRoomSeatStyleSheet(room) {
+    const current = room.seat_style || 'auto';
+    const styles = [
+      { id: 'auto',    icon: '✨', title: 'تلقائي (فخامة حسب الرتبة)', desc: 'الذهبي للمضيف، الأزرق للمميزين، البنفسجي للأعضاء' },
+      { id: 'gold',    icon: '👑', title: 'ذهبي ملكي', desc: 'إطارات ذهبية فخمة لكل المقاعد' },
+      { id: 'neon',    icon: '💜', title: 'نيون بنفسجي', desc: 'ألوان نيون متوهجة عصرية' },
+      { id: 'classic', icon: '🪐', title: 'كلاسيكي هادئ', desc: 'إطار بنفسجي بسيط وأنيق' }
+    ];
+
+    const overlay = createRoomV2SubSheet(
+      'rv-style-overlay',
+      '🎨 إطارات المقاعد',
+      'اختر شكل إطارات المايك الفخمة في غرفتك',
+      `<div class="rv-option-row" id="rv-style-row">
+        ${styles.map(s => `
+          <button type="button" class="rv-option ${s.id === current ? 'selected' : ''}" data-style="${s.id}">
+            <span class="rv-option-icon">${s.icon}</span>
+            <span class="rv-option-meta">
+              <span class="rv-option-title">${s.title}</span>
+              <span class="rv-option-desc">${s.desc}</span>
+            </span>
+            <span class="rv-option-check">✓</span>
+          </button>
+        `).join('')}
+      </div>`
+    );
+
+    overlay.querySelectorAll('#rv-style-row .rv-option').forEach(opt => {
+      opt.onclick = () => {
+        const style = opt.dataset.style;
+        state.activeRoom.seat_style = style;
+        emitRoomSettingsUpdate({ seatStyle: style });
+        refreshRoomStage();
+        showToast('تم تحديث إطارات مقاعد الروم 🎨');
+        overlay.remove();
+      };
+    });
+  }
+
+  function openRoomAnnouncementSheet(room) {
+    const overlay = createRoomV2SubSheet(
+      'rv-announce-sheet',
+      '📢 إعلان الغرفة',
+      'يظهر الإعلان لكل المتواجدين في أعلى شات الروم',
+      `
+        <label class="rv-field-label" for="rv-announce-input">نص الإعلان</label>
+        <textarea class="rv-textarea" id="rv-announce-input" maxlength="300" placeholder="مثال: أهلاً بكم في رومنا 🎙️ الرجاء الالتزام بالاحترام المتبادل 🌟">${(room.announcement || '').replace(/"/g, '&quot;')}</textarea>
+      `,
+      `
+        <button type="button" class="rv-btn ghost" id="rv-announce-cancel">إلغاء</button>
+        <button type="button" class="rv-btn gold" id="rv-announce-save">حفظ الإعلان 📢</button>
+      `
+    );
+
+    overlay.querySelector('#rv-announce-cancel').onclick = () => overlay.remove();
+    overlay.querySelector('#rv-announce-save').onclick = () => {
+      const value = overlay.querySelector('#rv-announce-input').value.trim();
+      if (!value) { showToast('اكتب نص الإعلان أولاً ✍️'); return; }
+      room.announcement = value;
+      emitRoomSettingsUpdate({ announcement: value });
+      state.socket.emit('send_room_message', {
+        roomId: room.id,
+        userId: state.currentUser.id,
+        content: `📢 [إعلان المضيف]: ${value}`
+      });
+      showToast('تم تحديث إعلان الغرفة! 📢');
+      overlay.remove();
+    };
+  }
+
+  function openRoomTitleSheet(room) {
+    const overlay = createRoomV2SubSheet(
+      'rv-title-sheet',
+      '✏️ اسم الغرفة',
+      'غيّر عنوان غرفتك ليظهر في اللوبي وداخل الروم',
+      `
+        <label class="rv-field-label" for="rv-title-input">عنوان الغرفة</label>
+        <input type="text" class="rv-input" id="rv-title-input" maxlength="60" value="${(room.title || '').replace(/"/g, '&quot;')}" placeholder="اكتب اسم الغرفة..." />
+      `,
+      `
+        <button type="button" class="rv-btn ghost" id="rv-title-cancel">إلغاء</button>
+        <button type="button" class="rv-btn gold" id="rv-title-save">حفظ الاسم ✏️</button>
+      `
+    );
+
+    overlay.querySelector('#rv-title-cancel').onclick = () => overlay.remove();
+    overlay.querySelector('#rv-title-save').onclick = () => {
+      const value = overlay.querySelector('#rv-title-input').value.trim();
+      if (!value) { showToast('اكتب اسم الغرفة أولاً ✍️'); return; }
+      room.title = value;
+      const titleEl = document.getElementById('rv-top-room-title');
+      if (titleEl) { titleEl.innerText = value; titleEl.title = value; }
+      emitRoomSettingsUpdate({ title: value });
+      showToast('تم تحديث اسم الغرفة ✏️');
+      overlay.remove();
+    };
+  }
+
+  function openRoomMicModeSheet(room) {
+    const current = room.mic_mode || 'open';
+    const modes = [
+      { id: 'open',    icon: '🎙️', title: 'المايك مفتوح للجميع', desc: 'أي زائر يمكنه الصعود للمايك بنقرة واحدة' },
+      { id: 'request', icon: '✋', title: 'المايك بطلب موافقة', desc: 'المايك مقفل ويقوم المدير بمنح الصعود للمتحدثين' },
+      { id: 'locked',  icon: '🔒', title: 'المايك مقفل بالكامل', desc: 'منع الجميع من الصعود + إنزال المتحدثين الحاليين' }
+    ];
+
+    const overlay = createRoomV2SubSheet(
+      'rv-mic-sheet',
+      '🎙️ نمط المايكروفون',
+      'تحكم بمن يستطيع الصعود على مقاعد المايك',
+      `<div class="rv-option-row" id="rv-mic-row">
+        ${modes.map(m => `
+          <button type="button" class="rv-option ${m.id === current ? 'selected' : ''}" data-mode="${m.id}">
+            <span class="rv-option-icon">${m.icon}</span>
+            <span class="rv-option-meta">
+              <span class="rv-option-title">${m.title}</span>
+              <span class="rv-option-desc">${m.desc}</span>
+            </span>
+            <span class="rv-option-check">✓</span>
+          </button>
+        `).join('')}
+      </div>`
+    );
+
+    overlay.querySelectorAll('#rv-mic-row .rv-option').forEach(opt => {
+      opt.onclick = () => {
+        const mode = opt.dataset.mode;
+        room.mic_mode = mode;
+        emitRoomSettingsUpdate({ micMode: mode });
+        const isLocked = mode !== 'open';
+        state.socket.emit('admin_lock_all_seats', {
+          roomId: room.id,
+          adminId: state.currentUser.id,
+          isLocked
+        });
+        showToast(mode === 'open' ? 'المايك مفتوح للجميع الآن 🎙️' : (mode === 'request' ? 'المايك بطلب موافقة ✋' : 'تم قفل المايك بالكامل 🔒'));
+        overlay.remove();
+      };
+    });
+  }
+
   function renderLiveRoomModal(room) {
     if (!room || !room.id) {
       console.error('renderLiveRoomModal called with invalid room:', room);
@@ -3816,10 +4676,6 @@
     state.userSeatIndex = mySeat ? mySeat.seat_index : null;
     state.isMuted = mySeat ? !!mySeat.is_muted : false;
 
-    const hostSeat = (room.seats || []).find(s => s.seat_index === 0);
-    const isHostSeatOccupied = Boolean(hostSeat && hostSeat.user_id);
-    const hostOccupant = isHostSeatOccupied ? hostSeat : null;
-
     const modal = document.createElement('div');
     modal.className = 'live-room-modal';
     modal.id = 'live-voice-room-modal';
@@ -3833,45 +4689,18 @@
       else if (room.host_id === state.currentUser.id) headerRoleBadge = '<span style="background: #fbbf24; color: #000; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px; margin-right: 6px;">👑 مدير الغرفة</span>';
     }
 
-    // 8 Seats HTML (indices 1 to 8)
-    const seatsHtml = [1, 2, 3, 4, 5, 6, 7, 8].map(idx => {
-      const seat = (room.seats || []).find(s => s.seat_index === idx);
-      const isOccupied = seat && seat.user_id;
-      const isLocked = seat && seat.is_locked;
-      return `
-        <div class="stage-seat ${isOccupied ? 'occupied' : ''} ${isLocked ? 'locked' : ''}" id="stage-seat-${idx}" data-seat-idx="${idx}">
-          <div class="seat-avatar-container">
-            ${isOccupied 
-              ? `<img src="${seat.avatar}" class="${seat.avatar_frame ? 'avatar-frame-' + seat.avatar_frame : ''}" />` 
-              : (isLocked ? `<span class="seat-empty-plus">🔒</span>` : `<span class="seat-empty-plus">+</span>`)
-            }
-            <div class="seat-number-badge">${idx}</div>
-            ${isOccupied 
-              ? `<div class="seat-mic-status ${seat.is_muted ? '' : 'unmuted'}">${seat.is_muted ? '🔇' : '🎙️'}</div>` 
-              : ''
-            }
-          </div>
-          <div class="seat-user-name">${isOccupied ? seat.name : (isLocked ? 'مقعد مقفل' : 'مقعد فارغ')}</div>
-        </div>
-      `;
-    }).join('');
+    // ROOM V2 → dynamic premium stage (host throne + N ornate mic seats)
+    const stageHtml = buildRoomStageInnerHtml(room);
+    const roomBgId = getRoomBgId(room);
+    const seatCount = getRoomSeatCount(room);
 
     modal.innerHTML = `
-      <div class="live-room-container">
-        <!-- Room Header -->
-        <div class="live-room-header">
-          <div class="live-room-title-box">
-            <div class="live-room-name">
-              <span>🎙️</span> ${room.title}
-              ${headerRoleBadge}
-            </div>
-            <div class="live-room-id-tag">ID: ${room.id} • 👥 <span id="live-audience-counter">${room.audience_count !== undefined ? room.audience_count : 1}</span> مستمع</div>
-          </div>
-          <div class="live-room-actions">
-            <button class="header-action-btn" id="room-chill-music-btn" title="موسيقى هادئة لوفاي">🎵</button>
-            <button class="close-room-btn" id="leave-room-btn">🚪 خروج</button>
-          </div>
+      <div class="live-room-container rv-bg-${roomBgId}">
+        <!-- ROOM V2 Premium Top Bar -->
+        <div class="rv-top-bar" id="rv-top-bar">
+          ${buildRoomTopBarHtml(room)}
         </div>
+        ${headerRoleBadge ? `<div style="position: absolute; top: 46px; right: 12px; z-index: 5;">${headerRoleBadge}</div>` : ''}
 
         ${isRoomAdmin ? `
           <!-- Host & Admin Toolbar -->
@@ -3901,28 +4730,9 @@
           </div>
         </div>
 
-        <!-- Stage: Host & 8 Seats -->
-        <div class="room-stage-section">
-          <!-- Host Central Seat (Index 0) -->
-          <div class="host-seat-wrapper ${isHostSeatOccupied ? 'occupied' : 'empty'}" id="host-seat-0" data-seat-idx="0" style="cursor: pointer;">
-            <div class="host-crown-badge">👑</div>
-            <div class="host-avatar-box ${isHostSeatOccupied ? '' : 'empty-host-seat'}" style="${isHostSeatOccupied ? '' : 'border: 2px dashed rgba(251, 191, 36, 0.6); background: rgba(251, 191, 36, 0.08); display: flex; align-items: center; justify-content: center;'}">
-              ${isHostSeatOccupied 
-                ? `<img src="${hostOccupant.avatar || room.host_avatar}" class="${hostOccupant.avatar_frame ? 'avatar-frame-' + hostOccupant.avatar_frame : ''}" />
-                   <div class="seat-mic-status ${hostOccupant.is_muted ? '' : 'unmuted'}" id="host-mic-badge" style="position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">${hostOccupant.is_muted ? '🔇' : '🎙️'}</div>` 
-                : `<span class="seat-empty-plus" style="font-size: 26px; color: #fbbf24; font-weight: 800;">+</span>
-                   <div class="seat-mic-status" id="host-mic-badge" style="display: none; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>`
-              }
-            </div>
-            <div class="host-name-label" style="${isHostSeatOccupied ? '' : 'color: #fbbf24;'}">
-              ${isHostSeatOccupied ? (hostOccupant.name || room.host_name) : 'مقعد المضيف (فارغ)'}
-            </div>
-          </div>
-
-          <!-- 8 Seats Grid -->
-          <div class="guest-seats-grid">
-            ${seatsHtml}
-          </div>
+        <!-- ROOM V2 Stage: Host Throne + Guest Mic Seats -->
+        <div class="room-stage-section" id="rv-stage-root" data-seat-count="${seatCount}">
+          ${stageHtml}
         </div>
 
         <!-- SoulChill Visitors / Audience Strip under the seats -->
@@ -3976,11 +4786,8 @@
           <!-- Virtual Gift Button -->
           <button class="room-tool-btn gift-btn" id="room-open-gifts-btn" title="إرسال هدية فاخرة">🎁</button>
 
-          <!-- In-Room Private Messages (Next to Gifts) -->
-          <button class="room-tool-btn inroom-msg-btn" id="room-inroom-messages-btn" title="الرسائل والمحادثات الخاصة 💬" style="position: relative;">
-            <span>💬</span>
-            <span class="inroom-unread-dot" id="inroom-unread-dot" style="display: none; position: absolute; top: 2px; right: 2px; width: 9px; height: 9px; background: #ef4444; border-radius: 50%; border: 1.5px solid #000;"></span>
-          </button>
+          <!-- Room Settings (Premium shortcut next to gifts) -->
+          <button class="room-tool-btn" id="room-quick-settings-btn" title="إعدادات الغرفة" style="font-size: 17px;">⚙️</button>
         </div>
 
         <!-- Mic Seat Emojis / Animated Stickers Picker Drawer -->
@@ -4131,21 +4938,40 @@
       };
     }
 
-    // Host Seat 0 Click
-    const hostSeatEl = modal.querySelector('#host-seat-0');
-    if (hostSeatEl) {
-      hostSeatEl.onclick = () => {
-        handleSeatClick(0);
-      };
+    // ROOM V2: seat clicks are delegated so the stage can be re-rendered live
+    // (seat count changes, background changes, seat swaps ...) without losing handlers
+    const stageRoot = modal.querySelector('#rv-stage-root');
+    if (stageRoot) {
+      stageRoot.addEventListener('click', (e) => {
+        const seatEl = e.target.closest('[data-seat-idx]');
+        if (!seatEl) return;
+        handleSeatClick(parseInt(seatEl.dataset.seatIdx, 10));
+      });
     }
 
-    // Event: Seat Clicks (Take Seat, Leave Seat, Mute, Host Moderation)
-    modal.querySelectorAll('.stage-seat').forEach(seatEl => {
-      seatEl.onclick = () => {
-        const seatIdx = parseInt(seatEl.dataset.seatIdx);
-        handleSeatClick(seatIdx);
+    // ROOM V2: room settings sheet (⚙️ إعدادات الغرفة)
+    const settingsBtn = modal.querySelector('#rv-open-settings-btn');
+    if (settingsBtn) {
+      settingsBtn.onclick = () => openRoomSettingsSheet(room);
+    }
+
+    const quickSettingsBtn = modal.querySelector('#room-quick-settings-btn');
+    if (quickSettingsBtn) {
+      quickSettingsBtn.onclick = () => openRoomSettingsSheet(room);
+    }
+
+    // ROOM V2: audience quick button in the top bar
+    const audienceTopBtn = modal.querySelector('#rv-audience-btn');
+    if (audienceTopBtn) {
+      audienceTopBtn.onclick = () => {
+        const strip = modal.querySelector('.room-audience-strip-container');
+        if (strip) {
+          strip.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          strip.style.boxShadow = '0 0 0 2px rgba(247,195,60,.7)';
+          setTimeout(() => { strip.style.boxShadow = ''; }, 1600);
+        }
       };
-    });
+    }
 
     // Event: Mic Toggle button
     const micBtn = modal.querySelector('#room-mic-toggle-btn');
@@ -4680,29 +5506,24 @@
     const seatEl = document.getElementById(`stage-seat-${seatIndex}`);
     if (!seatEl) return;
 
-    if (user) {
-      seatEl.classList.add('occupied');
-      seatEl.classList.remove('locked');
-      seatEl.innerHTML = `
-        <div class="seat-avatar-container">
-          <img src="${user.avatar}" class="${user.avatar_frame ? 'avatar-frame-' + user.avatar_frame : ''}" />
-          <div class="seat-number-badge">${seatIndex}</div>
-          <div class="seat-mic-status ${isMuted ? '' : 'unmuted'}">${isMuted ? '🔇' : '🎙️'}</div>
-        </div>
-        <div class="seat-user-name">${user.name}</div>
-      `;
-    } else {
-      seatEl.classList.remove('occupied');
-      const isLocked = state.activeRoom && (state.activeRoom.seats || []).find(s => s.seat_index === seatIndex)?.is_locked;
-      seatEl.classList.toggle('locked', !!isLocked);
-      seatEl.innerHTML = `
-        <div class="seat-avatar-container">
-          <span class="seat-empty-plus">${isLocked ? '🔒' : '+'}</span>
-          <div class="seat-number-badge">${seatIndex}</div>
-        </div>
-        <div class="seat-user-name">${isLocked ? 'مقعد مقفل' : 'مقعد فارغ'}</div>
-      `;
-    }
+    const room = state.activeRoom || {};
+    const existing = (room.seats || []).find(s => s.seat_index === seatIndex);
+
+    // Keep the in-memory room seats in sync so live re-renders stay accurate
+    setActiveRoomSeat(seatIndex, {
+      user_id: user ? (user.id || 'occupied') : null,
+      name: user ? user.name : null,
+      avatar: user ? user.avatar : null,
+      avatar_frame: user ? user.avatar_frame : null,
+      level: user ? user.level : null,
+      charm_level: user ? user.charm_level : null,
+      role: user ? user.role : null,
+      is_muted: isMuted ? 1 : 0,
+      is_locked: existing ? existing.is_locked : 0
+    });
+
+    const seatData = (state.activeRoom.seats || []).find(s => s.seat_index === seatIndex) || { seat_index: seatIndex, user_id: null };
+    paintSeatElement(seatEl, seatIndex, seatData, state.activeRoom || {});
   }
 
   function updateSeatMuteUI(seatIndex, isMuted) {

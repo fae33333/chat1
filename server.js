@@ -648,6 +648,79 @@ function getClientIp(req) {
   return req.headers['x-real-ip'] || req.socket.remoteAddress || req.ip || '127.0.0.1';
 }
 
+// ============================================================================
+// ROOM V2 HELPERS — dynamic mic-seat layouts (8 / 12 / 16 مقعد) & room payloads
+// ============================================================================
+function normalizeSeatCount(value) {
+  const parsed = parseInt(value, 10);
+  if (!parsed || Number.isNaN(parsed)) return 8;
+  return Math.max(2, Math.min(16, parsed));
+}
+
+// Creates / removes room_seats rows so seat indices 0..seatCount exist.
+// Removing seats vacates their occupants and stops their audio for everyone.
+async function ensureRoomSeatLayout(roomId, seatCount, admin) {
+  const target = normalizeSeatCount(seatCount);
+  const existing = await all('SELECT seat_index, user_id FROM room_seats WHERE room_id = ? ORDER BY seat_index ASC', [roomId]);
+  const existingIndexes = new Set(existing.map(s => s.seat_index));
+
+  // 1) Drop seats above the new target (DB first, then kick their occupants safely)
+  const removedOccupants = [];
+  for (const seat of existing) {
+    if (seat.seat_index > target) {
+      if (seat.user_id) removedOccupants.push(seat);
+      await run('DELETE FROM room_seats WHERE room_id = ? AND seat_index = ?', [roomId, seat.seat_index]);
+    }
+  }
+  for (const seat of removedOccupants) {
+    io.to(`room:${roomId}`).emit('seat_updated', { seatIndex: seat.seat_index, user: null, isMuted: false });
+    io.to(`room:${roomId}`).emit('user_kicked_from_seat', {
+      seatIndex: seat.seat_index,
+      userId: seat.user_id,
+      adminName: admin ? admin.name : 'إدارة الروم',
+      reason: 'seat_count_change'
+    });
+    io.to(`room:${roomId}`).emit('webrtc_stream_ended', {
+      roomId,
+      streamType: 'voice_seat',
+      userId: seat.user_id
+    });
+  }
+
+  // 2) Create the missing seats (including the host throne seat 0)
+  for (let i = 0; i <= target; i++) {
+    if (!existingIndexes.has(i)) {
+      await run(`INSERT OR IGNORE INTO room_seats (room_id, seat_index, user_id, is_muted, is_locked) VALUES (?, ?, NULL, 0, 0)`, [roomId, i]);
+    }
+  }
+
+  return target;
+}
+
+// Full room payload (host info + seats) used for live settings broadcasts
+async function getRoomWithSeats(roomId) {
+  const room = await get(`
+    SELECT r.*, u.name as host_name, u.avatar as host_avatar, u.avatar_frame as host_frame, u.level as host_level
+    FROM rooms r
+    LEFT JOIN users u ON r.host_id = u.id
+    WHERE r.id = ?
+  `, [roomId]);
+  if (!room) return null;
+
+  const roomState = activeRoomStates.get(roomId);
+  room.audience_count = roomState ? roomState.activeAudience.size : 0;
+
+  room.seats = await all(`
+    SELECT s.seat_index, s.is_muted, s.is_locked, u.id as user_id, u.name, u.avatar, u.avatar_frame, u.level, u.charm_level, u.role
+    FROM room_seats s
+    LEFT JOIN users u ON s.user_id = u.id
+    WHERE s.room_id = ?
+    ORDER BY s.seat_index ASC
+  `, [roomId]);
+
+  return room;
+}
+
 function getCountryFromIp(ip) {
   // If local or private sandbox network, map to user's real country (Jordan 🇯🇴 - JO)
   if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.') || ip.startsWith('169.254.')) {
@@ -751,7 +824,7 @@ app.get('/api/rooms', async (req, res) => {
     // Attach active occupants count & seat previews
     for (const r of rooms) {
       const seats = await all(`
-        SELECT s.seat_index, s.is_muted, s.is_locked, u.id as user_id, u.name, u.avatar
+        SELECT s.seat_index, s.is_muted, s.is_locked, u.id as user_id, u.name, u.avatar, u.avatar_frame, u.level, u.charm_level, u.role
         FROM room_seats s
         LEFT JOIN users u ON s.user_id = u.id
         WHERE s.room_id = ?
@@ -831,7 +904,7 @@ app.post('/api/rooms', async (req, res) => {
       VALUES (?, ?, ?, 'voice', ?, 0, ?, ?, ?, ?, ?, ?, ?)
     `, [roomId, title, category || 'chill', defaultCover, userId, finalCountryCode, finalCountryName, finalCountryFlag, clientIp, theme || 'cosmic_purple', announcement || 'أهلاً بكم في رومنا الصوتي 🌟']);
 
-    // Setup 8 seats + seat 0 for host (seat 0 starts EMPTY so host is not forced directly onto mic)
+    // Setup seat 0 (host throne) + 8 default mic seats (ROOM V2: client can resize 6/8/12/16)
     await run(`INSERT INTO room_seats (room_id, seat_index, user_id, is_muted, is_locked) VALUES (?, 0, NULL, 0, 0)`, [roomId]);
     for (let i = 1; i <= 8; i++) {
       await run(`INSERT INTO room_seats (room_id, seat_index, user_id, is_muted, is_locked) VALUES (?, ?, NULL, 0, 0)`, [roomId, i]);
@@ -916,7 +989,7 @@ app.get('/api/rooms/:id', async (req, res) => {
     if (!room) return res.status(404).json({ error: 'Room not found' });
 
     const seats = await all(`
-      SELECT s.seat_index, s.is_muted, s.is_locked, u.id as user_id, u.name, u.avatar, u.avatar_frame, u.level, u.charm_level
+      SELECT s.seat_index, s.is_muted, s.is_locked, u.id as user_id, u.name, u.avatar, u.avatar_frame, u.level, u.charm_level, u.role
       FROM room_seats s
       LEFT JOIN users u ON s.user_id = u.id
       WHERE s.room_id = ?
@@ -1780,7 +1853,7 @@ app.post('/api/admin/rooms', async (req, res) => {
       announcement || 'غرفة صوتية رسمية من إدارة التطبيق 🌟'
     ]);
 
-    // Setup seat 0 + 8 stage seats
+    // Setup seat 0 (host throne) + 8 default mic seats (ROOM V2 resize-able)
     await run(`INSERT INTO room_seats (room_id, seat_index, user_id, is_muted, is_locked) VALUES (?, 0, NULL, 0, 0)`, [roomId]);
     for (let i = 1; i <= 8; i++) {
       await run(`INSERT INTO room_seats (room_id, seat_index, user_id, is_muted, is_locked) VALUES (?, ?, NULL, 0, 0)`, [roomId, i]);
@@ -2655,6 +2728,82 @@ io.on('connection', (socket) => {
       io.to(`room:${roomId}`).emit('seat_lock_changed', { seatIndex, isLocked: !!isLocked, vacatedUserId });
     } catch (e) {
       console.error('admin_lock_seat error:', e);
+    }
+  });
+
+  // ==========================================================================
+  // ROOM V2 — Update Room Settings (عدد المقاعد / خلفية الروم / الاسم / الإعلان ...)
+  // Available to the room host and to platform staff only.
+  // ==========================================================================
+  socket.on('admin_update_room_settings', async ({ roomId, adminId, roomBg, seatCount, title, announcement, micMode, seatStyle, isLocked }) => {
+    if (!roomId || !adminId) return;
+    try {
+      const room = await get('SELECT * FROM rooms WHERE id = ?', [roomId]);
+      const admin = await get('SELECT * FROM users WHERE id = ?', [adminId]);
+      if (!room || !admin) return;
+
+      const canManage = room.host_id === adminId ||
+        ['owner', 'super_master', 'super_admin', 'admin', 'moderator'].includes(admin.role);
+      if (!canManage) {
+        return socket.emit('room_settings_error', {
+          roomId,
+          message: 'هذه الإعدادات متاحة لمدير الغرفة فقط 🛡️'
+        });
+      }
+
+      const updates = [];
+      const params = [];
+
+      if (typeof roomBg === 'string' && roomBg.trim()) {
+        updates.push('room_bg = ?');
+        params.push(roomBg.trim().slice(0, 40));
+      }
+      if (typeof title === 'string' && title.trim()) {
+        updates.push('title = ?');
+        params.push(title.trim().slice(0, 80));
+      }
+      if (typeof announcement === 'string') {
+        updates.push('announcement = ?');
+        params.push(announcement.slice(0, 300));
+      }
+      if (typeof micMode === 'string' && ['open', 'request', 'locked'].includes(micMode)) {
+        updates.push('mic_mode = ?');
+        params.push(micMode);
+      }
+      if (typeof seatStyle === 'string' && ['auto', 'gold', 'neon', 'classic'].includes(seatStyle)) {
+        updates.push('seat_style = ?');
+        params.push(seatStyle);
+      }
+      if (typeof isLocked === 'boolean') {
+        updates.push('is_locked = ?');
+        params.push(isLocked ? 1 : 0);
+      }
+
+      // Seat count change → rebuild the room seat layout (creates/removes seats)
+      if (seatCount !== undefined && seatCount !== null && seatCount !== '') {
+        const applied = await ensureRoomSeatLayout(roomId, seatCount, admin);
+        updates.push('seat_count = ?');
+        params.push(applied);
+      }
+
+      if (updates.length > 0) {
+        params.push(roomId);
+        await run(`UPDATE rooms SET ${updates.join(', ')} WHERE id = ?`, params);
+      }
+
+      // Push the fresh room + seats to everyone inside the room
+      const fresh = await getRoomWithSeats(roomId);
+      io.to(`room:${roomId}`).emit('room_settings_updated', {
+        roomId,
+        room: fresh,
+        seats: fresh ? fresh.seats : [],
+        updatedBy: { id: admin.id, name: admin.name }
+      });
+
+      // Refresh the lobby cards for everyone
+      if (fresh) io.emit('room_updated', { room: fresh });
+    } catch (e) {
+      console.error('admin_update_room_settings error:', e);
     }
   });
 

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <defs>
+    <radialGradient id="bg-pink" cx="38%" cy="30%" r="72%">
+      <stop offset="0%" stop-color="#ffe9f6"/>
+      <stop offset="40%" stop-color="#ff6fc4"/>
+      <stop offset="100%" stop-color="#b81a74"/>
+    </radialGradient>
+    <linearGradient id="bg-gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff5c4"/>
+      <stop offset="55%" stop-color="#f7c33c"/>
+      <stop offset="100%" stop-color="#b9770a"/>
+    </linearGradient>
+    <filter id="bg-soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="1.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <path d="M24 3 C30 3 33 6 36 9 C40 13 45 15 45 20 C45 26 41 29 38 32 C34 36 30 45 24 45 C18 45 14 36 10 32 C7 29 3 26 3 20 C3 15 8 13 12 9 C15 6 18 3 24 3 Z" fill="url(#bg-pink)" stroke="url(#bg-gold)" stroke-width="2.4" filter="url(#bg-soft)"/>
+  <path d="M24 13 C26.2 18.4 27.6 19.8 33 22 C27.6 24.2 26.2 25.6 24 31 C21.8 25.6 20.4 24.2 15 22 C20.4 19.8 21.8 18.4 24 13 Z" fill="#ffffff" opacity="0.95"/>
+  <circle cx="15.4" cy="14.4" r="2.1" fill="#ffffff" opacity="0.7"/>
+</svg>

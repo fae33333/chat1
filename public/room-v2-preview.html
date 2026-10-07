@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SoulChill — معاينة غرفة الأدمن V2 (Room V2 Preview)</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/stream.css">
+  <link rel="stylesheet" href="css/room-v2.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚙️</text></svg>">
+  <style>
+    body { background: #07040f; margin: 0; }
+    .rv-demo-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 999;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 12px;
+      background: linear-gradient(180deg, rgba(10, 6, 24, 0.96), rgba(10, 6, 24, 0.75));
+      border-bottom: 1px solid rgba(167, 139, 250, 0.25);
+      backdrop-filter: blur(10px);
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+    }
+    .rv-demo-bar .rv-demo-brand { font-size: 13px; font-weight: 900; color: #fff; margin-inline-end: 6px; }
+    .rv-demo-bar .rv-demo-brand small { display: block; font-size: 10px; color: #c4b5fd; font-weight: 600; }
+    .rv-demo-bar button {
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 800;
+      cursor: pointer;
+      color: #fff;
+      padding: 8px 13px;
+      border-radius: 999px;
+      border: 1px solid rgba(167, 139, 250, 0.4);
+      background: linear-gradient(180deg, rgba(80, 56, 160, 0.85), rgba(30, 18, 66, 0.85));
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+    }
+    .rv-demo-bar button:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4); }
+    .rv-demo-bar button.gold { background: linear-gradient(180deg, #ffe07a, #e0a212); color: #3a2405; border-color: rgba(255, 255, 255, 0.5); }
+    .rv-demo-bar button.exit { background: linear-gradient(180deg, #ff6c8a, #be1a3e); }
+    .rv-demo-note { font-size: 10px; color: #a5b4fc; width: 100%; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <!-- Demo control bar (this file only — not part of the app room) -->
+  <div class="rv-demo-bar">
+    <div class="rv-demo-brand">🎙️ غرفة الأدمن V2 <small>معاينة تفاعلية بدون تسجيل دخول</small></div>
+    <button type="button" class="gold" data-demo="room">1) شكل الغرفة (image-1)</button>
+    <button type="button" data-demo="settings">2) ⚙️ إعدادات الغرفة (image-2)</button>
+    <button type="button" data-demo="bg">3) 🖼️ خلفية الغرفة (image-3)</button>
+    <button type="button" data-demo="seats">4) 🪑 عدد المقاعد (image-4)</button>
+    <button type="button" class="exit" data-demo="close">إغلاق المعاينة</button>
+    <div class="rv-demo-note">هذه معاينة حقيقية تستخدم نفس ملفات التطبيق (app.js + room-v2.css + الأصول) ببيانات تجريبية.</div>
+  </div>
+
+  <!-- The real app shell (background of the preview) -->
+  <div class="app-viewport" style="padding-top: 76px;">
+    <div class="app-container" id="main-app-container">
+      <main class="app-content" id="app-main-content"></main>
+    </div>
+  </div>
+
+  <script>
+  /* ==========================================================================
+     Demo harness: boots public/js/app.js with mocked socket + API so the room
+     renders exactly like the production room, without any login or server data.
+  ========================================================================== */
+  (function () {
+    'use strict';
+
+    var DEMO_HOST = {
+      id: 'demo-host',
+      name: 'المضيف الذهبي',
+      avatar: '/avatars/avatar-1.png',
+      avatar_frame: 'imperial_owner',
+      role: 'owner',
+      level: 46,
+      charm_level: 58,
+      coins: 128000,
+      diamonds: 5200,
+      soul_planet: 'كوكب الملوك 👑'
+    };
+
+    var DEMO_ROOM = {
+      id: 'room-demo-44',
+      title: 'روم الأدمن الفخم 👑🎙️',
+      category: 'chill',
+      room_type: 'voice',
+      cover_image: '/avatars/avatar-1.png',
+      host_id: DEMO_HOST.id,
+      host_name: DEMO_HOST.name,
+      host_avatar: DEMO_HOST.avatar,
+      host_frame: DEMO_HOST.avatar_frame,
+      likes_count: 1284,
+      country_code: 'JO',
+      country_name: 'الأردن',
+      country_flag: '🇯🇴',
+      audience_count: 6,
+      seat_count: 8,
+      room_bg: 'cosmic_purple',
+      seat_style: 'auto',
+      mic_mode: 'open',
+      is_locked: 0,
+      announcement: 'أهلاً بكم في الروم الفخم ✨ الرجاء الالتزام بالاحترام المتبادل 🌟',
+      seats: [
+        { seat_index: 0, user_id: DEMO_HOST.id, name: DEMO_HOST.name, avatar: DEMO_HOST.avatar, avatar_frame: 'imperial_owner', level: 46, charm_level: 58, role: 'owner', is_muted: 0, is_locked: 0 },
+        { seat_index: 1, user_id: 'u-leyan', name: 'لُويتا', avatar: '/avatars/avatar-2.png', avatar_frame: 'angel_wings', level: 24, charm_level: 44, role: 'user', is_muted: 0, is_locked: 0 },
+        { seat_index: 2, user_id: 'u-rim', name: 'ريم', avatar: '/avatars/avatar-3.png', avatar_frame: 'galaxy_halo', level: 12, charm_level: 9, role: 'user', is_muted: 1, is_locked: 0 },
+        { seat_index: 3, user_id: null, is_muted: 0, is_locked: 1 },
+        { seat_index: 4, user_id: 'u-sara', name: 'سارة', avatar: '/avatars/avatar-4.png', avatar_frame: 'royal_gold', level: 19, charm_level: 21, role: 'user', is_muted: 0, is_locked: 0 },
+        { seat_index: 5, user_id: null, is_muted: 0, is_locked: 0 },
+        { seat_index: 6, user_id: 'u-noor', name: 'نور', avatar: '/avatars/avatar-5.png', avatar_frame: '', level: 7, charm_level: 5, role: 'user', is_muted: 0, is_locked: 0 },
+        { seat_index: 7, user_id: null, is_muted: 0, is_locked: 0 },
+        { seat_index: 8, user_id: null, is_muted: 0, is_locked: 0 }
+      ]
+    };
+
+    var DEMO_AUDIENCE = [
+      { id: DEMO_HOST.id, name: DEMO_HOST.name, avatar: DEMO_HOST.avatar, role: 'owner', level: 46 },
+      { id: 'u-leyan', name: 'لُويتا', avatar: '/avatars/avatar-2.png', role: 'user', level: 24 },
+      { id: 'u-omar', name: 'عمر', avatar: '/avatars/avatar-6.png', role: 'user', level: 9 },
+      { id: 'u-rim', name: 'ريم', avatar: '/avatars/avatar-3.png', role: 'user', level: 12 },
+      { id: 'u-sara', name: 'سارة', avatar: '/avatars/avatar-4.png', role: 'user', level: 19 },
+      { id: 'u-noor', name: 'نور', avatar: '/avatars/avatar-5.png', role: 'user', level: 7 }
+    ];
+
+    // ---- mock socket.io ---------------------------------------------------
+    window.io = function () {
+      var routes = {};
+      return {
+        id: 'demo-socket',
+        connected: true,
+        on: function (event, cb) { routes[event] = cb; return this; },
+        off: function () { return this; },
+        once: function (event, cb) { routes[event] = cb; return this; },
+        emit: function (event, payload) {
+          if (event === 'join_room') {
+            setTimeout(function () {
+              if (routes.room_presence_sync) {
+                routes.room_presence_sync({ audienceCount: DEMO_AUDIENCE.length, audience: DEMO_AUDIENCE, pkState: null, isChatMuted: false, mutedChatUsers: [] });
+              }
+            }, 30);
+          }
+          if (event === 'admin_update_room_settings' && payload) {
+            // emulate the server echo so the demo reacts like the real room
+            setTimeout(function () {
+              if (payload.roomBg) DEMO_ROOM.room_bg = payload.roomBg;
+              if (payload.seatCount) {
+                DEMO_ROOM.seat_count = payload.seatCount;
+                var seats = DEMO_ROOM.seats.filter(function (s) { return s.seat_index <= payload.seatCount; });
+                for (var i = 1; i <= payload.seatCount; i++) {
+                  if (!seats.some(function (s) { return s.seat_index === i; })) seats.push({ seat_index: i, user_id: null, is_muted: 0, is_locked: 0 });
+                }
+                DEMO_ROOM.seats = seats;
+              }
+              if (payload.title) DEMO_ROOM.title = payload.title;
+              if (payload.announcement) DEMO_ROOM.announcement = payload.announcement;
+              if (routes.room_settings_updated) {
+                routes.room_settings_updated({ roomId: DEMO_ROOM.id, room: DEMO_ROOM, seats: DEMO_ROOM.seats, updatedBy: { id: DEMO_HOST.id, name: DEMO_HOST.name } });
+              }
+            }, 120);
+          }
+          return this;
+        },
+        close: function () {}
+      };
+    };
+
+    // ---- mock REST API ----------------------------------------------------
+    var originalFetch = window.fetch ? window.fetch.bind(window) : null;
+    var json = function (data) { return Promise.resolve({ ok: true, json: function () { return Promise.resolve(data); } }); };
+    window.fetch = function (url, options) {
+      var target = String(url);
+      if (target.indexOf('/api/geo/') !== -1) return json({ success: true, country_code: 'JO', country_name: 'الأردن', country_flag: '🇯🇴', city: 'إربد', countries: [] });
+      if (target.indexOf('/messages') !== -1) return json([]);
+      if (target.indexOf('/api/gifts') !== -1) return json([]);
+      if (target.indexOf('/api/moments') !== -1) return json([]);
+      if (target.indexOf('/api/users/me') !== -1) return json(DEMO_HOST);
+      if (/\/api\/rooms\/[^/]+$/.test(target)) return json(DEMO_ROOM);
+      if (target.indexOf('/api/rooms') !== -1) return json([DEMO_ROOM]);
+      if (originalFetch && target.indexOf('/api/') === -1) return originalFetch(url, options);
+      return json({});
+    };
+
+    window.confirm = function () { return true; };
+    try {
+      window.localStorage.setItem('soulchill_user', JSON.stringify(DEMO_HOST));
+      window.localStorage.setItem('soulchill_token', 'demo-token');
+      window.localStorage.setItem('soulchill_user_id', DEMO_HOST.id);
+    } catch (e) {}
+
+    // ---- boot the real application ---------------------------------------
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        var App = window.SoulChillApp;
+        if (!App || !App.state) return;
+        // safety: if the app bootstrap has not created a socket yet, give it one
+        if (!App.state.socket) App.state.socket = window.io();
+        App.state.currentUser = DEMO_HOST;
+        App.state.rooms = [DEMO_ROOM];
+        App.openVoiceRoom(DEMO_ROOM.id);
+      }, 120);
+    });
+
+    // ---- demo control bar -------------------------------------------------
+    function withRoom(callback) {
+      var modal = document.getElementById('live-voice-room-modal');
+      if (!modal) {
+        window.SoulChillApp.openVoiceRoom(DEMO_ROOM.id);
+        setTimeout(function () { withRoom(callback); }, 260);
+        return;
+      }
+      callback(modal);
+    }
+
+    function openTile(tileId) {
+      withRoom(function (modal) {
+        var settingsBtn = modal.querySelector('#rv-open-settings-btn');
+        if (settingsBtn) settingsBtn.click();
+        setTimeout(function () {
+          var tile = document.querySelector('#rv-settings-overlay .rv-tile[data-id="' + tileId + '"]');
+          if (tile) tile.click();
+        }, 220);
+      });
+    }
+
+    document.querySelectorAll('.rv-demo-bar [data-demo]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var action = btn.dataset.demo;
+        if (action === 'room') withRoom(function () {});
+        if (action === 'settings') withRoom(function (modal) { modal.querySelector('#rv-open-settings-btn').click(); });
+        if (action === 'bg') openTile('bg');
+        if (action === 'seats') openTile('seats');
+        if (action === 'close') {
+          document.querySelectorAll('.rv-overlay, .live-room-modal').forEach(function (el) { el.remove(); });
+        }
+      });
+    });
+  })();
+  </script>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1635 @@
+/* ============================================================================
+   SOULCHILL — ROOM V2  (غرفة الأدمن الفخمة)
+   Premium voice-room stage, ornate mic seats, room settings sheet,
+   room background picker & seat-count picker.
+   Loaded AFTER style.css / stream.css so it upgrades the room experience.
+============================================================================ */
+
+:root {
+  --rv-seat-size: 60px;
+  --rv-seat-gap-x: 8px;
+  --rv-seat-gap-y: 22px;
+  --rv-gold-1: #fff6c2;
+  --rv-gold-2: #f7c33c;
+  --rv-gold-3: #b9770a;
+  --rv-pink-1: #ff8ed2;
+  --rv-pink-2: #d6219a;
+  --rv-violet-1: #a78bfa;
+  --rv-violet-2: #6d28d9;
+  --rv-cyan: #22d3ee;
+  --rv-glass: rgba(22, 16, 48, 0.62);
+  --rv-glass-2: rgba(12, 8, 30, 0.82);
+  --rv-stroke: rgba(167, 139, 250, 0.26);
+  --rv-stroke-gold: rgba(247, 195, 60, 0.42);
+}
+
+/* Every direct child of the room shell must float above the animated layers */
+.live-room-container > * {
+  position: relative;
+  z-index: 2;
+}
+
+.live-room-container::before,
+.live-room-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* soft star dust + drifting nebula on top of whichever bg is selected */
+.live-room-container::before {
+  background-image:
+    radial-gradient(1.6px 1.6px at 12% 18%, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(1.4px 1.4px at 78% 12%, rgba(255, 255, 255, 0.7), transparent 60%),
+    radial-gradient(1.8px 1.8px at 36% 62%, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1.2px 1.2px at 62% 82%, rgba(255, 255, 255, 0.65), transparent 60%),
+    radial-gradient(1.5px 1.5px at 88% 58%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1.1px 1.1px at 24% 88%, rgba(255, 255, 255, 0.5), transparent 60%);
+  background-size: 240px 240px;
+  opacity: 0.55;
+  animation: rvStarDrift 60s linear infinite;
+}
+
+.live-room-container::after {
+  background:
+    radial-gradient(ellipse 120% 46% at 50% 108%, rgba(0, 0, 0, 0.72), transparent 70%),
+    radial-gradient(ellipse 90% 40% at 50% -12%, rgba(0, 0, 0, 0.5), transparent 72%);
+}
+
+@keyframes rvStarDrift {
+  from { background-position: 0 0; }
+  to { background-position: 240px 480px; }
+}
+
+/* ============================================================================
+   1) ROOM TOP BAR  (rv-top-bar / rv-top-btn)
+============================================================================ */
+.rv-top-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 6px;
+  background: linear-gradient(180deg, rgba(9, 5, 22, 0.86), rgba(9, 5, 22, 0.18));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.rv-host-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+  max-width: 46%;
+  padding: 3px 9px 3px 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.rv-host-chip .rv-chip-avatar {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+}
+
+.rv-host-chip .rv-chip-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.6px solid rgba(247, 195, 60, 0.85);
+}
+
+.rv-host-chip .rv-chip-crown {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  filter: drop-shadow(0 0 4px rgba(247, 195, 60, 0.9));
+}
+
+.rv-chip-meta {
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.rv-chip-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 104px;
+}
+
+.rv-chip-sub {
+  font-size: 9px;
+  font-weight: 700;
+  color: #f7c33c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 104px;
+}
+
+.rv-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-inline-start: auto;
+}
+
+.rv-top-btn {
+  position: relative;
+  width: 33px;
+  height: 33px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  color: #fff;
+  cursor: pointer;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(58, 42, 122, 0.75), rgba(22, 14, 52, 0.75));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rv-top-btn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(247, 195, 60, 0.6);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), 0 0 14px rgba(168, 85, 247, 0.45);
+}
+
+.rv-top-btn:active {
+  transform: scale(0.93);
+}
+
+.rv-top-btn.gold {
+  background: linear-gradient(180deg, #ffe07a, #e0a212);
+  color: #38220a;
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 14px rgba(247, 195, 60, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.rv-top-btn.exit {
+  background: linear-gradient(180deg, rgba(255, 108, 138, 0.9), rgba(190, 26, 62, 0.9));
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.rv-top-btn .rv-btn-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f472b6, #db2777);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.4px solid rgba(9, 5, 22, 0.9);
+}
+
+.rv-top-btn.settings::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid rgba(247, 195, 60, 0.55);
+  animation: rvHaloPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes rvHaloPulse {
+  0%, 100% { opacity: 0.25; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.08); }
+}
+
+/* legacy header buttons (music / close) keep working inside the new bar */
+.rv-top-bar .header-action-btn,
+.rv-top-bar .close-room-btn {
+  border-radius: 50%;
+  width: 33px;
+  height: 33px;
+  padding: 0;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.rv-top-bar .close-room-btn span.rv-exit-label {
+  display: none;
+}
+
+/* ============================================================================
+   2) STAGE  (host throne + guest seats + brand watermark)
+============================================================================ */
+.room-stage-section {
+  padding: 10px 10px 4px;
+  gap: 10px;
+  background: radial-gradient(ellipse 78% 62% at 50% 16%, rgba(139, 92, 246, 0.16), transparent 72%);
+}
+
+.rv-stage-brand {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 190px;
+  height: 190px;
+  opacity: 0.16;
+  pointer-events: none;
+  z-index: 0;
+  background: center / contain no-repeat url('/assets/frames/soulchill-emblem.svg');
+  animation: rvBrandSpin 46s linear infinite;
+}
+
+.rv-stage-brandtext {
+  position: absolute;
+  top: 46%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-4deg);
+  font-size: 46px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  font-family: 'Trebuchet MS', system-ui, sans-serif;
+  color: rgba(255, 255, 255, 0.06);
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.09);
+  pointer-events: none;
+  z-index: 0;
+  white-space: nowrap;
+}
+
+@keyframes rvBrandSpin {
+  to { transform: translateX(-50%) rotate(360deg); }
+}
+
+/* ---- Host (seat 0) throne ---- */
+.host-seat-wrapper {
+  z-index: 3;
+}
+
+.host-seat-visual {
+  position: relative;
+  width: calc(var(--rv-seat-size) + 20px);
+  height: calc(var(--rv-seat-size) + 20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.host-avatar-box {
+  width: 100%;
+  height: 100%;
+}
+
+.host-avatar-box img {
+  border: 2.5px solid #f7c33c;
+  box-shadow: 0 0 18px rgba(247, 195, 60, 0.5), 0 0 42px rgba(236, 72, 153, 0.25);
+}
+
+.host-crown-badge {
+  top: -15px;
+  font-size: 21px;
+  filter: drop-shadow(0 0 8px rgba(247, 195, 60, 0.95));
+  animation: rvCrownFloat 2.8s ease-in-out infinite;
+}
+
+@keyframes rvCrownFloat {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-3px) rotate(4deg); }
+}
+
+.host-name-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 17px;
+  padding: 2px 12px;
+  border-radius: 999px;
+  background: rgba(9, 5, 22, 0.7);
+  border: 1px solid rgba(247, 195, 60, 0.34);
+  font-size: 11px;
+  max-width: 132px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rv-host-ribbon {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #3a2405;
+  background: linear-gradient(135deg, #fff3b0, #f0a92b);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 3px 10px rgba(247, 195, 60, 0.4);
+  white-space: nowrap;
+}
+
+/* ---- Guest seats ---- */
+.guest-seats-grid {
+  grid-template-columns: repeat(4, 1fr);
+  column-gap: var(--rv-seat-gap-x);
+  row-gap: var(--rv-seat-gap-y);
+  max-width: 100%;
+  padding: 6px 2px 2px;
+  position: relative;
+  z-index: 3;
+}
+
+.rv-seats-12 { --rv-seat-size: 54px; --rv-seat-gap-y: 20px; }
+.rv-seats-16 { --rv-seat-size: 50px; --rv-seat-gap-y: 18px; }
+
+.stage-seat {
+  padding-top: 4px;
+}
+
+.rv-seat-shell {
+  position: relative;
+  width: var(--rv-seat-size);
+  height: var(--rv-seat-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.22s ease;
+}
+
+.stage-seat:hover .rv-seat-shell {
+  transform: translateY(-2px) scale(1.03);
+}
+
+.seat-avatar-container {
+  width: 100%;
+  height: 100%;
+  border: 2px solid rgba(167, 139, 250, 0.35);
+  background: radial-gradient(circle at 50% 35%, rgba(139, 92, 246, 0.22), rgba(12, 8, 30, 0.9));
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.55);
+  z-index: 2;
+  overflow: visible;
+}
+
+.seat-avatar-container img {
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+}
+
+.stage-seat.occupied .seat-avatar-container {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(6, 3, 16, 0.9);
+}
+
+.stage-seat.locked .seat-avatar-container {
+  border-color: rgba(244, 63, 94, 0.45);
+  border-style: solid;
+  background: repeating-linear-gradient(45deg, rgba(244, 63, 94, 0.12) 0 6px, transparent 6px 12px), rgba(12, 8, 30, 0.85);
+}
+
+.seat-empty-plus {
+  color: #c4b5fd;
+  font-size: 21px;
+  font-weight: 800;
+  text-shadow: 0 0 10px rgba(167, 139, 250, 0.75);
+}
+
+.stage-seat:not(.occupied):not(.locked):hover .seat-empty-plus {
+  color: #fff;
+  transform: scale(1.12);
+}
+
+/* ornate frame overlay */
+.rv-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 156%;
+  height: 156%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 4;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55));
+}
+
+.rv-frame--legend { width: 172%; height: 172%; }
+.rv-frame--gold { animation: rvFrameGlow 3.2s ease-in-out infinite; }
+.rv-frame--neon { animation: rvNeonGlow 2.6s ease-in-out infinite; }
+
+@keyframes rvFrameGlow {
+  0%, 100% { filter: drop-shadow(0 0 5px rgba(247, 195, 60, 0.45)) drop-shadow(0 3px 8px rgba(0, 0, 0, 0.5)); }
+  50% { filter: drop-shadow(0 0 14px rgba(255, 224, 122, 0.85)) drop-shadow(0 3px 10px rgba(0, 0, 0, 0.55)); }
+}
+
+@keyframes rvNeonGlow {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.5)) drop-shadow(0 3px 8px rgba(0, 0, 0, 0.5)); }
+  50% { filter: drop-shadow(0 0 13px rgba(34, 211, 238, 0.8)) drop-shadow(0 3px 10px rgba(0, 0, 0, 0.55)); }
+}
+
+/* wealth / charm gem badge under the avatar */
+.rv-seat-gem {
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 26px;
+  height: 26px;
+  z-index: 6;
+  pointer-events: none;
+  animation: rvGemBob 3s ease-in-out infinite;
+}
+
+.rv-seat-gem img {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 2px 6px rgba(214, 33, 154, 0.6));
+}
+
+.rv-seat-gem .rv-gem-value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+@keyframes rvGemBob {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-2px); }
+}
+
+/* seat number + mic status chips */
+.seat-number-badge {
+  bottom: -5px;
+  right: -5px;
+  width: 17px;
+  height: 17px;
+  font-size: 9px;
+  z-index: 5;
+  background: rgba(9, 5, 22, 0.92);
+  border: 1px solid rgba(167, 139, 250, 0.5);
+  color: #ddd6fe;
+}
+
+.seat-mic-status {
+  top: -2px;
+  left: -2px;
+  width: 17px;
+  height: 17px;
+  font-size: 9px;
+  z-index: 6;
+  border: 1.5px solid rgba(9, 5, 22, 0.85);
+}
+
+/* name plate under each seat */
+.seat-user-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 13px;
+  padding: 1.5px 7px;
+  max-width: 92px;
+  border-radius: 999px;
+  background: rgba(9, 5, 22, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: #f1f5f9;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.stage-seat.locked .seat-user-name {
+  color: rgba(252, 165, 165, 0.9);
+}
+
+.rv-name-text {
+  max-width: 54px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-level-chip {
+  font-size: 8px;
+  font-weight: 800;
+  padding: 0 4px;
+  border-radius: 999px;
+  color: #3a2405;
+  background: linear-gradient(135deg, #fde68a, #f0a92b);
+  line-height: 1.35;
+}
+
+/* animated speaking equalizer */
+.rv-wave {
+  display: none;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 10px;
+}
+
+.rv-wave i {
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #a7f3d0, #10b981);
+  height: 3px;
+}
+
+.stage-seat.speaking .rv-wave,
+.host-seat-wrapper.speaking .rv-wave {
+  display: inline-flex;
+}
+
+.stage-seat.speaking .rv-wave i:nth-child(1) { animation: rvWaveBar 0.9s ease-in-out infinite; }
+.stage-seat.speaking .rv-wave i:nth-child(2) { animation: rvWaveBar 0.72s ease-in-out infinite 0.1s; }
+.stage-seat.speaking .rv-wave i:nth-child(3) { animation: rvWaveBar 1.05s ease-in-out infinite 0.18s; }
+.stage-seat.speaking .rv-wave i:nth-child(4) { animation: rvWaveBar 0.8s ease-in-out infinite 0.26s; }
+
+@keyframes rvWaveBar {
+  0%, 100% { height: 3px; opacity: 0.7; }
+  50% { height: 10px; opacity: 1; }
+}
+
+/* speaking ripple around the speaker */
+.stage-seat.speaking .seat-avatar-container::before,
+.stage-seat.speaking .seat-avatar-container::after,
+.host-seat-wrapper.speaking .host-avatar-box::before,
+.host-seat-wrapper.speaking .host-avatar-box::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(16, 185, 129, 0.85);
+  animation: speakingRipple 1.3s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+  pointer-events: none;
+}
+
+.stage-seat.speaking .seat-avatar-container::after,
+.host-seat-wrapper.speaking .host-avatar-box::after {
+  animation-delay: 0.65s;
+}
+
+/* animated seat sticker overlay (mic emojis) */
+.seat-animated-sticker-overlay {
+  width: 118%;
+  height: 118%;
+  z-index: 60;
+}
+
+/* ============================================================================
+   3) AUDIENCE STRIP + BOTTOM BAR POLISH
+============================================================================ */
+.room-audience-strip-container {
+  background: linear-gradient(180deg, rgba(24, 16, 54, 0.78), rgba(11, 7, 26, 0.78));
+  border: 1px solid var(--rv-stroke);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.audience-count-pill {
+  background: linear-gradient(135deg, #f7c33c, #d6219a);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(214, 33, 154, 0.4);
+}
+
+.audience-strip-avatar-box {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06), 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.room-bottom-controls {
+  background: linear-gradient(180deg, rgba(11, 7, 26, 0.4), rgba(11, 7, 26, 0.92));
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 8px;
+}
+
+.room-chat-input-wrapper {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+}
+
+.room-tool-btn {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================================================
+   4) SHEET SYSTEM  (room settings + sub panels)
+============================================================================ */
+.rv-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(4, 2, 12, 0.62);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: rvFadeIn 0.2s ease;
+}
+
+@keyframes rvFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.rv-sheet {
+  width: 100%;
+  max-width: min(520px, 100%);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 22px 22px 0 0;
+  border: 1px solid var(--rv-stroke);
+  border-bottom: none;
+  background:
+    radial-gradient(ellipse 120% 60% at 50% 0%, rgba(139, 92, 246, 0.22), transparent 70%),
+    linear-gradient(180deg, #1a1236, #0b0719);
+  box-shadow: 0 -22px 60px rgba(0, 0, 0, 0.65);
+  animation: rvSlideUp 0.3s cubic-bezier(0.2, 0.9, 0.26, 1);
+  overflow: hidden;
+}
+
+@keyframes rvSlideUp {
+  from { transform: translateY(28px); opacity: 0.4; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.rv-sheet-grabber {
+  width: 42px;
+  height: 4px;
+  margin: 8px auto 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  flex-shrink: 0;
+}
+
+.rv-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+.rv-sheet-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 900;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rv-sheet-subtitle {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(196, 181, 253, 0.75);
+  display: block;
+  margin-top: 1px;
+}
+
+.rv-sheet-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rv-sheet-close:hover {
+  background: rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.45);
+  color: #fff;
+}
+
+.rv-sheet-body {
+  padding: 10px 14px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(167, 139, 250, 0.5) transparent;
+}
+
+.rv-sheet-body::-webkit-scrollbar { width: 4px; }
+.rv-sheet-body::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.5);
+  border-radius: 4px;
+}
+
+.rv-sheet-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(6, 3, 16, 0.6);
+  flex-shrink: 0;
+}
+
+.rv-btn {
+  flex: 1;
+  border: none;
+  border-radius: 12px;
+  padding: 11px 12px;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.16s ease, filter 0.2s ease;
+}
+
+.rv-btn:active { transform: scale(0.97); }
+
+.rv-btn.ghost {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+
+.rv-btn.gold {
+  background: linear-gradient(135deg, #ffe07a, #e0a212);
+  color: #3a2405;
+  box-shadow: 0 8px 20px rgba(224, 162, 18, 0.35);
+}
+
+.rv-btn.primary {
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.4);
+}
+
+/* room identity card inside the settings sheet */
+.rv-room-idcard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 16px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.18), rgba(236, 72, 153, 0.12));
+  border: 1px solid var(--rv-stroke);
+}
+
+.rv-room-idcard .rv-idcard-cover {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1.6px solid rgba(247, 195, 60, 0.55);
+  flex-shrink: 0;
+}
+
+.rv-idcard-meta { min-width: 0; flex: 1; }
+
+.rv-idcard-title {
+  font-size: 13.5px;
+  font-weight: 900;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rv-idcard-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.rv-mini-pill {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ddd6fe;
+}
+
+.rv-mini-pill.gold {
+  background: rgba(247, 195, 60, 0.16);
+  border-color: rgba(247, 195, 60, 0.4);
+  color: #fde68a;
+}
+
+/* settings tiles */
+.rv-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(196, 181, 253, 0.85);
+  margin: 12px 2px 8px;
+}
+
+.rv-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(167, 139, 250, 0.35), transparent);
+}
+
+.rv-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+
+.rv-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 6px 10px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-family: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #fff;
+  transition: transform 0.16s ease, border-color 0.2s ease, background 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rv-tile:hover {
+  transform: translateY(-2px);
+  border-color: rgba(167, 139, 250, 0.55);
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.22), rgba(255, 255, 255, 0.04));
+}
+
+.rv-tile:active { transform: scale(0.96); }
+
+.rv-tile-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.35), rgba(236, 72, 153, 0.22));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.rv-tile.gold .rv-tile-icon {
+  background: linear-gradient(135deg, rgba(255, 224, 122, 0.4), rgba(224, 162, 18, 0.25));
+}
+
+.rv-tile.danger .rv-tile-icon {
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.35), rgba(190, 26, 62, 0.25));
+}
+
+.rv-tile-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.25;
+  color: #ede9fe;
+}
+
+.rv-tile-value {
+  font-size: 9px;
+  font-weight: 800;
+  color: #f0abfc;
+}
+
+.rv-tile-current {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  font-size: 8px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.22);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  color: #6ee7b7;
+}
+
+.rv-tile-lock {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.rv-tile.locked {
+  opacity: 0.62;
+  filter: saturate(0.6);
+}
+
+.rv-tile.locked:hover { transform: none; }
+
+/* ============================================================================
+   5) BACKGROUND PICKER  (data-id="bg")
+============================================================================ */
+.rv-bg-preview {
+  position: relative;
+  height: 152px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--rv-stroke);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px 10px;
+}
+
+.rv-bg-preview .rv-preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.rv-bg-preview .rv-preview-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.rv-bg-preview .rv-preview-stage {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 7px;
+}
+
+.rv-preview-seat {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.1));
+  border: 1.6px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+}
+
+.rv-preview-seat.host {
+  width: 44px;
+  height: 44px;
+  border-color: #f7c33c;
+  box-shadow: 0 0 14px rgba(247, 195, 60, 0.6);
+}
+
+.rv-bg-preview .rv-preview-name {
+  font-size: 9px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+.rv-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scrollbar-width: none;
+}
+
+.rv-tabs::-webkit-scrollbar { display: none; }
+
+.rv-tab {
+  flex-shrink: 0;
+  padding: 6px 13px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  color: #ddd6fe;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.rv-tab.active {
+  color: #3a2405;
+  background: linear-gradient(135deg, #ffe07a, #e0a212);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 14px rgba(224, 162, 18, 0.35);
+}
+
+.rv-bg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+
+.rv-bg-card {
+  position: relative;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+  font-family: inherit;
+  transition: transform 0.18s ease, box-shadow 0.2s ease;
+}
+
+.rv-bg-card:hover { transform: translateY(-2px); }
+.rv-bg-card:active { transform: scale(0.97); }
+
+.rv-bg-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9 / 13;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  padding-bottom: 12px;
+  overflow: hidden;
+}
+
+.rv-bg-thumb .rv-thumb-seats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+}
+
+.rv-bg-thumb .rv-thumb-seat {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.rv-bg-thumb .rv-thumb-seat.host {
+  width: 13px;
+  height: 13px;
+  border-color: #f7c33c;
+  box-shadow: 0 0 7px rgba(247, 195, 60, 0.7);
+}
+
+.rv-bg-card .rv-bg-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 4px 4px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.82));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rv-bg-card.selected {
+  box-shadow: 0 0 0 2.4px #f7c33c, 0 8px 20px rgba(247, 195, 60, 0.3);
+}
+
+.rv-bg-card.selected::after {
+  content: '✓';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffe07a, #e0a212);
+  color: #3a2405;
+  font-size: 11px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.rv-bg-card .rv-vip-ribbon {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  font-size: 8px;
+  font-weight: 900;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(135deg, #f472b6, #7c3aed);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.rv-bg-card .rv-bg-lock {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(6, 3, 16, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+}
+
+/* ============================================================================
+   6) SEAT-COUNT PICKER  (data-id="seats")
+============================================================================ */
+.rv-seatmap {
+  position: relative;
+  height: 172px;
+  border-radius: 18px;
+  border: 1px solid var(--rv-stroke);
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 30%, rgba(139, 92, 246, 0.22), transparent 70%),
+    rgba(9, 5, 22, 0.55);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.5);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rv-seatmap-inner {
+  position: relative;
+  width: 158px;
+  height: 158px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rv-seatmap-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px dashed rgba(167, 139, 250, 0.28);
+}
+
+.rv-seatmap-host {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  z-index: 2;
+  background: linear-gradient(135deg, #ffe07a, #e0a212);
+  border: 2px solid #fff3b0;
+  box-shadow: 0 0 18px rgba(247, 195, 60, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+}
+
+.rv-seatmap-seat {
+  position: absolute;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.85), rgba(109, 40, 217, 0.85));
+  border: 1.4px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  animation: rvSeatPop 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) backwards;
+}
+
+@keyframes rvSeatPop {
+  from { transform: scale(0.2); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.rv-seatmap-legend {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #ddd6fe;
+}
+
+.rv-count-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 9px;
+}
+
+.rv-count-card {
+  position: relative;
+  padding: 10px 8px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  transition: transform 0.16s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.rv-count-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(167, 139, 250, 0.55);
+}
+
+.rv-count-card.selected {
+  border-color: #f7c33c;
+  background: linear-gradient(180deg, rgba(247, 195, 60, 0.2), rgba(255, 255, 255, 0.04));
+  box-shadow: 0 0 0 1.6px rgba(247, 195, 60, 0.55), 0 8px 20px rgba(224, 162, 18, 0.22);
+}
+
+.rv-count-diagram {
+  width: 76px;
+  height: 62px;
+  margin: 0 auto 6px;
+  position: relative;
+}
+
+.rv-count-diagram .rv-cd-host {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffe07a, #e0a212);
+  border: 1.3px solid #fff3b0;
+  box-shadow: 0 0 9px rgba(247, 195, 60, 0.7);
+}
+
+.rv-count-diagram .rv-cd-seat {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.9), rgba(109, 40, 217, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.rv-count-num {
+  font-size: 15px;
+  font-weight: 900;
+  color: #fff;
+}
+
+.rv-count-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: rgba(196, 181, 253, 0.85);
+}
+
+.rv-count-tag {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  font-weight: 900;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: #3a2405;
+  background: linear-gradient(135deg, #ffe07a, #f0a92b);
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.rv-count-card.upsell .rv-count-tag {
+  color: #fff;
+  background: linear-gradient(135deg, #f472b6, #7c3aed);
+}
+
+/* ============================================================================
+   7) ROOM BACKGROUND CATALOG  (rv-bg-*)
+============================================================================ */
+.live-room-container.rv-bg-cosmic_purple {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 8%, rgba(168, 85, 247, 0.42), transparent 70%),
+    radial-gradient(ellipse 70% 45% at 12% 92%, rgba(59, 130, 246, 0.32), transparent 72%),
+    linear-gradient(180deg, #23134f 0%, #150c30 45%, #09051a 100%);
+}
+
+.live-room-container.rv-bg-midnight_gold {
+  background:
+    radial-gradient(ellipse 78% 46% at 50% 6%, rgba(247, 195, 60, 0.34), transparent 68%),
+    radial-gradient(ellipse 66% 42% at 88% 88%, rgba(217, 119, 6, 0.26), transparent 72%),
+    linear-gradient(180deg, #2b2008 0%, #17112a 52%, #08050f 100%);
+}
+
+.live-room-container.rv-bg-starlight_blue {
+  background:
+    radial-gradient(ellipse 82% 50% at 50% 10%, rgba(56, 189, 248, 0.34), transparent 70%),
+    radial-gradient(ellipse 70% 46% at 18% 90%, rgba(99, 102, 241, 0.3), transparent 72%),
+    linear-gradient(180deg, #0b2350 0%, #0a1533 50%, #05070f 100%);
+}
+
+.live-room-container.rv-bg-aurora_lights {
+  background:
+    radial-gradient(ellipse 90% 55% at 20% 4%, rgba(16, 185, 129, 0.4), transparent 66%),
+    radial-gradient(ellipse 80% 50% at 82% 18%, rgba(139, 92, 246, 0.42), transparent 68%),
+    radial-gradient(ellipse 70% 45% at 50% 96%, rgba(6, 182, 212, 0.28), transparent 72%),
+    linear-gradient(180deg, #062a33 0%, #0b1330 52%, #05060f 100%);
+}
+
+.live-room-container.rv-bg-sakura_dream {
+  background:
+    radial-gradient(ellipse 84% 48% at 50% 6%, rgba(251, 113, 133, 0.42), transparent 68%),
+    radial-gradient(ellipse 70% 44% at 14% 88%, rgba(244, 114, 182, 0.32), transparent 72%),
+    linear-gradient(180deg, #53203a 0%, #2d1230 52%, #100618 100%);
+}
+
+.live-room-container.rv-bg-anime_sky {
+  background:
+    radial-gradient(ellipse 86% 50% at 50% 4%, rgba(96, 165, 250, 0.45), transparent 68%),
+    radial-gradient(ellipse 70% 46% at 80% 90%, rgba(236, 72, 153, 0.28), transparent 72%),
+    linear-gradient(180deg, #1c3a86 0%, #221a52 55%, #0a0618 100%);
+}
+
+.live-room-container.rv-bg-neon_tokyo {
+  background:
+    radial-gradient(ellipse 78% 46% at 18% 8%, rgba(236, 72, 153, 0.45), transparent 66%),
+    radial-gradient(ellipse 78% 46% at 84% 22%, rgba(34, 211, 238, 0.4), transparent 68%),
+    linear-gradient(180deg, #2a0b3d 0%, #150a2e 52%, #060311 100%);
+}
+
+.live-room-container.rv-bg-moe_pink {
+  background:
+    radial-gradient(ellipse 84% 50% at 50% 8%, rgba(244, 114, 182, 0.44), transparent 68%),
+    radial-gradient(ellipse 72% 44% at 16% 88%, rgba(168, 85, 247, 0.32), transparent 72%),
+    linear-gradient(180deg, #4a1240 0%, #2a1038 54%, #0e0518 100%);
+}
+
+.live-room-container.rv-bg-forest_night {
+  background:
+    radial-gradient(ellipse 82% 48% at 50% 6%, rgba(34, 197, 94, 0.3), transparent 68%),
+    radial-gradient(ellipse 70% 44% at 82% 90%, rgba(21, 128, 61, 0.32), transparent 72%),
+    linear-gradient(180deg, #07301f 0%, #0a1a22 54%, #04070c 100%);
+}
+
+.live-room-container.rv-bg-ocean_deep {
+  background:
+    radial-gradient(ellipse 84% 50% at 50% 4%, rgba(14, 165, 233, 0.38), transparent 68%),
+    radial-gradient(ellipse 72% 46% at 20% 92%, rgba(13, 148, 136, 0.32), transparent 72%),
+    linear-gradient(180deg, #062a45 0%, #07182f 54%, #03060f 100%);
+}
+
+.live-room-container.rv-bg-desert_dusk {
+  background:
+    radial-gradient(ellipse 84% 48% at 50% 8%, rgba(251, 146, 60, 0.38), transparent 68%),
+    radial-gradient(ellipse 72% 46% at 18% 90%, rgba(190, 24, 93, 0.28), transparent 72%),
+    linear-gradient(180deg, #4a2208 0%, #2a1226 54%, #0b0410 100%);
+}
+
+.live-room-container.rv-bg-cyber_purple {
+  background:
+    radial-gradient(ellipse 80% 46% at 50% 6%, rgba(139, 92, 246, 0.46), transparent 66%),
+    radial-gradient(ellipse 74% 44% at 88% 86%, rgba(236, 72, 153, 0.34), transparent 70%),
+    linear-gradient(180deg, #1d0b45 0%, #120a2c 52%, #05030f 100%);
+}
+
+.live-room-container.rv-bg-laser_show {
+  background:
+    radial-gradient(ellipse 78% 44% at 14% 6%, rgba(34, 211, 238, 0.44), transparent 64%),
+    radial-gradient(ellipse 78% 44% at 86% 14%, rgba(236, 72, 153, 0.42), transparent 66%),
+    radial-gradient(ellipse 70% 42% at 50% 94%, rgba(250, 204, 21, 0.28), transparent 72%),
+    linear-gradient(180deg, #240a3c 0%, #120a2a 52%, #05030f 100%);
+}
+
+.live-room-container.rv-bg-disco_pulse {
+  background:
+    radial-gradient(ellipse 80% 46% at 50% 10%, rgba(217, 70, 239, 0.44), transparent 66%),
+    radial-gradient(ellipse 72% 44% at 22% 88%, rgba(59, 130, 246, 0.34), transparent 72%),
+    linear-gradient(180deg, #2c0b40 0%, #150a30 52%, #060312 100%);
+}
+
+.live-room-container.rv-bg-vip_diamond {
+  background:
+    radial-gradient(ellipse 84% 48% at 50% 6%, rgba(165, 243, 252, 0.36), transparent 66%),
+    radial-gradient(ellipse 74% 44% at 84% 88%, rgba(129, 140, 248, 0.34), transparent 70%),
+    linear-gradient(180deg, #10314a 0%, #101a44 52%, #05060f 100%);
+}
+
+.live-room-container.rv-bg-vip_gold_palace {
+  background:
+    radial-gradient(ellipse 84% 48% at 50% 5%, rgba(255, 224, 122, 0.44), transparent 66%),
+    radial-gradient(ellipse 74% 46% at 16% 90%, rgba(180, 83, 9, 0.36), transparent 72%),
+    linear-gradient(180deg, #3a2708 0%, #23152a 54%, #0a0512 100%);
+}
+
+.live-room-container.rv-bg-vip_galaxy_hd {
+  background:
+    radial-gradient(ellipse 90% 56% at 50% 4%, rgba(124, 58, 237, 0.5), transparent 64%),
+    radial-gradient(ellipse 76% 46% at 82% 82%, rgba(236, 72, 153, 0.36), transparent 70%),
+    radial-gradient(ellipse 70% 42% at 12% 46%, rgba(34, 211, 238, 0.3), transparent 72%),
+    linear-gradient(180deg, #170a3c 0%, #0d0722 52%, #04020c 100%);
+}
+
+.live-room-container.rv-bg-vip_rose_crown {
+  background:
+    radial-gradient(ellipse 84% 48% at 50% 6%, rgba(251, 113, 133, 0.46), transparent 66%),
+    radial-gradient(ellipse 74% 46% at 84% 88%, rgba(247, 195, 60, 0.3), transparent 70%),
+    linear-gradient(180deg, #4a0f2c 0%, #2b0f2c 54%, #0d0410 100%);
+}
+
+/* backgrounds inside the picker thumbnails reuse the exact same paint */
+.rv-bg-thumb[data-bg] {
+  background-color: #0b0719;
+}
+
+.rv-bg-thumb.rv-bg-cosmic_purple { background: radial-gradient(ellipse 80% 50% at 50% 8%, rgba(168,85,247,.55), transparent 70%), radial-gradient(ellipse 70% 45% at 12% 92%, rgba(59,130,246,.4), transparent 72%), linear-gradient(180deg,#23134f,#150c30 45%,#09051a); }
+.rv-bg-thumb.rv-bg-midnight_gold { background: radial-gradient(ellipse 78% 46% at 50% 6%, rgba(247,195,60,.5), transparent 68%), linear-gradient(180deg,#2b2008,#17112a 52%,#08050f); }
+.rv-bg-thumb.rv-bg-starlight_blue { background: radial-gradient(ellipse 82% 50% at 50% 10%, rgba(56,189,248,.5), transparent 70%), linear-gradient(180deg,#0b2350,#0a1533 50%,#05070f); }
+.rv-bg-thumb.rv-bg-aurora_lights { background: radial-gradient(ellipse 90% 55% at 20% 4%, rgba(16,185,129,.55), transparent 66%), radial-gradient(ellipse 80% 50% at 82% 18%, rgba(139,92,246,.55), transparent 68%), linear-gradient(180deg,#062a33,#0b1330 52%,#05060f); }
+.rv-bg-thumb.rv-bg-sakura_dream { background: radial-gradient(ellipse 84% 48% at 50% 6%, rgba(251,113,133,.55), transparent 68%), linear-gradient(180deg,#53203a,#2d1230 52%,#100618); }
+.rv-bg-thumb.rv-bg-anime_sky { background: radial-gradient(ellipse 86% 50% at 50% 4%, rgba(96,165,250,.6), transparent 68%), linear-gradient(180deg,#1c3a86,#221a52 55%,#0a0618); }
+.rv-bg-thumb.rv-bg-neon_tokyo { background: radial-gradient(ellipse 78% 46% at 18% 8%, rgba(236,72,153,.6), transparent 66%), radial-gradient(ellipse 78% 46% at 84% 22%, rgba(34,211,238,.55), transparent 68%), linear-gradient(180deg,#2a0b3d,#150a2e 52%,#060311); }
+.rv-bg-thumb.rv-bg-moe_pink { background: radial-gradient(ellipse 84% 50% at 50% 8%, rgba(244,114,182,.6), transparent 68%), linear-gradient(180deg,#4a1240,#2a1038 54%,#0e0518); }
+.rv-bg-thumb.rv-bg-forest_night { background: radial-gradient(ellipse 82% 48% at 50% 6%, rgba(34,197,94,.45), transparent 68%), linear-gradient(180deg,#07301f,#0a1a22 54%,#04070c); }
+.rv-bg-thumb.rv-bg-ocean_deep { background: radial-gradient(ellipse 84% 50% at 50% 4%, rgba(14,165,233,.5), transparent 68%), linear-gradient(180deg,#062a45,#07182f 54%,#03060f); }
+.rv-bg-thumb.rv-bg-desert_dusk { background: radial-gradient(ellipse 84% 48% at 50% 8%, rgba(251,146,60,.55), transparent 68%), linear-gradient(180deg,#4a2208,#2a1226 54%,#0b0410); }
+.rv-bg-thumb.rv-bg-cyber_purple { background: radial-gradient(ellipse 80% 46% at 50% 6%, rgba(139,92,246,.6), transparent 66%), linear-gradient(180deg,#1d0b45,#120a2c 52%,#05030f); }
+.rv-bg-thumb.rv-bg-laser_show { background: radial-gradient(ellipse 78% 44% at 14% 6%, rgba(34,211,238,.6), transparent 64%), radial-gradient(ellipse 78% 44% at 86% 14%, rgba(236,72,153,.55), transparent 66%), linear-gradient(180deg,#240a3c,#120a2a 52%,#05030f); }
+.rv-bg-thumb.rv-bg-disco_pulse { background: radial-gradient(ellipse 80% 46% at 50% 10%, rgba(217,70,239,.6), transparent 66%), linear-gradient(180deg,#2c0b40,#150a30 52%,#060312); }
+.rv-bg-thumb.rv-bg-vip_diamond { background: radial-gradient(ellipse 84% 48% at 50% 6%, rgba(165,243,252,.5), transparent 66%), linear-gradient(180deg,#10314a,#101a44 52%,#05060f); }
+.rv-bg-thumb.rv-bg-vip_gold_palace { background: radial-gradient(ellipse 84% 48% at 50% 5%, rgba(255,224,122,.6), transparent 66%), linear-gradient(180deg,#3a2708,#23152a 54%,#0a0512); }
+.rv-bg-thumb.rv-bg-vip_galaxy_hd { background: radial-gradient(ellipse 90% 56% at 50% 4%, rgba(124,58,237,.65), transparent 64%), radial-gradient(ellipse 76% 46% at 82% 82%, rgba(236,72,153,.5), transparent 70%), linear-gradient(180deg,#170a3c,#0d0722 52%,#04020c); }
+.rv-bg-thumb.rv-bg-vip_rose_crown { background: radial-gradient(ellipse 84% 48% at 50% 6%, rgba(251,113,133,.6), transparent 66%), radial-gradient(ellipse 74% 46% at 84% 88%, rgba(247,195,60,.4), transparent 70%), linear-gradient(180deg,#4a0f2c,#2b0f2c 54%,#0d0410); }
+
+/* preview cards inside the picker get the same paint as the live room */
+.rv-bg-preview[data-bg] { background-color: #0b0719; }
+.rv-bg-preview.rv-bg-cosmic_purple { background: radial-gradient(ellipse 80% 50% at 50% 8%, rgba(168,85,247,.45), transparent 70%), linear-gradient(180deg,#23134f,#150c30 45%,#09051a); }
+.rv-bg-preview.rv-bg-midnight_gold { background: radial-gradient(ellipse 78% 46% at 50% 6%, rgba(247,195,60,.42), transparent 68%), linear-gradient(180deg,#2b2008,#17112a 52%,#08050f); }
+.rv-bg-preview.rv-bg-starlight_blue { background: radial-gradient(ellipse 82% 50% at 50% 10%, rgba(56,189,248,.42), transparent 70%), linear-gradient(180deg,#0b2350,#0a1533 50%,#05070f); }
+.rv-bg-preview.rv-bg-aurora_lights { background: radial-gradient(ellipse 90% 55% at 20% 4%, rgba(16,185,129,.5), transparent 66%), radial-gradient(ellipse 80% 50% at 82% 18%, rgba(139,92,246,.5), transparent 68%), linear-gradient(180deg,#062a33,#0b1330 52%,#05060f); }
+.rv-bg-preview.rv-bg-sakura_dream { background: radial-gradient(ellipse 84% 48% at 50% 6%, rgba(251,113,133,.5), transparent 68%), linear-gradient(180deg,#53203a,#2d1230 52%,#100618); }
+.rv-bg-preview.rv-bg-anime_sky { background: radial-gradient(ellipse 86% 50% at 50% 4%, rgba(96,165,250,.55), transparent 68%), linear-gradient(180deg,#1c3a86,#221a52 55%,#0a0618); }
+.rv-bg-preview.rv-bg-neon_tokyo { background: radial-gradient(ellipse 78% 46% at 18% 8%, rgba(236,72,153,.55), transparent 66%), radial-gradient(ellipse 78% 46% at 84% 22%, rgba(34,211,238,.5), transparent 68%), linear-gradient(180deg,#2a0b3d,#150a2e 52%,#060311); }
+.rv-bg-preview.rv-bg-moe_pink { background: radial-gradient(ellipse 84% 50% at 50% 8%, rgba(244,114,182,.55), transparent 68%), linear-gradient(180deg,#4a1240,#2a1038 54%,#0e0518); }
+.rv-bg-preview.rv-bg-forest_night { background: radial-gradient(ellipse 82% 48% at 50% 6%, rgba(34,197,94,.4), transparent 68%), linear-gradient(180deg,#07301f,#0a1a22 54%,#04070c); }
+.rv-bg-preview.rv-bg-ocean_deep { background: radial-gradient(ellipse 84% 50% at 50% 4%, rgba(14,165,233,.45), transparent 68%), linear-gradient(180deg,#062a45,#07182f 54%,#03060f); }
+.rv-bg-preview.rv-bg-desert_dusk { background: radial-gradient(ellipse 84% 48% at 50% 8%, rgba(251,146,60,.5), transparent 68%), linear-gradient(180deg,#4a2208,#2a1226 54%,#0b0410); }
+.rv-bg-preview.rv-bg-cyber_purple { background: radial-gradient(ellipse 80% 46% at 50% 6%, rgba(139,92,246,.55), transparent 66%), linear-gradient(180deg,#1d0b45,#120a2c 52%,#05030f); }
+.rv-bg-preview.rv-bg-laser_show { background: radial-gradient(ellipse 78% 44% at 14% 6%, rgba(34,211,238,.55), transparent 64%), radial-gradient(ellipse 78% 44% at 86% 14%, rgba(236,72,153,.5), transparent 66%), linear-gradient(180deg,#240a3c,#120a2a 52%,#05030f); }
+.rv-bg-preview.rv-bg-disco_pulse { background: radial-gradient(ellipse 80% 46% at 50% 10%, rgba(217,70,239,.55), transparent 66%), linear-gradient(180deg,#2c0b40,#150a30 52%,#060312); }
+.rv-bg-preview.rv-bg-vip_diamond { background: radial-gradient(ellipse 84% 48% at 50% 6%, rgba(165,243,252,.45), transparent 66%), linear-gradient(180deg,#10314a,#101a44 52%,#05060f); }
+.rv-bg-preview.rv-bg-vip_gold_palace { background: radial-gradient(ellipse 84% 48% at 50% 5%, rgba(255,224,122,.55), transparent 66%), linear-gradient(180deg,#3a2708,#23152a 54%,#0a0512); }
+.rv-bg-preview.rv-bg-vip_galaxy_hd { background: radial-gradient(ellipse 90% 56% at 50% 4%, rgba(124,58,237,.6), transparent 64%), radial-gradient(ellipse 76% 46% at 82% 82%, rgba(236,72,153,.45), transparent 70%), linear-gradient(180deg,#170a3c,#0d0722 52%,#04020c); }
+.rv-bg-preview.rv-bg-vip_rose_crown { background: radial-gradient(ellipse 84% 48% at 50% 6%, rgba(251,113,133,.55), transparent 66%), radial-gradient(ellipse 74% 46% at 84% 88%, rgba(247,195,60,.36), transparent 70%), linear-gradient(180deg,#4a0f2c,#2b0f2c 54%,#0d0410); }
+
+/* ============================================================================
+   8) FORMS INSIDE THE SHEET
+============================================================================ */
+.rv-field-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: #ddd6fe;
+  margin: 2px 2px 6px;
+  display: block;
+}
+
+.rv-input,
+.rv-textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.rv-textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.rv-input:focus,
+.rv-textarea:focus {
+  border-color: rgba(167, 139, 250, 0.65);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
+}
+
+.rv-option-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rv-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: right;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.18s ease;
+}
+
+.rv-option:hover { border-color: rgba(167, 139, 250, 0.5); }
+
+.rv-option.selected {
+  border-color: rgba(247, 195, 60, 0.6);
+  background: rgba(247, 195, 60, 0.14);
+}
+
+.rv-option-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  background: rgba(139, 92, 246, 0.22);
+  flex-shrink: 0;
+}
+
+.rv-option-meta { flex: 1; min-width: 0; }
+
+.rv-option-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.rv-option-desc {
+  font-size: 10px;
+  color: rgba(196, 181, 253, 0.8);
+  margin-top: 1px;
+}
+
+.rv-option-check {
+  font-size: 14px;
+  color: #6ee7b7;
+  opacity: 0;
+}
+
+.rv-option.selected .rv-option-check { opacity: 1; }
+
+/* fullscreen (desktop) tweaks */
+.app-container.fullscreen-mode .rv-seat-shell { --rv-seat-size: 74px; }
+.app-container.fullscreen-mode .guest-seats-grid { max-width: 620px; column-gap: 18px; }
+.app-container.fullscreen-mode .rv-top-bar { padding: 10px 16px 8px; }
+.app-container.fullscreen-mode .rv-tile-grid { grid-template-columns: repeat(4, 1fr); }
+.app-container.fullscreen-mode .rv-bg-grid { grid-template-columns: repeat(5, 1fr); }
+
+@media (max-width: 360px) {
+  :root { --rv-seat-size: 52px; }
+  .seat-user-name { font-size: 9px; padding: 1px 5px; }
+  .rv-name-text { max-width: 44px; }
+  .rv-top-btn { width: 30px; height: 30px; font-size: 13.5px; }
+}

@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" fill="none">
+  <defs>
+    <linearGradient id="cl-rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff7d6"/>
+      <stop offset="30%" stop-color="#fbbf24"/>
+      <stop offset="62%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <radialGradient id="cl-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#facc15" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#a855f7" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="cl-soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="60" cy="60" r="47" fill="url(#cl-glow)" opacity="0.62"/>
+  <circle cx="60" cy="60" r="44" stroke="url(#cl-rim)" stroke-width="3.6" opacity="0.5" filter="url(#cl-soft)"/>
+  <circle cx="60" cy="60" r="43.2" stroke="#1a1038" stroke-width="9.2" opacity="0.96"/>
+  <circle cx="60" cy="60" r="43.2" stroke="url(#cl-rim)" stroke-width="3.1"/>
+  <circle cx="60" cy="60" r="46.9" stroke="#fff2b8" stroke-width="1" opacity="0.8"/>
+  <circle cx="60" cy="60" r="38.8" stroke="#fcd34d" stroke-width="0.9" opacity="0.8"/>
+
+  <g fill="url(#cl-rim)">
+    <circle cx="60" cy="18.6" r="1.85" transform="rotate(0 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(30 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(60 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(90 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(120 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(150 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(180 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(210 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(240 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(270 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(300 60 60)"/>
+<circle cx="60" cy="18.6" r="1.85" transform="rotate(330 60 60)"/>
+  </g>
+  <g>
+    <path d="M 60.00,9.40 L 60.78,11.82 L 63.20,12.60 L 60.78,13.38 L 60.00,15.80 L 59.22,13.38 L 56.80,12.60 L 59.22,11.82 Z" fill="#fffbeb" opacity="0.9" transform="rotate(0 60 60)"/>
+<path d="M 60.00,9.40 L 60.78,11.82 L 63.20,12.60 L 60.78,13.38 L 60.00,15.80 L 59.22,13.38 L 56.80,12.60 L 59.22,11.82 Z" fill="#fffbeb" opacity="0.9" transform="rotate(90 60 60)"/>
+<path d="M 60.00,9.40 L 60.78,11.82 L 63.20,12.60 L 60.78,13.38 L 60.00,15.80 L 59.22,13.38 L 56.80,12.60 L 59.22,11.82 Z" fill="#fffbeb" opacity="0.9" transform="rotate(180 60 60)"/>
+<path d="M 60.00,9.40 L 60.78,11.82 L 63.20,12.60 L 60.78,13.38 L 60.00,15.80 L 59.22,13.38 L 56.80,12.60 L 59.22,11.82 Z" fill="#fffbeb" opacity="0.9" transform="rotate(270 60 60)"/>
+  </g>
+
+  <!-- legend crown -->
+  <g transform="translate(60 13)" filter="url(#cl-soft)">
+    <path d="M -17 6 L -11 -9 L -5 -1 L 0 -14 L 5 -1 L 11 -9 L 17 6 Z" fill="#fbbf24" stroke="#7c3aed" stroke-width="1"/>
+    <circle cx="0" cy="-16" r="2.4" fill="#ec4899" stroke="#be185d" stroke-width="0.5"/>
+    <circle cx="-11" cy="-10.5" r="1.7" fill="#22d3ee" stroke="#0e7490" stroke-width="0.45"/>
+    <circle cx="11" cy="-10.5" r="1.7" fill="#22d3ee" stroke="#0e7490" stroke-width="0.45"/>
+    <rect x="-17" y="6" width="34" height="3.2" rx="1.6" fill="#a855f7"/>
+  </g>
+</svg>

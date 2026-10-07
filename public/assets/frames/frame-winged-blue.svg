@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" fill="none">
+  <defs>
+    <linearGradient id="wb-rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#bff0ff"/>
+      <stop offset="35%" stop-color="#5ec8ff"/>
+      <stop offset="68%" stop-color="#3b6bff"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="wb-core" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#122a6b"/>
+      <stop offset="55%" stop-color="#0b1740"/>
+      <stop offset="100%" stop-color="#1b2a6b"/>
+    </linearGradient>
+    <linearGradient id="wb-wing" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="42%" stop-color="#dcefff"/>
+      <stop offset="80%" stop-color="#9fd0ff"/>
+      <stop offset="100%" stop-color="#6fa8ff"/>
+    </linearGradient>
+    <radialGradient id="wb-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7dd3fc" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="wb-soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.1" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="60" cy="60" r="45" fill="url(#wb-glow)" opacity="0.55"/>
+
+  <!-- feathered angel wings -->
+  <g filter="url(#wb-soft)">
+    <g fill="url(#wb-wing)" stroke="#5b9bff" stroke-width="0.7" opacity="0.98">
+      <path d="M 60 60 C 47 42 30 36 14 40 C 20 47 22 54 21 61 C 27 60 33 61 38 64 C 42 68 46 72 52 75 Z"/>
+      <path d="M 60 60 C 47 42 30 36 14 40 C 20 47 22 54 21 61 C 27 60 33 61 38 64 C 42 68 46 72 52 75 Z" transform="translate(120 0) scale(-1 1)"/>
+    </g>
+    <g fill="#ffffff" stroke="#8dc2ff" stroke-width="0.45" opacity="0.95">
+      <path d="M 60 62 C 50 50 38 45 27 47 C 32 52 34 57 33.5 62 C 38 61.5 42 62.5 46 65 Z"/>
+      <path d="M 60 62 C 50 50 38 45 27 47 C 32 52 34 57 33.5 62 C 38 61.5 42 62.5 46 65 Z" transform="translate(120 0) scale(-1 1)"/>
+    </g>
+  </g>
+
+  <!-- outer rim -->
+  <circle cx="60" cy="60" r="43.4" stroke="#0a1230" stroke-width="9.2" opacity="0.95"/>
+  <circle cx="60" cy="60" r="43.4" stroke="url(#wb-core)" stroke-width="7.2"/>
+  <circle cx="60" cy="60" r="47.1" stroke="url(#wb-rim)" stroke-width="1.5"/>
+  <circle cx="60" cy="60" r="39.6" stroke="#7fd8ff" stroke-width="0.9" opacity="0.85"/>
+
+  <!-- rim sparkles -->
+  
+  <g opacity="0.95">
+    <path d="M 60.00,11.90 L 60.74,14.26 L 63.10,15.00 L 60.74,15.74 L 60.00,18.10 L 59.26,15.74 L 56.90,15.00 L 59.26,14.26 Z" fill="#eaf6ff" transform="rotate(0 60 60)"/>
+<path d="M 60.00,11.90 L 60.74,14.26 L 63.10,15.00 L 60.74,15.74 L 60.00,18.10 L 59.26,15.74 L 56.90,15.00 L 59.26,14.26 Z" fill="#eaf6ff" transform="rotate(45 60 60)"/>
+<path d="M 60.00,11.90 L 60.74,14.26 L 63.10,15.00 L 60.74,15.74 L 60.00,18.10 L 59.26,15.74 L 56.90,15.00 L 59.26,14.26 Z" fill="#eaf6ff" transform="rotate(90 60 60)"/>
+<path d="M 60.00,11.90 L 60.74,14.26 L 63.10,15.00 L 60.74,15.74 L 60.00,18.10 L 59.26,15.74 L 56.90,15.00 L 59.26,14.26 Z" fill="#eaf6ff" transform="rotate(135 60 60)"/>
+<path d="M 60.00,11.90 L 60.74,14.26 L 63.10,15.00 L 60.74,15.74 L 60.00,18.10 L 59.26,15.74 L 56.90,15.00 L 59.26,14.26 Z" fill="#eaf6ff" transform="rotate(180 60 60)"/>
+<path d="M 60.00,11.90 L 60.74,14.26 L 63.10,15.00 L 60.74,15.74 L 60.00,18.10 L 59.26,15.74 L 56.90,15.00 L 59.26,14.26 Z" fill="#eaf6ff" transform="rotate(225 60 60)"/>
+<path d="M 60.00,11.90 L 60.74,14.26 L 63.10,15.00 L 60.74,15.74 L 60.00,18.10 L 59.26,15.74 L 56.90,15.00 L 59.26,14.26 Z" fill="#eaf6ff" transform="rotate(270 60 60)"/>
+<path d="M 60.00,11.90 L 60.74,14.26 L 63.10,15.00 L 60.74,15.74 L 60.00,18.10 L 59.26,15.74 L 56.90,15.00 L 59.26,14.26 Z" fill="#eaf6ff" transform="rotate(315 60 60)"/>
+  </g>
+  <g opacity="0.9">
+    <circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(15 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(45 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(75 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(105 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(135 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(165 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(195 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(225 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(255 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(285 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(315 60 60)"/>
+<circle cx="60" cy="20.5" r="1.5" fill="#bfe9ff" transform="rotate(345 60 60)"/>
+  </g>
+
+  <!-- top crest -->
+  <g transform="translate(60 16)">
+    <path d="M 0 -10 C 4 -4 8 -2 12 -3 C 9 3 5 6 0 6 C -5 6 -9 3 -12 -3 C -8 -2 -4 -4 0 -10 Z" fill="#dff1ff" stroke="#5b9bff" stroke-width="0.7"/>
+    <circle cx="0" cy="-11.4" r="2" fill="#7dd3fc" stroke="#2563eb" stroke-width="0.4"/>
+  </g>
+</svg>
