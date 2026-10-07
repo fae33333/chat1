@@ -70,6 +70,11 @@
   let bodyObs = null;
   let audioObs = null;
 
+  // مكتبة الموسيقى محلية للمتصفح. الملفات لا تُرفع إلى الخادم؛ تشغيلها يمر عبر
+  // مسار صوت المقعد الحالي حتى يسمعها كل من في الغرفة عبر WebRTC.
+  const musicLibrary = [];
+  let musicSequence = 0;
+
   const st = () => App().state;
   const me = () => st().currentUser;
   const roomId = () => ctx.room.id;
@@ -103,7 +108,8 @@
   function setup(room, modal, container) {
     cleanup();
     ctx = { room, modal, container, layer: null, bg: null, admin: isAdminUser(room), chat: jp(room.chat_settings, {}), seatS: jp(room.seat_settings, {}),
-            mutedSeats: new Set(), allMuted: false, allLocked: false, audioMuted: false, bgPicked: loadMyBgs() };
+            mutedSeats: new Set(), allMuted: false, allLocked: false, audioMuted: false, bgPicked: loadMyBgs(),
+            music: { selectedId: null, current: null, audio: null, audioContext: null, mediaSource: null, destination: null, playing: false, ownerId: null, remote: null } };
     (room.seats || []).forEach(s => { if (s.seat_index > 0 && s.is_muted && !s.user_id) ctx.mutedSeats.add(s.seat_index); });
 
     // الخلفية + الطبقة
@@ -112,6 +118,7 @@
     const layer = document.createElement('div'); layer.className = 'rv-layer';
     layer.addEventListener('click', (ev) => { if (ev.target === layer) closeLayer(); });
     container.appendChild(layer); ctx.layer = layer;
+    renderMusicNowPlaying();
 
     buildTopButtons();
     buildBottomBar();
@@ -138,6 +145,7 @@
     if (audioObs) { audioObs.disconnect(); audioObs = null; }
     document.querySelectorAll('.rv-mini').forEach(n => n.remove());
     if (ctx && ctx.audioMuted) document.querySelectorAll('audio').forEach(a => { a.muted = false; });
+    if (ctx) stopRoomMusic(false, true);
     ctx = null;
   }
 
@@ -179,24 +187,40 @@
 
   function buildBottomBar() {
     const bar = ctx.modal.querySelector('.room-bottom-controls'); if (!bar) return;
-    if (!bar.querySelector('.rv-pk-btn')) {
-      const pk = document.createElement('button'); pk.type = 'button'; pk.className = 'rv-pk-btn'; pk.title = 'تحدي PK';
-      pk.innerHTML = 'p<span>K</span>';
-      pk.onclick = () => {
-        if (ctx.admin) { try { App().startRoomPkBattle(ctx.room); } catch (e) { toast('تعذر بدء التحدي'); } }
-        else toast('تحدي الـ PK متاح لمضيف الغرفة والإدارة فقط');
-      };
-      bar.appendChild(pk);
-    }
+    // القائمة السفلية مخصصة لأداتين فقط: الإكسسوارات والموسيقى.
+    // أزيلت منها أزرار تحدي PK ومركز الترفيه نهائياً.
     if (!bar.querySelector('.rv-menu-btn')) {
-      const m = document.createElement('button'); m.type = 'button'; m.className = 'room-tool-btn rv-menu-btn'; m.title = 'القائمة';
+      const m = document.createElement('button'); m.type = 'button'; m.className = 'room-tool-btn rv-menu-btn'; m.title = 'الإكسسوارات والموسيقى';
+      m.setAttribute('aria-label', 'الإكسسوارات والموسيقى');
       m.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">${IC.menu}</svg>`;
-      m.onclick = openControl;
+      m.onclick = openRoomTools;
       bar.appendChild(m);
     }
-    // تحويل أيقونات الرسائل/الألعاب إلى خطوط بيضاء (كما في الفيديو)
+    // تحويل أيقونة الهدية إلى رسم أبيض/وردي خفيف كما في تصميم الغرفة.
     const gift = bar.querySelector('#room-open-gifts-btn');
     if (gift) gift.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#ff4fa3" stroke-width="1.9" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2"/><path d="M3 13h18M12 9v11M12 9c-2-4-6-3-5 0 .6 1.8 3.3 1.2 5 0zM12 9c2-4 6-3 5 0-.6 1.8-3.3 1.2-5 0z"/></svg>`;
+  }
+
+  function openRoomTools() {
+    if (!ctx) return;
+    const l = showLayer(`
+      <div class="rv-sheet rv-tools-sheet" role="dialog" aria-label="أدوات الغرفة">
+        <button type="button" class="rv-x" style="top:12px" aria-label="إغلاق">✕</button>
+        <div class="rv-sheet-title">أدوات الغرفة</div>
+        <div class="rv-tools-grid">
+          <button type="button" class="rv-ctl" data-room-tool="accessories"><i>${ico('image')}</i><span>الإكسسوارات</span></button>
+          <button type="button" class="rv-ctl" data-room-tool="music"><i>${ico('music')}</i><span>موسيقى</span></button>
+        </div>
+      </div>`);
+    l.querySelector('.rv-x').onclick = closeLayer;
+    wire(l, '[data-room-tool]', (button) => {
+      if (button.dataset.roomTool === 'accessories') {
+        closeLayer();
+        App().openRoomAccessoriesModal(ctx.room);
+      } else {
+        openMusicSheet();
+      }
+    });
   }
 
   function buildGameStack() {
@@ -214,6 +238,215 @@
           .observe(ob, { childList: true, characterData: true, subtree: true, attributes: true });
       }
     });
+  }
+
+  // ====== الموسيقى المحلية / الأونلاين ======
+  function musicTrackTitle(file) {
+    return String(file.name || 'نغمة جديدة').replace(/\.[^/.]+$/, '') || 'نغمة جديدة';
+  }
+
+  function addLocalMusicFiles(files) {
+    const added = Array.from(files || []).filter(file => file && (file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(file.name)));
+    added.forEach(file => {
+      const id = `local-${Date.now()}-${musicSequence++}`;
+      musicLibrary.push({ id, title: musicTrackTitle(file), source: 'device', url: URL.createObjectURL(file), fileName: file.name });
+    });
+    if (added.length) {
+      toast(`تمت إضافة ${added.length} نغمة من الجهاز`);
+      paintMusicSheet();
+    } else {
+      toast('لم يتم اختيار ملف صوتي صالح');
+    }
+  }
+
+  function addOnlineMusic(url, title) {
+    const cleanUrl = String(url || '').trim();
+    if (!/^https?:\/\//i.test(cleanUrl)) return toast('أدخل رابط ملف صوتي صحيح يبدأ بـ https://');
+    const inferred = cleanUrl.split('/').pop().split('?')[0].replace(/\.[^/.]+$/, '') || 'موسيقى أونلاين';
+    musicLibrary.push({
+      id: `online-${Date.now()}-${musicSequence++}`,
+      title: String(title || inferred).trim() || 'موسيقى أونلاين',
+      source: 'online', url: cleanUrl
+    });
+    toast('تمت إضافة النغمة الأونلاين');
+    paintMusicSheet();
+  }
+
+  function renderMusicNowPlaying() {
+    if (!ctx) return;
+    let card = ctx.container.querySelector('.rv-now-playing');
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'rv-now-playing';
+      ctx.container.appendChild(card);
+    }
+    const active = ctx.music && ctx.music.playing && (ctx.music.current || ctx.music.remote);
+    if (!active) { card.classList.remove('on'); card.innerHTML = ''; return; }
+    const item = ctx.music.current || ctx.music.remote;
+    card.classList.add('on');
+    card.innerHTML = `
+      <div class="rv-music-art"><span>♫</span></div>
+      <div class="rv-now-playing-copy"><b>${esc(item.title || 'موسيقى')}</b><small>${ctx.music.current ? 'تُشغّل على مقعدك' : 'تُشغّل من مقعد المايك'}</small></div>
+      ${ctx.music.current ? '<button type="button" class="rv-now-stop" aria-label="إيقاف الموسيقى">■</button>' : ''}`;
+    const stop = card.querySelector('.rv-now-stop');
+    if (stop) stop.onclick = () => stopRoomMusic(true);
+  }
+
+  function renderMusicSeatIndicator() {
+    if (!ctx || !ctx.music) return;
+    const active = ctx.music.playing && (ctx.music.current || ctx.music.remote);
+    const ownerId = ctx.music.ownerId;
+    const seatIndex = ctx.music.seatIndex;
+    if (!active || seatIndex === undefined || seatIndex === null) {
+      ctx.modal.querySelectorAll('.rv-seat-music').forEach(node => node.remove());
+      return;
+    }
+    const seat = seatIndex === 0
+      ? ctx.modal.querySelector('#host-seat-0 .host-avatar-box')
+      : ctx.modal.querySelector(`#stage-seat-${seatIndex} .seat-avatar-container`);
+    if (!seat) return;
+    ctx.modal.querySelectorAll('.rv-seat-music').forEach(node => {
+      if (node.parentNode !== seat) node.remove();
+    });
+    let badge = seat.querySelector('.rv-seat-music');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'rv-seat-music';
+      seat.appendChild(badge);
+    }
+    const item = ctx.music.current || ctx.music.remote;
+    badge.innerHTML = `<span class="rv-seat-music-note">♫</span><span class="rv-seat-music-bars"><i></i><i></i><i></i></span><small>${esc(item.title || 'موسيقى')}</small>`;
+    badge.title = `الموسيقى على المقعد ${ownerId ? '🎵' : ''}`;
+  }
+
+  function paintMusicSheet() {
+    if (!ctx || !ctx.layer || !ctx.layer.classList.contains('on') || !ctx.layer.querySelector('.rv-music-sheet')) return;
+    const sheet = ctx.layer.querySelector('.rv-music-sheet');
+    const list = sheet.querySelector('#rv-music-list');
+    if (!list) return;
+    list.innerHTML = musicLibrary.length ? musicLibrary.map(track => `
+      <button type="button" class="rv-music-track ${ctx.music.selectedId === track.id ? 'selected' : ''}" data-track-id="${esc(track.id)}">
+        <span class="rv-music-art"><span>♫</span></span>
+        <span class="rv-music-track-copy"><b>${esc(track.title)}</b><small>${track.source === 'device' ? 'من الجهاز' : 'أونلاين'}</small></span>
+        <span class="rv-music-track-action">${ctx.music.playing && ctx.music.selectedId === track.id ? '■' : '▶'}</span>
+      </button>`).join('') : '<div class="rv-music-empty">لا توجد نغمات بعد<br><small>اضغط «إضافة» لاختيار نغمة من الجهاز أو رابط أونلاين</small></div>';
+    list.querySelectorAll('.rv-music-track').forEach(row => {
+      row.onclick = (ev) => {
+        if (ev.target.closest('.rv-music-track-action')) {
+          if (ctx.music.selectedId === row.dataset.trackId && ctx.music.playing) stopRoomMusic(true);
+          else playRoomMusic(row.dataset.trackId);
+          return;
+        }
+        ctx.music.selectedId = row.dataset.trackId;
+        paintMusicSheet();
+        toast('تمت إضافة النغمة إلى الغرفة — اضغط ▶ لتشغيلها');
+      };
+    });
+  }
+
+  function openMusicSheet() {
+    if (!ctx) return;
+    const l = showLayer(`
+      <div class="rv-sheet rv-music-sheet" role="dialog" aria-label="الموسيقى">
+        <button type="button" class="rv-x" style="top:12px" aria-label="إغلاق">✕</button>
+        <div class="rv-music-head"><div><div class="rv-sheet-title">موسيقى الغرفة</div><small>اختر نغمة لتظهر على مقعد المايك</small></div><button type="button" class="rv-music-add" id="rv-music-add">＋ إضافة</button></div>
+        <div class="rv-music-add-options" id="rv-music-add-options" hidden>
+          <button type="button" data-music-source="online">أونلاين</button>
+          <button type="button" data-music-source="device">رفع عبر الجهاز</button>
+        </div>
+        <div class="rv-music-online" id="rv-music-online" hidden>
+          <input type="text" id="rv-music-url" placeholder="رابط ملف صوتي MP3 أو M4A" autocomplete="off">
+          <input type="text" id="rv-music-title" placeholder="اسم النغمة (اختياري)" autocomplete="off">
+          <button type="button" id="rv-music-url-add">إضافة</button>
+        </div>
+        <input type="file" id="rv-music-file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus" multiple hidden>
+        <div class="rv-music-list" id="rv-music-list"></div>
+        <div class="rv-music-hint">يجب الجلوس على أحد المقاعد لتشغيل الصوت ومشاركته مع الموجودين.</div>
+      </div>`);
+    const sheet = l.querySelector('.rv-music-sheet');
+    l.querySelector('.rv-x').onclick = closeLayer;
+    const options = sheet.querySelector('#rv-music-add-options');
+    sheet.querySelector('#rv-music-add').onclick = () => { options.hidden = !options.hidden; };
+    sheet.querySelector('[data-music-source="device"]').onclick = () => sheet.querySelector('#rv-music-file').click();
+    sheet.querySelector('#rv-music-file').onchange = (ev) => { addLocalMusicFiles(ev.target.files); ev.target.value = ''; };
+    sheet.querySelector('[data-music-source="online"]').onclick = () => {
+      sheet.querySelector('#rv-music-online').hidden = false;
+      sheet.querySelector('#rv-music-url').focus();
+    };
+    sheet.querySelector('#rv-music-url-add').onclick = () => {
+      addOnlineMusic(sheet.querySelector('#rv-music-url').value, sheet.querySelector('#rv-music-title').value);
+      sheet.querySelector('#rv-music-url').value = ''; sheet.querySelector('#rv-music-title').value = '';
+    };
+    paintMusicSheet();
+  }
+
+  function publishRoomMusic(eventName, item) {
+    if (!ctx || !st().socket || !onSeat()) return;
+    st().socket.emit(eventName, {
+      roomId: roomId(), userId: me().id, seatIndex: st().userSeatIndex,
+      title: item?.title || 'موسيقى', trackId: item?.id || '', cover: item?.cover || ''
+    });
+  }
+
+  function attachMusicToVoice(attempt = 0) {
+    if (!ctx?.music?.playing || !ctx.music.destination || !window.soulRtc || !onSeat()) return;
+    if (typeof window.soulRtc.setVoiceMusicStream === 'function') {
+      const attached = window.soulRtc.setVoiceMusicStream(ctx.music.destination.stream);
+      // طلب الميكروفون/WebRTC غير متزامن؛ نعيد المحاولة بعد منحه الإذن.
+      if (!attached && attempt < 20) setTimeout(() => attachMusicToVoice(attempt + 1), 250);
+    }
+  }
+
+  function playRoomMusic(trackId) {
+    if (!ctx) return;
+    const track = musicLibrary.find(item => item.id === trackId);
+    if (!track) return;
+    ctx.music.selectedId = track.id;
+    if (!onSeat()) {
+      paintMusicSheet();
+      return toast('يجب الجلوس على مقعد المايك أولاً لتشغيل الموسيقى 🎙️');
+    }
+    stopRoomMusic(false, true);
+    const audio = new Audio();
+    audio.crossOrigin = 'anonymous'; audio.src = track.url; audio.preload = 'auto'; audio.loop = true;
+    ctx.music.audio = audio; ctx.music.current = track; ctx.music.ownerId = me().id; ctx.music.seatIndex = st().userSeatIndex;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      try {
+        const audioContext = new AudioCtx();
+        const source = audioContext.createMediaElementSource(audio);
+        const destination = audioContext.createMediaStreamDestination();
+        source.connect(audioContext.destination);
+        source.connect(destination);
+        ctx.music.audioContext = audioContext; ctx.music.mediaSource = source; ctx.music.destination = destination;
+        audioContext.resume().catch(() => {});
+      } catch (err) { console.warn('music audio graph unavailable:', err); }
+    }
+    audio.onplay = () => {
+      if (!ctx || ctx.music.audio !== audio) return;
+      ctx.music.playing = true;
+      attachMusicToVoice();
+      publishRoomMusic('room_music_started', track);
+      renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
+    };
+    audio.onpause = () => { if (ctx && ctx.music.audio === audio && !ctx.music.playing) renderMusicNowPlaying(); };
+    audio.onerror = () => toast('تعذر تشغيل هذه النغمة، تحقق من الملف أو الرابط');
+    audio.play().catch(() => toast('اضغط تشغيل مرة أخرى للسماح بتشغيل الصوت'));
+  }
+
+  function stopRoomMusic(notify = true, silent = false) {
+    if (!ctx?.music) return;
+    const music = ctx.music;
+    const wasPlaying = music.playing;
+    if (music.audio) {
+      music.audio.pause(); music.audio.removeAttribute('src'); music.audio.load();
+    }
+    if (music.audioContext) { try { music.audioContext.close(); } catch (e) {} }
+    if (window.soulRtc && typeof window.soulRtc.clearVoiceMusicStream === 'function') window.soulRtc.clearVoiceMusicStream();
+    if (notify && wasPlaying && !silent) publishRoomMusic('room_music_stopped', music.current);
+    music.audio = null; music.audioContext = null; music.mediaSource = null; music.destination = null; music.current = null; music.remote = null; music.playing = false; music.ownerId = null; music.seatIndex = null;
+    renderMusicNowPlaying(); renderMusicSeatIndicator();
+    if (ctx.layer?.classList.contains('on')) paintMusicSheet();
   }
 
   function addTips() {
@@ -667,6 +900,25 @@
       if (!ctx || !ctx.chat.auto_welcome || ctx.room.host_id !== me().id) return;
       const u = d && d.user; if (!u || u.id === me().id) return;
       st().socket.emit('send_room_message', { roomId: roomId(), userId: me().id, content: `أهلاً وسهلاً بـ ${u.name} في الغرفة 🌹` });
+    });
+    on('room_music_started', (d) => {
+      if (!ctx || d.roomId !== roomId() || d.userId === me().id) return;
+      ctx.music.remote = { title: d.title || 'موسيقى', id: d.trackId || '' };
+      ctx.music.ownerId = d.userId; ctx.music.seatIndex = d.seatIndex; ctx.music.playing = true;
+      renderMusicNowPlaying(); renderMusicSeatIndicator();
+    });
+    on('room_music_stopped', (d) => {
+      if (!ctx || d.roomId !== roomId() || (ctx.music.ownerId && d.userId !== ctx.music.ownerId)) return;
+      ctx.music.remote = null; ctx.music.ownerId = null; ctx.music.seatIndex = null; ctx.music.playing = false;
+      renderMusicNowPlaying(); renderMusicSeatIndicator();
+    });
+    on('seat_updated', (d) => {
+      if (!ctx || !ctx.music.playing) return;
+      if (!d.user && d.seatIndex === ctx.music.seatIndex) {
+        if (ctx.music.ownerId === me().id) stopRoomMusic(true);
+        else { ctx.music.remote = null; ctx.music.playing = false; renderMusicNowPlaying(); renderMusicSeatIndicator(); }
+      }
+      renderMusicSeatIndicator();
     });
   }
 })();

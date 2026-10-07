@@ -5,9 +5,6 @@
   background: linear-gradient(180deg, #3a0f7e 0%, #5a14b4 45%, #4b0f9c 100%) !important;
 }
 
-/* زر مركز الترفيه */
-.room-tool-btn.entertainment-btn { display: inline-flex; align-items: center; justify-content: center; }
-
 /* الأيقونات العائمة الجانبية */
 .rp-float-stack {
   position: absolute; left: 8px; bottom: 76px; z-index: 12;

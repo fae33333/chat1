@@ -36,19 +36,7 @@
   function injectRoomUi() {
     const { modal, container } = ctx;
 
-    // زر 🎮 مركز الترفيه في الشريط السفلي (قبل زر الهدايا كما في الفيديو)
-    const controls = modal.querySelector('.room-bottom-controls');
-    const giftBtn = modal.querySelector('#room-open-gifts-btn');
-    if (controls && !controls.querySelector('#room-entertainment-btn')) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.id = 'room-entertainment-btn';
-      btn.className = 'room-tool-btn entertainment-btn';
-      btn.title = 'مركز الترفيه';
-      btn.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M7 8h10a4 4 0 014 4v1.5a3.5 3.5 0 01-6.2 2.2L13.6 14h-3.2l-1.2 1.7A3.5 3.5 0 013 13.5V12a4 4 0 014-4z" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 10.5v3M6.5 12h3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="15.5" cy="11" r="1" fill="#fff"/><circle cx="17.5" cy="13" r="1" fill="#fff"/></svg>';
-      btn.onclick = openEntertainment;
-      controls.insertBefore(btn, giftBtn || controls.firstChild);
-    }
+    // تم تبسيط شريط الغرفة: الإكسسوارات والموسيقى موجودتان داخل قائمة الأدوات.
 
     // الأيقونات العائمة على الجانب (كيس الحظ / الشحن اليومي / الإمبراطورية)
     const stack = document.createElement('div');

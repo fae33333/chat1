@@ -5356,7 +5356,6 @@
             <div class="live-room-id-tag">ID: ${room.id} • 👥 <span id="live-audience-counter">${room.audience_count !== undefined ? room.audience_count : 1}</span> مستمع</div>
           </div>
           <div class="live-room-actions">
-            <button class="header-action-btn" id="room-chill-music-btn" title="موسيقى هادئة لوفاي">🎵</button>
             <button class="close-room-btn" id="leave-room-btn">🚪 خروج</button>
           </div>
         </div>
@@ -5530,23 +5529,6 @@
     // Event: Leave Room
     modal.querySelector('#leave-room-btn').onclick = () => {
       leaveActiveVoiceRoom();
-    };
-
-    // Event: Chill Music toggle
-    const musicBtn = modal.querySelector('#room-chill-music-btn');
-    musicBtn.onclick = () => {
-      if (window.soundManager) {
-        const playing = window.soundManager.toggleChillMusic(
-          () => {
-            musicBtn.style.background = 'var(--secondary)';
-            showToast('🎵 تم تشغيل موسيقى لوفاي الهادئة');
-          },
-          () => {
-            musicBtn.style.background = '';
-            showToast('تم إيقاف الموسيقى');
-          }
-        );
-      }
     };
 
     // Event: In-Room Private Messages Button (Located at Bottom Controls next to gifts)

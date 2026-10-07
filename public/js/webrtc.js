@@ -287,6 +287,7 @@ class SoulRtcEngine {
       this.localAudioStream.getAudioTracks().forEach(track => {
         track.enabled = true;
       });
+      this.voiceBaseStream = this.localAudioStream;
     }
     this.isVoiceMuted = false;
 
@@ -302,10 +303,64 @@ class SoulRtcEngine {
 
   setVoiceMuted(isMuted) {
     this.isVoiceMuted = !!isMuted;
-    if (this.localAudioStream) {
-      this.localAudioStream.getAudioTracks().forEach(track => {
+    [this.localAudioStream, this.voiceBaseStream].filter(Boolean).forEach(stream => {
+      stream.getAudioTracks().forEach(track => {
         track.enabled = !isMuted;
       });
+    });
+  }
+
+  // يخلط الموسيقى مع ميكروفون المقعد ويستبدل مسار الصوت المرسل دون فتح ميكروفون ثانٍ.
+  // لا يُستدعى إلا بعد جلوس المستخدم على مقعد المايك.
+  setVoiceMusicStream(musicStream) {
+    if (!musicStream || !this.isBroadcastingVoice || !this.voiceBaseStream) return false;
+    this.clearVoiceMusicStream();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return false;
+    try {
+      const ac = new AudioCtx();
+      const micSource = ac.createMediaStreamSource(this.voiceBaseStream);
+      const musicSource = ac.createMediaStreamSource(musicStream);
+      const destination = ac.createMediaStreamDestination();
+      micSource.connect(destination);
+      musicSource.connect(destination);
+      this.voiceMixerContext = ac;
+      this.voiceMixerDestination = destination;
+      this.voiceMusicStream = musicStream;
+      this.localAudioStream = destination.stream;
+      this.setVoiceMuted(this.isVoiceMuted);
+      this.replaceVoiceAudioTrack(destination.stream.getAudioTracks()[0]);
+      ac.resume().catch(() => {});
+      return true;
+    } catch (err) {
+      console.warn('Voice/music mix unavailable:', err);
+      return false;
+    }
+  }
+
+  clearVoiceMusicStream() {
+    if (!this.voiceMixerContext) return;
+    const base = this.voiceBaseStream;
+    try {
+      this.voiceMixerDestination?.stream?.getTracks().forEach(track => track.stop());
+      this.voiceMixerContext.close();
+    } catch (e) {}
+    this.voiceMixerContext = null;
+    this.voiceMixerDestination = null;
+    this.voiceMusicStream = null;
+    if (base) {
+      this.localAudioStream = base;
+      this.replaceVoiceAudioTrack(base.getAudioTracks()[0]);
+      this.setVoiceMuted(this.isVoiceMuted);
+    }
+  }
+
+  replaceVoiceAudioTrack(track) {
+    if (!track) return;
+    for (const [key, pc] of this.peerConnections.entries()) {
+      if (!key.includes('voice_seat')) continue;
+      const sender = pc.getSenders().find(item => item.track && item.track.kind === 'audio');
+      if (sender) sender.replaceTrack(track).catch(() => {});
     }
   }
 
@@ -319,15 +374,14 @@ class SoulRtcEngine {
         });
       }
     }
-    if (this.localAudioStream) {
-      this.localAudioStream.getTracks().forEach(t => {
-        try {
-          t.enabled = false;
-          t.stop();
-        } catch (e) {}
-      });
-      this.localAudioStream = null;
-    }
+    this.clearVoiceMusicStream();
+    const streams = new Set([this.localAudioStream, this.voiceBaseStream].filter(Boolean));
+    streams.forEach(stream => stream.getTracks().forEach(t => {
+      try { t.enabled = false; t.stop(); } catch (e) {}
+    }));
+    this.localAudioStream = null;
+    this.voiceBaseStream = null;
+    this.voiceMusicStream = null;
     this.isBroadcastingVoice = false;
     this.isVoiceMuted = true;
 

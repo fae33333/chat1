@@ -4214,6 +4214,22 @@ io.on('connection', (socket) => {
     });
   });
 
+  // 9b. Music played from a microphone seat. The audio itself is sent through
+  // the existing WebRTC voice stream; this event only synchronizes the small
+  // now-playing indicator for the other participants.
+  socket.on('room_music_started', ({ roomId, userId, seatIndex, title, trackId, cover }) => {
+    if (!roomId || !userId || seatIndex === undefined || seatIndex === null) return;
+    if (currentRoomId !== roomId) return;
+    io.to(`room:${roomId}`).emit('room_music_started', {
+      roomId, userId, seatIndex, title: title || 'موسيقى', trackId: trackId || '', cover: cover || ''
+    });
+  });
+
+  socket.on('room_music_stopped', ({ roomId, userId, seatIndex }) => {
+    if (!roomId || !userId || currentRoomId !== roomId) return;
+    io.to(`room:${roomId}`).emit('room_music_stopped', { roomId, userId, seatIndex });
+  });
+
   // 10. Room Games: Roll Dice 🎲
   socket.on('roll_dice', ({ roomId, user }) => {
     if (!roomId) return;
