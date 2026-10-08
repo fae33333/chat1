@@ -1,0 +1,1300 @@
+// SoulChill — Room Video: الغرفة + التحكم مطابقان لفيديو "تحكم ادمن الغرفة"
+// يعتمد على window.SoulChillApp وعلى حدث soul:room-opened (يُطلق من app.js بعد بناء الغرفة)
+(function () {
+  'use strict';
+
+  const App = () => window.SoulChillApp;
+  const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const jp = (v, d) => { if (v && typeof v === 'object') return v; try { return v ? JSON.parse(v) : d; } catch (e) { return d; } };
+  const svg = (inner, fill) => `<svg viewBox="0 0 24 24"${fill ? ' fill="currentColor"' : ''}>${inner}</svg>`;
+
+  // ====== الأيقونات ======
+  const IC = {
+    doc: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
+    image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 18l5-5 4 4 3-3 4 4"/>',
+    chat: '<path d="M5 5h14a2 2 0 012 2v8a2 2 0 01-2 2h-6l-4 3v-3H5a2 2 0 01-2-2V7a2 2 0 012-2z"/><path d="M8 10h8M8 13h5"/>',
+    music: '<path d="M9 18V6l10-2v12"/><circle cx="7" cy="18" r="2.5"/><circle cx="17" cy="16" r="2.5"/>',
+    seat: '<rect x="4" y="12" width="16" height="6" rx="2"/><path d="M6 12V8a2 2 0 012-2h8a2 2 0 012 2v4M7 18v2M17 18v2"/>',
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
+    micOff: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3M4 4l16 16"/>',
+    spk: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 010 6M18.5 6.5a8 8 0 010 11"/>',
+    spkOff: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/>',
+    unlock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 017.5-2"/>',
+    lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>',
+    shrink: '<path d="M20 4l-6 6M14 5v5h5M4 20l6-6M10 19v-5H5"/>',
+    power: '<path d="M12 3v9"/><path d="M6.5 6.5a8 8 0 1011 0"/>',
+    invite: '<path d="M12 16V5M7 10l5-5 5 5"/><path d="M5 20h14"/>',
+    groupOff: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M17 8l4 4M21 8l-4 4"/>',
+    group: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 6a3 3 0 010 5M19 20c0-2.5-1.2-4.5-3-5.4"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>',
+    share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 11l7.6-4M8.2 13l7.6 4"/>',
+    dots: '<circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/>',
+    menu: '<path d="M5 8h14M5 12h14M5 16h14"/>',
+    play: '<path d="M8 5l11 7-11 7z"/>',
+    clap: '<path d="M7 11l4-7 2 1-2 4 5 1-3 8H8z"/>',
+    search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'
+  };
+  const ico = (k, fill) => svg(IC[k], fill);
+
+  // ====== الخلفيات ======
+  const BG_DEFAULT = 'radial-gradient(ellipse at 50% 18%, #4a2a86 0%, #1d1038 48%, #0a0614 100%)';
+  const READY_BG = [
+    { id: 'royal', name: 'القصر الملكي', css: BG_DEFAULT },
+    { id: 'aurora', name: 'الشفق القطبي', css: 'linear-gradient(160deg,#04110f 0%,#0b3d3a 35%,#1d6b5a 55%,#2a2a6e 80%,#0a0818 100%)' },
+    { id: 'sunset', name: 'غروب', css: 'linear-gradient(180deg,#2b0f3f 0%,#7a1f4d 40%,#e2552e 75%,#f7a23a 100%)' },
+    { id: 'ocean', name: 'المحيط', css: 'linear-gradient(180deg,#02122b 0%,#06407a 55%,#0a7ab5 100%)' },
+    { id: 'city', name: 'ليل المدينة', css: 'linear-gradient(180deg,#0a0a1f 0%,#1b1b4d 60%,#3a1c71 100%)' },
+    { id: 'rose', name: 'وردي', css: 'linear-gradient(180deg,#3a0a2e 0%,#8a1f62 55%,#e0508f 100%)' },
+    { id: 'emerald', name: 'زمردي', css: 'linear-gradient(180deg,#02150f 0%,#0b5a3f 60%,#18a273 100%)' },
+    { id: 'gold', name: 'ذهبي', css: 'linear-gradient(180deg,#1a1205 0%,#6a4a10 55%,#e2b34a 100%)' },
+    { id: 'ice', name: 'جليدي', css: 'linear-gradient(180deg,#071425 0%,#1d5a8a 55%,#a9dcf5 100%)' },
+    { id: 'ember', name: 'جمر', css: 'linear-gradient(180deg,#140404 0%,#7a1408 55%,#f06a1e 100%)' },
+    { id: 'violet', name: 'بنفسجي', css: 'linear-gradient(180deg,#0e0526 0%,#4a1fa8 60%,#9a6bff 100%)' },
+    { id: 'mono', name: 'داكن', css: 'linear-gradient(180deg,#0c0c10 0%,#1a1a22 100%)' }
+  ];
+  const ANIM_BG = [
+    { id: 'aurora', name: 'شفق متحرك' }, { id: 'nebula', name: 'سديم' },
+    { id: 'stars', name: 'نجوم' }, { id: 'waves', name: 'أمواج' }
+  ];
+  const CATS = [['friendship', 'صداقة'], ['music', 'موسيقى'], ['quran', 'القرآن الكريم'], ['fun', 'نادي المرح'], ['game', 'لعبة'], ['chat', 'دردشة'], ['chill', 'روقان']];
+
+  const TIPS = [
+    'غرفتك أعلى الشاشة، ادعُهم للدخول إلى المايك 🎤 وابدأ الدردشة معهم في مختلف الموضوعات.',
+    'يمكنك مشاهدة تقييم كل غرفة من خلال الضغط على بطاقة الغرفة، مع كل مرة تقوم بالدخول لايف في الغرفة وتستلم هدايا وترسل هدايا للآخرين، سيزيد تقييم غرفتك.',
+    'حاول أن توجّه زوار غرفتك لحفظ غرفتك ومتابعتها، ستكون غرفتك موجودة ضمن الغرف المفضلة 💗 لديهم، وبذلك لن يفوتهم الدخول إلى غرفتك عندما تكون لايف!',
+    'كونك صاحب الغرفة، تذكّر دائمًا أن تجعل بيئة الدردشة في الغرفة سليمة. أنت تستطيع «تصميت» 🤐 أو «طرد» أي شخص يخالف قواعد الأدب والذوق في المنصة.'
+  ];
+
+  let ctx = null;
+  let sockHandlers = [];
+  let bodyObs = null;
+  let audioObs = null;
+
+  // مكتبة الموسيقى شخصية ومحفوظة على الخادم؛ التشغيل يمر عبر مسار صوت المقعد
+  // الحالي حتى يسمعها كل من في الغرفة عبر WebRTC.
+  const musicLibrary = [];
+  let musicLibraryOwnerId = null;
+
+  const st = () => App().state;
+  const me = () => st().currentUser;
+  const roomId = () => ctx.room.id;
+  const toastGlobal = (m) => App().showToast(m);
+
+  async function api(method, url, body, isForm) {
+    const opt = { method, headers: { 'x-user-id': me().id } };
+    if (body !== undefined && !isForm) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+    if (isForm) opt.body = body;
+    const r = await fetch(url, opt);
+    let d = {};
+    try { d = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error(d.error || 'تعذر تنفيذ الطلب');
+    return d;
+  }
+
+  // ====== بدء الغرفة ======
+  document.addEventListener('soul:room-opened', (e) => {
+    const { room, modal } = e.detail || {};
+    if (!room || !modal) return;
+    const container = modal.querySelector('.live-room-container');
+    if (!container) return;
+    try { setup(room, modal, container); } catch (err) { console.error('room-video setup:', err); }
+  });
+
+  function isAdminUser(room) {
+    const u = me();
+    return !!(u && (room.host_id === u.id || App().isPlatformStaff(u)));
+  }
+
+  function setup(room, modal, container) {
+    cleanup();
+    ctx = { room, modal, container, layer: null, bg: null, admin: isAdminUser(room), chat: jp(room.chat_settings, {}), seatS: jp(room.seat_settings, {}),
+            mutedSeats: new Set(), allMuted: false, allLocked: false, audioMuted: false, bgPicked: loadMyBgs(),
+            music: { selectedId: null, current: null, audio: null, audioContext: null, mediaSource: null, destination: null, playing: false, minimized: false, ownerId: null, remote: null, seatIndex: null,
+                     view: 'list', addTab: 'local', staged: [], sort: 'added', query: '', searchOpen: false, repeat: 'all', volume: 1, paused: false, gain: null, volTimer: null } };
+    if (musicLibraryOwnerId !== me()?.id) musicLibrary.splice(0, musicLibrary.length);
+    loadMusicLibrary();
+    (room.seats || []).forEach(s => { if (s.seat_index > 0 && s.is_muted && !s.user_id) ctx.mutedSeats.add(s.seat_index); });
+    const guestSeats = (room.seats || []).filter(s => s.seat_index > 0 && s.seat_index <= (room.seat_count || 8));
+    ctx.allMuted = guestSeats.length > 0 && guestSeats.every(s => !!s.is_muted);
+
+    // الخلفية + الطبقة
+    const bg = document.createElement('div'); bg.className = 'rv-bg'; container.prepend(bg); ctx.bg = bg;
+    applyBg(room.bg_image);
+    const layer = document.createElement('div'); layer.className = 'rv-layer';
+    layer.addEventListener('click', (ev) => {
+      if (ev.target !== layer) return;
+      const wasMusic = layer.dataset.sheet === 'music';
+      closeLayer();
+      if (wasMusic) minimizeMusicPlayer();
+    });
+    container.appendChild(layer); ctx.layer = layer;
+    renderMusicNowPlaying();
+    container.addEventListener('click', (event) => {
+      if (!ctx?.music?.playing || !ctx.music.current || ctx.music.minimized) return;
+      if (event.target.closest('.rv-now-playing, .rv-music-mini, .rv-layer, .rv-vol-layer')) return;
+      minimizeMusicPlayer();
+    });
+
+    buildTopButtons();
+    buildBottomBar();
+    buildGameStack();
+    addTips();
+    layoutSeats();
+    applyChatSettings();
+    applySeatSettings();
+    computeLockState();
+    interceptSeatClicks();
+    bindSockets();
+
+    // مراقبة إغلاق الغرفة لتنظيف الموارد
+    bodyObs = new MutationObserver(() => { if (ctx && !document.body.contains(ctx.modal)) cleanup(); });
+    bodyObs.observe(document.body, { childList: true });
+  }
+
+  function cleanup() {
+    if (!ctx && !sockHandlers.length) return;
+    const sock = App() && st().socket;
+    if (sock) sockHandlers.forEach(([ev, fn]) => sock.off(ev, fn));
+    sockHandlers = [];
+    if (bodyObs) { bodyObs.disconnect(); bodyObs = null; }
+    if (audioObs) { audioObs.disconnect(); audioObs = null; }
+    document.querySelectorAll('.rv-mini').forEach(n => n.remove());
+    if (ctx && ctx.audioMuted) document.querySelectorAll('audio').forEach(a => { a.muted = false; });
+    if (ctx) stopRoomMusic(false, true);
+    ctx = null;
+  }
+
+  // ====== الخلفية ======
+  function applyBg(val) {
+    const bg = ctx.bg; if (!bg) return;
+    bg.className = 'rv-bg'; bg.style.background = ''; bg.style.backgroundImage = '';
+    val = val || '';
+    if (!val) { bg.style.background = BG_DEFAULT; return; }
+    if (val.startsWith('grad:')) {
+      const p = READY_BG.find(x => x.id === val.slice(5)); bg.style.background = p ? p.css : BG_DEFAULT;
+    } else if (val.startsWith('anim:')) {
+      bg.classList.add('rv-anim-' + val.slice(5).replace(/[^a-z]/g, ''));
+    } else {
+      bg.style.backgroundImage = `url("${val.replace(/"/g, '%22')}")`;
+    }
+    ctx.room.bg_image = val;
+  }
+  function loadMyBgs() { try { return JSON.parse(localStorage.getItem('rv_my_bgs') || '[]'); } catch (e) { return []; } }
+  function saveMyBgs(a) { try { localStorage.setItem('rv_my_bgs', JSON.stringify(a.slice(0, 18))); } catch (e) {} }
+
+  // ====== الشريط العلوي / السفلي / الألعاب ======
+  function buildTopButtons() {
+    const actions = ctx.modal.querySelector('.live-room-actions');
+    if (!actions) return;
+    const mk = (html, title, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'rv-top-btn'; b.title = title; b.innerHTML = html; b.onclick = fn; return b; };
+    actions.appendChild(mk(ico('dots', true), 'إعدادات الغرفة', openControl));
+  }
+
+  function buildBottomBar() {
+    const bar = ctx.modal.querySelector('.room-bottom-controls'); if (!bar) return;
+    // القائمة السفلية مخصصة لأداتين فقط: الإكسسوارات والموسيقى.
+    // أزيلت منها أزرار تحدي PK ومركز الترفيه نهائياً.
+    if (!bar.querySelector('.rv-menu-btn')) {
+      const m = document.createElement('button'); m.type = 'button'; m.className = 'room-tool-btn rv-menu-btn'; m.title = 'مركز الترفيه';
+      m.setAttribute('aria-label', 'مركز الترفيه');
+      m.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">${IC.menu}</svg>`;
+      m.onclick = openRoomTools;
+      bar.appendChild(m);
+    }
+    // تحويل أيقونة الهدية إلى رسم أبيض/وردي خفيف كما في تصميم الغرفة.
+    const gift = bar.querySelector('#room-open-gifts-btn');
+    if (gift) gift.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#ff4fa3" stroke-width="1.9" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2"/><path d="M3 13h18M12 9v11M12 9c-2-4-6-3-5 0 .6 1.8 3.3 1.2 5 0zM12 9c2-4 6-3 5 0-.6 1.8-3.3 1.2-5 0z"/></svg>`;
+  }
+
+  // ====== مركز الترفيه (مطابق لفيديو «الصوت والأغاني») ======
+  function openRoomTools() {
+    if (!ctx) return;
+    const l = showLayer(`
+      <div class="rv-sheet rv-ent-sheet" role="dialog" aria-label="مركز الترفيه">
+        <button type="button" class="rv-ent-x" aria-label="إغلاق"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+        <div class="rv-ent-title">مركز الترفيه</div>
+        <div class="rv-ent-sec">مركز الألعاب</div>
+        <div class="rv-ent-grid">
+          <button type="button" class="rv-ent-item" data-room-tool="music"><i>🎷</i><span>موسيقى</span></button>
+          <button type="button" class="rv-ent-item" data-room-tool="accessories"><i>🧰</i><span>إكسسوارات</span></button>
+        </div>
+      </div>`);
+    l.querySelector('.rv-ent-x').onclick = closeLayer;
+    wire(l, '[data-room-tool]', (button) => {
+      if (button.dataset.roomTool === 'accessories') {
+        closeLayer();
+        App().openRoomAccessoriesModal(ctx.room);
+      } else {
+        openMusicSheet();
+      }
+    });
+  }
+
+  function buildGameStack() {
+    const stack = ctx.container.querySelector('.rp-float-stack'); if (!stack) return;
+    const defs = [['bag', '/img/pf/game_jewels.png'], ['daily', '/img/pf/game_uefa.png'], ['empire', '/img/pf/game_bookofra.png']];
+    defs.forEach(([act, img]) => {
+      const orig = stack.querySelector(`.rp-float[data-act="${act}"]`);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'rv-game'; b.dataset.act = act;
+      b.innerHTML = `<img src="${img}" alt="" onerror="this.style.display='none'">` + (act === 'bag' ? '<b class="rp-badge" style="display:none">0</b>' : '');
+      b.onclick = () => { if (orig) orig.click(); };
+      stack.appendChild(b);
+      if (act === 'bag') {
+        const ob = stack.querySelector('#rp-bag-badge'), nb = b.querySelector('.rp-badge');
+        if (ob && nb) new MutationObserver(() => { nb.textContent = ob.textContent; nb.style.display = ob.style.display; })
+          .observe(ob, { childList: true, characterData: true, subtree: true, attributes: true });
+      }
+    });
+  }
+
+  // ====== الموسيقى: قائمة التشغيل + مشغّل + صوت (مطابقة لفيديو «الصوت والأغاني») ======
+  const MI = {
+    search: '<circle cx="11" cy="11" r="6.2"/><path d="M20 20l-4.4-4.4"/>',
+    sort: '<path d="M8 20V5M4.5 8.5L8 5l3.5 3.5M16 4v15M12.5 15.5L16 19l3.5-3.5"/>',
+    trash: '<path d="M5 7h14M9.5 7V4.8h5V7M7 7l.9 13h8.2L17 7M10.3 11v6M13.7 11v6"/>',
+    play: '<path d="M7.5 5l11.5 7-11.5 7z"/>',
+    plus: '<path d="M12 6v12M6 12h12"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    chev: '<path d="M9 5l7 7-7 7"/>',
+    power: '<path d="M12 3v8.5"/><path d="M6.6 6.8a7.5 7.5 0 1010.8 0"/>',
+    vol: '<path d="M4 9.5v5h3.8L13 19V5L7.8 9.5z"/><path d="M16.2 9.2a4 4 0 010 5.6"/>',
+    shrink: '<path d="M14 10l6-6M15 4.5V10h5.5M10 14l-6 6M9 19.5V14H3.5"/>',
+    list: '<path d="M4 7h16M4 12h11M4 17h7"/>',
+    prev: '<path d="M6 5v14"/><path d="M19 5.2L9 12l10 6.8z"/>',
+    next: '<path d="M18 5v14"/><path d="M5 5.2L15 12 5 18.8z"/>',
+    pause: '<rect x="6.2" y="5" width="3.8" height="14" rx="1.3"/><rect x="14" y="5" width="3.8" height="14" rx="1.3"/>',
+    repeat: '<path d="M17 3l3.2 3.2L17 9.4M4 11V9.5A3.3 3.3 0 017.3 6.2H20M7 21l-3.2-3.2L7 14.6M20 13v1.5a3.3 3.3 0 01-3.3 3.3H4"/>',
+    scan: '<circle cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="3.2"/><path d="M12 3.8v2.2"/>',
+    volPlus: '<path d="M3 9.5v5h3.8L12 19V5L6.8 9.5z"/><path d="M15.5 12h5M18 9.5v5" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+    volMinus: '<path d="M3 9.5v5h3.8L12 19V5L6.8 9.5z"/><path d="M15.5 12h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>'
+  };
+  const MI_FILL = new Set(['play', 'prev', 'next', 'pause', 'volPlus', 'volMinus']);
+  const mIcon = (k) => MI_FILL.has(k)
+    ? `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${MI[k]}</svg>`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${MI[k]}</svg>`;
+  const NOTES_ART = '<svg viewBox="0 0 120 100" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="22" cy="47" rx="7.5" ry="5.6" transform="rotate(-22 22 47)"/><path d="M28.5 44.5V19c0 0 9-1 9 7"/><circle cx="41" cy="25" r="3.6"/><ellipse cx="75" cy="35" rx="8.6" ry="6.2" transform="rotate(-22 75 35)"/><ellipse cx="97" cy="31" rx="8.6" ry="6.2" transform="rotate(-22 97 31)"/><path d="M82.5 32V11l22-4.5V28M82.5 17l22-4.5"/><circle cx="26" cy="77" r="9.5"/><ellipse cx="57" cy="78" rx="7.2" ry="5.4" transform="rotate(-22 57 78)"/><path d="M63 76V51"/><circle cx="91" cy="72" r="2.6"/></svg>';
+  const fmtTime = (s) => { s = Math.max(0, Math.floor(s || 0)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+  const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac|flac|opus|webm)$/i;
+  const UNKNOWN = 'غير معروف';
+
+  function musicTrackTitle(file) {
+    return String(file.name || 'نغمة جديدة').replace(/\.[^/.]+$/, '') || 'نغمة جديدة';
+  }
+
+  function normalizeMusicTrack(track) {
+    return Object.assign({}, track, { fileName: track.fileName || track.file_name || '' });
+  }
+
+  async function loadMusicLibrary() {
+    const user = me();
+    if (!user || !user.id) return;
+    const ownerId = user.id;
+    try {
+      const data = await api('GET', '/api/music-library');
+      if (me()?.id !== ownerId) return;
+      musicLibrary.splice(0, musicLibrary.length, ...(data.tracks || []).map(normalizeMusicTrack));
+      musicLibraryOwnerId = ownerId;
+      if (ctx) paintMusicSheet();
+    } catch (err) {
+      console.error('music library load:', err);
+    }
+  }
+
+  // ترتيب القائمة: حسب الإضافة (الأحدث أولاً) أو حسب الاسم
+  function orderedTracks() {
+    const arr = musicLibrary.slice();
+    if (ctx && ctx.music.sort === 'name') arr.sort((a, b) => String(a.title).localeCompare(String(b.title), 'ar'));
+    return arr;
+  }
+  function visibleTracks() {
+    const q = ctx.music.query.trim().toLowerCase();
+    const arr = orderedTracks();
+    return q ? arr.filter(t => String(t.title).toLowerCase().includes(q)) : arr;
+  }
+
+  // «محلي»: ملفات يلتقطها «مسح ضوئي» من الجهاز، ثم تُضاف إلى القائمة بزر +
+  function stageMusicFiles(files) {
+    if (!ctx) return;
+    const m = ctx.music;
+    const ok = Array.from(files || []).filter(f => f && ((f.type || '').startsWith('audio/') || AUDIO_EXT.test(f.name)));
+    if (!ok.length) return toast('لم يتم اختيار ملف صوتي صالح');
+    ok.forEach(file => {
+      if (m.staged.some(s => s.file.name === file.name && s.file.size === file.size)) return;
+      m.staged.push({ id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), file, title: musicTrackTitle(file), added: false, busy: false });
+    });
+    paintMusicBody();
+  }
+
+  async function uploadStagedFile(item) {
+    if (item.added || item.busy) return false;
+    item.busy = true;
+    try {
+      const form = new FormData();
+      form.append('file', item.file);
+      form.append('title', item.title);
+      const data = await api('POST', '/api/music-library', form, true);
+      if (data.track) {
+        musicLibrary.unshift(normalizeMusicTrack(data.track));
+        musicLibraryOwnerId = me()?.id || musicLibraryOwnerId;
+        item.added = true;
+        return true;
+      }
+    } catch (err) {
+      toast(`تعذر حفظ ${item.file.name}: ${err.message}`);
+    } finally {
+      item.busy = false;
+    }
+    return false;
+  }
+
+  async function addStagedOne(id) {
+    const item = ctx && ctx.music.staged.find(s => s.id === id);
+    if (!item) return;
+    if (await uploadStagedFile(item) && ctx) { toast('تمت الإضافة إلى قائمة التشغيل'); paintMusicBody(); }
+  }
+
+  async function addStagedAll() {
+    if (!ctx) return;
+    const pending = ctx.music.staged.filter(s => !s.added);
+    if (!pending.length) return;
+    let n = 0;
+    for (const item of pending) { if (await uploadStagedFile(item)) n += 1; if (!ctx) return; }
+    if (n) {
+      toast('تمت الإضافة إلى قائمة التشغيل');
+      ctx.music.staged = ctx.music.staged.filter(s => !s.added);
+      ctx.music.view = 'list'; ctx.music.query = ''; ctx.music.searchOpen = false;
+      paintMusicSheet();
+    } else paintMusicBody();
+  }
+
+  async function addOnlineMusic(url, title) {
+    const cleanUrl = String(url || '').trim();
+    if (!/^https?:\/\//i.test(cleanUrl)) return toast('أدخل رابط ملف صوتي صحيح يبدأ بـ https://');
+    const inferred = cleanUrl.split('/').pop().split('?')[0].replace(/\.[^/.]+$/, '') || 'موسيقى أونلاين';
+    try {
+      const data = await api('POST', '/api/music-library', {
+        url: cleanUrl,
+        title: String(title || inferred).trim() || 'موسيقى أونلاين'
+      });
+      if (data.track) musicLibrary.unshift(normalizeMusicTrack(data.track));
+      musicLibraryOwnerId = me()?.id || musicLibraryOwnerId;
+      toast('تمت الإضافة إلى قائمة التشغيل');
+      if (ctx) { ctx.music.view = 'list'; ctx.music.query = ''; ctx.music.searchOpen = false; paintMusicSheet(); }
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  async function deleteMusicTrack(id) {
+    if (!musicLibrary.some(t => t.id === id)) return;
+    try { await api('DELETE', `/api/music-library/${encodeURIComponent(id)}`); } catch (err) { return toast(err.message); }
+    const i = musicLibrary.findIndex(t => t.id === id);
+    if (i >= 0) musicLibrary.splice(i, 1);
+    if (!ctx) return;
+    if (ctx.music.current && ctx.music.current.id === id) stopRoomMusic(true);
+    if (ctx.music.selectedId === id) ctx.music.selectedId = null;
+    paintMusicSheet();
+  }
+
+  // ----- قائمة الموسيقى -----
+  function musicHeadHTML() {
+    const m = ctx.music;
+    if (m.view === 'add') {
+      const local = m.addTab === 'local';
+      return `<div class="rv-ms-head rv-ms-head-add">
+        <button type="button" class="rv-ms-back" data-act="back" aria-label="رجوع">${mIcon('chev')}</button>
+        <div class="rv-ms-tabs"><b class="${local ? '' : 'sel'}" data-tab="online">اونلاين</b><b class="${local ? 'sel' : ''}" data-tab="local">محلي</b></div>
+        <span class="rv-ms-grow"></span>
+        ${local ? `<button type="button" class="rv-ms-btn" data-act="search" aria-label="بحث">${mIcon('search')}</button><button type="button" class="rv-ms-pill" data-act="scan">${mIcon('scan')}<span>مسح ضوئي</span></button>` : ''}
+      </div>${m.searchOpen && local ? searchRowHTML() : ''}`;
+    }
+    return `<div class="rv-ms-head">
+      <b class="rv-ms-title">قائمة الموسيقى</b>
+      <span class="rv-ms-grow"></span>
+      <button type="button" class="rv-ms-btn" data-act="search" aria-label="بحث">${mIcon('search')}</button>
+      <button type="button" class="rv-ms-btn" data-act="sort" aria-label="ترتيب">${mIcon('sort')}</button>
+      ${musicLibrary.length ? '<button type="button" class="rv-ms-pill rv-ms-addpill" data-act="add">اضافة</button>' : ''}
+    </div>${m.searchOpen ? searchRowHTML() : ''}`;
+  }
+  function searchRowHTML() {
+    return `<div class="rv-ms-searchrow"><input type="text" id="rv-ms-q" placeholder="بحث" value="${esc(ctx.music.query)}" autocomplete="off"></div>`;
+  }
+
+  function musicRowHTML(track, idx) {
+    const m = ctx.music;
+    const cur = m.selectedId === track.id && m.playing && m.current && m.current.id === track.id;
+    return `<div class="rv-ms-row ${cur ? 'on' : ''}" data-track-id="${esc(track.id)}">
+      <span class="rv-ms-idx">${idx + 1}</span>
+      <span class="rv-ms-copy"><b>${esc(track.title)}</b><small>${esc(track.artist || UNKNOWN)}</small></span>
+      <span class="rv-ms-state">${cur ? `<span class="rv-eq ${m.paused ? '' : 'live'}"><i></i><i></i><i></i></span>` : mIcon('play')}</span>
+      <button type="button" class="rv-ms-del" data-del="${esc(track.id)}" aria-label="حذف">${mIcon('trash')}</button>
+    </div>`;
+  }
+
+  function paintMusicBody() {
+    if (!ctx || !ctx.layer) return;
+    const sheet = ctx.layer.querySelector('.rv-music-sheet');
+    const body = sheet && sheet.querySelector('#rv-ms-body');
+    const foot = sheet && sheet.querySelector('#rv-ms-foot');
+    if (!body || !foot) return;
+    const m = ctx.music;
+    let html = '', cta = '';
+    if (m.view === 'list') {
+      const tracks = visibleTracks();
+      if (!musicLibrary.length) {
+        html = `<div class="rv-ms-empty">${NOTES_ART}<span>قائمة الموسيقى فارغة، اضف موسيقى اولا</span></div>`;
+        cta = '<button type="button" class="rv-ms-cta" data-act="add">اضافة</button>';
+      } else if (!tracks.length) {
+        html = '<div class="rv-ms-empty"><span>لا توجد نتائج</span></div>';
+      } else {
+        html = tracks.map((t, i) => musicRowHTML(t, i)).join('');
+      }
+    } else if (m.addTab === 'local') {
+      const q = m.query.trim().toLowerCase();
+      const items = m.staged.filter(s => !q || s.title.toLowerCase().includes(q));
+      if (!items.length) {
+        html = `<div class="rv-ms-empty">${NOTES_ART}<span>${m.staged.length ? 'لا توجد نتائج' : 'اضغط «مسح ضوئي» لاختيار الملفات الصوتية من جهازك'}</span></div>`;
+      } else {
+        html = items.map(s => `<div class="rv-ms-row rv-ms-row-add">
+          <span class="rv-ms-copy"><b>${esc(s.title)}</b><small>${UNKNOWN}</small></span>
+          <button type="button" class="rv-ms-plus ${s.added ? 'done' : ''}" data-sid="${esc(s.id)}" aria-label="إضافة">${mIcon(s.added ? 'check' : 'plus')}</button>
+        </div>`).join('');
+      }
+      if (m.staged.some(s => !s.added)) cta = '<button type="button" class="rv-ms-cta" data-act="add-all">اضف الكل</button>';
+    } else {
+      html = `<div class="rv-ms-online">
+        <input type="text" id="rv-ms-url" placeholder="رابط ملف صوتي MP3 أو M4A" autocomplete="off" dir="ltr">
+        <input type="text" id="rv-ms-name" placeholder="اسم النغمة (اختياري)" autocomplete="off">
+      </div>`;
+      cta = '<button type="button" class="rv-ms-cta" data-act="add-online">اضافة</button>';
+    }
+    body.innerHTML = html;
+    foot.innerHTML = cta;
+    foot.hidden = !cta;
+  }
+
+  function paintMusicSheet() {
+    if (!ctx || !ctx.layer || !ctx.layer.classList.contains('on')) return;
+    const sheet = ctx.layer.querySelector('.rv-music-sheet');
+    const top = sheet && sheet.querySelector('#rv-ms-top');
+    if (!top) return;
+    top.innerHTML = musicHeadHTML();
+    paintMusicBody();
+  }
+
+  function onMusicSheetClick(ev) {
+    if (!ctx) return;
+    const m = ctx.music, t = ev.target;
+    const del = t.closest('[data-del]');
+    if (del) { ev.stopPropagation(); return deleteMusicTrack(del.dataset.del); }
+    const act = t.closest('[data-act]');
+    if (act) {
+      const a = act.dataset.act;
+      if (a === 'search') {
+        m.searchOpen = !m.searchOpen; m.query = '';
+        paintMusicSheet();
+        const q = ctx.layer.querySelector('#rv-ms-q'); if (q) q.focus();
+      } else if (a === 'sort') {
+        m.sort = m.sort === 'name' ? 'added' : 'name';
+        toast(m.sort === 'name' ? 'الترتيب حسب الاسم' : 'الترتيب حسب وقت الإضافة');
+        paintMusicBody();
+      } else if (a === 'add') {
+        m.view = 'add'; m.addTab = 'local'; m.query = ''; m.searchOpen = false; paintMusicSheet();
+      } else if (a === 'back') {
+        m.view = 'list'; m.query = ''; m.searchOpen = false; paintMusicSheet();
+      } else if (a === 'scan') {
+        const f = ctx.layer.querySelector('#rv-ms-file'); if (f) f.click();
+      } else if (a === 'add-all') {
+        addStagedAll();
+      } else if (a === 'add-online') {
+        addOnlineMusic((ctx.layer.querySelector('#rv-ms-url') || {}).value, (ctx.layer.querySelector('#rv-ms-name') || {}).value);
+      }
+      return;
+    }
+    const tab = t.closest('[data-tab]');
+    if (tab) { m.addTab = tab.dataset.tab; m.query = ''; m.searchOpen = false; paintMusicSheet(); return; }
+    const plus = t.closest('.rv-ms-plus');
+    if (plus) { addStagedOne(plus.dataset.sid); return; }
+    const row = t.closest('.rv-ms-row[data-track-id]');
+    if (row) {
+      const id = row.dataset.trackId;
+      if (m.playing && m.current && m.current.id === id) toggleMusicPause();
+      else playRoomMusic(id);
+    }
+  }
+
+  function openMusicSheet() {
+    if (!ctx) return;
+    const m = ctx.music;
+    m.view = 'list'; m.addTab = 'local'; m.query = ''; m.searchOpen = false;
+    const l = showLayer(`
+      <div class="rv-sheet rv-music-sheet" role="dialog" aria-label="قائمة الموسيقى">
+        <div id="rv-ms-top"></div>
+        <div class="rv-ms-body" id="rv-ms-body"></div>
+        <div class="rv-ms-foot" id="rv-ms-foot" hidden></div>
+        <input type="file" id="rv-ms-file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus" multiple hidden>
+      </div>`);
+    l.dataset.sheet = 'music';
+    const sheet = l.querySelector('.rv-music-sheet');
+    sheet.addEventListener('click', onMusicSheetClick);
+    sheet.addEventListener('input', (ev) => {
+      if (ev.target.id === 'rv-ms-q') { ctx.music.query = ev.target.value; paintMusicBody(); }
+    });
+    sheet.querySelector('#rv-ms-file').onchange = (ev) => { stageMusicFiles(ev.target.files); ev.target.value = ''; };
+    paintMusicSheet();
+  }
+
+  // ----- المشغّل العائم -----
+  function renderMusicNowPlaying() {
+    if (!ctx) return;
+    let card = ctx.container.querySelector('.rv-now-playing');
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'rv-now-playing';
+      ctx.container.appendChild(card);
+      card.addEventListener('click', onMusicCardClick);
+      card.addEventListener('input', (ev) => {
+        if (!ev.target.classList.contains('rv-mp-range')) return;
+        const a = ctx.music.audio, r = ev.target;
+        r.style.setProperty('--p', (r.value / 10) + '%');
+        if (a && isFinite(a.duration) && a.duration > 0) a.currentTime = (r.value / 1000) * a.duration;
+      });
+    }
+    let mini = ctx.container.querySelector('.rv-music-mini');
+    if (!mini) {
+      mini = document.createElement('button');
+      mini.type = 'button';
+      mini.className = 'rv-music-mini';
+      ctx.container.appendChild(mini);
+    }
+
+    // هذا المشغل خاص بصاحب الموسيقى؛ الآخرون يرون التذبذب على المقعد فقط.
+    const m = ctx.music;
+    const active = m && m.playing && m.current;
+    if (!active) {
+      card.classList.remove('on'); card.innerHTML = '';
+      mini.classList.remove('on'); mini.innerHTML = '';
+      return;
+    }
+
+    const item = m.current;
+    card.classList.toggle('on', !m.minimized);
+    card.innerHTML = `
+      <div class="rv-mp-top">
+        <button type="button" class="rv-mp-ic" data-mp="power" aria-label="إيقاف">${mIcon('power')}</button>
+        <button type="button" class="rv-mp-ic" data-mp="vol" aria-label="مستوى الصوت">${mIcon('vol')}</button>
+        <div class="rv-mp-title"><b>${esc(item.title || 'موسيقى')}</b><small>${esc(item.artist || UNKNOWN)}</small></div>
+        <button type="button" class="rv-mp-min" data-mp="min" aria-label="تصغير">${mIcon('shrink')}</button>
+      </div>
+      <input type="range" class="rv-mp-range" min="0" max="1000" step="1" value="0" aria-label="التقدم">
+      <div class="rv-mp-times"><span class="rv-mp-dur">00:00</span><span class="rv-mp-cur">00:00</span></div>
+      <div class="rv-mp-ctl">
+        <button type="button" data-mp="list" aria-label="القائمة">${mIcon('list')}</button>
+        <button type="button" data-mp="prev" aria-label="السابق">${mIcon('prev')}</button>
+        <button type="button" class="rv-mp-play" data-mp="toggle" aria-label="${m.paused ? 'تشغيل' : 'إيقاف مؤقت'}">${mIcon(m.paused ? 'play' : 'pause')}</button>
+        <button type="button" data-mp="next" aria-label="التالي">${mIcon('next')}</button>
+        <button type="button" class="rv-mp-rep ${m.repeat === 'one' ? 'one' : ''}" data-mp="repeat" aria-label="تكرار">${mIcon('repeat')}${m.repeat === 'one' ? '<em>1</em>' : ''}</button>
+      </div>`;
+    updateMusicProgress();
+
+    mini.classList.toggle('on', !!m.minimized);
+    mini.innerHTML = `<span class="rv-mini-music-title">${esc(item.title || 'موسيقى')}</span><span class="rv-mini-music-pause">${mIcon(m.paused ? 'play' : 'pause')}</span>`;
+    mini.title = 'إظهار مشغل الموسيقى';
+    mini.onclick = (event) => {
+      event.stopPropagation();
+      ctx.music.minimized = false;
+      renderMusicNowPlaying();
+    };
+  }
+
+  function onMusicCardClick(ev) {
+    if (!ctx) return;
+    const b = ev.target.closest('[data-mp]');
+    if (!b) return;
+    ev.stopPropagation();
+    const m = ctx.music, k = b.dataset.mp;
+    if (k === 'power') stopRoomMusic(true);
+    else if (k === 'vol') openMusicVolume();
+    else if (k === 'min') minimizeMusicPlayer();
+    else if (k === 'list') openMusicSheet();
+    else if (k === 'prev') playAdjacent(-1);
+    else if (k === 'next') playAdjacent(1);
+    else if (k === 'toggle') toggleMusicPause();
+    else if (k === 'repeat') {
+      m.repeat = m.repeat === 'one' ? 'all' : 'one';
+      if (m.audio) m.audio.loop = m.repeat === 'one';
+      toast(m.repeat === 'one' ? 'تكرار النغمة الحالية' : 'تكرار القائمة');
+      renderMusicNowPlaying();
+    }
+  }
+
+  function updateMusicProgress() {
+    if (!ctx || !ctx.music.audio) return;
+    const card = ctx.container.querySelector('.rv-now-playing');
+    if (!card) return;
+    const a = ctx.music.audio;
+    const d = isFinite(a.duration) ? a.duration : 0;
+    const cur = card.querySelector('.rv-mp-cur'), dur = card.querySelector('.rv-mp-dur'), r = card.querySelector('.rv-mp-range');
+    if (cur) cur.textContent = fmtTime(a.currentTime);
+    if (dur) dur.textContent = fmtTime(d);
+    if (r && document.activeElement !== r) {
+      const p = d ? Math.min(1, a.currentTime / d) : 0;
+      r.value = Math.round(p * 1000);
+      r.style.setProperty('--p', (p * 100) + '%');
+    }
+  }
+
+  function minimizeMusicPlayer() {
+    if (!ctx?.music?.current || !ctx.music.playing) return;
+    ctx.music.minimized = true;
+    renderMusicNowPlaying();
+  }
+
+  function toggleMusicPause() {
+    const a = ctx && ctx.music.audio;
+    if (!a) return;
+    if (a.paused) a.play().catch(() => toast('اضغط تشغيل مرة أخرى للسماح بتشغيل الصوت'));
+    else a.pause();
+  }
+
+  function playAdjacent(dir) {
+    if (!ctx) return;
+    const list = orderedTracks();
+    if (!list.length) return;
+    const cur = list.findIndex(t => t.id === ctx.music.selectedId);
+    let next = cur < 0 ? 0 : cur + dir;
+    if (next >= list.length) next = 0;
+    if (next < 0) next = list.length - 1;
+    playRoomMusic(list[next].id);
+  }
+
+  // ----- شريط الصوت (Volume) -----
+  function closeMusicVolume() {
+    if (!ctx) return;
+    clearTimeout(ctx.music.volTimer);
+    const old = ctx.container.querySelector('.rv-vol-layer');
+    if (old) old.remove();
+  }
+  function setMusicVolume(v) {
+    const m = ctx.music;
+    m.volume = v;
+    if (m.gain) m.gain.gain.value = v;
+    else if (m.audio) m.audio.volume = v;
+  }
+  function openMusicVolume() {
+    if (!ctx) return;
+    closeMusicVolume();
+    const m = ctx.music;
+    const el = document.createElement('div');
+    el.className = 'rv-vol-layer';
+    el.innerHTML = `<div class="rv-vol-panel">
+      <div class="rv-vol-title">Volume</div>
+      <div class="rv-vol-row">
+        <span class="rv-vol-ic">${mIcon('volPlus')}</span>
+        <input type="range" class="rv-vol-range" min="0" max="100" step="1" value="${Math.round((m.volume == null ? 1 : m.volume) * 100)}" aria-label="Volume">
+        <span class="rv-vol-ic">${mIcon('volMinus')}</span>
+      </div>
+    </div>`;
+    ctx.container.appendChild(el);
+    const range = el.querySelector('.rv-vol-range');
+    const arm = () => { clearTimeout(m.volTimer); m.volTimer = setTimeout(closeMusicVolume, 3200); };
+    const paint = () => range.style.setProperty('--v', range.value + '%');
+    paint(); arm();
+    range.addEventListener('input', () => { paint(); setMusicVolume(range.value / 100); arm(); });
+    el.addEventListener('click', (e) => { if (e.target === el) closeMusicVolume(); });
+  }
+
+  function renderMusicSeatIndicator() {
+    if (!ctx || !ctx.music) return;
+    ctx.modal.querySelectorAll('.rv-seat-music, .rv-music-speaking, .rv-music-avatar-speaking').forEach(node => {
+      node.classList?.remove('rv-music-speaking', 'rv-music-avatar-speaking');
+      if (node.matches?.('.rv-seat-music')) node.remove();
+    });
+    const active = ctx.music.playing && !ctx.music.paused && (ctx.music.current || ctx.music.remote);
+    const seatIndex = ctx.music.seatIndex;
+    if (!active || seatIndex === undefined || seatIndex === null) return;
+
+    const seatRoot = seatIndex === 0
+      ? ctx.modal.querySelector('#host-seat-0')
+      : ctx.modal.querySelector(`#stage-seat-${seatIndex}`);
+    const seat = seatIndex === 0
+      ? seatRoot?.querySelector('.host-avatar-box')
+      : seatRoot?.querySelector('.seat-avatar-container');
+    if (!seatRoot || !seat) return;
+
+    // الموسيقى تستخدم نفس حلقات التذبذب الخاصة بالكلام، من دون شارة إضافية فوق الصورة.
+    seatRoot.classList.add('rv-music-speaking');
+    seat.classList.add('rv-music-avatar-speaking');
+  }
+
+  function publishRoomMusic(eventName, item) {
+    if (!ctx || !st().socket || !onSeat()) return;
+    st().socket.emit(eventName, {
+      roomId: roomId(), userId: me().id, seatIndex: st().userSeatIndex,
+      title: item?.title || 'موسيقى', trackId: item?.id || '', cover: item?.cover || ''
+    });
+  }
+
+  function attachMusicToVoice(attempt = 0) {
+    if (!ctx?.music?.playing || !ctx.music.destination || !window.soulRtc || !onSeat()) return;
+    if (typeof window.soulRtc.setVoiceMusicStream === 'function') {
+      const attached = window.soulRtc.setVoiceMusicStream(ctx.music.destination.stream);
+      // طلب الميكروفون/WebRTC غير متزامن؛ نعيد المحاولة بعد منحه الإذن.
+      if (!attached && attempt < 20) setTimeout(() => attachMusicToVoice(attempt + 1), 250);
+    }
+  }
+
+  function playRoomMusic(trackId) {
+    if (!ctx) return;
+    const track = musicLibrary.find(item => item.id === trackId);
+    if (!track) return;
+    ctx.music.selectedId = track.id;
+    if (!onSeat()) {
+      paintMusicSheet();
+      return toast('يجب الجلوس على مقعد المايك أولاً لتشغيل الموسيقى 🎙️');
+    }
+    if (st().isMuted) {
+      paintMusicSheet();
+      return toast('هذا المقعد مكتوم من الإدارة، لا يمكن تشغيل الموسيقى حتى يفك الأدمن الكتم 🔇');
+    }
+    stopRoomMusic(false, true);
+    const m = ctx.music;
+    const audio = new Audio();
+    audio.crossOrigin = 'anonymous'; audio.src = track.url; audio.preload = 'auto'; audio.loop = m.repeat === 'one';
+    m.audio = audio; m.current = track; m.minimized = false; m.paused = false; m.ownerId = me().id; m.seatIndex = st().userSeatIndex;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      try {
+        const audioContext = new AudioCtx();
+        const source = audioContext.createMediaElementSource(audio);
+        const destination = audioContext.createMediaStreamDestination();
+        // عقدة الصوت تتحكم بمستوى الموسيقى محلياً وفي البث إلى الغرفة معاً.
+        const gain = audioContext.createGain();
+        gain.gain.value = m.volume == null ? 1 : m.volume;
+        source.connect(gain);
+        gain.connect(audioContext.destination);
+        gain.connect(destination);
+        m.audioContext = audioContext; m.mediaSource = source; m.destination = destination; m.gain = gain;
+        audioContext.resume().catch(() => {});
+      } catch (err) { console.warn('music audio graph unavailable:', err); }
+    }
+    if (!m.gain) audio.volume = m.volume == null ? 1 : m.volume;
+    audio.onplay = () => {
+      if (!ctx || ctx.music.audio !== audio) return;
+      ctx.music.playing = true; ctx.music.paused = false;
+      attachMusicToVoice();
+      publishRoomMusic('room_music_started', track);
+      renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
+    };
+    audio.onpause = () => {
+      if (!ctx || ctx.music.audio !== audio || audio.ended) return;
+      ctx.music.paused = true;
+      publishRoomMusic('room_music_stopped', track);
+      renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
+    };
+    audio.onended = () => { if (ctx && ctx.music.audio === audio) playAdjacent(1); };
+    audio.ontimeupdate = updateMusicProgress;
+    audio.onloadedmetadata = updateMusicProgress;
+    audio.ondurationchange = updateMusicProgress;
+    audio.onerror = () => { if (ctx && ctx.music.audio === audio) toast('تعذر تشغيل هذه النغمة، تحقق من الملف أو الرابط'); };
+    audio.play().catch(() => toast('اضغط تشغيل مرة أخرى للسماح بتشغيل الصوت'));
+  }
+
+  function stopRoomMusic(notify = true, silent = false) {
+    if (!ctx?.music) return;
+    const music = ctx.music;
+    const wasPlaying = music.playing;
+    if (music.audio) {
+      music.audio.pause(); music.audio.removeAttribute('src'); music.audio.load();
+    }
+    if (music.audioContext) { try { music.audioContext.close(); } catch (e) {} }
+    if (window.soulRtc && typeof window.soulRtc.clearVoiceMusicStream === 'function') window.soulRtc.clearVoiceMusicStream();
+    if (notify && wasPlaying && !silent) publishRoomMusic('room_music_stopped', music.current);
+    closeMusicVolume();
+    music.audio = null; music.audioContext = null; music.mediaSource = null; music.destination = null; music.gain = null; music.current = null; music.remote = null; music.playing = false; music.paused = false; music.minimized = false; music.ownerId = null; music.seatIndex = null;
+    renderMusicNowPlaying(); renderMusicSeatIndicator();
+    if (ctx.layer?.classList.contains('on')) paintMusicSheet();
+  }
+
+  function addTips() {
+    if (!ctx.admin) return;
+    const stream = ctx.modal.querySelector('#room-chat-messages-container'); if (!stream) return;
+    TIPS.forEach(t => { const d = document.createElement('div'); d.className = 'room-chat-bubble rv-tip'; d.textContent = t; stream.appendChild(d); });
+  }
+
+  // ====== المقاعد ======
+  function layoutSeats() {
+    const grid = ctx.modal.querySelector('.guest-seats-grid'); if (!grid) return;
+    const guests = ctx.room.seat_count || 8;
+    grid.style.setProperty('--rv-cols', guests <= 2 ? guests : (guests <= 8 ? 4 : 5));
+    for (let i = 1; i <= 15; i++) {
+      const el = ctx.modal.querySelector(`#stage-seat-${i}`);
+      if (el) el.style.display = i > guests ? 'none' : '';
+    }
+  }
+  function computeLockState() {
+    const n = ctx.room.seat_count || 8; let all = n > 0;
+    for (let i = 1; i <= n; i++) { const el = ctx.modal.querySelector(`#stage-seat-${i}`); if (!el || !el.classList.contains('locked')) { all = false; break; } }
+    ctx.allLocked = all;
+  }
+  function seatEl(idx) { return idx === 0 ? ctx.modal.querySelector('#host-seat-0') : ctx.modal.querySelector(`#stage-seat-${idx}`); }
+
+  function interceptSeatClicks() {
+    ctx.container.addEventListener('click', (ev) => {
+      if (!ctx.admin) return;
+      const el = ev.target.closest('.stage-seat, .host-seat-wrapper');
+      if (!el || !ctx.container.contains(el)) return;
+      if (el.classList.contains('occupied')) return; // المقاعد المشغولة تبقى بقائمة الإدارة الحالية
+      const idx = parseInt(el.dataset.seatIdx, 10); if (isNaN(idx)) return;
+      ev.stopImmediatePropagation(); ev.preventDefault();
+      openSeatActions(idx);
+    }, true);
+  }
+
+  // ====== الطبقة ======
+  function closeLayer() { if (ctx && ctx.layer) { ctx.layer.classList.remove('on'); ctx.layer.innerHTML = ''; delete ctx.layer.dataset.sheet; } }
+  function showLayer(html) { const l = ctx.layer; l.innerHTML = html; l.classList.add('on'); return l; }
+  function toast(msg) {
+    if (!ctx) return toastGlobal(msg);
+    const old = ctx.container.querySelector('.rv-toast'); if (old) old.remove();
+    const t = document.createElement('div'); t.className = 'rv-toast'; t.textContent = msg; ctx.container.appendChild(t);
+    setTimeout(() => t.remove(), 2200);
+  }
+  const wire = (root, sel, fn) => root.querySelectorAll(sel).forEach(n => n.addEventListener('click', (e) => fn(n, e)));
+
+  // ====== قائمة التحكم (10 أيقونات) ======
+  function onSeat() { const i = st().userSeatIndex; return i !== null && i !== undefined; }
+  function openControl() {
+    if (!App().requireAuth()) return;
+    const u = me(); const room = ctx.room;
+    const seated = onSeat(); const muted = !!st().isMuted;
+    const item = (id, label, icon) => `<button type="button" class="rv-ctl" data-id="${id}"><i>${ico(icon)}</i><span>${label}</span></button>`;
+    const row1 = ctx.admin ? [
+      item('profile', 'صورة الغرفة', 'doc'), item('bg', 'الخلفية', 'image'), item('chat', 'منطقة الدردشة', 'chat'),
+      item('sound', 'تأثيرات صوتية وموسيقى', 'music'), item('seats', 'مقعد', 'seat')
+    ] : [item('sound', 'تأثيرات صوتية وموسيقى', 'music')];
+    const row2 = [
+      item('mic', !seated ? 'الميكروفون' : (muted ? 'تشغيل المايك' : 'كتم المايك'), (seated && muted) ? 'micOff' : 'mic'),
+      item('silence', ctx.audioMuted ? 'إلغاء الصمت' : 'صمت', ctx.audioMuted ? 'spkOff' : 'spk')
+    ];
+    if (ctx.admin) row2.push(item('lockall', ctx.allLocked ? 'مقفل' : 'فتح', ctx.allLocked ? 'lock' : 'unlock'));
+    row2.push(item('minimize', 'تصغير', 'shrink'), item('exit', 'خروج', 'power'));
+    const l = showLayer(`
+      <div class="rv-top-panel">
+        <button type="button" class="rv-x" aria-label="إغلاق">✕</button>
+        <div class="rv-tp-head"><b>${esc(room.title)}</b><small>RID:${esc(String(room.id).replace(/\D/g, '').slice(-8) || room.id)}</small></div>
+        ${ctx.admin ? '<div class="rv-tp-sub">إعدادات الغرفة</div>' : ''}
+        <div class="rv-grid5">${row1.join('')}</div>
+        <div class="rv-grid5" style="margin-top:14px">${row2.join('')}</div>
+      </div>`);
+    l.querySelector('.rv-x').onclick = closeLayer;
+    wire(l, '.rv-ctl', (n) => controlAction(n.dataset.id));
+  }
+
+  function controlAction(id) {
+    switch (id) {
+      case 'profile': return openRoomProfile();
+      case 'bg': return openBackground();
+      case 'chat': return openChatManage();
+      case 'sound': return openSound();
+      case 'seats': return openSeats();
+      case 'mic': closeLayer(); return toggleMic();
+      case 'silence': closeLayer(); return toggleSilence();
+      case 'lockall': return toggleLockAll();
+      case 'minimize': closeLayer(); return minimize();
+      case 'exit': closeLayer(); return exitRoom();
+    }
+  }
+
+  async function toggleMic() {
+    if (!onSeat()) {
+      const room = ctx.room; const isHost = room.host_id === me().id;
+      let idx = null;
+      if (isHost) idx = 0;
+      else { for (let i = 1; i <= (room.seat_count || 8); i++) { const el = seatEl(i); if (el && !el.classList.contains('occupied') && !el.classList.contains('locked')) { idx = i; break; } } }
+      if (idx === null) return toast('لا يوجد مقعد متاح الآن');
+      App().takeSeatAction(idx);
+    } else {
+      App().toggleUserMic();
+    }
+  }
+
+  function toggleSilence() {
+    ctx.audioMuted = !ctx.audioMuted;
+    const apply = () => document.querySelectorAll('audio').forEach(a => { a.muted = ctx.audioMuted; });
+    apply();
+    if (audioObs) { audioObs.disconnect(); audioObs = null; }
+    if (ctx.audioMuted) { audioObs = new MutationObserver(apply); audioObs.observe(document.body, { childList: true }); }
+    toast(ctx.audioMuted ? 'تم كتم صوت الغرفة لديك' : 'تم إلغاء الصمت');
+  }
+
+  async function toggleLockAll() {
+    const next = !ctx.allLocked;
+    if (next && !(await window.uiConfirm('هل ترغب بقفل جميع مقاعد المايك ومنع صعود الجمهور؟', { icon: '🔒', okText: 'قفل الكل' }))) return;
+    st().socket.emit('admin_lock_all_seats', { roomId: roomId(), adminId: me().id, isLocked: next });
+    ctx.allLocked = next; closeLayer(); toast(next ? 'تم قفل جميع المقاعد' : 'تم فتح جميع المقاعد');
+  }
+
+  function minimize() {
+    const modal = ctx.modal; modal.classList.add('rv-minimized');
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'rv-mini';
+    b.innerHTML = `<img src="${esc(ctx.room.host_avatar || '/avatars/avatar-1.png')}" alt="" onerror="this.src='/avatars/avatar-1.png'"><span>${esc(ctx.room.title)}</span>`;
+    b.onclick = () => { modal.classList.remove('rv-minimized'); b.remove(); };
+    document.body.appendChild(b);
+  }
+
+  async function exitRoom() {
+    if (await window.uiConfirm('هل تريد مغادرة الغرفة؟', { icon: '🚪', okText: 'خروج' })) App().leaveActiveVoiceRoom();
+  }
+
+  // ====== صورة الغرفة ======
+  function openRoomProfile() {
+    const room = ctx.room; let cover = room.cover_image || room.host_avatar || '/avatars/avatar-1.png';
+    let cat = room.category || 'chill'; const origTitle = room.title;
+    const l = showLayer(`
+      <div class="rv-full">
+        <button type="button" class="rv-x" style="top:14px">✕</button>
+        <div class="rv-full-title">صورة الغرفة</div>
+        <div class="rv-lbl">صورة الغرفة</div>
+        <div class="rv-avatar-pick" id="rv-cover-pick"><img src="${esc(cover)}" alt="" onerror="this.src='/avatars/avatar-1.png'"><em>📷</em></div>
+        <input type="file" id="rv-cover-file" accept="image/*" hidden>
+        <div class="rv-lbl">اسم الغرفة</div>
+        <div class="rv-field"><button type="button" id="rv-title-reset" title="استعادة">⟳</button><input id="rv-title" maxlength="40" value="${esc(room.title)}"></div>
+        <div class="rv-lbl">محتوى الغرفة</div>
+        <div class="rv-chips" id="rv-cats">${CATS.map(c => `<button type="button" class="rv-chip ${c[0] === cat ? 'sel' : ''}" data-c="${c[0]}">${c[1]}</button>`).join('')}</div>
+        <div class="rv-lbl">إعلان شامل</div>
+        <div class="rv-ta"><textarea id="rv-ann" maxlength="100">${esc(room.announcement || '')}</textarea><small><span id="rv-ann-n">0</span>/100</small></div>
+        <div class="rv-save-bar"><button type="button" class="rv-primary" id="rv-save">حفظ</button></div>
+      </div>`);
+    const q = (s) => l.querySelector(s);
+    q('.rv-x').onclick = closeLayer;
+    const ann = q('#rv-ann'), n = q('#rv-ann-n'); const upd = () => { n.textContent = ann.value.length; }; ann.oninput = upd; upd();
+    q('#rv-title-reset').onclick = () => { q('#rv-title').value = origTitle; };
+    wire(l, '.rv-chip', (b) => { cat = b.dataset.c; l.querySelectorAll('.rv-chip').forEach(x => x.classList.toggle('sel', x === b)); });
+    q('#rv-cover-pick').onclick = () => q('#rv-cover-file').click();
+    q('#rv-cover-file').onchange = async (e) => {
+      const f = e.target.files && e.target.files[0]; if (!f) return;
+      try { const fd = new FormData(); fd.append('image', f); const d = await api('POST', `/api/rooms/${roomId()}/image`, fd, true); cover = d.url; q('#rv-cover-pick img').src = cover; }
+      catch (err) { toast(err.message); }
+    };
+    q('#rv-save').onclick = async () => {
+      const btn = q('#rv-save'); btn.disabled = true;
+      try {
+        const d = await api('PUT', `/api/rooms/${roomId()}/profile`, { title: q('#rv-title').value, category: cat, announcement: ann.value, cover_image: cover });
+        applyRoomMeta(d.room); closeLayer(); toast('تم حفظ بيانات الغرفة');
+      } catch (err) { toast(err.message); btn.disabled = false; }
+    };
+  }
+  function applyRoomMeta(s) {
+    if (!s || !ctx) return;
+    Object.assign(ctx.room, { title: s.title, category: s.category, announcement: s.announcement, cover_image: s.cover_image });
+    const headerImage = ctx.modal.querySelector('#live-room-host-avatar');
+    if (headerImage && s.cover_image) headerImage.src = s.cover_image;
+    const t = ctx.modal.querySelector('.live-room-title-text'); if (t) { t.textContent = s.title; t.title = s.title; }
+  }
+
+  // ====== الخلفية ======
+  function openBackground() {
+    let tab = 'ready'; let sel = ctx.room.bg_image || ''; const cur = sel;
+    const l = showLayer('<div class="rv-full" style="padding-top:0"></div>');
+    const root = l.querySelector('.rv-full');
+    const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.hidden = true; root.appendChild(input);
+    const holder = document.createElement('div'); root.appendChild(holder);
+    const thumb = (val, css, name, cls) => `<button type="button" class="rv-bg-item ${cls || ''} ${val === sel ? 'sel' : ''}" data-v="${esc(val)}" style="${css}"><span>${esc(name || '')}</span></button>`;
+    function paint() {
+      const tabs = [['ready', 'خلفية جاهزة'], ['picked', 'خلفية مختارة'], ['anim', 'خلفية متحركة']];
+      let items = '';
+      if (tab === 'ready') items = READY_BG.map(b => thumb('grad:' + b.id, `background:${b.css}`, b.name)).join('');
+      else if (tab === 'anim') items = ANIM_BG.map(b => `<button type="button" class="rv-bg-item ${('anim:' + b.id) === sel ? 'sel' : ''}" data-v="anim:${b.id}"><div class="rv-bg rv-anim-${b.id}" style="position:absolute;inset:0"></div><span>${b.name}</span></button>`).join('');
+      else {
+        const mine = ['/royal_eagle.gif'].concat(ctx.bgPicked);
+        items = mine.map(u => thumb(u, `background-image:url('${u.replace(/'/g, '%27')}')`, '')).join('') + '<button type="button" class="rv-bg-item add" data-add="1">+</button>';
+      }
+      holder.innerHTML = `
+        <div class="rv-bg-head"><button type="button" class="rv-pill" id="rv-bg-save" ${sel === cur ? 'disabled' : ''}>حفظ</button><h4>الخلفية</h4><button type="button" class="rv-x" style="position:static">✕</button></div>
+        <div class="rv-bg-tabs">${tabs.map(t => `<b class="${t[0] === tab ? 'sel' : ''}" data-t="${t[0]}">${t[1]}</b>`).join('')}</div>
+        <div class="rv-bg-grid">${items}</div>
+        <div class="rv-bg-bottom"><button type="button" class="rv-primary" id="rv-bg-browse">تصفح</button></div>`;
+      holder.querySelector('.rv-x').onclick = closeLayer;
+      wire(holder, '.rv-bg-tabs b', (b) => { tab = b.dataset.t; paint(); });
+      wire(holder, '.rv-bg-item', (b) => { if (b.dataset.add) return input.click(); sel = b.dataset.v; paint(); });
+      holder.querySelector('#rv-bg-browse').onclick = () => input.click();
+      holder.querySelector('#rv-bg-save').onclick = async () => {
+        try { await api('PUT', `/api/rooms/${roomId()}/background`, { bg_image: sel }); applyBg(sel); closeLayer(); toast('تم تغيير الخلفية'); }
+        catch (err) { toast(err.message); }
+      };
+    }
+    input.onchange = async (e) => {
+      const f = e.target.files && e.target.files[0]; if (!f) return;
+      try {
+        const fd = new FormData(); fd.append('image', f);
+        const d = await api('POST', `/api/rooms/${roomId()}/image`, fd, true);
+        ctx.bgPicked.unshift(d.url); saveMyBgs(ctx.bgPicked); sel = d.url; tab = 'picked'; paint();
+      } catch (err) { toast(err.message); }
+    };
+    paint();
+  }
+
+  // ====== إدارة الشات ======
+  function chatSettingsRows() {
+    return [
+      ['hide_system', 'إخفاء رسائل السيستم'],
+      ['hide_all', 'إخفاء جميع الرسائل'],
+      ['images_members_only', 'تفعيل خاصية إرسال الصور في الشات (للأشخاص المنضمين فقط)'],
+      ['auto_welcome', 'تفعيل الترحيب التلقائي في الغرفة'],
+      ['close_emoji', 'إغلاق رسائل الإيموجي في منطقة الدردشة']
+    ];
+  }
+  function openChatManage() {
+    const rows = chatSettingsRows();
+    const l = showLayer(`
+      <div class="rv-sheet">
+        <button type="button" class="rv-x" style="top:12px">✕</button>
+        <div class="rv-sheet-title">إدارة الشات</div>
+        ${rows.map(r => `<div class="rv-row"><span>${r[1]}</span><button type="button" class="rv-switch ${ctx.chat[r[0]] ? 'on' : ''}" data-k="${r[0]}" aria-label="${r[1]}"></button></div>`).join('')}
+      </div>`);
+    l.querySelector('.rv-x').onclick = closeLayer;
+    wire(l, '.rv-switch', async (b) => {
+      const k = b.dataset.k; const v = !ctx.chat[k];
+      ctx.chat[k] = v; b.classList.toggle('on', v); applyChatSettings();
+      try { await api('PUT', `/api/rooms/${roomId()}/chat-settings`, { [k]: v }); }
+      catch (err) { ctx.chat[k] = !v; b.classList.toggle('on', !v); applyChatSettings(); toast(err.message); }
+    });
+  }
+  function applyChatSettings() {
+    const m = ctx.modal, c = ctx.chat || {};
+    m.classList.toggle('rv-hide-sys', !!c.hide_system);
+    m.classList.toggle('rv-hide-all', !!c.hide_all);
+    m.classList.toggle('rv-hide-emoji', !!c.close_emoji);
+  }
+
+  // ====== تأثيرات صوتية وموسيقى ======
+  function openSound() {
+    const canMusic = ctx.admin || ctx.seatS.allow_music !== false;
+    const fx = [['applause', 'تصفيق', 'تصفيق 👏'], ['cheer', 'هتاف وزغاريد', 'هتاف وزغاريد 🎉'], ['laughter', 'ضحك', 'ضحك 😂'], ['drumroll', 'طبول', 'قرع طبول 🥁']];
+    const l = showLayer(`
+      <div class="rv-sheet">
+        <button type="button" class="rv-x" style="top:12px">✕</button>
+        <div class="rv-sheet-title">تأثيرات صوتية وموسيقى</div>
+        <div class="rv-grid5" style="grid-template-columns:repeat(4,1fr)">
+          ${fx.map(f => `<button type="button" class="rv-ctl" data-fx="${f[0]}" data-n="${f[2]}"><i>${ico('clap')}</i><span>${f[1]}</span></button>`).join('')}
+          <button type="button" class="rv-ctl" data-music="1"><i>${ico('music')}</i><span>موسيقى لوفاي</span></button>
+        </div>
+      </div>`);
+    l.querySelector('.rv-x').onclick = closeLayer;
+    wire(l, '[data-fx]', (b) => {
+      st().socket.emit('play_sound_effect', { roomId: roomId(), effect: b.dataset.fx, soundName: b.dataset.n, senderName: me().name });
+    });
+    wire(l, '[data-music]', () => {
+      if (!canMusic) return toast('تشغيل الموسيقى متاح للإدارة فقط في هذه الغرفة');
+      if (window.soundManager) window.soundManager.toggleChillMusic(() => toast('تم تشغيل موسيقى لوفاي الهادئة'), () => toast('تم إيقاف الموسيقى'));
+    });
+  }
+
+  // ====== عدد المقاعد ======
+  function dots(n) {
+    const rows = { 3: [1, 2], 5: [2, 3], 9: [3, 3, 3], 15: [5, 5, 5] }[n] || [n];
+    let out = ''; const w = 24, h = 24, rh = h / (rows.length + 1);
+    rows.forEach((cnt, r) => { for (let i = 0; i < cnt; i++) out += `<circle cx="${(w / (cnt + 1)) * (i + 1)}" cy="${rh * (r + 1)}" r="1.5" fill="#fff" stroke="none"/>`; });
+    return `<svg viewBox="0 0 24 24">${out}</svg>`;
+  }
+  async function openSeats(tab) {
+    tab = tab || 'count';
+    let data;
+    try { data = await api('GET', `/api/rooms/${roomId()}/seat-options`); } catch (err) { return toast(err.message); }
+    let sel = data.current; const cur = data.current; let theme = ctx.seatS.theme || 'classic';
+    const l = showLayer('<div class="rv-sheet" style="padding-top:16px"></div>');
+    const sh = l.querySelector('.rv-sheet');
+    function paint() {
+      let body = '';
+      if (tab === 'count') {
+        body = '<div class="rv-seat-opts">' + data.options.map(o => {
+          const sub = o.count === 9 && o.locked ? `<small>تم فتح ${Math.min(o.members, o.need_members)} من ${o.need_members} من أعضاء الغرفة</small>`
+            : (o.count === 15 && o.locked ? `<small>فتح ${o.price} كريستالة</small>` : '');
+          const lk = o.locked ? `<span class="rv-lk">${ico('lock')}</span>` : '';
+          return `<button type="button" class="rv-seat-opt ${sel === o.count ? 'sel' : ''}" data-n="${o.count}">${dots(o.count)}<div>${o.count} مقاعد${lk}</div>${sub}</button>`;
+        }).join('') + '</div>';
+      } else {
+        body = `<div class="rv-themes">${[['classic', 'كلاسيكي'], ['neon', 'نيون'], ['gold', 'ذهبي']].map(t => `<button type="button" class="rv-theme ${theme === t[0] ? 'sel' : ''}" data-t="${t[0]}"><u></u>${t[1]}</button>`).join('')}</div>`;
+      }
+      sh.innerHTML = `
+        <button type="button" class="rv-back" id="rv-seat-gear" title="إعدادات المقاعد">${ico('gear').replace('<svg', '<svg width="20" height="20" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"')}</button>
+        <button type="button" class="rv-x" style="top:12px">✕</button>
+        <div class="rv-tabs"><b class="${tab === 'topic' ? 'sel' : ''}" data-tab="topic">الموضوع</b><b class="${tab === 'count' ? 'sel' : ''}" data-tab="count">عدد المقاعد</b></div>
+        ${body}
+        <button type="button" class="rv-primary" id="rv-seat-save">حفظ</button>`;
+      sh.querySelector('.rv-x').onclick = closeLayer;
+      sh.querySelector('#rv-seat-gear').onclick = openSeatSettings;
+      wire(sh, '.rv-tabs b', (b) => { tab = b.dataset.tab; paint(); });
+      wire(sh, '.rv-seat-opt', (b) => { sel = parseInt(b.dataset.n, 10); paint(); });
+      wire(sh, '.rv-theme', (b) => { theme = b.dataset.t; paint(); });
+      sh.querySelector('#rv-seat-save').onclick = async () => {
+        try {
+          if (tab === 'topic') {
+            await api('PUT', `/api/rooms/${roomId()}/seat-settings`, { theme });
+            ctx.seatS.theme = theme; applySeatSettings(); closeLayer(); return toast('تم حفظ الموضوع');
+          }
+          if (sel === cur) return closeLayer();
+          const opt = data.options.find(o => o.count === sel);
+          if (opt && opt.locked && sel === 9) return toast(`يلزم ${opt.need_members} من أعضاء الغرفة لفتح 9 مقاعد`);
+          if (opt && opt.locked && sel === 15 && !(await window.uiConfirm(`فتح 15 مقعدًا يكلف ${opt.price} كريستال. هل تريد المتابعة؟`, { icon: '💎', okText: 'فتح' }))) return;
+          await api('PUT', `/api/rooms/${roomId()}/seat-count`, { count: sel });
+          closeLayer(); toast('تم تحديث عدد المقاعد');
+        } catch (err) { toast(err.message); }
+      };
+    }
+    paint();
+  }
+
+  function openSeatSettings() {
+    let who = ctx.seatS.who || 'all'; let stars = !!ctx.seatS.show_stars; let music = ctx.seatS.allow_music !== false;
+    const l = showLayer('<div class="rv-sheet"></div>'); const sh = l.querySelector('.rv-sheet');
+    function paint() {
+      sh.innerHTML = `
+        <button type="button" class="rv-x" style="top:12px">✕</button>
+        <div class="rv-sheet-title">إعدادات المقاعد</div>
+        <div class="rv-seg"><button type="button" data-w="members" class="${who === 'members' ? 'sel' : ''}">الأعضاء فقط</button><button type="button" data-w="all" class="${who === 'all' ? 'sel' : ''}">الجميع</button></div>
+        <div class="rv-row"><span>عرض النجوم على المقاعد</span><button type="button" class="rv-switch ${stars ? 'on' : ''}" data-s="stars"></button></div>
+        <div class="rv-row"><span>السماح للآخرين بتشغيل الموسيقى</span><button type="button" class="rv-switch ${music ? 'on' : ''}" data-s="music"></button></div>
+        <button type="button" class="rv-primary" id="rv-ss-save">حفظ</button>`;
+      sh.querySelector('.rv-x').onclick = closeLayer;
+      wire(sh, '.rv-seg button', (b) => { who = b.dataset.w; paint(); });
+      wire(sh, '.rv-switch', (b) => { if (b.dataset.s === 'stars') stars = !stars; else music = !music; paint(); });
+      sh.querySelector('#rv-ss-save').onclick = async () => {
+        try {
+          await api('PUT', `/api/rooms/${roomId()}/seat-settings`, { who, show_stars: stars, allow_music: music });
+          Object.assign(ctx.seatS, { who, show_stars: stars, allow_music: music }); applySeatSettings(); closeLayer(); toast('تم حفظ إعدادات المقاعد');
+        } catch (err) { toast(err.message); }
+      };
+    }
+    paint();
+  }
+  function applySeatSettings() {
+    const m = ctx.modal, s = ctx.seatS || {};
+    m.classList.toggle('rv-stars-on', !!s.show_stars);
+    m.classList.remove('rv-theme-neon', 'rv-theme-gold');
+    if (s.theme === 'neon' || s.theme === 'gold') m.classList.add('rv-theme-' + s.theme);
+  }
+
+  // ====== قائمة المقعد (استخدام المايك / ادعيه / كتم / غلق / كتم الكل) ======
+  function openSeatActions(idx) {
+    const el = seatEl(idx); const locked = !!(el && el.classList.contains('locked'));
+    const muted = ctx.mutedSeats.has(idx);
+    const isHost = ctx.room.host_id === me().id; const isOwner = me().role === 'owner';
+    const canTake = !locked && (idx !== 0 || isHost || isOwner);
+    const it = (id, label, icon, dis) => `<button type="button" class="rv-ctl ${dis ? 'dis' : ''}" data-a="${id}"><i>${ico(icon)}</i><span>${label}</span></button>`;
+    let cells = it('take', 'استخدام المايك', 'mic', !canTake) + it('invite', 'ادعيه', 'invite', locked);
+    if (idx > 0) {
+      cells += it('mute', muted ? 'إلغاء كتم الصوت' : 'كتم الصوت', muted ? 'spkOff' : 'micOff');
+      cells += it('lock', locked ? 'فتح المقعد' : 'غلق المقعد', locked ? 'unlock' : 'lock');
+      cells += it('muteall', ctx.allMuted ? 'إلغاء كتم الكل' : 'كتم صوت الكل', ctx.allMuted ? 'group' : 'groupOff');
+    }
+    const l = showLayer(`<div class="rv-sheet rv-actions"><div class="rv-act-grid">${cells}</div></div>`);
+    wire(l, '.rv-ctl', (b) => {
+      const a = b.dataset.a; const sock = st().socket;
+      if (a === 'take') { closeLayer(); App().takeSeatAction(idx); }
+      else if (a === 'invite') openInvite(idx);
+      else if (a === 'mute') {
+        sock.emit('admin_mute_seat', { roomId: roomId(), seatIndex: idx, adminId: me().id, isMuted: !muted });
+        if (muted) ctx.mutedSeats.delete(idx); else ctx.mutedSeats.add(idx); closeLayer();
+      } else if (a === 'lock') {
+        sock.emit('admin_lock_seat', { roomId: roomId(), seatIndex: idx, adminId: me().id, isLocked: !locked }); closeLayer();
+        setTimeout(computeLockState, 400);
+      } else if (a === 'muteall') {
+        ctx.allMuted = !ctx.allMuted; sock.emit('admin_mute_all_seats', { roomId: roomId(), adminId: me().id, isMuted: ctx.allMuted }); closeLayer();
+        toast(ctx.allMuted ? 'تم كتم صوت الجميع' : 'تم إلغاء كتم الجميع');
+      }
+    });
+  }
+
+  async function openInvite(seatIdx) {
+    const l = showLayer(`
+      <div class="rv-invite">
+        <button type="button" class="rv-x" style="top:16px">✕</button>
+        <h4>المستخدمون الذين يمكنك دعوتهم</h4>
+        <div class="rv-search">${ico('search').replace('<svg', '<svg width="16" height="16" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"')}<input id="rv-q" placeholder="ابحث عن اسم أو ID"></div>
+        <div class="rv-ulist" id="rv-ul"><div class="rv-empty">جارٍ التحميل…</div></div>
+      </div>`);
+    l.querySelector('.rv-x').onclick = closeLayer;
+    let users = [];
+    try {
+      const d = await api('GET', `/api/rooms/${roomId()}/people`);
+      users = (d.online || []);
+    } catch (e) { users = st().activeRoomAudience || []; }
+    const seatedIds = new Set((ctx.room.seats || []).filter(s => s.user_id).map(s => s.user_id));
+    users = users.filter(u => u && u.id && u.id !== me().id && !seatedIds.has(u.id));
+    const list = l.querySelector('#rv-ul'); const q = l.querySelector('#rv-q');
+    function paint() {
+      const k = q.value.trim().toLowerCase();
+      const f = users.filter(u => !k || String(u.name || '').toLowerCase().includes(k) || String(u.id).toLowerCase().includes(k));
+      if (!f.length) {
+        list.innerHTML = `<div class="rv-empty"><svg viewBox="0 0 120 70" fill="none" stroke="#fff" stroke-width="2"><circle cx="30" cy="18" r="8"/><path d="M4 62c14-20 30-26 52-14l18-12c10 8 26 14 42 26"/></svg>لا يوجد محتوى</div>`; return;
+      }
+      list.innerHTML = f.map(u => `<div class="rv-user"><img src="${esc(u.avatar || '/avatars/avatar-1.png')}" alt="" onerror="this.src='/avatars/avatar-1.png'"><div>${esc(u.name || 'مستخدم')}<small>ID: ${esc(String(u.id).slice(-8))}</small></div><button type="button" data-id="${esc(u.id)}">دعوة</button></div>`).join('');
+      wire(list, 'button[data-id]', (b) => {
+        st().socket.emit('invite_to_seat', { roomId: roomId(), targetUserId: b.dataset.id, seatIndex: seatIdx === 0 ? 1 : seatIdx, adminId: me().id });
+        b.disabled = true; b.textContent = 'تم الإرسال';
+      });
+    }
+    q.oninput = paint; paint();
+  }
+
+  // ====== أحداث الـ socket ======
+  function on(ev, fn) { st().socket.on(ev, fn); sockHandlers.push([ev, fn]); }
+  function bindSockets() {
+    if (!st().socket) return;
+    on('room_settings_changed', (s) => {
+      if (!ctx || s.roomId !== roomId()) return;
+      applyRoomMeta(s);
+      ctx.chat = s.chat_settings || {}; ctx.seatS = s.seat_settings || {};
+      if (s.bg_image !== undefined && s.bg_image !== (ctx.room.bg_image || '')) applyBg(s.bg_image);
+      applyChatSettings(); applySeatSettings();
+      if (s.toast && s.by !== me().name) toast(s.toast);
+    });
+    on('room_seat_count_changed', (d) => {
+      if (!ctx || d.roomId !== roomId()) return;
+      ctx.room.seat_count = d.seatCount; layoutSeats(); computeLockState();
+    });
+    on('all_seats_lock_changed', (d) => { if (ctx && d.roomId === roomId()) ctx.allLocked = !!d.isLocked; });
+    on('all_seats_mute_changed', (d) => { if (ctx && d.roomId === roomId()) ctx.allMuted = !!d.isMuted; });
+    on('seat_mute_changed', (d) => {
+      if (!ctx || d.roomId !== roomId()) return;
+      if (d.isMuted) ctx.mutedSeats.add(d.seatIndex); else ctx.mutedSeats.delete(d.seatIndex);
+      if (d.seatIndex === ctx.music.seatIndex && d.isMuted && ctx.music.playing) {
+        if (ctx.music.ownerId === me().id) stopRoomMusic(true);
+        else {
+          ctx.music.remote = null; ctx.music.ownerId = null; ctx.music.seatIndex = null; ctx.music.playing = false;
+          renderMusicNowPlaying(); renderMusicSeatIndicator();
+        }
+      }
+    });
+    on('seat_invite', async (d) => {
+      if (!ctx || d.roomId !== roomId()) return;
+      if (await window.uiConfirm(`${d.fromName} يدعوك للصعود إلى المايك 🎙️`, { icon: '🎙️', okText: 'صعود' })) App().takeSeatAction(d.seatIndex);
+    });
+    on('user_joined_room', (d) => {
+      if (!ctx || !ctx.chat.auto_welcome || ctx.room.host_id !== me().id) return;
+      const u = d && d.user; if (!u || u.id === me().id) return;
+      st().socket.emit('send_room_message', { roomId: roomId(), userId: me().id, content: `أهلاً وسهلاً بـ ${u.name} في الغرفة 🌹` });
+    });
+    on('room_music_started', (d) => {
+      if (!ctx || d.roomId !== roomId() || d.userId === me().id) return;
+      ctx.music.remote = { title: d.title || 'موسيقى', id: d.trackId || '' };
+      ctx.music.ownerId = d.userId; ctx.music.seatIndex = d.seatIndex; ctx.music.playing = true;
+      renderMusicNowPlaying(); renderMusicSeatIndicator();
+    });
+    on('room_music_stopped', (d) => {
+      if (!ctx || d.roomId !== roomId() || d.userId === me().id || (ctx.music.ownerId && d.userId !== ctx.music.ownerId)) return;
+      ctx.music.remote = null; ctx.music.ownerId = null; ctx.music.seatIndex = null; ctx.music.playing = false;
+      renderMusicNowPlaying(); renderMusicSeatIndicator();
+    });
+    on('seat_updated', (d) => {
+      if (!ctx || !ctx.music.playing) return;
+      if (!d.user && d.seatIndex === ctx.music.seatIndex) {
+        if (ctx.music.ownerId === me().id) stopRoomMusic(true);
+        else { ctx.music.remote = null; ctx.music.playing = false; renderMusicNowPlaying(); renderMusicSeatIndicator(); }
+      }
+      renderMusicSeatIndicator();
+    });
+  }
+})();

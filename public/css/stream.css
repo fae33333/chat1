@@ -1,0 +1,673 @@
+/* Additions for Live Video Streams, Flying Bullet Comments, Floating Hearts, and Real Gmail OTP */
+
+/* Live Stream Video Stage & Overlays */
+.live-stream-modal {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.live-stream-container {
+  max-width: 440px;
+  width: 100%;
+  height: 100%;
+  margin: 0 auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #090714;
+}
+
+.app-container.fullscreen-mode .live-stream-container {
+  max-width: 900px;
+}
+
+/* Video viewport */
+.video-viewport-wrapper {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#stream-host-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-fallback-streamer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, #2a1954 0%, #0d081e 100%);
+  position: relative;
+}
+
+.streamer-avatar-live-pulse {
+  width: 120px;
+  height: 120px;
+  border-radius: var(--radius-full);
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.streamer-avatar-live-pulse img {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  border: 3px solid var(--primary);
+  box-shadow: 0 0 25px rgba(139, 92, 246, 0.6);
+}
+
+.streamer-avatar-live-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: var(--radius-full);
+  border: 2px solid #ec4899;
+  animation: speakingRipple 1.4s infinite;
+}
+
+/* Flying Bullet Chat across video (Danmaku) */
+.bullet-chat-container {
+  position: absolute;
+  top: 90px;
+  left: 0;
+  right: 0;
+  height: 180px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.bullet-comment-item {
+  position: absolute;
+  white-space: nowrap;
+  background: rgba(13, 8, 30, 0.65);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: bulletFly 6s linear forwards;
+}
+
+@keyframes bulletFly {
+  from { transform: translateX(100vw); }
+  to { transform: translateX(-100%); }
+}
+
+body.ltr .bullet-comment-item {
+  animation: bulletFlyLTR 6s linear forwards;
+}
+
+@keyframes bulletFlyLTR {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100vw); }
+}
+
+/* Floating Hearts barrage on tap */
+.stream-hearts-container {
+  position: absolute;
+  bottom: 80px;
+  right: 20px;
+  width: 100px;
+  height: 300px;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 15;
+}
+
+body.ltr .stream-hearts-container {
+  right: auto;
+  left: 20px;
+}
+
+.floating-tap-heart {
+  position: absolute;
+  bottom: 0;
+  font-size: 26px;
+  animation: floatHeart 2.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes floatHeart {
+  0% { transform: translateY(0) scale(0.6) rotate(0deg); opacity: 1; }
+  50% { transform: translateY(-140px) scale(1.2) rotate(15deg); opacity: 0.9; }
+  100% { transform: translateY(-280px) scale(1) rotate(-15deg); opacity: 0; }
+}
+
+/* Streamer top HUD */
+.stream-top-hud {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 20;
+}
+
+.streamer-profile-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  padding: 4px 12px 4px 6px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.streamer-badge-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  border: 2px solid #fbbf24;
+}
+
+.streamer-badge-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.streamer-badge-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.streamer-badge-likes {
+  font-size: 10px;
+  color: #fbbf24;
+}
+
+.stream-live-pill {
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  animation: pulseLive 1.5s infinite;
+}
+
+@keyframes pulseLive {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Stream bottom HUD */
+.stream-bottom-hud {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 14px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0) 100%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 20;
+}
+
+.stream-chat-preview-box {
+  position: absolute;
+  bottom: 60px;
+  left: 14px;
+  right: 80px;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 18;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 20px);
+}
+
+body.ltr .stream-chat-preview-box {
+  left: 80px;
+  right: 14px;
+}
+
+.stream-chat-msg-row {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #f1f5f9;
+  width: fit-content;
+  max-width: 90%;
+  word-break: break-word;
+}
+
+.stream-chat-user {
+  font-weight: 700;
+  color: #c084fc;
+  margin-left: 4px;
+}
+
+body.ltr .stream-chat-user {
+  margin-left: 0;
+  margin-right: 4px;
+}
+
+/* Live stream room card badge */
+.room-type-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(239, 68, 68, 0.9);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 2;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+}
+
+body.ltr .room-type-badge {
+  left: auto;
+  right: 10px;
+}
+
+.room-type-badge.voice {
+  background: rgba(139, 92, 246, 0.9);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.6);
+}
+
+.room-card-cover-thumb {
+  width: 100%;
+  height: 90px;
+  border-radius: 12px;
+  object-fit: cover;
+  margin-bottom: 8px;
+}
+
+/* Beautify Filter */
+.beautify-filter-active {
+  filter: brightness(1.08) contrast(1.04) saturate(1.15) !important;
+}
+
+/* Real Gmail OTP Verification Tabs & Input */
+.auth-mode-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 14px;
+}
+
+.auth-mode-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.auth-mode-tab.active {
+  color: #c084fc;
+  border-bottom-color: var(--primary);
+}
+
+.otp-digit-inputs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px 0;
+  direction: ltr;
+}
+
+.otp-digit-box {
+  width: 44px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid var(--border-glass);
+  border-radius: 10px;
+  color: #fbbf24;
+  font-size: 22px;
+  font-weight: 800;
+  text-align: center;
+  outline: none;
+}
+
+/* 2-Person Video Split Screen Co-host / PK */
+.video-split-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+}
+
+.video-split-half {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  border-right: 1.5px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+body.ltr .video-split-half {
+  border-right: none;
+  border-left: 1.5px solid rgba(255, 255, 255, 0.2);
+}
+
+.video-split-half video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+#stream-host-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+/* Video Mirroring and Flip Classes */
+.video-mirrored {
+  transform: scaleX(-1) !important;
+}
+
+.video-normal {
+  transform: scaleX(1) !important;
+}
+
+/* Floating Flip / Mirror Button on Video Viewport */
+.stream-flip-toggle-badge {
+  position: absolute;
+  top: 76px;
+  left: 16px;
+  background: rgba(15, 10, 30, 0.82);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.stream-flip-toggle-badge:hover {
+  background: rgba(168, 85, 247, 0.45);
+  border-color: #c084fc;
+  color: #fbbf24;
+  transform: scale(1.04);
+}
+
+body.ltr .stream-flip-toggle-badge {
+  left: auto;
+  right: 16px;
+}
+
+.cohost-name-tag {
+  position: absolute;
+  bottom: 80px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  z-index: 10;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+body.ltr .cohost-name-tag {
+  right: auto;
+  left: 10px;
+}
+
+/* Split-screen Direct Gift Chip */
+.split-direct-gift-chip {
+  position: absolute;
+  bottom: 115px;
+  background: rgba(15, 10, 30, 0.78);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(251, 191, 36, 0.6);
+  color: #fbbf24;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  z-index: 12;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.split-direct-gift-chip:hover {
+  transform: translateY(-2px) scale(1.04);
+  background: rgba(245, 158, 11, 0.25);
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.6);
+}
+
+.split-direct-gift-chip.host-gift {
+  border-color: rgba(239, 68, 68, 0.7);
+  color: #fca5a5;
+}
+
+.split-direct-gift-chip.host-gift:hover {
+  background: rgba(239, 68, 68, 0.25);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.6);
+}
+
+.split-direct-gift-chip.cohost-gift {
+  border-color: rgba(59, 130, 246, 0.7);
+  color: #93c5fd;
+}
+
+.split-direct-gift-chip.cohost-gift:hover {
+  background: rgba(59, 130, 246, 0.25);
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.6);
+}
+
+.video-split-half {
+  cursor: pointer;
+}
+
+.video-split-half:hover {
+  box-shadow: inset 0 0 20px rgba(168, 85, 247, 0.25);
+}
+
+.pk-end-btn-fast {
+  background: rgba(239, 68, 68, 0.85);
+  color: #fff;
+  border: 1px solid #ef4444;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pk-end-btn-fast:hover {
+  background: #dc2626;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
+}
+
+/* Seat Admin Menu Popover */
+.seat-admin-modal-box {
+  background: #191238;
+  border: 1px solid var(--border-glow);
+  border-radius: 20px;
+  padding: 16px;
+  width: 100%;
+  max-width: 320px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), var(--shadow-glow);
+  text-align: center;
+}
+
+.seat-admin-action-btn {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-glass);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  transition: all 0.2s;
+}
+
+.seat-admin-action-btn:hover {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: var(--primary);
+}
+
+.seat-admin-action-btn.danger {
+  color: #f43f5e;
+  border-color: rgba(244, 63, 94, 0.3);
+}
+
+.seat-admin-action-btn.danger:hover {
+  background: rgba(244, 63, 94, 0.2);
+}
+
+/* Incoming Co-host Request Banner (for Broadcaster) */
+.cohost-req-banner {
+  position: absolute;
+  top: 130px;
+  left: 16px;
+  right: 16px;
+  background: rgba(20, 10, 40, 0.92);
+  border: 1.5px solid #fbbf24;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+  border-radius: 14px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 45;
+  animation: bannerSlideIn 0.3s ease;
+  backdrop-filter: blur(8px);
+}
+
+.req-banner-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2px solid #fbbf24;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.req-banner-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.req-banner-btns {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.req-accept-btn {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.req-accept-btn:hover {
+  transform: scale(1.05);
+}
+
+.req-reject-btn {
+  background: rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+  border: 1px solid #ef4444;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.req-reject-btn:hover {
+  background: rgba(239, 68, 68, 0.4);
+}
+
+/* Split-screen PK Glow Borders */
+.left-streamer {
+  border: 2px solid rgba(239, 68, 68, 0.6) !important;
+  box-shadow: inset 0 0 25px rgba(239, 68, 68, 0.25);
+}
+
+.right-streamer {
+  border: 2px solid rgba(59, 130, 246, 0.6) !important;
+  box-shadow: inset 0 0 25px rgba(59, 130, 246, 0.25);
+}
+
+@keyframes pkTrophyPulse {
+  0% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.6)); }
+  50% { transform: scale(1.1); filter: drop-shadow(0 0 25px rgba(251, 191, 36, 0.9)); }
+  100% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.6)); }
+}
+
+
