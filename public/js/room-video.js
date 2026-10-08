@@ -123,7 +123,7 @@
     renderMusicNowPlaying();
     container.addEventListener('click', (event) => {
       if (!ctx?.music?.playing || !ctx.music.current || ctx.music.minimized) return;
-      if (event.target.closest('.rv-now-playing, .rv-music-mini, .rv-layer, button, input, textarea, select, a')) return;
+      if (event.target.closest('.rv-now-playing, .rv-music-mini, .rv-layer')) return;
       minimizeMusicPlayer();
     });
 
