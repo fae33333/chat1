@@ -76,6 +76,7 @@ const connect = () => new Promise((resolve, reject) => {
   let details = (await api('GET', `/api/rooms/${roomId}`)).data;
   ok('default layout = seat 0 + 8 mic seats', details.seat_count === 8 && details.seats.length === 9, `seats=${details.seats.length}`);
   ok('default background = cosmic_purple', details.room_bg === 'cosmic_purple');
+  ok('host starts seated on the throne (seat 0)', details.seats.some(s2 => s2.seat_index === 0 && s2.user_id === hostId));
 
   console.log('\n2) اتصال المضيف والضيف بالغرفة (Socket.IO join_room)');
   const hostSocket = await connect();
@@ -145,7 +146,55 @@ const connect = () => new Promise((resolve, reject) => {
   details = (await api('GET', `/api/rooms/${roomId}`)).data;
   ok('background unchanged after the rejected attempt', details.room_bg === 'neon_tokyo');
 
-  console.log('\n8) التنظيف');
+  console.log('\n8) مشغل الموسيقى (اسم الأغنية على المقعد)');
+  // 8a) a member who is NOT seated cannot start the music
+  const notSeatedErr = waitFor(guestSocket, 'room_music_error');
+  guestSocket.emit('room_music_update', { roomId, userId: guest.id, playing: true, trackId: 'lofi_night', trackName: 'ليل لوفي هادئ' });
+  const notSeated = await notSeatedErr;
+  ok('non-seated member gets room_music_error', Boolean(notSeated && notSeated.message));
+
+  // 8b) the host (seat 0) starts a track → everyone in the room gets the broadcast
+  const guestGotMusic = waitFor(guestSocket, 'room_music_update');
+  const hostGotMusic = waitFor(hostSocket, 'room_music_update');
+  hostSocket.emit('room_music_update', { roomId, userId: hostId, seatIndex: 0, playing: true, trackId: 'oud_tal', trackName: 'طرب عود شرقي' });
+  const [musicToGuest, musicToHost] = await Promise.all([guestGotMusic, hostGotMusic]);
+  ok('guest received room_music_update', Boolean(musicToGuest && musicToGuest.playing === true));
+  ok('host received room_music_update', Boolean(musicToHost && musicToHost.playing === true));
+  ok('broadcast carries the song name', musicToGuest.trackName === 'طرب عود شرقي', JSON.stringify(musicToGuest));
+  ok('broadcast carries the playing seat', musicToGuest.seatIndex === 0 && musicToGuest.userId === hostId);
+
+  // 8c) a newcomer joining mid-song immediately gets the now-playing state
+  const joiner = await connect();
+  const joinerGotMusic = waitFor(joiner, 'room_music_update');
+  joiner.emit('join_room', { roomId, user: { id: 'roomv2-joiner', name: 'زائر متأخر', avatar: '/avatars/avatar-4.png' } });
+  const joinerMusic = await joinerGotMusic;
+  ok('late joiner synced with the now-playing track', Boolean(joinerMusic && joinerMusic.playing === true && joinerMusic.trackName === 'طرب عود شرقي'));
+
+  // 8d) a random member cannot stop someone else's music
+  const stopDenied = waitFor(guestSocket, 'room_music_error');
+  guestSocket.emit('room_music_update', { roomId, userId: guest.id, playing: false });
+  const stopDeniedEvent = await stopDenied;
+  ok('only the player or a manager may stop the music', Boolean(stopDeniedEvent && stopDeniedEvent.message));
+
+  // 8e) a seated guest starts their own track → it replaces the host's song
+  const guestTookSeat2 = waitFor(guestSocket, 'seat_updated');
+  guestSocket.emit('take_seat', { roomId, seatIndex: 3, userId: guest.id });
+  await guestTookSeat2;
+  const hostGotGuestMusic = waitFor(hostSocket, 'room_music_update');
+  guestSocket.emit('room_music_update', { roomId, userId: guest.id, seatIndex: 3, playing: true, trackId: 'coffee_rain', trackName: 'قهوة ومطر' });
+  const guestMusic = await hostGotGuestMusic;
+  ok('a seated guest can take over the music', Boolean(guestMusic && guestMusic.userId === guest.id && guestMusic.seatIndex === 3 && guestMusic.trackName === 'قهوة ومطر'), JSON.stringify(guestMusic));
+
+  // 8f) kicking the player off their seat stops the music automatically
+  const hostSawKick = waitFor(hostSocket, 'user_kicked_from_seat');
+  const musicStopped = waitFor(hostSocket, 'room_music_update');
+  hostSocket.emit('admin_kick_seat', { roomId, seatIndex: 3, adminId: hostId });
+  await hostSawKick;
+  const stoppedEvent = await musicStopped;
+  ok('kicking the player auto-stops the music', Boolean(stoppedEvent && stoppedEvent.playing === false), JSON.stringify(stoppedEvent));
+  joiner.close();
+
+  console.log('\n9) التنظيف');
   const deleted = await api('DELETE', `/api/rooms/${roomId}`, null, { 'x-user-id': hostId });
   ok('test room deleted', deleted.status === 200 && deleted.data.success === true, JSON.stringify(deleted.data).slice(0, 120));
   hostSocket.close();

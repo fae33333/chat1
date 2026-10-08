@@ -23,6 +23,8 @@
     micLevelInterval: null,
     isMuted: false,
     userSeatIndex: null,
+    // Room V2 music player (now-playing state broadcast from the server)
+    roomMusic: null,
     // Voice note recording
     mediaRecorder: null,
     recordedAudioChunks: [],
@@ -688,6 +690,16 @@
 
     state.socket.on('room_settings_error', ({ message }) => {
       if (message) showToast(message);
+    });
+
+    // ROOM V2: music player live sync (اسم الأغنية يظهر على مقعد مشغّل الموسيقى)
+    state.socket.on('room_music_update', (music) => {
+      if (!music || !state.activeRoom || music.roomId !== state.activeRoom.id) return;
+      applyRoomMusicState(music);
+    });
+
+    state.socket.on('room_music_error', (payload) => {
+      showToast((payload && payload.message) || 'تعذر تنفيذ طلب الموسيقى');
     });
 
     // Realtime Accurate Occupant Counts Sync (Lobby & In-Room)
@@ -3944,6 +3956,7 @@
       ? `<div class="rv-seat-gem" title="مستوى الكاريزما"><img src="${orn.gem}" alt="" /><span class="rv-gem-value">${gemValue}</span></div>`
       : '';
     const avatarFrameCls = occupant && occupant.avatar_frame ? `avatar-frame-${occupant.avatar_frame}` : '';
+    const musicChipHtml = occupant ? buildSeatMusicChipHtml(occupant.user_id) : '';
 
     if (isHostSeat) {
       return `
@@ -3962,6 +3975,7 @@
           <span class="rv-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           ${occupant ? (occupant.name || room.host_name) : 'مقعد المضيف (فارغ)'}
         </div>
+        ${musicChipHtml}
       `;
     }
 
@@ -3982,6 +3996,7 @@
         <span class="rv-name-text">${occupant ? occupant.name : (isLocked ? 'مقعد مقفل' : 'مقعد ' + idx)}</span>
         ${occupant ? `<span class="rv-level-chip">Lv.${parseInt(occupant.level, 10) || 1}</span>` : ''}
       </div>
+      ${musicChipHtml}
     `;
   }
 
@@ -4064,13 +4079,12 @@
 
       <div class="rv-top-actions">
         <button type="button" class="rv-top-btn" id="rv-audience-btn" title="المتواجدون في الروم">👥</button>
-        <button type="button" class="rv-top-btn" id="room-chill-music-btn" title="موسيقى هادئة لوفاي">🎵</button>
+        <button type="button" class="rv-top-btn" id="room-chill-music-btn" title="مشغل الموسيقى" style="display: none;">🎵</button>
         <button type="button" class="rv-top-btn" id="room-inroom-messages-btn" title="الرسائل والمحادثات الخاصة">
           <span>💬</span>
           <span class="inroom-unread-dot" id="inroom-unread-dot" style="display: none; position: absolute; top: 2px; right: 2px; width: 9px; height: 9px; background: #ef4444; border-radius: 50%; border: 1.5px solid #000;"></span>
         </button>
         <button type="button" class="rv-top-btn settings gold" id="rv-open-settings-btn" title="إعدادات الغرفة">⚙️${canManage ? '' : '<span class="rv-btn-badge" style="background: linear-gradient(135deg,#94a3b8,#475569);">🔒</span>'}</button>
-        <button type="button" class="rv-top-btn exit" id="leave-room-btn" title="خروج من الغرفة">🚪</button>
       </div>
     `;
   }
@@ -4109,7 +4123,6 @@
     { id: 'lock',         icon: '🔒', label: 'قفل الغرفة',     adminOnly: true },
     { id: 'games',        icon: '🎮', label: 'ألعاب الروم' },
     { id: 'manage',       icon: '🛡️', label: 'إدارة الأعضاء',  adminOnly: true },
-    { id: 'share',        icon: '🔗', label: 'مشاركة الغرفة' },
     { id: 'close',        icon: '🛑', label: 'إغلاق الغرفة',   adminOnly: true, danger: true }
   ];
 
@@ -4233,12 +4246,7 @@
       case 'title': openRoomTitleSheet(room); break;
       case 'mic': openRoomMicModeSheet(room); break;
       case 'music':
-        if (window.soundManager) {
-          window.soundManager.toggleChillMusic(
-            () => showToast('🎵 تم تشغيل موسيقى لوفاي الهادئة للروم'),
-            () => showToast('تم إيقاف موسيقى الروم')
-          );
-        }
+        openRoomMusicPlayer(room);
         break;
       case 'lock': {
         const nextLocked = !room.is_locked;
@@ -4258,16 +4266,6 @@
         showToast('انقر على أي زائر في الشريط لإدارته أو منحه المايك 👥');
         break;
       }
-      case 'share': {
-        const link = `${window.location.origin}/?room=${room.id}`;
-        try {
-          if (navigator.clipboard) navigator.clipboard.writeText(link);
-          showToast('تم نسخ رابط الغرفة لمشاركتها 🔗');
-        } catch (e) {
-          showToast('رابط الغرفة: ' + link);
-        }
-        break;
-      }
       case 'close': {
         if (confirm('هل أنت متأكد من إغلاق الغرفة وحذفها نهائياً؟ 🛑')) {
           deleteRoomById(room.id).then(ok => {
@@ -4280,6 +4278,160 @@
         break;
       }
       default: break;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Room V2 music player  (مشغل الموسيقى — تُشغَّل من المقعد ويظهر اسم الأغنية عليه)
+  // --------------------------------------------------------------------------
+  const ROOM_V2_TRACKS = [
+    { id: 'lofi_night',     emoji: '🌙', name: 'ليل لوفي هادئ',   dur: '3:24', tempo: 2500, wave: 'sine',     gain: 0.035, chords: [[261.63, 329.63, 392.00, 493.88], [220.00, 261.63, 329.63, 392.00], [174.61, 220.00, 261.63, 329.63], [196.00, 246.94, 293.66, 349.23]] },
+    { id: 'coffee_rain',    emoji: '☕', name: 'قهوة ومطر',       dur: '2:58', tempo: 2100, wave: 'triangle', gain: 0.030, chords: [[293.66, 349.23, 440.00, 523.25], [246.94, 293.66, 392.00, 493.88], [329.63, 392.00, 493.88, 587.33], [261.63, 329.63, 392.00, 440.00]] },
+    { id: 'sunset_drive',   emoji: '🌇', name: 'غروب المدينة',    dur: '3:41', tempo: 1900, wave: 'sawtooth', gain: 0.018, chords: [[220.00, 277.18, 329.63, 415.30], [196.00, 246.94, 293.66, 392.00], [174.61, 220.00, 261.63, 329.63], [164.81, 207.65, 246.94, 329.63]] },
+    { id: 'star_dreams',    emoji: '✨', name: 'أحلام النجوم',    dur: '4:05', tempo: 3200, wave: 'sine',     gain: 0.040, chords: [[349.23, 440.00, 523.25, 659.25], [293.66, 349.23, 440.00, 554.37], [329.63, 415.30, 493.88, 622.25], [261.63, 329.63, 392.00, 523.25]] },
+    { id: 'oud_tal',        emoji: '🎶', name: 'طرب عود شرقي',    dur: '3:12', tempo: 2300, wave: 'triangle', gain: 0.032, chords: [[293.66, 369.99, 440.00, 554.37], [261.63, 329.63, 392.00, 523.25], [233.08, 293.66, 349.23, 466.16], [277.18, 349.23, 415.30, 554.37]] },
+    { id: 'deep_focus',     emoji: '🧠', name: 'تركيز عميق',      dur: '5:10', tempo: 3600, wave: 'sine',     gain: 0.028, chords: [[130.81, 164.81, 196.00, 246.94], [146.83, 174.61, 220.00, 261.63], [123.47, 155.56, 196.00, 233.08], [130.81, 164.81, 196.00, 261.63]] },
+    { id: 'romantic_piano', emoji: '💜', name: 'بيانو رومانسي',   dur: '3:33', tempo: 2800, wave: 'sine',     gain: 0.038, chords: [[329.63, 415.30, 493.88, 587.33], [277.18, 349.23, 440.00, 523.25], [369.99, 466.16, 554.37, 698.46], [311.13, 392.00, 466.16, 622.25]] },
+    { id: 'arabian_nights', emoji: '🕌', name: 'ليالي عربية',     dur: '4:20', tempo: 2400, wave: 'triangle', gain: 0.030, chords: [[220.00, 277.18, 329.63, 415.30], [196.00, 261.63, 311.13, 392.00], [233.08, 293.66, 349.23, 466.16], [220.00, 261.63, 329.63, 440.00]] }
+  ];
+
+  function getRoomTrackById(id) {
+    return ROOM_V2_TRACKS.find(t => t.id === id) || null;
+  }
+
+  function isRoomMusicPlaying() {
+    return Boolean(state.roomMusic && state.roomMusic.playing);
+  }
+
+  // The 🎵 top-bar button exists only for seated users (host throne or mic seat)
+  function updateRoomMusicButtonState() {
+    const btn = document.getElementById('room-chill-music-btn');
+    if (!btn) return;
+    const seated = state.userSeatIndex !== null && state.userSeatIndex !== undefined;
+    btn.style.display = seated ? '' : 'none';
+    btn.classList.toggle('active', isRoomMusicPlaying());
+    btn.title = isRoomMusicPlaying() ? `🎵 ${state.roomMusic.trackName}` : 'مشغل الموسيقى';
+  }
+
+  // Song-name chip rendered ON the mic seat of the member playing music
+  function buildSeatMusicChipHtml(userId) {
+    if (!isRoomMusicPlaying() || !userId || state.roomMusic.userId !== userId) return '';
+    const trackName = state.roomMusic.trackName || 'موسيقى';
+    return `
+      <div class="seat-music-chip" title="🎵 ${trackName}">
+        <span class="smc-icon">🎵</span>
+        <span class="smc-name">${trackName}</span>
+        <span class="smc-eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      </div>`;
+  }
+
+  function applyRoomMusicState(music) {
+    state.roomMusic = music && music.playing ? music : null;
+    if (state.roomMusic) {
+      const track = getRoomTrackById(state.roomMusic.trackId);
+      if (window.soundManager && track) window.soundManager.playMusicTrack(track);
+    } else if (window.soundManager && window.soundManager.stopMusicTrack) {
+      window.soundManager.stopMusicTrack();
+    }
+    refreshRoomStage();
+    updateRoomMusicButtonState();
+    refreshRoomMusicSheet();
+  }
+
+  function refreshRoomMusicSheet() {
+    if (document.getElementById('rv-music-overlay') && state.activeRoom) {
+      openRoomMusicPlayer(state.activeRoom, true);
+    }
+  }
+
+  function openRoomMusicPlayer(room, isRefresh) {
+    if (!state.currentUser || !room) return;
+    const existing = document.getElementById('rv-music-overlay');
+    if (existing && !isRefresh) { existing.remove(); return; }
+    if (existing) existing.remove();
+
+    const seated = state.userSeatIndex !== null && state.userSeatIndex !== undefined;
+    const music = state.roomMusic;
+    const mine = Boolean(music && state.currentUser && music.userId === state.currentUser.id);
+    const canStop = mine || isRoomManager(room);
+
+    const statusHtml = music
+      ? `
+        <div class="rv-music-now">
+          <div class="rv-music-now-disc"><span>🎵</span></div>
+          <div class="rv-music-now-meta">
+            <div class="rv-music-now-name">${music.trackName || 'موسيقى'}</div>
+            <div class="rv-music-now-sub">تُشغَّل الآن من مقعد #${music.seatIndex} • ${music.userName || ''}</div>
+          </div>
+          ${canStop ? '<button type="button" class="rv-music-stop" id="rv-music-stop-btn">⏹ إيقاف</button>' : ''}
+        </div>`
+      : `
+        <div class="rv-music-hint">${seated
+          ? 'اختر مقطعاً موسيقياً ليشتغل من مقعدك ويسمعه كل من في الغرفة 🎧'
+          : '🎵 تشغيل الموسيقى متاح بعد صعودك إلى مقعد المايك'}</div>`;
+
+    const listHtml = ROOM_V2_TRACKS.map(t => {
+      const active = music && music.trackId === t.id;
+      const showPause = Boolean(active && mine);
+      return `
+        <button type="button" class="rv-track-card ${active ? 'playing' : ''}" data-track="${t.id}">
+          <span class="rv-track-emoji">${t.emoji}</span>
+          <span class="rv-track-meta">
+            <span class="rv-track-name">${t.name}</span>
+            <span class="rv-track-dur">${t.dur} • لوفي</span>
+          </span>
+          <span class="rv-track-btn">${showPause ? '⏸' : '▶️'}</span>
+        </button>`;
+    }).join('');
+
+    const overlay = createRoomV2SubSheet(
+      'rv-music-overlay',
+      '🎵 مشغل الموسيقى',
+      'الموسيقى تسمعها الغرفة كاملة وتظهر كاسم الأغنية على مقعدك',
+      `${statusHtml}
+       <div class="rv-section-label">🎧 قائمة التشغيل</div>
+       <div class="rv-track-grid">${listHtml}</div>`
+    );
+
+    overlay.querySelectorAll('.rv-track-card').forEach(card => {
+      card.onclick = () => {
+        if (state.userSeatIndex === null || state.userSeatIndex === undefined) {
+          showToast('🎵 تشغيل الموسيقى متاح بعد صعودك إلى مقعد المايك');
+          return;
+        }
+        const track = getRoomTrackById(card.dataset.track);
+        if (!track) return;
+        const cur = state.roomMusic;
+        const iAmPlayer = Boolean(cur && state.currentUser && cur.userId === state.currentUser.id);
+        if (cur && iAmPlayer && cur.trackId === track.id) {
+          state.socket.emit('room_music_update', {
+            roomId: room.id,
+            userId: state.currentUser.id,
+            playing: false
+          });
+        } else {
+          state.socket.emit('room_music_update', {
+            roomId: room.id,
+            userId: state.currentUser.id,
+            seatIndex: state.userSeatIndex,
+            playing: true,
+            trackId: track.id,
+            trackName: track.name
+          });
+          showToast(`🎵 بدأ تشغيل «${track.name}» من مقعدك`);
+        }
+      };
+    });
+
+    const stopBtn = overlay.querySelector('#rv-music-stop-btn');
+    if (stopBtn) {
+      stopBtn.onclick = () => {
+        state.socket.emit('room_music_update', {
+          roomId: room.id,
+          userId: state.currentUser.id,
+          playing: false
+        });
+      };
     }
   }
 
@@ -4805,11 +4957,8 @@
 
     // Initial check of emoji button visibility based on whether user is on mic
     updateRoomMicEmojiButtonState();
-
-    // Event: Leave Room
-    modal.querySelector('#leave-room-btn').onclick = () => {
-      leaveActiveVoiceRoom();
-    };
+    // The music player button appears only for seated users (host throne or mic seat)
+    updateRoomMusicButtonState();
 
     // Event: Soundboard buttons
     modal.querySelectorAll('.soundboard-btn').forEach(btn => {
@@ -4824,22 +4973,13 @@
       };
     });
 
-    // Event: Chill Music toggle
+    // Event: Room music player (shown only while seated on a mic seat)
     const musicBtn = modal.querySelector('#room-chill-music-btn');
-    musicBtn.onclick = () => {
-      if (window.soundManager) {
-        const playing = window.soundManager.toggleChillMusic(
-          () => {
-            musicBtn.style.background = 'var(--secondary)';
-            showToast('🎵 تم تشغيل موسيقى لوفاي الهادئة');
-          },
-          () => {
-            musicBtn.style.background = '';
-            showToast('تم إيقاف الموسيقى');
-          }
-        );
-      }
-    };
+    if (musicBtn) {
+      musicBtn.onclick = () => {
+        openRoomMusicPlayer(state.activeRoom);
+      };
+    }
 
     // Event: In-Room Private Messages Button (Located at Bottom Controls next to gifts)
     const inroomMsgBtn = modal.querySelector('#room-inroom-messages-btn');
@@ -5547,6 +5687,8 @@
   function toggleSpeakerSoundWaveUI(userId, isSpeaking) {
     // If speaking, add .speaking class to their seat
     if (!state.activeRoom) return;
+    // While a seat is playing music, the song-name chip replaces the talk waves
+    if (isRoomMusicPlaying() && state.roomMusic.userId === userId) return;
 
     // Check host seat 0
     const hostSeat = (state.activeRoom.seats || []).find(s => s.seat_index === 0);
@@ -5701,9 +5843,15 @@
       btn.innerText = active ? '🎙️' : '🔇';
     }
     updateRoomMicEmojiButtonState();
+    updateRoomMusicButtonState();
   }
 
   function leaveActiveVoiceRoom() {
+    // Stop room music playback & clear the now-playing chip
+    if (window.soundManager && window.soundManager.stopMusicTrack) {
+      window.soundManager.stopMusicTrack();
+    }
+    state.roomMusic = null;
     if (window.soulRtc) {
       window.soulRtc.leaveCurrentRoom();
     }

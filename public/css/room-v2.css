@@ -183,10 +183,6 @@
   box-shadow: 0 4px 14px rgba(247, 195, 60, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
-.rv-top-btn.exit {
-  background: linear-gradient(180deg, rgba(255, 108, 138, 0.9), rgba(190, 26, 62, 0.9));
-  border-color: rgba(255, 255, 255, 0.28);
-}
 
 .rv-top-btn .rv-btn-badge {
   position: absolute;
@@ -1632,4 +1628,234 @@
   .seat-user-name { font-size: 9px; padding: 1px 5px; }
   .rv-name-text { max-width: 44px; }
   .rv-top-btn { width: 30px; height: 30px; font-size: 13.5px; }
+}
+
+/* ============================================================================
+   13) ROOM MUSIC PLAYER  (مشغل الموسيقى — اسم الأغنية يظهر على المقعد)
+   ========================================================================== */
+
+/* --- Song-name chip rendered on the mic seat of the member playing music --- */
+.seat-music-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 92px;
+  margin-top: 3px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(247, 195, 60, 0.22), rgba(190, 24, 93, 0.28));
+  border: 1px solid rgba(247, 195, 60, 0.55);
+  box-shadow: 0 0 10px rgba(247, 195, 60, 0.28), inset 0 0 8px rgba(247, 195, 60, 0.12);
+  backdrop-filter: blur(4px);
+  animation: smcPulse 2.4s ease-in-out infinite;
+}
+
+.seat-music-chip .smc-icon {
+  font-size: 9px;
+  line-height: 1;
+  animation: smcSpin 4s linear infinite;
+  display: inline-block;
+}
+
+.seat-music-chip .smc-name {
+  font-size: 9px;
+  font-weight: 800;
+  color: #ffe9a8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 58px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+}
+
+.seat-music-chip .smc-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 10px;
+}
+
+.seat-music-chip .smc-eq i {
+  display: block;
+  width: 2px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #f7c33c, #f472b6);
+  animation: smcEq 0.9s ease-in-out infinite;
+}
+
+.seat-music-chip .smc-eq i:nth-child(1) { height: 5px; animation-delay: 0s; }
+.seat-music-chip .smc-eq i:nth-child(2) { height: 9px; animation-delay: 0.15s; }
+.seat-music-chip .smc-eq i:nth-child(3) { height: 6px; animation-delay: 0.3s; }
+.seat-music-chip .smc-eq i:nth-child(4) { height: 10px; animation-delay: 0.45s; }
+
+@keyframes smcEq {
+  0%, 100% { transform: scaleY(0.45); }
+  50%      { transform: scaleY(1.15); }
+}
+
+@keyframes smcSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes smcPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(247, 195, 60, 0.22), inset 0 0 8px rgba(247, 195, 60, 0.1); }
+  50%      { box-shadow: 0 0 16px rgba(247, 195, 60, 0.45), inset 0 0 10px rgba(247, 195, 60, 0.18); }
+}
+
+/* wider chip for the bigger host throne */
+.host-name-label + .seat-music-chip .smc-name { max-width: 86px; font-size: 10px; }
+
+/* --- Playing state on the top bar button --- */
+.rv-top-btn.active {
+  background: linear-gradient(135deg, rgba(247, 195, 60, 0.32), rgba(190, 24, 93, 0.3));
+  border-color: rgba(247, 195, 60, 0.7);
+  box-shadow: 0 0 14px rgba(247, 195, 60, 0.4);
+}
+
+/* --- Now-playing card inside the player sheet --- */
+.rv-music-now {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(247, 195, 60, 0.14), rgba(190, 24, 93, 0.16));
+  border: 1px solid rgba(247, 195, 60, 0.4);
+  margin-bottom: 10px;
+}
+
+.rv-music-now-disc {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  background:
+    radial-gradient(circle at center, #1e1b31 26%, transparent 27%),
+    repeating-radial-gradient(circle at center, #2b2745 0 2px, #221f38 2px 4px);
+  border: 2px solid rgba(247, 195, 60, 0.65);
+  box-shadow: 0 0 12px rgba(247, 195, 60, 0.35);
+  animation: smcSpin 3.5s linear infinite;
+}
+
+.rv-music-now-meta { flex: 1; min-width: 0; }
+
+.rv-music-now-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffe9a8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rv-music-now-sub {
+  font-size: 10.5px;
+  color: rgba(226, 232, 240, 0.75);
+  margin-top: 2px;
+}
+
+.rv-music-stop {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fecaca;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(127, 29, 29, 0.3));
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  cursor: pointer;
+}
+
+.rv-music-stop:active { transform: scale(0.96); }
+
+.rv-music-hint {
+  padding: 9px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  color: rgba(226, 232, 240, 0.85);
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+/* --- Playlist --- */
+.rv-track-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.rv-track-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 13px;
+  background: rgba(30, 27, 49, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  cursor: pointer;
+  text-align: right;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.rv-track-card:hover {
+  border-color: rgba(247, 195, 60, 0.5);
+  background: rgba(40, 36, 64, 0.75);
+  transform: translateY(-1px);
+}
+
+.rv-track-card.playing {
+  border-color: rgba(247, 195, 60, 0.75);
+  background: linear-gradient(135deg, rgba(247, 195, 60, 0.14), rgba(190, 24, 93, 0.14));
+  box-shadow: 0 0 12px rgba(247, 195, 60, 0.22);
+}
+
+.rv-track-emoji {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.rv-track-card.playing .rv-track-emoji { animation: smcPulse 2.2s ease-in-out infinite; }
+
+.rv-track-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+
+.rv-track-name {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rv-track-card.playing .rv-track-name { color: #ffe9a8; }
+
+.rv-track-dur { font-size: 10px; color: rgba(148, 163, 184, 0.9); }
+
+.rv-track-btn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: linear-gradient(135deg, rgba(247, 195, 60, 0.2), rgba(247, 195, 60, 0.08));
+  border: 1px solid rgba(247, 195, 60, 0.45);
 }

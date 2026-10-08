@@ -673,6 +673,7 @@ async function ensureRoomSeatLayout(roomId, seatCount, admin) {
     }
   }
   for (const seat of removedOccupants) {
+    maybeStopRoomMusic(roomId, seat.user_id);
     io.to(`room:${roomId}`).emit('seat_updated', { seatIndex: seat.seat_index, user: null, isMuted: false });
     io.to(`room:${roomId}`).emit('user_kicked_from_seat', {
       seatIndex: seat.seat_index,
@@ -695,6 +696,25 @@ async function ensureRoomSeatLayout(roomId, seatCount, admin) {
   }
 
   return target;
+}
+
+// Room V2 music player state (now-playing per room, in-memory & ephemeral)
+const roomMusicStates = new Map(); // roomId -> { roomId, playing, seatIndex, userId, userName, trackId, trackName }
+
+function broadcastRoomMusic(roomId) {
+  const music = roomMusicStates.get(roomId);
+  io.to(`room:${roomId}`).emit('room_music_update', music || { roomId, playing: false });
+}
+
+// Auto-stop the music when its player leaves / is kicked from a seat
+function maybeStopRoomMusic(roomId, userId) {
+  const music = roomMusicStates.get(roomId);
+  if (music && userId && music.userId === userId) {
+    roomMusicStates.delete(roomId);
+    broadcastRoomMusic(roomId);
+    return true;
+  }
+  return false;
 }
 
 // Full room payload (host info + seats) used for live settings broadcasts
@@ -904,8 +924,9 @@ app.post('/api/rooms', async (req, res) => {
       VALUES (?, ?, ?, 'voice', ?, 0, ?, ?, ?, ?, ?, ?, ?)
     `, [roomId, title, category || 'chill', defaultCover, userId, finalCountryCode, finalCountryName, finalCountryFlag, clientIp, theme || 'cosmic_purple', announcement || 'أهلاً بكم في رومنا الصوتي 🌟']);
 
-    // Setup seat 0 (host throne) + 8 default mic seats (ROOM V2: client can resize 6/8/12/16)
-    await run(`INSERT INTO room_seats (room_id, seat_index, user_id, is_muted, is_locked) VALUES (?, 0, NULL, 0, 0)`, [roomId]);
+    // Setup seat 0 (host throne — the host starts seated on it, exactly like SoulChill)
+    // + 8 default mic seats (ROOM V2: client can resize 6/8/12/16)
+    await run(`INSERT INTO room_seats (room_id, seat_index, user_id, is_muted, is_locked) VALUES (?, 0, ?, 0, 0)`, [roomId, userId]);
     for (let i = 1; i <= 8; i++) {
       await run(`INSERT INTO room_seats (room_id, seat_index, user_id, is_muted, is_locked) VALUES (?, ?, NULL, 0, 0)`, [roomId, i]);
     }
@@ -959,6 +980,7 @@ app.delete('/api/rooms/:id', async (req, res) => {
     await run('DELETE FROM room_seats WHERE room_id = ?', [roomId]);
     await run('DELETE FROM messages WHERE room_id = ?', [roomId]);
     await run('DELETE FROM rooms WHERE id = ?', [roomId]);
+    roomMusicStates.delete(roomId);
 
     // Notify all participants in this room to leave
     io.to(`room:${roomId}`).emit('room_closed_by_host', {
@@ -2231,6 +2253,10 @@ io.on('connection', (socket) => {
       isChatMuted,
       mutedChatUsers: Array.from(roomState.mutedChatUsers)
     });
+
+    // Sync the room's now-playing music to the joiner (song chip on the seat)
+    const joinMusic = roomMusicStates.get(roomId);
+    if (joinMusic) socket.emit('room_music_update', joinMusic);
   });
 
   // 3. Leaving Voice Room
@@ -2242,6 +2268,7 @@ io.on('connection', (socket) => {
       if (userId) {
         roomState.activeAudience.delete(userId);
         roomState.speakers.delete(userId);
+        maybeStopRoomMusic(roomId, userId);
       }
       const audienceList = Array.from(roomState.activeAudience.values());
       socket.to(`room:${roomId}`).emit('user_left_room', {
@@ -2364,6 +2391,13 @@ io.on('connection', (socket) => {
         user,
         isMuted: false
       });
+
+      // If this user is the room's music player, the song chip follows them to the new seat
+      const playingMusic = roomMusicStates.get(roomId);
+      if (playingMusic && playingMusic.userId === userId) {
+        playingMusic.seatIndex = seatIndex;
+        broadcastRoomMusic(roomId);
+      }
     } catch (err) {
       console.error('Take seat error:', err);
     }
@@ -2395,6 +2429,7 @@ io.on('connection', (socket) => {
           streamType: 'voice_seat',
           userId
         });
+        maybeStopRoomMusic(roomId, userId);
       }
     } catch (err) {
       console.error('Leave seat error:', err);
@@ -2441,6 +2476,54 @@ io.on('connection', (socket) => {
       isSpeaking,
       volume: volume || 0.5
     });
+  });
+
+  // Room V2: music player (the song name is rendered on the player's mic seat)
+  socket.on('room_music_update', async (data) => {
+    try {
+      const roomId = data && data.roomId;
+      if (!roomId) return;
+      const room = await get('SELECT id, host_id FROM rooms WHERE id = ?', [roomId]);
+      if (!room) return;
+
+      if (data.playing) {
+        const userId = data.userId;
+        if (!userId) return;
+        // The player must be seated on one of the room's mic seats
+        const seat = await get('SELECT seat_index, user_id FROM room_seats WHERE room_id = ? AND user_id = ?', [roomId, userId]);
+        if (!seat || seat.user_id !== userId) {
+          return socket.emit('room_music_error', { message: 'تشغيل الموسيقى متاح بعد صعودك إلى مقعد المايك 🎵' });
+        }
+        const dbUser = await get('SELECT id, name FROM users WHERE id = ?', [userId]);
+        roomMusicStates.set(roomId, {
+          roomId,
+          playing: true,
+          seatIndex: seat.seat_index,
+          userId,
+          userName: (dbUser && dbUser.name) || String(data.userName || 'مستخدم').slice(0, 40),
+          trackId: String(data.trackId || '').slice(0, 40),
+          trackName: String(data.trackName || 'موسيقى').slice(0, 60)
+        });
+      } else {
+        const music = roomMusicStates.get(roomId);
+        if (music) {
+          const requester = data.userId || null;
+          const reqUser = requester ? await get('SELECT id, role FROM users WHERE id = ?', [requester]) : null;
+          const isManager = requester && (
+            room.host_id === requester ||
+            (reqUser && ['owner', 'super_master', 'super_admin', 'admin', 'moderator'].includes(reqUser.role))
+          );
+          if (music.userId !== requester && !isManager) {
+            return socket.emit('room_music_error', { message: 'إيقاف الموسيقى متاح لمشغّلها أو لمدير الغرفة فقط 🛡️' });
+          }
+          roomMusicStates.delete(roomId);
+        }
+      }
+
+      broadcastRoomMusic(roomId);
+    } catch (e) {
+      console.error('room_music_update error:', e.message);
+    }
   });
 
   // 9. Soundboard Effects (Claps, Laughter, Cheers, etc.)
@@ -2689,6 +2772,7 @@ io.on('connection', (socket) => {
       await run('UPDATE room_seats SET user_id = NULL, is_muted = 0 WHERE room_id = ? AND seat_index = ?', [roomId, seatIndex]);
       io.to(`room:${roomId}`).emit('seat_updated', { seatIndex, user: null, isMuted: false });
       if (kickedUserId) {
+        maybeStopRoomMusic(roomId, kickedUserId);
         io.to(`room:${roomId}`).emit('user_kicked_from_seat', { seatIndex, userId: kickedUserId, adminName: admin.name });
         io.to(`room:${roomId}`).emit('webrtc_stream_ended', {
           roomId,
@@ -2715,6 +2799,7 @@ io.on('connection', (socket) => {
           vacatedUserId = seat.user_id;
           await run('UPDATE room_seats SET user_id = NULL, is_muted = 0 WHERE room_id = ? AND seat_index = ?', [roomId, seatIndex]);
           io.to(`room:${roomId}`).emit('seat_updated', { seatIndex, user: null, isMuted: false });
+          maybeStopRoomMusic(roomId, vacatedUserId);
           io.to(`room:${roomId}`).emit('user_kicked_from_seat', { seatIndex, userId: vacatedUserId, adminName: admin.name, reason: 'lock_seat' });
           io.to(`room:${roomId}`).emit('webrtc_stream_ended', {
             roomId,
@@ -3491,6 +3576,7 @@ io.on('connection', (socket) => {
         if (heldSeats && heldSeats.length > 0) {
           for (const s of heldSeats) {
             await run('UPDATE room_seats SET user_id = NULL, is_muted = 0 WHERE room_id = ? AND seat_index = ?', [s.room_id, s.seat_index]);
+            maybeStopRoomMusic(s.room_id, currentUserId);
             io.to(`room:${s.room_id}`).emit('seat_updated', {
               seatIndex: s.seat_index,
               user: null,
@@ -3540,6 +3626,7 @@ io.on('connection', (socket) => {
         if (heldSeats && heldSeats.length > 0) {
           for (const s of heldSeats) {
             await run('UPDATE room_seats SET user_id = NULL, is_muted = 0 WHERE room_id = ? AND seat_index = ?', [s.room_id, s.seat_index]);
+            maybeStopRoomMusic(s.room_id, currentUserId);
             io.to(`room:${s.room_id}`).emit('seat_updated', {
               seatIndex: s.seat_index,
               user: null,

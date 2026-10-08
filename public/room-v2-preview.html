@@ -54,6 +54,7 @@
     <button type="button" data-demo="settings">2) ⚙️ إعدادات الغرفة (image-2)</button>
     <button type="button" data-demo="bg">3) 🖼️ خلفية الغرفة (image-3)</button>
     <button type="button" data-demo="seats">4) 🪑 عدد المقاعد (image-4)</button>
+    <button type="button" data-demo="music">5) 🎵 مشغل الموسيقى (اسم الأغنية على المقعد)</button>
     <button type="button" class="exit" data-demo="close">إغلاق المعاينة</button>
     <div class="rv-demo-note">هذه معاينة حقيقية تستخدم نفس ملفات التطبيق (app.js + room-v2.css + الأصول) ببيانات تجريبية.</div>
   </div>
@@ -243,6 +244,25 @@
               }
             }, 30);
           }
+          if (event === 'room_music_update' && payload) {
+            setTimeout(function () {
+              var music;
+              if (payload.playing) {
+                music = {
+                  roomId: DEMO_ROOM.id,
+                  playing: true,
+                  seatIndex: 0,
+                  userId: DEMO_HOST.id,
+                  userName: DEMO_HOST.name,
+                  trackId: payload.trackId,
+                  trackName: payload.trackName
+                };
+              } else {
+                music = { roomId: DEMO_ROOM.id, playing: false };
+              }
+              if (routes.room_music_update) routes.room_music_update(music);
+            }, 80);
+          }
           if (event === 'admin_update_room_settings' && payload) {
             // emulate the server echo so the demo reacts like the real room
             setTimeout(function () {
@@ -333,6 +353,11 @@
         if (action === 'settings') withRoom(function (modal) { modal.querySelector('#rv-open-settings-btn').click(); });
         if (action === 'bg') openTile('bg');
         if (action === 'seats') openTile('seats');
+        if (action === 'music') withRoom(function (modal) {
+          var musicBtn = modal.querySelector('#room-chill-music-btn');
+          if (musicBtn && musicBtn.style.display !== 'none') musicBtn.click();
+          else openTile('music');
+        });
         if (action === 'close') {
           document.querySelectorAll('.rv-overlay, .live-room-modal').forEach(function (el) { el.remove(); });
         }

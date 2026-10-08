@@ -125,6 +125,7 @@ function makeRoom(seatCount = 8) {
   ok('premium container has room background class', Boolean(container && container.classList.contains('rv-bg-cosmic_purple')));
   ok('top bar exists', Boolean(modal && modal.querySelector('.rv-top-bar')));
   ok('settings button matches the requested markup', Boolean(modal && modal.querySelector('button.rv-top-btn[title="إعدادات الغرفة"]')));
+  ok('leave button removed (لا زر خروج)', !modal.querySelector('#leave-room-btn'));
   const seatCount = modal ? modal.querySelectorAll('.guest-seats-grid .stage-seat').length : 0;
   ok('8 guest mic seats rendered', seatCount === 8, `(got ${seatCount})`);
   ok('host throne rendered', Boolean(modal && modal.querySelector('#host-seat-0 .host-crown-badge')));
@@ -145,9 +146,11 @@ function makeRoom(seatCount = 8) {
   ok('settings sheet opened', Boolean(settings));
   ok('sheet title is "إعدادات الغرفة"', Boolean(settings && settings.querySelector('.rv-sheet-title').textContent.includes('إعدادات الغرفة')));
   const tiles = settings ? settings.querySelectorAll('.rv-tile[data-id]').length : 0;
-  ok('12 settings tiles rendered', tiles === 12, `(got ${tiles})`);
+  ok('11 settings tiles rendered', tiles === 11, `(got ${tiles})`);
   ok('tile data-id="bg" exists', Boolean(settings && settings.querySelector('.rv-tile[data-id="bg"]')));
   ok('tile data-id="seats" exists', Boolean(settings && settings.querySelector('.rv-tile[data-id="seats"]')));
+  ok('tile data-id="music" exists', Boolean(settings && settings.querySelector('.rv-tile[data-id="music"]')));
+  ok('share tile removed (لا مشاركة)', !settings.querySelector('.rv-tile[data-id="share"]'));
   ok('quick admin shortcuts rendered', Boolean(settings && settings.querySelector('[data-quick="lock-all"]')));
 
   console.log('\n3) النقر على data-id="bg" → image-3');
@@ -201,7 +204,48 @@ function makeRoom(seatCount = 8) {
   ok('new background applied to the room for everyone', Boolean(container.classList.contains('rv-bg-vip_galaxy_hd')), container.className);
   ok('host top-bar title updated', Boolean(modal.querySelector('#rv-top-room-title')));
 
-  console.log('\n6) صلاحيات غير المدير');
+  console.log('\n6) مشغل الموسيقى (اسم الأغنية على المقعد)');
+  const musicBtn = modal.querySelector('#room-chill-music-btn');
+  ok('music button visible for the seated host', Boolean(musicBtn && musicBtn.style.display !== 'none'));
+  modal.querySelector('#rv-open-settings-btn').click();
+  await new Promise(r => setTimeout(r, 20));
+  window.document.getElementById('rv-settings-overlay').querySelector('.rv-tile[data-id="music"]').click();
+  await new Promise(r => setTimeout(r, 20));
+  const player = window.document.getElementById('rv-music-overlay');
+  ok('music player sheet opened', Boolean(player));
+  const trackCards = player ? player.querySelectorAll('.rv-track-card').length : 0;
+  ok('8 named tracks offered', trackCards === 8, `(got ${trackCards})`);
+  ok('now-playing hint rendered', Boolean(player && player.querySelector('.rv-music-hint')));
+  // play a track from the host seat
+  player.querySelector('.rv-track-card[data-track="lofi_night"]').click();
+  const musicEmit = emitted.filter(e => e.event === 'room_music_update').pop();
+  ok('clicking a track emits room_music_update', Boolean(musicEmit && musicEmit.payload.playing === true && musicEmit.payload.trackName === 'ليل لوفي هادئ' && musicEmit.payload.seatIndex === 0), JSON.stringify(musicEmit && musicEmit.payload));
+  // simulate the server broadcast to everyone in the room
+  handlers['room_music_update']({ roomId: 'room-test-1', playing: true, seatIndex: 0, userId: 'host-1', userName: 'المضيف الذهبي', trackId: 'lofi_night', trackName: 'ليل لوفي هادئ' });
+  await new Promise(r => setTimeout(r, 30));
+  const chip = modal.querySelector('#host-seat-0 .seat-music-chip');
+  ok('song-name chip rendered on the host seat', Boolean(chip));
+  ok('chip shows the track name', Boolean(chip && chip.querySelector('.smc-name') && chip.querySelector('.smc-name').textContent === 'ليل لوفي هادئ'));
+  ok('chip has an animated equalizer', Boolean(chip && chip.querySelectorAll('.smc-eq i').length === 4));
+  ok('music button shows the playing state', Boolean(musicBtn && musicBtn.classList.contains('active')));
+  // talk waves are suppressed for the music seat (song chip replaces them)
+  handlers['user_speaking_status']({ userId: 'host-1', isSpeaking: true, volume: 0.6 });
+  ok('talk waves hidden for the music seat', !modal.querySelector('#host-seat-0').classList.contains('speaking'));
+  // stop the music
+  handlers['room_music_update']({ roomId: 'room-test-1', playing: false });
+  await new Promise(r => setTimeout(r, 30));
+  ok('stopping removes the song chip', !modal.querySelector('#host-seat-0 .seat-music-chip'));
+  ok('music button back to idle', Boolean(musicBtn && !musicBtn.classList.contains('active')));
+  handlers['user_speaking_status']({ userId: 'host-1', isSpeaking: false, volume: 0.6 });
+  // stepping down from the seat hides the music button
+  handlers['seat_updated']({ seatIndex: 0, user: null, isMuted: false });
+  await new Promise(r => setTimeout(r, 20));
+  ok('music button hidden after stepping down from the seat', Boolean(modal.querySelector('#room-chill-music-btn') && modal.querySelector('#room-chill-music-btn').style.display === 'none'));
+  handlers['seat_updated']({ seatIndex: 0, user: { id: 'host-1', name: 'المضيف الذهبي', avatar: '/avatars/avatar-1.png' }, isMuted: false });
+  await new Promise(r => setTimeout(r, 20));
+  ok('music button visible again after retaking the seat', Boolean(modal.querySelector('#room-chill-music-btn') && modal.querySelector('#room-chill-music-btn').style.display !== 'none'));
+
+  console.log('\n7) صلاحيات غير المدير');
   App.state.currentUser = { id: 'u-2', name: 'لويتا', avatar: '/avatars/avatar-2.png', role: 'user', level: 21 };
   App.openVoiceRoom('room-test-1');
   await new Promise(r => setTimeout(r, 60));

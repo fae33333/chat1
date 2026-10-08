@@ -250,6 +250,72 @@ class SoundManager {
     }
   }
 
+  // 7b. Room V2 music player 🎵 — plays a NAMED track (chords + tempo + wave)
+  //      so every member in the room hears the same "song" locally.
+  playMusicTrack(track) {
+    this.init();
+    if (!this.ctx || !track || !Array.isArray(track.chords) || track.chords.length === 0) return false;
+    this.stopMusicTrack();
+    this.musicPlaying = true;
+    this.musicTrackId = track.id || null;
+
+    const tempo = track.tempo || 2400;
+    const waveType = track.wave || 'sine';
+    const level = typeof track.gain === 'number' ? track.gain : 0.032;
+    const chordLen = tempo / 1000;
+    let chordIdx = 0;
+
+    const playChord = () => {
+      if (!this.musicPlaying || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const chord = track.chords[chordIdx % track.chords.length];
+      chordIdx++;
+
+      // chord pad
+      chord.forEach(freq => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = waveType;
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(level, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + chordLen * 0.92);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + chordLen);
+      });
+
+      // soft bass root
+      const bass = this.ctx.createOscillator();
+      const bassGain = this.ctx.createGain();
+      bass.type = 'triangle';
+      bass.frequency.setValueAtTime(chord[0] / 2, now);
+      bassGain.gain.setValueAtTime(level * 1.5, now);
+      bassGain.gain.exponentialRampToValueAtTime(0.001, now + chordLen * 0.92);
+      bass.connect(bassGain);
+      bassGain.connect(this.ctx.destination);
+      bass.start(now);
+      bass.stop(now + chordLen);
+    };
+
+    playChord();
+    this.musicInterval = setInterval(playChord, tempo);
+    return true;
+  }
+
+  stopMusicTrack() {
+    this.musicPlaying = false;
+    this.musicTrackId = null;
+    if (this.musicInterval) {
+      clearInterval(this.musicInterval);
+      this.musicInterval = null;
+    }
+  }
+
+  isMusicTrackPlaying(trackId) {
+    return Boolean(this.musicPlaying && trackId && this.musicTrackId === trackId);
+  }
+
   // 8. Pop / Tap UI click sound
   playClick() {
     this.init();
