@@ -454,31 +454,6 @@
   pointer-events: none;
 }
 .rv-music-avatar-speaking::after { animation-delay: .6s; }
-/* اسم النغمة يظهر أسفل صورة المقعد بشكل مستقل عن موجات الكلام. */
-.rv-seat-music-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  width: min(118px, 100%);
-  margin-top: 3px;
-  padding: 2px 6px;
-  border-radius: 9px;
-  background: rgba(20, 10, 38, .88);
-  border: 1px solid rgba(236,72,153,.62);
-  color: #f5d0fe;
-  font-size: 8.5px;
-  line-height: 1.25;
-  box-shadow: 0 0 8px rgba(168,85,247,.32);
-}
-.rv-seat-music-label b {
-  max-width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 700;
-}
-
 /* كتم المقعد بنفس الشارة البيضاء الدائرية الظاهرة في صورة الغرفة. */
 #live-voice-room-modal .seat-mic-status {
   top: -5px !important;
@@ -501,4 +476,86 @@
 }
 #live-voice-room-modal .seat-mic-status.unmuted {
   display: none !important;
+}
+
+/* المشغل المصغر أسفل اسم الغرفة */
+#live-voice-room-modal .rv-now-playing {
+  top: 48px;
+  bottom: auto;
+  left: 12px;
+  right: 12px;
+  min-height: 38px;
+  z-index: 22;
+  padding: 5px 8px;
+  border: 1px solid rgba(183, 129, 255, .62);
+  border-radius: 11px;
+  background: linear-gradient(90deg, rgba(77, 16, 137, .96), rgba(43, 8, 83, .96));
+  box-shadow: 0 4px 14px rgba(22, 0, 45, .45);
+}
+#live-voice-room-modal .rv-now-playing .rv-music-art {
+  width: 29px;
+  height: 29px;
+  border-radius: 8px;
+  font-size: 16px;
+}
+.rv-now-playing-copy b { font-size: 10px; }
+.rv-now-playing-copy small { font-size: 8px; color: rgba(255,255,255,.58); }
+.rv-now-minimize,
+.rv-now-stop {
+  flex: none;
+  border: 0;
+  cursor: pointer;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+}
+.rv-now-minimize { background: rgba(255,255,255,.12); font-size: 17px; line-height: 1; padding-bottom: 5px; }
+.rv-now-stop { background: rgba(239,68,68,.22); font-size: 10px; }
+.rv-music-mini {
+  position: absolute;
+  top: 50px;
+  inset-inline-start: 12px;
+  z-index: 23;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  max-width: 166px;
+  min-height: 30px;
+  padding: 3px 6px;
+  border: 1px solid rgba(207, 153, 255, .7);
+  border-radius: 17px;
+  background: linear-gradient(90deg, #5a12a2, #340b6c);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(25,0,55,.5);
+  cursor: pointer;
+  direction: rtl;
+  font-family: inherit;
+}
+.rv-music-mini.on { display: flex; }
+.rv-mini-music-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  background: #a855f7;
+  font-size: 14px;
+}
+.rv-mini-music-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  font-weight: 700;
+}
+.rv-mini-music-pause {
+  font-size: 11px;
+  font-weight: 900;
+  color: #eadcff;
+  direction: ltr;
 }

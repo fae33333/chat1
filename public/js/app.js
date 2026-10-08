@@ -244,8 +244,6 @@
       if (count !== null) {
         const liveAudience = document.getElementById('live-audience-counter');
         if (liveAudience) liveAudience.innerText = count.toString();
-        const badge = document.getElementById('room-audience-badge');
-        if (badge) badge.innerText = count.toString();
         const streamCounter = document.getElementById('stream-viewers-count');
         if (streamCounter) streamCounter.innerText = count.toString();
       }
@@ -263,8 +261,6 @@
       if (count !== null) {
         const liveAudience = document.getElementById('live-audience-counter');
         if (liveAudience) liveAudience.innerText = count.toString();
-        const badge = document.getElementById('room-audience-badge');
-        if (badge) badge.innerText = count.toString();
         const streamCounter = document.getElementById('stream-viewers-count');
         if (streamCounter) streamCounter.innerText = count.toString();
       }
@@ -279,8 +275,6 @@
       if (count !== null) {
         const liveAudience = document.getElementById('live-audience-counter');
         if (liveAudience) liveAudience.innerText = count.toString();
-        const badge = document.getElementById('room-audience-badge');
-        if (badge) badge.innerText = count.toString();
         const streamCounter = document.getElementById('stream-viewers-count');
         if (streamCounter) streamCounter.innerText = count.toString();
       }
@@ -296,8 +290,6 @@
       if (audienceCount !== undefined) {
         const liveAudience = document.getElementById('live-audience-counter');
         if (liveAudience) liveAudience.innerText = audienceCount.toString();
-        const badge = document.getElementById('room-audience-badge');
-        if (badge) badge.innerText = audienceCount.toString();
         const streamCounter = document.getElementById('stream-viewers-count');
         if (streamCounter) streamCounter.innerText = audienceCount.toString();
       }
@@ -437,6 +429,7 @@
 
     state.socket.on('seat_updated', ({ seatIndex, user, isMuted }) => {
       updateRoomSeatUI(seatIndex, user, isMuted);
+      if (state.activeRoomAudience) renderRoomAudienceStrip(state.activeRoomAudience);
     });
 
     state.socket.on('seat_mute_changed', ({ seatIndex, userId, isMuted, adminName }) => {
@@ -839,8 +832,6 @@
         state.activeRoom.audience_count = count;
         const liveAudience = document.getElementById('live-audience-counter');
         if (liveAudience) liveAudience.innerText = count.toString();
-        const badge = document.getElementById('room-audience-badge');
-        if (badge) badge.innerText = count.toString();
         const streamCounter = document.getElementById('stream-viewers-count');
         if (streamCounter) streamCounter.innerText = count.toString();
       }
@@ -7012,8 +7003,10 @@
     const badge = document.getElementById('room-audience-badge');
     const headerCounter = document.getElementById('live-audience-counter');
 
+    const seatedIds = new Set((state.activeRoom?.seats || []).filter(seat => seat.user_id).map(seat => seat.user_id));
+    const visitors = state.activeRoomAudience.filter(visitor => !seatedIds.has(visitor.id));
     const totalCount = state.activeRoomAudience.length;
-    if (badge) badge.innerText = totalCount.toString();
+    if (badge) badge.innerText = String(visitors.length);
     if (headerCounter) headerCounter.innerText = totalCount > 0 ? totalCount.toString() : '1';
 
     const pillEl = document.querySelector('.audience-strip-badge-pill');
@@ -7024,7 +7017,7 @@
 
     if (!container) return;
 
-    if (!audience || audience.length === 0) {
+    if (!visitors.length) {
       container.innerHTML = `
         <div class="audience-empty-hint">لا يوجد زوار حالياً 🌟</div>
       `;
@@ -7033,7 +7026,7 @@
 
     const hostId = state.activeRoom ? state.activeRoom.host_id : null;
 
-    container.innerHTML = audience.slice(0, 7).map(v => {
+    container.innerHTML = visitors.slice(0, 7).map(v => {
       const isHost = v.id === hostId || v.role === 'owner';
       const isChatMuted = state.activeRoomMutedChatUsers && state.activeRoomMutedChatUsers.has(v.id);
       return `

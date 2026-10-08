@@ -109,7 +109,7 @@
     cleanup();
     ctx = { room, modal, container, layer: null, bg: null, admin: isAdminUser(room), chat: jp(room.chat_settings, {}), seatS: jp(room.seat_settings, {}),
             mutedSeats: new Set(), allMuted: false, allLocked: false, audioMuted: false, bgPicked: loadMyBgs(),
-            music: { selectedId: null, current: null, audio: null, audioContext: null, mediaSource: null, destination: null, playing: false, ownerId: null, remote: null } };
+            music: { selectedId: null, current: null, audio: null, audioContext: null, mediaSource: null, destination: null, playing: false, minimized: false, ownerId: null, remote: null } };
     (room.seats || []).forEach(s => { if (s.seat_index > 0 && s.is_muted && !s.user_id) ctx.mutedSeats.add(s.seat_index); });
     const guestSeats = (room.seats || []).filter(s => s.seat_index > 0 && s.seat_index <= (room.seat_count || 8));
     ctx.allMuted = guestSeats.length > 0 && guestSeats.every(s => !!s.is_muted);
@@ -121,6 +121,11 @@
     layer.addEventListener('click', (ev) => { if (ev.target === layer) closeLayer(); });
     container.appendChild(layer); ctx.layer = layer;
     renderMusicNowPlaying();
+    container.addEventListener('click', (event) => {
+      if (!ctx?.music?.playing || !ctx.music.current || ctx.music.minimized) return;
+      if (event.target.closest('.rv-now-playing, .rv-music-mini, .rv-layer, button, input, textarea, select, a')) return;
+      minimizeMusicPlayer();
+    });
 
     buildTopButtons();
     buildBottomBar();
@@ -272,23 +277,57 @@
       card.className = 'rv-now-playing';
       ctx.container.appendChild(card);
     }
-    const active = ctx.music && ctx.music.playing && (ctx.music.current || ctx.music.remote);
-    if (!active) { card.classList.remove('on'); card.innerHTML = ''; return; }
-    const item = ctx.music.current || ctx.music.remote;
-    card.classList.add('on');
+    let mini = ctx.container.querySelector('.rv-music-mini');
+    if (!mini) {
+      mini = document.createElement('button');
+      mini.type = 'button';
+      mini.className = 'rv-music-mini';
+      ctx.container.appendChild(mini);
+    }
+
+    // هذا المشغل خاص بصاحب الموسيقى؛ الآخرون يرون الصوت/التذبذب على المقعد فقط.
+    const active = ctx.music && ctx.music.playing && ctx.music.current;
+    if (!active) {
+      card.classList.remove('on'); card.innerHTML = '';
+      mini.classList.remove('on'); mini.innerHTML = '';
+      return;
+    }
+
+    const item = ctx.music.current;
+    card.classList.toggle('on', !ctx.music.minimized);
     card.innerHTML = `
       <div class="rv-music-art"><span>♫</span></div>
-      <div class="rv-now-playing-copy"><b>${esc(item.title || 'موسيقى')}</b><small>${ctx.music.current ? 'تُشغّل على مقعدك' : 'تُشغّل من مقعد المايك'}</small></div>
-      ${ctx.music.current ? '<button type="button" class="rv-now-stop" aria-label="إيقاف الموسيقى">■</button>' : ''}`;
-    const stop = card.querySelector('.rv-now-stop');
-    if (stop) stop.onclick = () => stopRoomMusic(true);
+      <div class="rv-now-playing-copy"><b>${esc(item.title || 'موسيقى')}</b><small>تشغيل الموسيقى من مقعد المايك</small></div>
+      <button type="button" class="rv-now-minimize" aria-label="تصغير مشغل الموسيقى">⌄</button>
+      <button type="button" class="rv-now-stop" aria-label="إيقاف الموسيقى">■</button>`;
+    card.querySelector('.rv-now-minimize').onclick = (event) => {
+      event.stopPropagation(); minimizeMusicPlayer();
+    };
+    card.querySelector('.rv-now-stop').onclick = (event) => {
+      event.stopPropagation(); stopRoomMusic(true);
+    };
+
+    mini.classList.toggle('on', !!ctx.music.minimized);
+    mini.innerHTML = `<span class="rv-mini-music-icon">♫</span><span class="rv-mini-music-title">${esc(item.title || 'موسيقى')}</span><span class="rv-mini-music-pause">Ⅱ</span>`;
+    mini.title = 'إظهار مشغل الموسيقى';
+    mini.onclick = (event) => {
+      event.stopPropagation();
+      ctx.music.minimized = false;
+      renderMusicNowPlaying();
+    };
+  }
+
+  function minimizeMusicPlayer() {
+    if (!ctx?.music?.current || !ctx.music.playing) return;
+    ctx.music.minimized = true;
+    renderMusicNowPlaying();
   }
 
   function renderMusicSeatIndicator() {
     if (!ctx || !ctx.music) return;
-    ctx.modal.querySelectorAll('.rv-seat-music, .rv-seat-music-label, .rv-music-speaking, .rv-music-avatar-speaking').forEach(node => {
+    ctx.modal.querySelectorAll('.rv-seat-music, .rv-music-speaking, .rv-music-avatar-speaking').forEach(node => {
       node.classList?.remove('rv-music-speaking', 'rv-music-avatar-speaking');
-      if (node.matches?.('.rv-seat-music, .rv-seat-music-label')) node.remove();
+      if (node.matches?.('.rv-seat-music')) node.remove();
     });
     const active = ctx.music.playing && (ctx.music.current || ctx.music.remote);
     const seatIndex = ctx.music.seatIndex;
@@ -306,12 +345,6 @@
     seatRoot.classList.add('rv-music-speaking');
     seat.classList.add('rv-music-avatar-speaking');
 
-    const item = ctx.music.current || ctx.music.remote;
-    const label = document.createElement('div');
-    label.className = 'rv-seat-music-label';
-    label.title = item.title || 'موسيقى';
-    label.innerHTML = `<b>${esc(item.title || 'موسيقى')}</b>`;
-    seatRoot.appendChild(label);
   }
 
   function paintMusicSheet() {
@@ -408,7 +441,7 @@
     stopRoomMusic(false, true);
     const audio = new Audio();
     audio.crossOrigin = 'anonymous'; audio.src = track.url; audio.preload = 'auto'; audio.loop = true;
-    ctx.music.audio = audio; ctx.music.current = track; ctx.music.ownerId = me().id; ctx.music.seatIndex = st().userSeatIndex;
+    ctx.music.audio = audio; ctx.music.current = track; ctx.music.minimized = false; ctx.music.ownerId = me().id; ctx.music.seatIndex = st().userSeatIndex;
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) {
       try {
@@ -443,7 +476,7 @@
     if (music.audioContext) { try { music.audioContext.close(); } catch (e) {} }
     if (window.soulRtc && typeof window.soulRtc.clearVoiceMusicStream === 'function') window.soulRtc.clearVoiceMusicStream();
     if (notify && wasPlaying && !silent) publishRoomMusic('room_music_stopped', music.current);
-    music.audio = null; music.audioContext = null; music.mediaSource = null; music.destination = null; music.current = null; music.remote = null; music.playing = false; music.ownerId = null; music.seatIndex = null;
+    music.audio = null; music.audioContext = null; music.mediaSource = null; music.destination = null; music.current = null; music.remote = null; music.playing = false; music.minimized = false; music.ownerId = null; music.seatIndex = null;
     renderMusicNowPlaying(); renderMusicSeatIndicator();
     if (ctx.layer?.classList.contains('on')) paintMusicSheet();
   }
