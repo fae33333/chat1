@@ -49,29 +49,46 @@
   };
 
   // ====================== مشغّل يوتيوب العائم الثابت ======================
+  // عنصر الصوت المخفي للمنشورات (مثل مقاطع الصوت)
+  let gypAudioEl = null;
+  function ensureGypAudio() {
+    if (gypAudioEl && gypAudioEl.isConnected) return gypAudioEl;
+    gypAudioEl = document.createElement('audio');
+    gypAudioEl.id = 'gyp-audio';
+    gypAudioEl.crossOrigin = 'anonymous';
+    gypAudioEl.preload = 'auto';
+    gypAudioEl.style.display = 'none';
+    document.body.appendChild(gypAudioEl);
+    return gypAudioEl;
+  }
+
   function ensureGlobalYtDom() {
     let wrap = document.getElementById('global-yt-player');
     if (wrap) return wrap;
     wrap = document.createElement('div');
     wrap.id = 'global-yt-player';
-    wrap.className = 'gyp';
+    wrap.className = 'gyp gyp-audio'; // افتراضي مخفي (مثل مقاطع الصوت) — لا يظهر قالب فيديو
     wrap.innerHTML = `
       <div class="gyp-card" id="gyp-card">
-        <div class="gyp-video-wrap">
+        <div class="gyp-video-wrap" aria-hidden="true" style="display:none">
           <div id="gyp-iframe-host"></div>
           <button type="button" class="gyp-btn gyp-close" id="gyp-close" aria-label="إغلاق">✕</button>
           <button type="button" class="gyp-btn gyp-min" id="gyp-min" aria-label="تصغير">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 14l8 8 8-8"/><path d="M12 22V10"/><path d="M4 10h16"/></svg>
           </button>
         </div>
-        <div class="gyp-info">
+        <div class="gyp-audio-head">
           <span class="gyp-badge"><svg viewBox="0 0 24 24" width="12" height="12"><rect width="24" height="24" rx="6" fill="#FF0000"/><path fill="#fff" d="M10 8.5l5 3.5-5 3.5z"/></svg> YouTube</span>
+          <button type="button" class="gyp-btn gyp-close" id="gyp-close2" aria-label="إغلاق">✕</button>
+        </div>
+        <div class="gyp-info">
           <b class="gyp-title" id="gyp-title"></b>
           <small class="gyp-channel" id="gyp-channel"></small>
         </div>
         <div class="gyp-ctl">
+          <button type="button" class="gyp-ctl-btn" id="gyp-playpause" title="إيقاف/تشغيل">⏸ إيقاف</button>
           <button type="button" class="gyp-ctl-btn" id="gyp-expand" title="تكبير">⛶</button>
-          <button type="button" class="gyp-ctl-btn danger" id="gyp-stop" title="إيقاف">■ إيقاف</button>
+          <button type="button" class="gyp-ctl-btn danger" id="gyp-stop" title="إيقاف">■ إغلاق</button>
         </div>
       </div>
       <button type="button" class="gyp-mini" id="gyp-mini" aria-label="إظهار المشغّل">
@@ -82,7 +99,11 @@
     `;
     document.body.appendChild(wrap);
     wrap.querySelector('#gyp-close').onclick = () => closeGlobalYt();
+    const c2 = wrap.querySelector('#gyp-close2');
+    if (c2) c2.onclick = () => closeGlobalYt();
     wrap.querySelector('#gyp-stop').onclick = () => closeGlobalYt();
+    const pp = wrap.querySelector('#gyp-playpause');
+    if (pp) pp.onclick = (e) => { e.stopPropagation(); toggleGlobalYtPause(); };
     wrap.querySelector('#gyp-min').onclick = (e) => { e.stopPropagation(); minimizeGlobalYt(); };
     wrap.querySelector('#gyp-expand').onclick = (e) => { e.stopPropagation(); expandGlobalYt(); };
     wrap.querySelector('#gyp-mini').onclick = (e) => { e.stopPropagation(); expandGlobalYt(); };
@@ -96,6 +117,8 @@
     const s = state.globalYt;
     if (!s || !s.videoId) {
       if (wrap) { wrap.classList.remove('on','min'); const host = wrap.querySelector('#gyp-iframe-host'); if(host) host.innerHTML=''; }
+      const a = document.getElementById('gyp-audio');
+      if (a) { try { a.pause(); a.removeAttribute('src'); a.load(); } catch(e){} }
       return;
     }
     ensureGlobalYtDom();
@@ -110,25 +133,59 @@
     if (chEl) chEl.textContent = s.channel || '';
     if (miniTitle) miniTitle.textContent = s.title || 'يوتيوب';
     if (miniImg) miniImg.src = 'https://i.ytimg.com/vi/' + s.videoId + '/mqdefault.jpg';
+    const pp = document.getElementById('gyp-playpause');
+    if (pp) pp.textContent = s.paused ? '▶ تشغيل' : '⏸ إيقاف';
+    // قالب الفيديو يبقى مخفياً — نستخدم صوت مخفي فقط
     const host = document.getElementById('gyp-iframe-host');
-    if (host && !host.querySelector('iframe')) {
-      host.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + encodeURIComponent(s.videoId) + '?autoplay=1&rel=0&modestbranding=1&playsinline=1" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
+    if (host && !s.useAudio && !host.querySelector('iframe')) {
+      host.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + encodeURIComponent(s.videoId) + '?autoplay=1&rel=0&modestbranding=1&playsinline=1" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="width:1px;height:1px;position:absolute;left:-9999px;top:-9999px;opacity:0;pointer-events:none;"></iframe>';
     }
   }
 
-  function playGlobalYt(videoId, title, channel) {
+  function toggleGlobalYtPause() {
+    const a = document.getElementById('gyp-audio');
+    if (!a || !a.src) return;
+    if (a.paused) { a.play().catch(()=>{}); state.globalYt.paused = false; }
+    else { a.pause(); state.globalYt.paused = true; }
+    renderGlobalYt();
+  }
+
+  async function playGlobalYt(videoId, title, channel) {
     if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) return;
     // إذا كان نفس المقطع ويعمل، فقط افتحه
     if (state.globalYt && state.globalYt.videoId === videoId) {
       state.globalYt.minimized = false;
       state.globalYt.title = title || state.globalYt.title;
       state.globalYt.channel = channel || state.globalYt.channel;
+      const a = document.getElementById('gyp-audio');
+      if (a && a.src && a.paused) { try { await a.play(); state.globalYt.paused = false; } catch(e){} }
       renderGlobalYt();
       return;
     }
-    state.globalYt = { videoId, title: title || 'مقطع يوتيوب', channel: channel || '', minimized: false };
+    state.globalYt = { videoId, title: title || 'مقطع يوتيوب', channel: channel || '', minimized: true, paused: false, useAudio: true };
+    // يبقى مخفياً مثل مقاطع الصوت — يصغّر تلقائياً ولا يظهر قالب فيديو
     const host = document.getElementById('gyp-iframe-host');
     if (host) host.innerHTML = '';
+    ensureGlobalYtDom();
+    renderGlobalYt();
+    // حاول تشغيل صوت مخفي عبر خادمنا (Innertube) ثم احتياطي iframe مخفي
+    const audio = ensureGypAudio();
+    try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch(e){}
+    try {
+      const r = await fetch('/api/youtube/audio/' + encodeURIComponent(videoId), { headers: { 'x-user-id': (state.currentUser && state.currentUser.id) || '' } });
+      const j = await r.json().catch(()=>null);
+      if (r.ok && j && j.success && j.url) {
+        audio.src = j.url;
+        audio.onended = () => { closeGlobalYt(); };
+        audio.onpause = () => { if (state.globalYt) { state.globalYt.paused = true; renderGlobalYt(); } };
+        audio.onplay = () => { if (state.globalYt) { state.globalYt.paused = false; renderGlobalYt(); } };
+        try { await audio.play(); state.globalYt.paused = false; } catch(e) { state.globalYt.paused = true; }
+        renderGlobalYt();
+        return;
+      }
+    } catch(e){}
+    // احتياطي: iframe مخفي 1×1 (صوت فقط)
+    state.globalYt.useAudio = false;
     renderGlobalYt();
   }
 
@@ -136,6 +193,8 @@
     state.globalYt = null;
     const host = document.getElementById('gyp-iframe-host');
     if (host) host.innerHTML = '';
+    const a = document.getElementById('gyp-audio');
+    if (a) { try { a.pause(); a.removeAttribute('src'); a.load(); } catch(e){} }
     const w = document.getElementById('global-yt-player');
     if (w) w.classList.remove('on','min');
   }

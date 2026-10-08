@@ -2570,7 +2570,78 @@ app.get('/api/youtube/search', async (req, res) => {
 });
 
 // إعداد مفتاح يوتيوب من لوحة الإدارة (يُحفظ في app_settings ويُستخدم فوراً بدون إعادة تشغيل)
+
+// ── تشغيل يوتيوب كمقطع صوتي مخفي (للموسيقى في الغرف) — يعيد رابط صوت مباشر عبر Innertube ──
+async function getYoutubeAudioUrl(videoId) {
+  const innertubeKey = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+  const bodies = [
+    // ANDROID يرجع روابط غير مقيّدة وأقل حظراً
+    {
+      context: { client: { clientName: 'ANDROID', clientVersion: '19.09.37', androidSdkVersion: 30, hl: 'ar', gl: 'SA' } },
+      videoId,
+      racyCheckOk: true,
+      contentCheckOk: true
+    },
+    {
+      context: { client: { clientName: 'WEB', clientVersion: '2.20240101.00.00', hl: 'ar', gl: 'SA', originalUrl: 'https://www.youtube.com/watch?v=' + videoId } },
+      videoId,
+      racyCheckOk: true,
+      contentCheckOk: true
+    }
+  ];
+  let lastErr = null;
+  for (const body of bodies) {
+    try {
+      const r = await fetch('https://www.youtube.com/youtubei/v1/player?key=' + innertubeKey, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(9000)
+      });
+      if (!r.ok) { lastErr = new Error('player status ' + r.status); continue; }
+      const j = await r.json();
+      const sd = j.streamingData;
+      if (!sd) { lastErr = new Error(j.playabilityStatus?.reason || 'no streamingData'); continue; }
+      const formats = [...(sd.adaptiveFormats || []), ...(sd.formats || [])];
+      // اختر أفضل صوت فقط
+      const audios = formats.filter(f => (f.mimeType || '').startsWith('audio/') && f.url);
+      if (!audios.length) { lastErr = new Error('no audio formats'); continue; }
+      // ترتيب حسب الجودة/معدل البت
+      audios.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+      const best = audios[0];
+      // تحقق سريع أن الرابط قابل للاستخدام
+      if (!best.url || !best.url.includes('googlevideo.com')) { lastErr = new Error('invalid url'); continue; }
+      return { url: best.url, duration: Number(j.videoDetails?.lengthSeconds || sd.approxDurationMs ? Math.floor(Number(sd.approxDurationMs || 0)/1000) : 0) || 0, title: j.videoDetails?.title || '' };
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('تعذر الحصول على رابط الصوت');
+}
+
+app.get('/api/youtube/audio/:videoId', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId || !(await get('SELECT id FROM users WHERE id = ?', [userId]))) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+    const videoId = String(req.params.videoId || '').trim();
+    if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return res.status(400).json({ success: false, error: 'معرّف فيديو غير صالح' });
+    // حماية بسيطة من الإغراق
+    const now = Date.now();
+    const hits = (ytSearchHits.get(userId) || []).filter(t => now - t < 60000);
+    if (hits.length >= 20) return res.status(429).json({ success: false, error: 'عدد كبير من الطلبات' });
+    hits.push(now);
+    ytSearchHits.set(userId, hits);
+
+    const data = await getYoutubeAudioUrl(videoId);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    console.error('youtube audio error:', err.message);
+    res.status(502).json({ success: false, error: 'تعذر تشغيل هذا المقطع حالياً (قد يكون مقيّداً). جرّب مقطعاً آخر.' });
+  }
+});
+
 app.get('/api/admin/youtube-key', async (req, res) => {
+
   const session = await verifyAdminToken(req);
   if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
   try {

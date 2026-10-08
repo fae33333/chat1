@@ -517,6 +517,10 @@
 .rv-yt-more { align-self: center; margin: 8px auto; background: #26262a; border: 0; color: #e9e9ea; cursor: pointer; }
 .rv-yt-note { text-align: center; color: #66666c; font-size: 11px; padding: 8px; }
 .rv-yt-box { position: absolute; top: 74px; left: 8px; width: 200px; z-index: 40; border-radius: 14px; overflow: hidden; background: #000; box-shadow: 0 6px 22px rgba(0,0,0,.55); }
+/* مخفي تماماً مثل مقاطع الصوت — يبقى الصوت مع التذبذبات دون إظهار قالب يوتيوب */
+.rv-yt-box.rv-yt-hidden, .rv-yt-box.rv-yt-host-hidden { position: absolute !important; width: 1px !important; height: 1px !important; left: -9999px !important; top: -9999px !important; overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; clip: rect(0,0,0,0) !important; border: 0 !important; box-shadow: none !important; }
+.rv-yt-box.rv-yt-remote { /* للمستمعين الاحتياطي فقط — يبقى مخفياً إلا إذا احتاج نقرة */ left: auto; right: 8px; top: auto; bottom: 92px; width: 160px; }
+.rv-yt-box.rv-yt-remote.rv-yt-hidden { left: -9999px !important; right: auto !important; bottom: auto !important; }
 .rv-yt-frame, .rv-yt-frame iframe { display: block; width: 200px; height: 200px; border: 0; }
 .rv-yt-cap { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 9px; background: #111; color: #fff; font-size: 11px; direction: rtl; }
 .rv-yt-ttl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

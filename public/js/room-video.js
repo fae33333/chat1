@@ -854,54 +854,132 @@
     music.ytPlayer = null; music.ytBox = null;
   }
 
+  // — يوتيوب مخفي كمقطع صوتي: يحاول جلب رابط صوت مباشر ويشغّله مخفياً مع التذبذبات والبث للغرفة
   async function playYoutubeTrack(track) {
     const m = ctx.music;
     const token = {};
     m.ytToken = token; m.current = track; m.selectedId = track.id; m.minimized = false;
     m.paused = true; m.playing = true; m.ownerId = me().id; m.seatIndex = st().userSeatIndex;
-    m.ytBox = ytMakeBox('host', track.title);
     renderMusicNowPlaying(); paintMusicSheet();
     const alive = () => ctx && ctx.music.ytToken === token;
-    let player;
+    // محاولة التشغيل المخفي عبر رابط صوت مباشر (يخفي قالب يوتيوب تماماً ويتيح التذبذبات والبث)
     try {
-      player = await ytCreatePlayer(m.ytBox, track.yt_id, 0, true, {
-        onStateChange: (e) => {
-          if (!alive()) return;
-          const S = window.YT.PlayerState, mm = ctx.music;
-          if (e.data === S.PLAYING) {
-            mm.playing = true; mm.paused = false;
-            setMusicRings(me().id, true, mm.seatIndex);
-            publishRoomMusic('room_music_started', track);
-            ytPublish('play', track);
-            clearInterval(mm.ytHb);
-            mm.ytHb = setInterval(() => { if (alive() && !mm.paused) ytPublish('play', track); }, 5000);
-            renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
-          } else if (e.data === S.PAUSED) {
-            mm.paused = true; clearInterval(mm.ytHb);
-            setMusicRings(me().id, false);
-            publishRoomMusic('room_music_stopped', track);
-            ytPublish('pause', track);
-            renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
-          } else if (e.data === S.ENDED) {
-            clearInterval(mm.ytHb);
-            if (mm.repeat === 'one') { try { mm.ytPlayer.seekTo(0, true); mm.ytPlayer.playVideo(); } catch (err) {} }
-            else playAdjacent(1);
-          }
-        },
-        onError: () => { if (alive()) { toast('تعذر تشغيل هذا المقطع (قد يكون منع التضمين). جرّب أغنية أخرى'); stopRoomMusic(true); } }
-      });
-    } catch (err) {
-      if (alive()) { toast(err.message); stopRoomMusic(false, true); }
-      return;
+      const r = await fetch('/api/youtube/audio/' + encodeURIComponent(track.yt_id), { headers: { 'x-user-id': (st().currentUser && st().currentUser.id) || '' } });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j && j.success && j.url) {
+        if (!alive()) return;
+        const audio = new Audio();
+        audio.crossOrigin = 'anonymous';
+        audio.src = j.url;
+        audio.preload = 'auto';
+        audio.loop = m.repeat === 'one';
+        m.audio = audio; m.ytPlayer = null; m.ytBox = null;
+        m.paused = false;
+        // إعداد WebAudio للمزج مع المايك والتذبذبات (مطابق لمقاطع الصوت العادية)
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          try {
+            const audioContext = new AudioCtx();
+            const source = audioContext.createMediaElementSource(audio);
+            const destination = audioContext.createMediaStreamDestination();
+            const gain = audioContext.createGain();
+            gain.gain.value = m.volume == null ? 1 : m.volume;
+            source.connect(gain);
+            gain.connect(audioContext.destination);
+            gain.connect(destination);
+            m.audioContext = audioContext; m.mediaSource = source; m.destination = destination; m.gain = gain;
+            try {
+              const an = audioContext.createAnalyser();
+              an.fftSize = 512; an.smoothingTimeConstant = 0.5;
+              source.connect(an);
+              m.analyser = an;
+              if (window.voiceRings && me()) {
+                window.voiceRings.watchAnalyser(String(me().id), an, 'music', () => !!(ctx && ctx.music && ctx.music.audio === audio && !audio.paused));
+              }
+            } catch (e) {}
+            audioContext.resume().catch(() => {});
+          } catch (err) { console.warn('yt audio graph unavailable:', err); }
+        }
+        if (!m.gain) audio.volume = m.volume == null ? 1 : m.volume;
+        audio.onplay = () => {
+          if (!ctx || ctx.music.audio !== audio) return;
+          ctx.music.playing = true; ctx.music.paused = false;
+          attachMusicToVoice();
+          setMusicRings(me().id, true, ctx.music.seatIndex);
+          publishRoomMusic('room_music_started', track);
+          renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
+        };
+        audio.onpause = () => {
+          if (!ctx || ctx.music.audio !== audio || audio.ended) return;
+          ctx.music.paused = true;
+          setMusicRings(me().id, false);
+          publishRoomMusic('room_music_stopped', track);
+          renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
+        };
+        audio.onended = () => { if (ctx && ctx.music.audio === audio) playAdjacent(1); };
+        audio.ontimeupdate = updateMusicProgress;
+        audio.onloadedmetadata = updateMusicProgress;
+        audio.ondurationchange = updateMusicProgress;
+        audio.onerror = () => { if (ctx && ctx.music.audio === audio) { toast('تعذر تشغيل الصوت، نجرب المشغّل الاحتياطي'); fallbackToYtPlayer(); } };
+        m.ytTick = setInterval(updateMusicProgress, 500);
+        try { await audio.play(); } catch (e) { toast('اضغط تشغيل مرة أخرى للسماح بتشغيل الصوت'); }
+        renderMusicNowPlaying();
+        return; // نجح التشغيل المخفي
+      }
+    } catch (e) {
+      // فشل جلب الصوت — ننتقل للمشغّل المخفي الاحتياطي
     }
-    if (!alive()) { try { player.destroy(); } catch (e) {} return; }
-    m.ytPlayer = player;
-    m.audio = makeYtAdapter(player, m);
-    m.audio.loop = m.repeat === 'one';
-    m.audio.volume = m.volume == null ? 1 : m.volume;
-    m.ytTick = setInterval(updateMusicProgress, 500);
-    try { player.playVideo(); } catch (e) {}
-    renderMusicNowPlaying();
+    // — احتياطي: مشغّل يوتيوب مخفي (لا يظهر قالب) مع مزامنة للغرفة
+    async function fallbackToYtPlayer() {
+      if (!alive()) return;
+      if (m.audio) { try { m.audio.pause(); } catch(e) {} m.audio = null; }
+      if (m.audioContext) { try { m.audioContext.close(); } catch(e) {} m.audioContext = null; }
+      m.ytBox = ytMakeBox('host', track.title);
+      // إخفاء القالب بصرياً لكنه يستمر بالعمل
+      if (m.ytBox) { m.ytBox.classList.add('rv-yt-hidden'); m.ytBox.setAttribute('aria-hidden', 'true'); }
+      let player;
+      try {
+        player = await ytCreatePlayer(m.ytBox, track.yt_id, 0, true, {
+          onStateChange: (e) => {
+            if (!alive()) return;
+            const S = window.YT.PlayerState, mm = ctx.music;
+            if (e.data === S.PLAYING) {
+              mm.playing = true; mm.paused = false;
+              setMusicRings(me().id, true, mm.seatIndex);
+              publishRoomMusic('room_music_started', track);
+              ytPublish('play', track);
+              clearInterval(mm.ytHb);
+              mm.ytHb = setInterval(() => { if (alive() && !mm.paused) ytPublish('play', track); }, 5000);
+              renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
+            } else if (e.data === S.PAUSED) {
+              mm.paused = true; clearInterval(mm.ytHb);
+              setMusicRings(me().id, false);
+              publishRoomMusic('room_music_stopped', track);
+              ytPublish('pause', track);
+              renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
+            } else if (e.data === S.ENDED) {
+              clearInterval(mm.ytHb);
+              if (mm.repeat === 'one') { try { mm.ytPlayer.seekTo(0, true); mm.ytPlayer.playVideo(); } catch (err) {} }
+              else playAdjacent(1);
+            }
+          },
+          onError: () => { if (alive()) { toast('تعذر تشغيل هذا المقطع (قد يكون منع التضمين). جرّب أغنية أخرى'); stopRoomMusic(true); } }
+        });
+      } catch (err) {
+        if (alive()) { toast(err.message); stopRoomMusic(false, true); }
+        return;
+      }
+      if (!alive()) { try { player.destroy(); } catch (e) {} return; }
+      m.ytPlayer = player;
+
+      m.audio = makeYtAdapter(player, m);
+      m.audio.loop = m.repeat === 'one';
+      m.audio.volume = m.volume == null ? 1 : m.volume;
+      m.ytTick = setInterval(updateMusicProgress, 500);
+      try { player.playVideo(); } catch (e) {}
+      renderMusicNowPlaying();
+    }
+    fallbackToYtPlayer();
   }
 
   // ----- المستمعون: تشغيل نفس المقطع عندهم ومتابعة صاحب المقعد -----
