@@ -43,8 +43,129 @@
     selectedCategory: 'all',
     unreadMessagesCount: 0,
     unreadNotifCount: 0,
-    favoriteRoomIds: []
+    favoriteRoomIds: [],
+    // YouTube global persistent player (يبقى يعمل عند التنقل وتصغيره بالنقر على الشاشة مثل مقاطع الصوت)
+    globalYt: null
   };
+
+  // ====================== مشغّل يوتيوب العائم الثابت ======================
+  function ensureGlobalYtDom() {
+    let wrap = document.getElementById('global-yt-player');
+    if (wrap) return wrap;
+    wrap = document.createElement('div');
+    wrap.id = 'global-yt-player';
+    wrap.className = 'gyp';
+    wrap.innerHTML = `
+      <div class="gyp-card" id="gyp-card">
+        <div class="gyp-video-wrap">
+          <div id="gyp-iframe-host"></div>
+          <button type="button" class="gyp-btn gyp-close" id="gyp-close" aria-label="إغلاق">✕</button>
+          <button type="button" class="gyp-btn gyp-min" id="gyp-min" aria-label="تصغير">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 14l8 8 8-8"/><path d="M12 22V10"/><path d="M4 10h16"/></svg>
+          </button>
+        </div>
+        <div class="gyp-info">
+          <span class="gyp-badge"><svg viewBox="0 0 24 24" width="12" height="12"><rect width="24" height="24" rx="6" fill="#FF0000"/><path fill="#fff" d="M10 8.5l5 3.5-5 3.5z"/></svg> YouTube</span>
+          <b class="gyp-title" id="gyp-title"></b>
+          <small class="gyp-channel" id="gyp-channel"></small>
+        </div>
+        <div class="gyp-ctl">
+          <button type="button" class="gyp-ctl-btn" id="gyp-expand" title="تكبير">⛶</button>
+          <button type="button" class="gyp-ctl-btn danger" id="gyp-stop" title="إيقاف">■ إيقاف</button>
+        </div>
+      </div>
+      <button type="button" class="gyp-mini" id="gyp-mini" aria-label="إظهار المشغّل">
+        <span class="gyp-mini-thumb"><img id="gyp-mini-img" src="" alt="" /></span>
+        <span class="gyp-mini-txt"><b id="gyp-mini-title"></b><small>▶ يوتيوب يعمل</small></span>
+        <span class="gyp-mini-act">⛶</span>
+      </button>
+    `;
+    document.body.appendChild(wrap);
+    wrap.querySelector('#gyp-close').onclick = () => closeGlobalYt();
+    wrap.querySelector('#gyp-stop').onclick = () => closeGlobalYt();
+    wrap.querySelector('#gyp-min').onclick = (e) => { e.stopPropagation(); minimizeGlobalYt(); };
+    wrap.querySelector('#gyp-expand').onclick = (e) => { e.stopPropagation(); expandGlobalYt(); };
+    wrap.querySelector('#gyp-mini').onclick = (e) => { e.stopPropagation(); expandGlobalYt(); };
+    // النقر على البطاقة نفسها لا يصغّر، النقر خارجها يصغّر
+    wrap.querySelector('#gyp-card').addEventListener('click', (e) => e.stopPropagation());
+    return wrap;
+  }
+
+  function renderGlobalYt() {
+    const wrap = document.getElementById('global-yt-player');
+    const s = state.globalYt;
+    if (!s || !s.videoId) {
+      if (wrap) { wrap.classList.remove('on','min'); const host = wrap.querySelector('#gyp-iframe-host'); if(host) host.innerHTML=''; }
+      return;
+    }
+    ensureGlobalYtDom();
+    const w = document.getElementById('global-yt-player');
+    w.classList.add('on');
+    w.classList.toggle('min', !!s.minimized);
+    const titleEl = document.getElementById('gyp-title');
+    const chEl = document.getElementById('gyp-channel');
+    const miniTitle = document.getElementById('gyp-mini-title');
+    const miniImg = document.getElementById('gyp-mini-img');
+    if (titleEl) titleEl.textContent = s.title || 'مقطع يوتيوب';
+    if (chEl) chEl.textContent = s.channel || '';
+    if (miniTitle) miniTitle.textContent = s.title || 'يوتيوب';
+    if (miniImg) miniImg.src = 'https://i.ytimg.com/vi/' + s.videoId + '/mqdefault.jpg';
+    const host = document.getElementById('gyp-iframe-host');
+    if (host && !host.querySelector('iframe')) {
+      host.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + encodeURIComponent(s.videoId) + '?autoplay=1&rel=0&modestbranding=1&playsinline=1" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
+    }
+  }
+
+  function playGlobalYt(videoId, title, channel) {
+    if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) return;
+    // إذا كان نفس المقطع ويعمل، فقط افتحه
+    if (state.globalYt && state.globalYt.videoId === videoId) {
+      state.globalYt.minimized = false;
+      state.globalYt.title = title || state.globalYt.title;
+      state.globalYt.channel = channel || state.globalYt.channel;
+      renderGlobalYt();
+      return;
+    }
+    state.globalYt = { videoId, title: title || 'مقطع يوتيوب', channel: channel || '', minimized: false };
+    const host = document.getElementById('gyp-iframe-host');
+    if (host) host.innerHTML = '';
+    renderGlobalYt();
+  }
+
+  function closeGlobalYt() {
+    state.globalYt = null;
+    const host = document.getElementById('gyp-iframe-host');
+    if (host) host.innerHTML = '';
+    const w = document.getElementById('global-yt-player');
+    if (w) w.classList.remove('on','min');
+  }
+
+  function minimizeGlobalYt() {
+    if (!state.globalYt || !state.globalYt.videoId || state.globalYt.minimized) return;
+    state.globalYt.minimized = true;
+    renderGlobalYt();
+  }
+
+  function expandGlobalYt() {
+    if (!state.globalYt || !state.globalYt.videoId || !state.globalYt.minimized) return;
+    state.globalYt.minimized = false;
+    renderGlobalYt();
+  }
+
+  // النقر على الشاشة يصغّر المشغّل الموسّع (مثل مقاطع الصوت تماماً)
+  document.addEventListener('click', (e) => {
+    const s = state.globalYt;
+    if (!s || !s.videoId || s.minimized) return;
+    // لا يصغّر إذا النقر داخل المشغّل نفسه أو داخل نافذة إنشاء منشور أو لوحة تحكم
+    if (e.target.closest('#global-yt-player') || e.target.closest('#create-moment-modal') || e.target.closest('.soul-modal-content')) return;
+    // يصغّر عند النقر على محتوى التطبيق
+    if (e.target.closest('#app-main-content') || e.target.closest('.app-container') || e.target.closest('.app-viewport')) {
+      minimizeGlobalYt();
+    }
+  });
+
+  // عند التنقل بين التبويبات لا نغلق المشغّل — يبقى ثابتاً
+
 
   function isPlatformStaff(user) {
     if (!user || !user.role) return false;
@@ -9018,8 +9139,11 @@
           ${m.content ? `<div class="moment-content-text">${fEsc(m.content)}</div>` : ''}
 
           ${m.media_type === 'youtube' && m.video_url ? `
-            <div class="moment-yt-box">
-              <iframe src="https://www.youtube-nocookie.com/embed/${fEsc(m.video_url)}" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+            <div class="moment-yt-box moment-yt-clickable" data-yt-id="${fEsc(m.video_url)}" data-yt-title="${fEsc((m.content||'مقطع يوتيوب').slice(0,60))}" role="button" tabindex="0" aria-label="تشغيل يوتيوب">
+              <img src="https://i.ytimg.com/vi/${fEsc(m.video_url)}/hqdefault.jpg" alt="" loading="lazy" onerror="this.style.display='none'" />
+              <span class="moment-yt-play"><svg viewBox="0 0 24 24" width="52" height="52"><rect width="24" height="24" rx="12" fill="#FF0000"/><path fill="#fff" d="M10 8.5l6 3.5-6 3.5z"/></svg></span>
+              <span class="moment-yt-badge-sm"><svg viewBox="0 0 24 24" width="12" height="12"><rect width="24" height="24" rx="6" fill="#FF0000"/><path fill="#fff" d="M10 8.5l5 3.5-5 3.5z"/></svg> YouTube</span>
+              ${state.globalYt && state.globalYt.videoId === m.video_url ? '<span class="moment-yt-now">▶ يعمل الآن</span>' : ''}
             </div>
           ` : (m.media_type === 'video' && m.video_url ? `
             <div class="moment-video-box">
@@ -9053,6 +9177,18 @@
         </div>
       `;
     }).join('');
+
+    // تشغيل يوتيوب في المشغّل العائم الثابت (يبقى عند التنقل)
+    listEl.querySelectorAll('.moment-yt-clickable').forEach(el => {
+      const go = () => {
+        const vid = el.dataset.ytId;
+        const ttl = el.dataset.ytTitle || 'مقطع يوتيوب';
+        if (!vid) return;
+        playGlobalYt(vid, ttl, el.closest('.moment-card')?.querySelector('.moment-user-name')?.textContent || '');
+      };
+      el.onclick = go;
+      el.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+    });
 
     // حذف منشور غير لائق (للمشرفين فقط)
     listEl.querySelectorAll('.moment-delete-btn').forEach(btn => {
