@@ -2403,7 +2403,7 @@ app.get('/api/moments', async (req, res) => {
   }
 });
 
-// 17-yt. البحث في يوتيوب (YouTube Data API v3) لاختيار مقطع وإرفاقه بالمنشور
+// 17-yt. البحث في يوتيوب — يعمل بمفتاح YouTube Data API v3 إن وُجد، وإلا عبر بديل Innertube بدون مفتاح
 const ytSearchCache = new Map(); // key -> { t, data }
 const ytSearchHits = new Map();  // userId -> [timestamps]
 const YT_CACHE_MS = 10 * 60 * 1000;
@@ -2415,16 +2415,65 @@ function decodeHtmlEntities(str) {
     .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(Number(n)));
 }
 
+async function getYoutubeApiKey() {
+  if (process.env.YOUTUBE_API_KEY) return process.env.YOUTUBE_API_KEY;
+  try {
+    const row = await get(`SELECT value FROM app_settings WHERE key = 'youtube_api_key'`);
+    if (row && row.value) return row.value;
+  } catch (e) {}
+  return null;
+}
+
+// بديل بدون مفتاح: Innertube (نفس الواجهة التي يستخدمها موقع يوتيوب نفسه). يعمل بدون حصة API.
+async function searchYoutubeViaInnertube(q, musicOnly) {
+  const body = {
+    context: {
+      client: {
+        clientName: 'WEB',
+        clientVersion: '2.20240101.00.00',
+        hl: 'ar',
+        gl: 'SA',
+        originalUrl: 'https://www.youtube.com/'
+      }
+    },
+    query: q
+  };
+  const r = await fetch('https://www.youtube.com/youtubei/v1/search?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(9000)
+  });
+  if (!r.ok) throw new Error('innertube status ' + r.status);
+  const j = await r.json();
+  const sectionList = j.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+  const found = [];
+  for (const sec of sectionList) {
+    const items = sec.itemSectionRenderer?.contents || [];
+    for (const it of items) {
+      const vr = it.videoRenderer;
+      if (!vr || !vr.videoId) continue;
+      const title = decodeHtmlEntities(vr.title?.runs?.map(x => x.text).join('') || vr.title?.simpleText || '');
+      const channel = decodeHtmlEntities(vr.ownerText?.runs?.map(x => x.text).join('') || vr.shortBylineText?.runs?.map(x => x.text).join('') || '');
+      const thumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${vr.videoId}/mqdefault.jpg`;
+      const published = vr.publishedTimeText?.simpleText || '';
+      // تصفية موسيقى: إن musicOnly نحاول تفضيل الفيديوهات الطويلة/ذات وسم موسيقى، لكن Innertube لا يدعم videoCategoryId بسهولة — نترك الكل
+      found.push({ id: vr.videoId, title, channel, thumbnail: thumb, published_at: published });
+      if (found.length >= 12) break;
+    }
+    if (found.length >= 12) break;
+  }
+  if (!found.length) throw new Error('no results from innertube');
+  return { items: found, nextPageToken: null };
+}
+
 app.get('/api/youtube/search', async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
     if (!userId || !(await get('SELECT id FROM users WHERE id = ?', [userId]))) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
-    const apiKey = process.env.YOUTUBE_API_KEY;
-    if (!apiKey) {
-      return res.status(503).json({ success: false, code: 'NO_KEY', error: 'البحث في يوتيوب غير مفعّل بعد. على مدير الخادم إضافة YOUTUBE_API_KEY.' });
-    }
+    let apiKey = await getYoutubeApiKey();
     const q = String(req.query.q || '').trim().slice(0, 100);
     if (q.length < 2) return res.status(400).json({ success: false, error: 'اكتب كلمة بحث من حرفين على الأقل' });
     const pageToken = /^[A-Za-z0-9_-]{1,100}$/.test(String(req.query.pageToken || '')) ? String(req.query.pageToken) : '';
@@ -2437,48 +2486,115 @@ app.get('/api/youtube/search', async (req, res) => {
     ytSearchHits.set(userId, hits);
 
     const musicOnly = String(req.query.music || '') === '1';
-    const cacheKey = `${q.toLowerCase()}|${pageToken}|${musicOnly ? 'm' : ''}`;
+    const cacheKey = `${q.toLowerCase()}|${pageToken}|${musicOnly ? 'm' : ''}|${apiKey ? 'key' : 'free'}`;
     const cached = ytSearchCache.get(cacheKey);
     if (cached && now - cached.t < YT_CACHE_MS) return res.json({ success: true, ...cached.data });
 
-    const url = new URL('https://www.googleapis.com/youtube/v3/search');
-    url.searchParams.set('part', 'snippet');
-    url.searchParams.set('type', 'video');
-    url.searchParams.set('maxResults', '12');
-    url.searchParams.set('safeSearch', 'strict');
-    url.searchParams.set('videoEmbeddable', 'true');
-    url.searchParams.set('q', q);
-    if (musicOnly) url.searchParams.set('videoCategoryId', '10');
-    if (pageToken) url.searchParams.set('pageToken', pageToken);
-    url.searchParams.set('key', apiKey);
+    let data = null;
+    let usedFallback = false;
 
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      const reason = j && j.error && j.error.errors && j.error.errors[0] && j.error.errors[0].reason;
-      console.error('YouTube search error:', r.status, reason || (j.error && j.error.message));
-      if (reason === 'quotaExceeded' || reason === 'dailyLimitExceeded') {
-        return res.status(429).json({ success: false, error: 'تم استهلاك حصة البحث اليومية في يوتيوب، حاول لاحقاً' });
+    if (apiKey) {
+      // جرّب Official API أولاً
+      try {
+        const url = new URL('https://www.googleapis.com/youtube/v3/search');
+        url.searchParams.set('part', 'snippet');
+        url.searchParams.set('type', 'video');
+        url.searchParams.set('maxResults', '12');
+        url.searchParams.set('safeSearch', 'strict');
+        url.searchParams.set('videoEmbeddable', 'true');
+        url.searchParams.set('q', q);
+        if (musicOnly) url.searchParams.set('videoCategoryId', '10');
+        if (pageToken) url.searchParams.set('pageToken', pageToken);
+        url.searchParams.set('key', apiKey);
+
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok) {
+          data = {
+            items: (j.items || []).filter(it => it.id && it.id.videoId).map(it => ({
+              id: it.id.videoId,
+              title: decodeHtmlEntities(it.snippet.title),
+              channel: decodeHtmlEntities(it.snippet.channelTitle),
+              thumbnail: (it.snippet.thumbnails && ((it.snippet.thumbnails.medium || it.snippet.thumbnails.default) || {}).url) || '',
+              published_at: it.snippet.publishedAt
+            })),
+            nextPageToken: j.nextPageToken || null
+          };
+        } else {
+          const reason = j && j.error && j.error.errors && j.error.errors[0] && j.error.errors[0].reason;
+          console.error('YouTube search error:', r.status, reason || (j.error && j.error.message));
+          if (reason === 'quotaExceeded' || reason === 'dailyLimitExceeded') {
+            // الحصة انتهت — تحوّل تلقائياً إلى البديل المجاني
+            console.log('Quota exceeded, switching to fallback');
+          } else if (r.status === 400 || r.status === 403) {
+            // مفتاح غير صالح — جرّب البديل بدل إظهار خطأ للعميل
+            console.log('API key invalid, trying fallback');
+          } else {
+            return res.status(502).json({ success: false, error: 'تعذر البحث في يوتيوب حالياً' });
+          }
+          // سننتقل إلى Fallback أدناه
+        }
+      } catch (err) {
+        console.error('Official API fetch failed, trying fallback:', err.message);
       }
-      return res.status(502).json({ success: false, error: 'تعذر البحث في يوتيوب حالياً' });
     }
-    const data = {
-      items: (j.items || []).filter(it => it.id && it.id.videoId).map(it => ({
-        id: it.id.videoId,
-        title: decodeHtmlEntities(it.snippet.title),
-        channel: decodeHtmlEntities(it.snippet.channelTitle),
-        thumbnail: (it.snippet.thumbnails && ((it.snippet.thumbnails.medium || it.snippet.thumbnails.default) || {}).url) || '',
-        published_at: it.snippet.publishedAt
-      })),
-      nextPageToken: j.nextPageToken || null
-    };
+
+    if (!data) {
+      // جرّب البديل المجاني
+      try {
+        const fb = await searchYoutubeViaInnertube(q, musicOnly);
+        data = fb;
+        usedFallback = true;
+      } catch (err) {
+        console.error('Fallback search failed:', err.message);
+        if (apiKey) {
+          // كان لدينا مفتاح لكنه فشل والبديل فشل أيضاً
+          return res.status(502).json({ success: false, error: 'تعذر البحث في يوتيوب حالياً، حاول مرة أخرى' });
+        } else {
+          // بدون مفتاح والبديل فشل (مثلاً الشبكة محظورة في البيئة المحلية) — أعد رسالة واضحة مع السماح باللصق المباشر
+          return res.status(503).json({ success: false, code: 'NO_KEY', fallback_direct: true, error: 'تعذر الاتصال بخدمة البحث حالياً. يمكنك لصق رابط يوتيوب مباشرة، أو على مدير الخادم إضافة YOUTUBE_API_KEY لتفعيل البحث.' });
+        }
+      }
+    }
+
+    if (!data.items.length) {
+      // لا نتائج — لا نعتبره خطأ
+    }
     if (ytSearchCache.size > 200) ytSearchCache.delete(ytSearchCache.keys().next().value);
     ytSearchCache.set(cacheKey, { t: now, data });
-    res.json({ success: true, ...data });
+    res.json({ success: true, ...data, via: usedFallback ? 'fallback' : 'api' });
   } catch (err) {
+    console.error('youtube search outer error:', err);
     res.status(500).json({ success: false, error: 'تعذر البحث في يوتيوب حالياً' });
   }
 });
+
+// إعداد مفتاح يوتيوب من لوحة الإدارة (يُحفظ في app_settings ويُستخدم فوراً بدون إعادة تشغيل)
+app.get('/api/admin/youtube-key', async (req, res) => {
+  const session = await verifyAdminToken(req);
+  if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+  try {
+    const key = await getYoutubeApiKey();
+    res.json({ success: true, has_key: !!key, preview: key ? (key.slice(0, 6) + '...' + key.slice(-4)) : '' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/admin/youtube-key', async (req, res) => {
+  const session = await verifyAdminToken(req);
+  if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+  try {
+    const key = String(req.body.key || '').trim();
+    if (key && !/^AIza[0-9A-Za-z_\-]{30,}$/.test(key)) return res.status(400).json({ error: 'مفتاح YouTube غير صالح (يجب أن يبدأ بـ AIza…)' });
+    if (key) {
+      await run(`INSERT INTO app_settings (key, value) VALUES ('youtube_api_key', ?)\n        ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [key]);
+      ytSearchCache.clear();
+    } else {
+      await run(`DELETE FROM app_settings WHERE key = 'youtube_api_key'`);
+      ytSearchCache.clear();
+    }
+    res.json({ success: true, has_key: !!key });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 
 // 17a. رفع وسائط المنشورات (صورة أو فيديو)
 const MOMENT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];

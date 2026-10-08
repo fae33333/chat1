@@ -1,0 +1,100 @@
+# إصلاح تشغيل يوتيوب — المنشورات + البحث + الموسيقى داخل الغرف
+
+تم إصلاح مشكلتين كنت تراهما:
+- `البحث في يوتيوب غير مفعّل بعد. على مدير الخادم إضافة YOUTUBE_API_KEY.`
+- `<div class="mc-prog" style="color:#f87171;">Failed to fetch</div>`
+
+## ما الذي تم تعديله؟
+
+### 1. الخادم `server.js`
+- البحث في `/api/youtube/search` **لا يتطلب مفتاحاً بعد الآن**:
+  - إذا كان `YOUTUBE_API_KEY` موجوداً (في `.env` أو في `app_settings`) يُستخدم الـ API الرسمي `youtube/v3/search`.
+  - إذا لم يوجد المفتاح أو انتهت حصته، يتحول **تلقائياً** إلى بديل مجاني **Innertube** (`youtubei/v1/search` بنفس ما يستخدمه موقع يوتيوب) بدون حصة.
+  - إذا فشل الاتصال الخارجي (شبكة محظورة) تُرجع رسالة واضحة `fallback_direct:true` بدل `Failed to fetch` مع السماح بلصق الرابط مباشرة.
+- أُضيف `getYoutubeApiKey()` يقرأ من `process.env` أو من جدول `app_settings` (`youtube_api_key`).
+- أُضيف مساران جديدان للإدارة:
+  - `GET  /api/admin/youtube-key` → هل يوجد مفتاح؟ + معاينة
+  - `POST /api/admin/youtube-key` `{key}` → حفظ/حذف المفتاح فوراً بدون إعادة تشغيل (يُفرغ الكاش).
+- الكاش والـ Rate-limit (15 طلب/دقيقة) بقيا كما هما.
+
+### 2. المنشورات `public/js/app.js`
+- أيقونة يوتيوب الجديدة: شارة حمراء احترافية بدل الإيموجي `▶️`:
+  ```js
+  const YT_ICON = '<span class="mc-yt-badge"><svg …><rect fill="#FF0000"/><path fill="#fff" d="M10 15.5l6-3.5…"/></svg></span>'
+  ```
+- حقل **لصق رابط مباشر** تحت البحث: يدعم `youtube.com/watch?v=`, `youtu.be/`, `shorts/`, `embed/` وحتى `ID` فقط (11 حرفاً). يعمل حتى لو البحث معطل.
+- معالجة أخطاء محسنة:
+  - `Failed to fetch` → `تعذر الاتصال بالخادم — تأكد من اتصالك ثم أعد المحاولة`
+  - `NO_KEY` → رسالة ودية + تلميح لاستخدام الحقل المباشر
+  - سبينر + ألوان خطأ واضحة + زر "تحميل المزيد"
+- معاينة المقطع تستخدم `youtube-nocookie.com/embed/…` مع `allow="accelerometer; autoplay; clipboard-write; …"` لتشتغل على الجوال.
+
+### 3. قائمة الموسيقى داخل الغرف `public/js/room-video.js`
+- نفس البديل المباشر: بعد حقل البحث يوجد `أو الصق رابط يوتيوب مباشرة` + `＋` (أحمر).
+- `ytSearch` الآن يحوّل `Failed to fetch` إلى رسالة عربية ويقترح اللصق المباشر.
+- `saveYtDirect(url)` يحفظ الرابط عبر `/api/music-library` حتى لو لم يمر بالبحث (يستخدم `i.ytimg.com/vi/ID/mqdefault.jpg` كصورة مصغرة + oEmbed لمحاولة جلب العنوان).
+
+### 4. التصميم `public/css/style.css` + `public/css/room-video.css`
+- `mc-yt-badge`, `mc-yt-direct`, `mc-yt-or`, `mc-spinner`, `yt-error`, `mc-yt-play` — تصميم نظيف، سبينر، تحديد أحمر عند الاختيار.
+- لا يكسر التصميم القديم.
+
+### 5. لوحة الإدارة `public/admin.html`
+- تبويب جديد **🔴 إعدادات يوتيوب** بعد "المحفظة".
+- يعرض حالة المفتاح، يسمح بالحفظ/الحذف/إظهار/إخفاء، وزر **🧪 جرّب البحث الآن** يختبر `/api/youtube/search` مباشرة ويعرض المصدر (`API رسمي` أو `بديل مجاني`).
+
+### 6. الإعداد `.env.example`
+- تعليق يوضح أن `YOUTUBE_API_KEY` اختياري (البديل يعمل) وكيف تضيفه من `/admin`.
+
+---
+
+## كيف تشغّل البحث الآن؟
+
+### الخيار A — بدون مفتاح (يعمل فوراً)
+1. ارفع الملفات المعدّلة إلى الخادم (`git pull` أو انسخها).
+2. أعد تشغيل `node server.js` (أو `pm2 restart`).
+3. افتح التطبيق → المنشورات → يوتيوب → ابحث. سيعمل عبر البديل المجاني.
+4. حتى لو فشل البحث (شبكة ضعيفة) يمكنك لصق رابط يوتيوب مباشرة والنشر.
+
+### الخيار B — بمفتاح للحصول على أدق النتائج
+1. ادخل إلى https://console.cloud.google.com/
+2. أنشئ مشروع → `APIs & Services → Library` → فعّل **YouTube Data API v3**
+3. `APIs & Services → Credentials → Create Credentials → API key` → انسخ المفتاح (يبدأ بـ `AIza...`)
+4. إما:
+   - ضعه في ملف `.env` كـ `YOUTUBE_API_KEY=AIza...` وأعد التشغيل، **أو**
+   - افتح `https://yourdomain.com/admin` → تبويب **إعدادات يوتيوب** → الصق المفتاح → حفظ → يصبح فعّالاً فوراً.
+5. الحصة المجانية 10,000 وحدة/يوم (~100 عملية بحث). عند انتهائها يعود البحث للبديل تلقائياً.
+
+---
+
+## تشغيل يوتيوب في المنشورات
+- المنشورات → اختر **يوتيوب** → ابحث واختر مقطعاً **أو** الصق رابطاً → نشر → يظهر للجميع كـ `iframe` من `youtube-nocookie.com` (آمن + بدون تتبع).
+- نفس الآلية لقائمة الموسيقى: الغرفة → زر الموسيقى → **اضافة** → ابحث أو الصق رابطاً → `＋` → يحفظ في مكتبتك (`user_music_tracks.yt_id`) ويُشغّل عبر مشغّل الغرفة.
+
+---
+
+## الملفات المعدّلة (جاهزة للتحميل)
+```
+server.js
+public/js/app.js
+public/js/room-video.js
+public/css/style.css
+public/admin.html
+.env.example
+```
+كلها على الفرع `arena/d416db47-chat1`. حمّلها:
+- `git fetch origin arena/d416db47-chat1 && git checkout arena/d416db47-chat1`
+- أو حمّل ZIP من GitHub → Branch → `arena/d416db47-chat1` → Code → Download ZIP
+
+## اختبار سريع
+```bash
+# بدون مفتاح — يجب أن يعمل عبر البديل أو يسمح باللصق
+curl -H "x-user-id: sc-owner-001" "http://localhost:3000/api/youtube/search?q=قران"
+
+# مع مفتاح — بعد إضافته من /admin أو .env
+curl -H "x-user-id: sc-owner-001" "http://localhost:3000/api/youtube/search?q=اغنية&music=1"
+```
+
+---
+
+## ملاحظة عن `Failed to fetch`
+كان يظهر لأن `fetch(...)` يرمي `TypeError: Failed to fetch` عند انقطاع الشبكة، والكود القديم يعرض `err.message` كما هو باللون الأحمر. الآن يُترجم إلى `تعذر الاتصال بالخادم — تأكد من اتصالك ثم أعد المحاولة` مع اقتراح واضح بلصق الرابط مباشرة، ولا يمنع النشر.

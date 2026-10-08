@@ -313,6 +313,12 @@
   // ===== يوتيوب: البحث وحفظ الأغاني في القائمة =====
   const safeThumb = (u) => /^https:\/\/i\.ytimg\.com\//.test(String(u || '')) ? String(u) : '';
 
+  function friendlyYtError(msg) {
+    if (!msg) return 'تعذر البحث في يوتيوب';
+    if (/Failed to fetch/i.test(msg) || /NetworkError/i.test(msg)) return 'تعذر الاتصال بالخادم — تأكد من اتصالك';
+    if (/YOUTUBE_API_KEY/.test(msg)) return msg;
+    return msg;
+  }
   async function ytSearch(more) {
     if (!ctx) return;
     const y = ctx.music.yt;
@@ -328,9 +334,9 @@
       const d = await api('GET', '/api/youtube/search?' + qs.toString());
       y.items = y.items.concat(d.items || []);
       y.next = d.nextPageToken || null;
-      if (!y.items.length) y.err = 'لا توجد نتائج';
+      if (!y.items.length) y.err = 'لا توجد نتائج — جرّب كلمات أخرى أو الصق رابط يوتيوب مباشرة';
     } catch (err) {
-      y.err = err.message || 'تعذر البحث في يوتيوب';
+      y.err = friendlyYtError(err.message || 'تعذر البحث في يوتيوب');
     } finally {
       y.busy = false;
     }
@@ -365,15 +371,54 @@
   }
 
   // ----- قائمة الموسيقى -----
+  function extractYtIdLocal(input) {
+    if (!input) return null;
+    const s = String(input).trim();
+    if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+    try {
+      const u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s);
+      const host = u.hostname.replace(/^www\.|^m\./, '');
+      let id = null;
+      if (host === 'youtu.be') id = u.pathname.split('/')[1];
+      else if (host === 'youtube.com' || host === 'music.youtube.com' || host === 'youtube-nocookie.com') {
+        if (u.pathname === '/watch') id = u.searchParams.get('v');
+        else { const m = u.pathname.match(/^\/(?:shorts|embed|live|v)\/([^/?#]+)/); if (m) id = m[1]; }
+      }
+      return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+    } catch (e) { return null; }
+  }
+  async function saveYtDirect(url) {
+    const id = extractYtIdLocal(url);
+    if (!id) return toast('رابط يوتيوب غير صالح');
+    if (musicLibrary.some(t => t.yt_id === id)) return toast('الأغنية موجودة في قائمتك');
+    // جرّب جلب العنوان من البحث أولاً، وإلا استخدم الرابط كعنوان
+    let title = 'موسيقى يوتيوب';
+    let thumb = `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+    let channel = '';
+    try {
+      // نحاول البحث عن العنوان عبر oEmbed إن توفر
+      const o = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`).then(r=>r.json()).catch(()=>null);
+      if (o && o.title) title = o.title;
+      if (o && o.author_name) channel = o.author_name;
+    } catch(e){}
+    try {
+      const data = await api('POST', '/api/music-library', { youtube_id: id, title, artist: channel, thumbnail: thumb });
+      if (data.track) musicLibrary.unshift(normalizeMusicTrack(data.track));
+      musicLibraryOwnerId = me()?.id || musicLibraryOwnerId;
+      toast('تم حفظ الأغنية في قائمتك 🎵');
+      if (ctx) paintMusicSheet();
+    } catch (err) { toast(err.message); }
+  }
   function musicHeadHTML() {
     const m = ctx.music;
     if (m.view === 'add') {
       return `<div class="rv-ms-head rv-ms-head-add">
         <button type="button" class="rv-ms-back" data-act="back" aria-label="رجوع">${mIcon('chev')}</button>
-        <b class="rv-ms-title">البحث في يوتيوب</b>
+        <b class="rv-ms-title" style="display:flex;align-items:center;gap:6px;"><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:#FF0000;"><svg viewBox="0 0 24 24" width="12" height="12"><path fill="#fff" d="M10 8.5l5 3.5-5 3.5z"/></svg></span> يوتيوب</b>
         <span class="rv-ms-grow"></span>
       </div>
-      <div class="rv-ms-searchrow rv-yt-row"><input type="text" id="rv-yt-q" placeholder="ابحث عن أغنية أو فنان" value="${esc(m.yt.q)}" autocomplete="off"><button type="button" class="rv-ms-pill rv-yt-go" data-act="yt-go">بحث</button></div>`;
+      <div class="rv-ms-searchrow rv-yt-row"><input type="text" id="rv-yt-q" placeholder="ابحث عن أغنية أو فنان" value="${esc(m.yt.q)}" autocomplete="off"><button type="button" class="rv-ms-pill rv-yt-go" data-act="yt-go">بحث</button></div>
+      <div class="rv-ms-searchrow" style="margin-top:6px;"><input type="url" id="rv-yt-url" placeholder="أو الصق رابط يوتيوب مباشرة" dir="ltr" autocomplete="off"><button type="button" class="rv-ms-pill" data-act="yt-url-go" style="background:#FF0000;color:#fff;">＋</button></div>`;
     }
     return `<div class="rv-ms-head">
       <b class="rv-ms-title">قائمة الموسيقى</b>
@@ -431,9 +476,9 @@
       } else if (y.busy) {
         html = '<div class="rv-ms-empty"><span>جارٍ البحث في يوتيوب…</span></div>';
       } else if (y.err) {
-        html = `<div class="rv-ms-empty"><span>${esc(y.err)}</span></div>`;
+        html = `<div class="rv-ms-empty"><span style="color:#f87171;">⚠️ ${esc(y.err)}</span><br><small style="color:var(--text-secondary, #9aa);font-size:11px;">يمكنك لصق رابط يوتيوب في الحقل أعلاه مباشرة</small></div>`;
       } else {
-        html = `<div class="rv-ms-empty">${NOTES_ART}<span>ابحث عن أغنية في يوتيوب ثم اضغط + لحفظها في قائمتك</span></div>`;
+        html = `<div class="rv-ms-empty">${NOTES_ART}<span>ابحث عن أغنية في يوتيوب ثم اضغط + لحفظها<br><small style="font-size:11px;color:var(--text-secondary);">أو الصق رابط يوتيوب مباشرة في الحقل أدناه</small></span></div>`;
       }
     }
     body.innerHTML = html;
@@ -475,6 +520,10 @@
         ytSearch(false);
       } else if (a === 'yt-more') {
         ytSearch(true);
+      } else if (a === 'yt-url-go') {
+        const inp = ctx.layer.querySelector('#rv-yt-url');
+        if (inp && inp.value.trim()) saveYtDirect(inp.value.trim());
+        else toast('الصق رابط يوتيوب أولاً');
       }
       return;
     }
@@ -507,6 +556,7 @@
     });
     sheet.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' && ev.target.id === 'rv-yt-q') { ev.preventDefault(); ytSearch(false); }
+      if (ev.key === 'Enter' && ev.target.id === 'rv-yt-url') { ev.preventDefault(); const v=ev.target.value.trim(); if(v) saveYtDirect(v); }
     });
     paintMusicSheet();
   }

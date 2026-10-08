@@ -692,6 +692,9 @@
         <button class="tab-btn" onclick="switchAdminTab('wallet')">
           <span>💰</span> المحفظة والمكافآت
         </button>
+        <button class="tab-btn" onclick="switchAdminTab('youtube')">
+          <span>🔴</span> إعدادات يوتيوب
+        </button>
         <button class="tab-btn" onclick="switchAdminTab('security')">
           <span>🔐</span> كلمة مرور اللوحة والأمان
         </button>
@@ -1372,6 +1375,46 @@
         </div>
       </div>
 
+      <!-- TAB: YouTube Settings -->
+      <div class="tab-pane" id="tab-youtube">
+        <div class="content-box" style="border-color: rgba(255,0,0,.35); background: rgba(255,0,0,.04);">
+          <div class="content-box-title">
+            <span style="display:flex;align-items:center;gap:8px;"><span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:#FF0000;"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="#fff" d="M10 8.5l5 3.5-5 3.5z"/></svg></span> إعدادات البحث في يوتيوب</span>
+            <span class="nav-brand-badge" id="yt-key-badge" style="background: rgba(255,0,0,.15); color:#ff6b6b;">غير مفعّل</span>
+          </div>
+          <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:12px;line-height:1.6;">
+            البحث في المنشورات وقائمة الموسيقى داخل الغرف يعمل <b>بدون مفتاح</b> عبر بديل مجاني تلقائياً.<br>
+            لكن للحصول على نتائج أدق وحصة أعلى، يُفضّل إضافة <code>YOUTUBE_API_KEY</code> من Google Cloud Console. يمكنك إضافته هنا أو عبر ملف <code>.env</code> — يُحفظ ويُفعّل فوراً بدون إعادة تشغيل.
+          </p>
+          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:14px;margin-bottom:14px;">
+            <div style="font-size:12px;font-weight:700;margin-bottom:8px;">🔑 مفتاح YouTube Data API v3</div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <input type="password" id="yt-key-input" class="form-input" placeholder="AIza... (يبدأ بـ AIza)" style="flex:1;min-width:240px;" autocomplete="off" />
+              <button type="button" id="yt-key-toggle" class="btn-action" onclick="toggleYtKeyVisibility()" style="padding:8px 12px;">👁️</button>
+              <button type="button" class="btn-submit" onclick="saveYtKey()" style="width:auto;padding:10px 22px;margin:0;">💾 حفظ المفتاح</button>
+              <button type="button" class="btn-action" onclick="clearYtKey()" style="padding:10px 16px;background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.3);color:#f87171;">حذف</button>
+            </div>
+            <div id="yt-key-status" style="margin-top:10px;font-size:12px;min-height:18px;"></div>
+            <details style="margin-top:12px;font-size:12px;color:var(--text-secondary);">
+              <summary style="cursor:pointer;font-weight:700;color:#fff;">📖 كيف تحصل على المفتاح في دقيقتين؟</summary>
+              <ol style="margin:10px 0 0 18px;line-height:1.7;">
+                <li>ادخل إلى <a href="https://console.cloud.google.com/" target="_blank" style="color:#60a5fa;">Google Cloud Console</a> وسجّل دخولك.</li>
+                <li>أنشئ مشروعاً جديداً أو اختر مشروعاً موجوداً.</li>
+                <li>من القائمة: <b>APIs & Services → Library</b> ابحث عن <b>YouTube Data API v3</b> واضغط Enable.</li>
+                <li>من <b>APIs & Services → Credentials → Create Credentials → API key</b> انسخ المفتاح.</li>
+                <li>الصقه هنا واضغط حفظ — أو ضعه في ملف <code>.env</code> كـ <code>YOUTUBE_API_KEY=AIza...</code> وأعد تشغيل الخادم.</li>
+              </ol>
+              <p style="margin-top:8px;color:#fbbf24;">الحصة المجانية: 10,000 وحدة يومياً (≈ 100 بحث). عند انتهائها يتحول البحث تلقائياً للبديل المجاني.</p>
+            </details>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="btn-action blue" onclick="testYtSearch()" id="yt-test-btn">🧪 جرّب البحث الآن</button>
+            <input type="text" id="yt-test-q" class="form-input" placeholder="كلمة للتجربة: مثلاً أغنية هادئة" style="flex:1;min-width:200px;max-width:320px;" />
+          </div>
+          <div id="yt-test-result" style="margin-top:10px;font-size:12px;"></div>
+        </div>
+      </div>
+
       <!-- TAB 5: Security & Credentials -->
       <div class="tab-pane" id="tab-security">
         <div class="content-box" style="max-width: 500px;">
@@ -1640,7 +1683,75 @@
     <span id="toast-text">تمت العملية بنجاح</span>
   </div>
 
-  <script src="js/dialogs.js"></script>
+  <script src="js/dialogs.js">
+    // ===== YouTube Key Admin =====
+    async function fetchYtKeyStatus() {
+      try {
+        const res = await fetch('/api/admin/youtube-key', { headers: { 'x-admin-token': getAdminToken() } });
+        const d = await res.json();
+        const badge = document.getElementById('yt-key-badge');
+        const status = document.getElementById('yt-key-status');
+        if (d.success) {
+          if (d.has_key) {
+            badge.textContent = 'مفعّل ✅ ' + (d.preview||'');
+            badge.style.background = 'rgba(34,197,94,.15)'; badge.style.color = '#4ade80';
+            status.innerHTML = '<span style="color:#4ade80;">✅ يوجد مفتاح محفوظ ويعمل. البحث يستخدم الـ API الرسمي أولاً ثم البديل عند الحاجة.</span>';
+            document.getElementById('yt-key-input').placeholder = d.preview || 'مفتاح محفوظ — الصق مفتاحاً جديداً للاستبدال';
+          } else {
+            badge.textContent = 'وضع مجاني — بدون مفتاح';
+            badge.style.background = 'rgba(251,191,36,.15)'; badge.style.color = '#fbbf24';
+            status.innerHTML = '<span style="color:#fbbf24;">⚠️ لا يوجد مفتاح — البحث يعمل عبر البديل المجاني تلقائياً. أضف مفتاحاً لنتائج أدق.</span>';
+          }
+        }
+      } catch(e){ console.error(e); }
+    }
+    function toggleYtKeyVisibility(){
+      const inp = document.getElementById('yt-key-input');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    }
+    async function saveYtKey(){
+      const key = document.getElementById('yt-key-input').value.trim();
+      const status = document.getElementById('yt-key-status');
+      if (key && !/^AIza[0-9A-Za-z_\-]{30,}$/.test(key)) { status.innerHTML='<span style="color:#f87171;">❌ المفتاح غير صالح — يجب أن يبدأ بـ AIza ويكون 35+ حرفاً</span>'; return; }
+      status.textContent='جارٍ الحفظ...';
+      try{
+        const res = await fetch('/api/admin/youtube-key', { method:'POST', headers:{'Content-Type':'application/json','x-admin-token': getAdminToken()}, body: JSON.stringify({key}) });
+        const d = await res.json();
+        if(!res.ok) throw new Error(d.error||'فشل الحفظ');
+        status.innerHTML='<span style="color:#4ade80;">✅ تم الحفظ بنجاح</span>';
+        document.getElementById('yt-key-input').value='';
+        fetchYtKeyStatus();
+      }catch(e){ status.innerHTML='<span style="color:#f87171;">❌ '+e.message+'</span>';}
+    }
+    async function clearYtKey(){
+      if(!confirm('هل تريد حذف مفتاح يوتيوب والعودة للوضع المجاني؟')) return;
+      document.getElementById('yt-key-input').value='';
+      await saveYtKey();
+    }
+    async function testYtSearch(){
+      const q = document.getElementById('yt-test-q').value.trim() || 'أغنية هادئة';
+      const btn = document.getElementById('yt-test-btn');
+      const out = document.getElementById('yt-test-result');
+      btn.disabled=true; btn.textContent='جارٍ البحث...';
+      out.innerHTML='<span style="color:var(--text-secondary);">جارٍ البحث في يوتيوب...</span>';
+      try{
+        const res = await fetch('/api/youtube/search?q='+encodeURIComponent(q), { headers:{'x-user-id': getAdminUserId() }});
+        const d = await res.json();
+        if(!res.ok || !d.success) throw new Error(d.error||'فشل البحث');
+        out.innerHTML = '<div style="color:#4ade80;">✅ نجح البحث — وجدنا '+d.items.length+' نتيجة. أول نتيجة: <b>'+(d.items[0]?.title||'')+'</b></div><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">'+d.items.slice(0,3).map(it=>'<span style="background:rgba(255,255,255,.06);padding:6px 10px;border-radius:8px;font-size:11px;">▶ '+it.title.slice(0,40)+'</span>').join('')+'</div><div style="font-size:11px;color:var(--text-secondary);margin-top:6px;">المصدر: '+(d.via==='fallback'?'بديل مجاني':'API رسمي')+'</div>';
+      }catch(e){
+        out.innerHTML='<span style="color:#f87171;">❌ '+e.message+'</span>';
+      }
+      btn.disabled=false; btn.textContent='🧪 جرّب البحث الآن';
+    }
+    function getAdminUserId(){
+      // نحاول قراءة أي مستخدم محفوظ للاختبار
+      try{ const u=JSON.parse(localStorage.getItem('soulchill_user')||'null'); if(u&&u.id) return u.id; }catch(e){}
+      return 'sc-owner-001';
+    }
+    function getAdminToken(){ return localStorage.getItem('soulchill_admin_token') || ''; }
+
+</script>
   <script>
     // إشعار جميل (نفس قالب الطرد) بدل alert
     function showNiceNotice({ type = 'info', icon = '🔔', title = '', message = '', duration = 5500 } = {}) {
@@ -1799,6 +1910,7 @@
       if (tabId === 'users') fetchUsersList();
       if (tabId === 'rooms') fetchRoomsList();
       if (tabId === 'smtp') fetchSmtpSettings();
+      if (tabId === 'youtube') fetchYtKeyStatus();
       if (tabId === 'room-message') fetchRoomSystemMessage();
       if (tabId === 'wallet') fetchWalletSettings();
       if (tabId === 'entry-templates') fetchEntryTemplates();

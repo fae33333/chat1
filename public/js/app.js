@@ -9167,11 +9167,12 @@
     modal.id = 'create-moment-modal';
     document.body.appendChild(modal);
 
+    const YT_ICON = '<span class="mc-yt-badge"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#FF0000"/><path fill="#fff" d="M10 15.5l6-3.5-6-3.5v7z"/></svg></span>';
     const TYPES = [
       { id: 'text_image', icon: '✍️', title: 'كتابة مع صورة', sub: 'نص مع صورة مرفقة' },
       { id: 'image', icon: '🖼️', title: 'صورة فقط', sub: 'بدون نص' },
       { id: 'video', icon: '🎬', title: 'مقطع فيديو', sub: 'ارفع فيديو من جهازك' },
-      { id: 'youtube', icon: '▶️', title: 'يوتيوب', sub: 'ابحث واختر مقطعاً' }
+      { id: 'youtube', icon: YT_ICON, title: 'يوتيوب', sub: 'ابحث واختر مقطعاً' }
     ];
 
     const close = () => modal.remove();
@@ -9236,12 +9237,21 @@
       if (type === 'youtube') {
         body += `
           <div class="form-group-soul">
-            <label>ابحث عن مقطع في يوتيوب</label>
+            <label style="display:flex;align-items:center;gap:6px;"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:#FF0000;"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="#fff" d="M10 8.5l5 3.5-5 3.5z"/></svg></span> ابحث عن مقطع في يوتيوب</label>
             <div class="mc-yt-search">
               <input type="search" id="mc-yt-q" class="form-input-soul" placeholder="مثال: أغنية هادئة، قرآن، رياضة…" autocomplete="off" />
               <button type="button" class="mc-yt-go" id="mc-yt-go" aria-label="بحث">🔍</button>
             </div>
             <div class="mc-yt-results" id="mc-yt-results"></div>
+            <div class="mc-yt-direct">
+              <div class="mc-yt-or"><span>أو</span></div>
+              <label style="font-size:12px;color:var(--text-secondary);margin:6px 0 4px;display:block;">الصق رابط يوتيوب مباشرة (يعمل بدون بحث)</label>
+              <div class="mc-yt-search">
+                <input type="url" id="mc-yt-url" class="form-input-soul" placeholder="https://www.youtube.com/watch?v=... أو https://youtu.be/..." autocomplete="off" dir="ltr" />
+                <button type="button" class="mc-yt-go" id="mc-yt-url-go" aria-label="معاينة" style="background:#FF0000;">▶</button>
+              </div>
+              <div class="mc-prog" style="font-size:11px;">يدعم: youtube.com/watch, youtu.be, shorts, embed</div>
+            </div>
           </div>`;
       }
       body += `<div class="mc-preview" id="mc-preview"></div>`;
@@ -9303,10 +9313,28 @@
       };
 
       let ytSelected = null;
+      const extractYtIdLocal = (input) => {
+        if (!input) return null;
+        const s = String(input).trim();
+        if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+        try {
+          const u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s);
+          const host = u.hostname.replace(/^www\.|^m\./, '');
+          let id = null;
+          if (host === 'youtu.be') id = u.pathname.split('/')[1];
+          else if (host === 'youtube.com' || host === 'music.youtube.com' || host === 'youtube-nocookie.com') {
+            if (u.pathname === '/watch') id = u.searchParams.get('v');
+            else { const m = u.pathname.match(/^\/(?:shorts|embed|live|v)\/([^/?#]+)/); if (m) id = m[1]; }
+          }
+          return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+        } catch (e) { return null; }
+      };
       if (type === 'youtube') {
         const qInput = modal.querySelector('#mc-yt-q');
         const goBtn = modal.querySelector('#mc-yt-go');
         const resultsBox = modal.querySelector('#mc-yt-results');
+        const urlInput = modal.querySelector('#mc-yt-url');
+        const urlGoBtn = modal.querySelector('#mc-yt-url-go');
         let lastQuery = '';
         let nextToken = null;
         let loading = false;
@@ -9314,14 +9342,27 @@
         const showSelected = () => {
           if (!ytSelected) { setPreview(''); return; }
           setPreview(`
-            <div class="moment-yt-box"><iframe src="https://www.youtube-nocookie.com/embed/${fEsc(ytSelected.id)}" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+            <div class="moment-yt-box"><iframe src="https://www.youtube-nocookie.com/embed/${fEsc(ytSelected.id)}" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe></div>
             <div class="mc-prog">✅ المقطع المختار: ${fEsc(ytSelected.title)}</div>`);
         };
+
+        const applyDirectUrl = () => {
+          const raw = urlInput ? urlInput.value.trim() : '';
+          if (!raw) { showToast('الصق رابط يوتيوب أولاً'); return; }
+          const id = extractYtIdLocal(raw);
+          if (!id) { showToast('رابط يوتيوب غير صالح'); return; }
+          ytSelected = { id, title: 'مقطع يوتيوب مباشر' };
+          showSelected();
+          showToast('✅ تم اختيار المقطع');
+        };
+        if (urlGoBtn) urlGoBtn.onclick = applyDirectUrl;
+        if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); applyDirectUrl(); } };
 
         const rowHtml = (v) => `
           <button type="button" class="mc-yt-item ${ytSelected && ytSelected.id === v.id ? 'selected' : ''}" data-id="${fEsc(v.id)}" data-title="${fEsc(v.title)}">
             <img src="${fEsc(v.thumbnail)}" alt="" loading="lazy" />
             <span class="mc-yt-meta"><span class="mc-yt-title">${fEsc(v.title)}</span><span class="mc-yt-channel">${fEsc(v.channel)}</span></span>
+            <span class="mc-yt-play"><svg viewBox="0 0 24 24" width="18" height="18" fill="#FF0000"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14l6-4-6-4v8z"/></svg></span>
           </button>`;
 
         const bindRows = () => {
@@ -9334,6 +9375,12 @@
           });
         };
 
+        const friendlyError = (msg) => {
+          if (!msg) return 'تعذر البحث';
+          if (/Failed to fetch/i.test(msg) || /NetworkError/i.test(msg)) return 'تعذر الاتصال بالخادم — تأكد من اتصالك ثم أعد المحاولة';
+          return msg;
+        };
+
         const search = async (append) => {
           if (loading) return;
           const q = append ? lastQuery : qInput.value.trim();
@@ -9342,7 +9389,7 @@
           goBtn.disabled = true;
           if (!append) {
             lastQuery = q; nextToken = null;
-            resultsBox.innerHTML = '<div class="mc-prog">جارِ البحث…</div>';
+            resultsBox.innerHTML = '<div class="mc-prog"><span class="mc-spinner"></span> جارِ البحث في يوتيوب…</div>';
           } else {
             const more = resultsBox.querySelector('.mc-yt-more');
             if (more) more.textContent = 'جارِ التحميل…';
@@ -9352,13 +9399,20 @@
             if (append && nextToken) params.set('pageToken', nextToken);
             const res = await fetch('/api/youtube/search?' + params.toString(), { headers: { 'x-user-id': state.currentUser.id } });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) throw new Error(data.error || 'تعذر البحث');
+            if (!res.ok || !data.success) {
+              const msg = friendlyError(data.error || 'تعذر البحث');
+              // لو الخدمة غير مفعّلة، اعرض زر لصق الرابط بدلاً من إظهار خطأ فقط
+              if (data.code === 'NO_KEY' || /YOUTUBE_API_KEY/.test(msg)) {
+                throw new Error(msg + ' — يمكنك لصق الرابط مباشرة في الحقل أدناه');
+              }
+              throw new Error(msg);
+            }
             nextToken = data.nextPageToken || null;
             const more = resultsBox.querySelector('.mc-yt-more');
             if (more) more.remove();
             if (!append) resultsBox.innerHTML = '';
             if (!data.items.length && !append) {
-              resultsBox.innerHTML = '<div class="mc-prog">لا توجد نتائج، جرّب كلمات أخرى</div>';
+              resultsBox.innerHTML = '<div class="mc-prog">لا توجد نتائج، جرّب كلمات أخرى أو الصق رابطاً مباشراً</div>';
             } else {
               resultsBox.insertAdjacentHTML('beforeend', data.items.map(rowHtml).join(''));
               if (nextToken) resultsBox.insertAdjacentHTML('beforeend', '<button type="button" class="mc-yt-more">تحميل المزيد</button>');
@@ -9367,8 +9421,9 @@
               if (moreBtn) moreBtn.onclick = () => search(true);
             }
           } catch (err) {
-            if (!append) resultsBox.innerHTML = `<div class="mc-prog" style="color:#f87171;">${fEsc(err.message || 'تعذر البحث')}</div>`;
-            else showToast(err.message || 'تعذر التحميل');
+            const msg = friendlyError(err.message || 'تعذر البحث');
+            if (!append) resultsBox.innerHTML = `<div class="mc-prog yt-error"><span style="color:#f87171;">⚠️ ${fEsc(msg)}</span><br><small style="color:var(--text-secondary)">يمكنك لصق رابط يوتيوب مباشرة في الحقل أدناه</small></div>`;
+            else showToast(msg);
             const more = resultsBox.querySelector('.mc-yt-more');
             if (more) more.textContent = 'تحميل المزيد';
           }
@@ -9397,7 +9452,7 @@
           if (!uploadedVideo) { showToast('اختر مقطع فيديو أولاً'); return; }
           payload.video_url = uploadedVideo;
         } else if (type === 'youtube') {
-          if (!ytSelected) { showToast('ابحث واختر مقطعاً أولاً'); return; }
+          if (!ytSelected) { showToast('ابحث واختر مقطعاً أو الصق رابط يوتيوب مباشرة'); return; }
           payload.youtube_url = ytSelected.id;
         }
 
