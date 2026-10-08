@@ -111,6 +111,8 @@
             mutedSeats: new Set(), allMuted: false, allLocked: false, audioMuted: false, bgPicked: loadMyBgs(),
             music: { selectedId: null, current: null, audio: null, audioContext: null, mediaSource: null, destination: null, playing: false, ownerId: null, remote: null } };
     (room.seats || []).forEach(s => { if (s.seat_index > 0 && s.is_muted && !s.user_id) ctx.mutedSeats.add(s.seat_index); });
+    const guestSeats = (room.seats || []).filter(s => s.seat_index > 0 && s.seat_index <= (room.seat_count || 8));
+    ctx.allMuted = guestSeats.length > 0 && guestSeats.every(s => !!s.is_muted);
 
     // الخلفية + الطبقة
     const bg = document.createElement('div'); bg.className = 'rv-bg'; container.prepend(bg); ctx.bg = bg;
@@ -284,9 +286,11 @@
 
   function renderMusicSeatIndicator() {
     if (!ctx || !ctx.music) return;
-    ctx.modal.querySelectorAll('.rv-seat-music, .rv-seat-music-label').forEach(node => node.remove());
+    ctx.modal.querySelectorAll('.rv-seat-music, .rv-seat-music-label, .rv-music-speaking, .rv-music-avatar-speaking').forEach(node => {
+      node.classList?.remove('rv-music-speaking', 'rv-music-avatar-speaking');
+      if (node.matches?.('.rv-seat-music, .rv-seat-music-label')) node.remove();
+    });
     const active = ctx.music.playing && (ctx.music.current || ctx.music.remote);
-    const ownerId = ctx.music.ownerId;
     const seatIndex = ctx.music.seatIndex;
     if (!active || seatIndex === undefined || seatIndex === null) return;
 
@@ -298,17 +302,15 @@
       : seatRoot?.querySelector('.seat-avatar-container');
     if (!seatRoot || !seat) return;
 
-    const badge = document.createElement('div');
-    badge.className = 'rv-seat-music';
-    badge.innerHTML = '<span class="rv-seat-music-note">♫</span><span class="rv-seat-music-bars"><i></i><i></i><i></i></span>';
-    badge.title = `الموسيقى على المقعد ${ownerId ? '🎵' : ''}`;
-    seat.appendChild(badge);
+    // الموسيقى تستخدم نفس حلقات التذبذب الخاصة بالكلام، من دون شارة إضافية فوق الصورة.
+    seatRoot.classList.add('rv-music-speaking');
+    seat.classList.add('rv-music-avatar-speaking');
 
     const item = ctx.music.current || ctx.music.remote;
     const label = document.createElement('div');
     label.className = 'rv-seat-music-label';
     label.title = item.title || 'موسيقى';
-    label.innerHTML = `<span>♫</span><b>${esc(item.title || 'موسيقى')}</b>`;
+    label.innerHTML = `<b>${esc(item.title || 'موسيقى')}</b>`;
     seatRoot.appendChild(label);
   }
 
@@ -398,6 +400,10 @@
     if (!onSeat()) {
       paintMusicSheet();
       return toast('يجب الجلوس على مقعد المايك أولاً لتشغيل الموسيقى 🎙️');
+    }
+    if (st().isMuted) {
+      paintMusicSheet();
+      return toast('هذا المقعد مكتوم من الإدارة، لا يمكن تشغيل الموسيقى حتى يفك الأدمن الكتم 🔇');
     }
     stopRoomMusic(false, true);
     const audio = new Audio();
@@ -883,7 +889,14 @@
     on('all_seats_mute_changed', (d) => { if (ctx && d.roomId === roomId()) ctx.allMuted = !!d.isMuted; });
     on('seat_mute_changed', (d) => {
       if (!ctx || d.roomId !== roomId()) return;
-      if (d.isMuted && !d.userId) ctx.mutedSeats.add(d.seatIndex); else if (!d.isMuted) ctx.mutedSeats.delete(d.seatIndex);
+      if (d.isMuted) ctx.mutedSeats.add(d.seatIndex); else ctx.mutedSeats.delete(d.seatIndex);
+      if (d.seatIndex === ctx.music.seatIndex && d.isMuted && ctx.music.playing) {
+        if (ctx.music.ownerId === me().id) stopRoomMusic(true);
+        else {
+          ctx.music.remote = null; ctx.music.ownerId = null; ctx.music.seatIndex = null; ctx.music.playing = false;
+          renderMusicNowPlaying(); renderMusicSeatIndicator();
+        }
+      }
     });
     on('seat_invite', async (d) => {
       if (!ctx || d.roomId !== roomId()) return;

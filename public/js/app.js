@@ -440,6 +440,10 @@
     });
 
     state.socket.on('seat_mute_changed', ({ seatIndex, userId, isMuted, adminName }) => {
+      if (state.activeRoom && state.activeRoom.seats) {
+        const seat = state.activeRoom.seats.find(item => item.seat_index === seatIndex);
+        if (seat) seat.is_muted = isMuted ? 1 : 0;
+      }
       updateSeatMuteUI(seatIndex, isMuted);
 
       const isMe = (state.currentUser && userId && state.currentUser.id === userId) || (state.userSeatIndex === seatIndex);
@@ -450,6 +454,14 @@
         }
         if (isMuted) {
           broadcastSpeakingStatus(false, 0);
+        } else if (state.userSeatIndex === seatIndex && state.activeRoom) {
+          // بعد فك كتم المقعد من الإدارة يبدأ مسار الميكروفون فعلياً.
+          if (!window.soulRtc || !window.soulRtc.isBroadcastingVoice) {
+            startLocalMicCapture();
+            if (window.soulRtc) window.soulRtc.startBroadcastingVoice(state.activeRoom.id);
+          } else {
+            window.soulRtc.setVoiceMuted(false);
+          }
         }
         updateMicButtonUI();
         if (adminName) {
@@ -474,6 +486,13 @@
         }
         if (isMuted) {
           broadcastSpeakingStatus(false, 0);
+        } else if (state.userSeatIndex === seatIndex && state.activeRoom) {
+          if (!window.soulRtc || !window.soulRtc.isBroadcastingVoice) {
+            startLocalMicCapture();
+            if (window.soulRtc) window.soulRtc.startBroadcastingVoice(state.activeRoom.id);
+          } else {
+            window.soulRtc.setVoiceMuted(false);
+          }
         }
         updateMicButtonUI();
         showToast(isMuted 
@@ -5329,10 +5348,7 @@
               : (isLocked ? `<span class="seat-empty-plus">🔒</span>` : `<span class="seat-empty-plus">+</span>`)
             }
             <div class="seat-number-badge">${idx}</div>
-            ${isOccupied 
-              ? `<div class="seat-mic-status ${seat.is_muted ? 'muted' : 'unmuted'}" style="display: ${seat.is_muted ? 'flex' : 'none'};">🔇</div>` 
-              : ''
-            }
+            <div class="seat-mic-status ${seat && seat.is_muted ? 'muted' : 'unmuted'}" style="display: ${seat && seat.is_muted ? 'flex' : 'none'};">🔇</div>
           </div>
           <div class="seat-user-name">${isOccupied ? seat.name : (isLocked ? 'مقعد مقفل' : 'مقعد فارغ')}</div>
         </div>
@@ -5401,7 +5417,7 @@
                 ? `<img src="${hostOccupant.avatar || room.host_avatar}" class="${hostOccupant.avatar_frame ? 'avatar-frame-' + hostOccupant.avatar_frame : ''}" />
                    <div class="seat-mic-status ${hostOccupant.is_muted ? 'muted' : 'unmuted'}" id="host-mic-badge" style="display: ${hostOccupant.is_muted ? 'flex' : 'none'}; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>` 
                 : `<span class="seat-empty-plus" style="font-size: 26px; color: #fbbf24; font-weight: 800;">+</span>
-                   <div class="seat-mic-status unmuted" id="host-mic-badge" style="display: none; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>`
+                   <div class="seat-mic-status ${hostSeat && hostSeat.is_muted ? 'muted' : 'unmuted'}" id="host-mic-badge" style="display: ${hostSeat && hostSeat.is_muted ? 'flex' : 'none'}; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>`
               }
             </div>
             <div class="host-name-label" style="${isHostSeatOccupied ? '' : 'color: #fbbf24;'}">
@@ -6408,20 +6424,29 @@
 
   function takeSeatAction(seatIndex) {
     if (!state.activeRoom || !state.currentUser) return;
+    const targetSeat = (state.activeRoom.seats || []).find(seat => seat.seat_index === seatIndex);
+    const adminMuted = !!(targetSeat && targetSeat.is_muted);
     state.socket.emit('take_seat', {
       roomId: state.activeRoom.id,
       seatIndex,
       userId: state.currentUser.id
     });
     state.userSeatIndex = seatIndex;
-    state.isMuted = false;
-    startLocalMicCapture();
-    if (window.soulRtc && state.activeRoom) {
-      window.soulRtc.startBroadcastingVoice(state.activeRoom.id);
-      window.soulRtc.setVoiceMuted(false);
+    state.isMuted = adminMuted;
+    if (adminMuted) {
+      stopLocalMicCapture();
+      if (window.soulRtc) window.soulRtc.stopBroadcastingVoice();
+    } else {
+      startLocalMicCapture();
+      if (window.soulRtc && state.activeRoom) {
+        window.soulRtc.startBroadcastingVoice(state.activeRoom.id);
+        window.soulRtc.setVoiceMuted(false);
+      }
     }
     updateMicButtonUI();
-    showToast(`صعدت إلى المقعد رقم ${seatIndex} على المايك! 🎙️`);
+    showToast(adminMuted
+      ? `صعدت إلى المقعد رقم ${seatIndex}، لكن المقعد مكتوم من الإدارة 🔇`
+      : `صعدت إلى المقعد رقم ${seatIndex} على المايك! 🎙️`);
   }
 
   function showOwnSeatMenu(seatIndex) {
@@ -6721,7 +6746,7 @@
             <div class="host-crown-badge">👑</div>
             <div class="host-avatar-box empty-host-seat" style="border: 2px dashed rgba(251, 191, 36, 0.6); background: rgba(251, 191, 36, 0.08); display: flex; align-items: center; justify-content: center;">
               <span class="seat-empty-plus" style="font-size: 26px; color: #fbbf24; font-weight: 800;">+</span>
-              <div class="seat-mic-status unmuted" id="host-mic-badge" style="display: none; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>
+              <div class="seat-mic-status ${isMuted ? 'muted' : 'unmuted'}" id="host-mic-badge" style="display: ${isMuted ? 'flex' : 'none'}; position: absolute; bottom: -4px; right: -4px; width: 22px; height: 22px; font-size: 11px;">🔇</div>
             </div>
             <div class="host-name-label" style="color: #fbbf24;">مقعد المضيف (فارغ)</div>
           `;
@@ -6752,6 +6777,7 @@
         <div class="seat-avatar-container">
           <span class="seat-empty-plus">${isLocked ? '🔒' : '+'}</span>
           <div class="seat-number-badge">${seatIndex}</div>
+          <div class="seat-mic-status ${isMuted ? 'muted' : 'unmuted'}" style="display: ${isMuted ? 'flex' : 'none'};">🔇</div>
         </div>
         <div class="seat-user-name">${isLocked ? 'مقعد مقفل' : 'مقعد فارغ'}</div>
       `;

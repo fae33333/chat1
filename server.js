@@ -3846,11 +3846,23 @@ io.on('connection', (socket) => {
         activeAudience: new Map(),
         speakers: new Set(),
         mutedChatUsers: new Set(),
-        bannedUsers: new Set()
+        bannedUsers: new Set(),
+        allSeatsMuted: false
       });
     }
 
     const roomState = activeRoomStates.get(roomId);
+    if (roomState.allSeatsMuted === false) {
+      try {
+        const roomMuteRow = await get('SELECT seat_settings FROM rooms WHERE id = ?', [roomId]);
+        const muteSettings = jparse(roomMuteRow && roomMuteRow.seat_settings, {});
+        if (typeof muteSettings.global_mute === 'boolean') roomState.allSeatsMuted = muteSettings.global_mute;
+        else {
+          const guestSeats = await all('SELECT is_muted FROM room_seats WHERE room_id = ? AND seat_index > 0', [roomId]);
+          roomState.allSeatsMuted = guestSeats.length > 0 && guestSeats.every(seat => !!seat.is_muted);
+        }
+      } catch (e) {}
+    }
 
     // تحميل المطرودين والمكتومين المحفوظين
     try {
@@ -4103,27 +4115,28 @@ io.on('connection', (socket) => {
       }
 
       // Check if user is currently occupying ANY OTHER seat in this room
-      const prevSeats = await all('SELECT seat_index FROM room_seats WHERE room_id = ? AND user_id = ? AND seat_index != ?', [roomId, userId, seatIndex]);
+      const prevSeats = await all('SELECT seat_index, is_muted FROM room_seats WHERE room_id = ? AND user_id = ? AND seat_index != ?', [roomId, userId, seatIndex]);
       if (prevSeats && prevSeats.length > 0) {
         for (const prev of prevSeats) {
-          await run('UPDATE room_seats SET user_id = NULL, is_muted = 0 WHERE room_id = ? AND seat_index = ?', [roomId, prev.seat_index]);
+          await run('UPDATE room_seats SET user_id = ?, is_muted = ? WHERE room_id = ? AND seat_index = ?', [null, prev.is_muted ? 1 : 0, roomId, prev.seat_index]);
           io.to(`room:${roomId}`).emit('seat_updated', {
             seatIndex: prev.seat_index,
             user: null,
-            isMuted: false
+            isMuted: !!prev.is_muted
           });
         }
       }
 
-      // Assign requested seat to user
-      await run('UPDATE room_seats SET user_id = ?, is_muted = 0 WHERE room_id = ? AND seat_index = ?', [userId, roomId, seatIndex]);
+      // Assign requested seat while preserving the admin mute policy of that seat.
+      const seatMutePolicy = targetSeat && targetSeat.is_muted ? 1 : 0;
+      await run('UPDATE room_seats SET user_id = ?, is_muted = ? WHERE room_id = ? AND seat_index = ?', [userId, seatMutePolicy, roomId, seatIndex]);
 
       const user = await get('SELECT id, name, avatar, avatar_frame, level, charm_level FROM users WHERE id = ?', [userId]);
 
       io.to(`room:${roomId}`).emit('seat_updated', {
         seatIndex,
         user,
-        isMuted: false
+        isMuted: !!seatMutePolicy
       });
     } catch (err) {
       console.error('Take seat error:', err);
@@ -4136,18 +4149,19 @@ io.on('connection', (socket) => {
     try {
       let seatsToLeave = [];
       if (userId) {
-        seatsToLeave = await all('SELECT seat_index FROM room_seats WHERE room_id = ? AND user_id = ?', [roomId, userId]);
+        seatsToLeave = await all('SELECT seat_index, is_muted FROM room_seats WHERE room_id = ? AND user_id = ?', [roomId, userId]);
       }
       if ((!seatsToLeave || seatsToLeave.length === 0) && seatIndex !== undefined) {
-        seatsToLeave = [{ seat_index: seatIndex }];
+        const existingSeat = await get('SELECT is_muted FROM room_seats WHERE room_id = ? AND seat_index = ?', [roomId, seatIndex]);
+        seatsToLeave = [{ seat_index: seatIndex, is_muted: existingSeat && existingSeat.is_muted ? 1 : 0 }];
       }
 
       for (const s of (seatsToLeave || [])) {
-        await run('UPDATE room_seats SET user_id = NULL, is_muted = 0 WHERE room_id = ? AND seat_index = ?', [roomId, s.seat_index]);
+        await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [s.is_muted ? 1 : 0, roomId, s.seat_index]);
         io.to(`room:${roomId}`).emit('seat_updated', {
           seatIndex: s.seat_index,
           user: null,
-          isMuted: false
+          isMuted: !!s.is_muted
         });
       }
       if (userId) {
@@ -4179,7 +4193,11 @@ io.on('connection', (socket) => {
   socket.on('toggle_mute', async ({ roomId, seatIndex, isMuted }) => {
     if (!roomId || seatIndex === undefined) return;
     try {
-      const seat = await get('SELECT user_id FROM room_seats WHERE room_id = ? AND seat_index = ?', [roomId, seatIndex]);
+      const seat = await get('SELECT user_id, is_muted FROM room_seats WHERE room_id = ? AND seat_index = ?', [roomId, seatIndex]);
+      const roomState = activeRoomStates.get(roomId);
+      if (!isMuted && roomState && roomState.allSeatsMuted && seat && seat.is_muted) {
+        return socket.emit('seat_error', { message: 'هذا المقعد مكتوم من الإدارة، ولا يمكن فك الكتم إلا بواسطة الأدمن 🔇' });
+      }
       const targetUserId = seat ? seat.user_id : null;
       await run('UPDATE room_seats SET is_muted = ? WHERE room_id = ? AND seat_index = ?', [isMuted ? 1 : 0, roomId, seatIndex]);
       io.to(`room:${roomId}`).emit('seat_mute_changed', {
@@ -4516,7 +4534,12 @@ io.on('connection', (socket) => {
       const room = await get('SELECT * FROM rooms WHERE id = ?', [roomId]);
       const admin = await get('SELECT * FROM users WHERE id = ?', [adminId]);
       if (!room || !admin || !(await canManageRoom(room, admin))) return;
-      const seats = await all('SELECT seat_index, user_id FROM room_seats WHERE room_id = ? AND seat_index > 0 AND user_id IS NOT NULL', [roomId]);
+      const roomState = activeRoomStates.get(roomId);
+      if (roomState) roomState.allSeatsMuted = !!isMuted;
+      const seatSettings = jparse(room.seat_settings, {});
+      seatSettings.global_mute = !!isMuted;
+      await run('UPDATE rooms SET seat_settings = ? WHERE id = ?', [JSON.stringify(seatSettings), roomId]);
+      const seats = await all('SELECT seat_index, user_id FROM room_seats WHERE room_id = ? AND seat_index > 0', [roomId]);
       for (const st of seats) {
         await run('UPDATE room_seats SET is_muted = ? WHERE room_id = ? AND seat_index = ?', [isMuted ? 1 : 0, roomId, st.seat_index]);
         const payload = { roomId, seatIndex: st.seat_index, userId: st.user_id, isMuted: !!isMuted, adminName: admin.name };
