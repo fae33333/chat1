@@ -800,7 +800,9 @@
 
   function ytMakeBox(kind, title) {
     const box = document.createElement('div');
-    box.className = 'rv-yt-box rv-yt-' + kind;
+    // مخفي تماماً مثل مقاطع الصوت — لا يظهر قالب يوتيوب، يسمع فقط عبر ميكرفون المقعد
+    box.className = 'rv-yt-box rv-yt-' + kind + ' rv-yt-hidden';
+    box.setAttribute('aria-hidden', 'true');
     box.innerHTML = '<div class="rv-yt-frame"></div><div class="rv-yt-cap"><span class="rv-yt-ttl"></span>' +
       (kind === 'remote' ? '<button type="button" class="rv-yt-mute" aria-label="كتم عندي">🔊</button>' : '') +
       '</div><button type="button" class="rv-yt-tap" hidden>اضغط للتشغيل ▶</button>';
@@ -989,6 +991,7 @@
     if (!r) return;
     clearInterval(r.watch);
     r.token = null;
+    if (r.audio) { try { r.audio.pause(); r.audio.removeAttribute('src'); r.audio.load(); } catch(e){} }
     if (r.player) { try { r.player.destroy(); } catch (e) {} }
     if (r.box) { try { r.box.remove(); } catch (e) {} }
     ctx.music.ytRemote = null;
@@ -1020,16 +1023,45 @@
     const m = ctx.music;
     if (m.ytPlayer || m.ytToken) return; // أنا أشغّل أغنيتي الخاصة
     if (d.state === 'stop') { if (m.ytRemote && m.ytRemote.userId === d.userId) ytRemoteStop(); return; }
+    // المستخدمون في الغرفة يسمعون فقط عبر ميكرفون المقعد — لا حاجة لإظهار يوتيوب للمستمعين.
+    // إذا كان المضيف يستخدم وضع الصوت المخفي (يبث عبر WebRTC) فإنه لا يرسل room_yt_state أصلاً،
+    // ولن نصل هنا. هذا الفرع للاحتياطي فقط (عند فشل جلب الصوت عند المضيف).
+    // نجعل الاستماع مخفياً أيضاً (صوت فقط بدون قالب) حتى لا يظهر يوتيوب للآخرين.
+    // نحاول أولاً تشغيل صوت مخفي عبر /api/youtube/audio، ثم كاحتياطي YT مخفي 1×1.
     let r = m.ytRemote;
     if (r && (r.userId !== d.userId || r.videoId !== d.videoId)) { ytRemoteStop(); r = null; }
-    if (r) { r.last = d; r.lastRecv = Date.now(); if (r.player) ytRemoteSync(r, d); return; }
+    if (r) { r.last = d; r.lastRecv = Date.now(); if (r.player) ytRemoteSync(r, d); if (r.audio) { try { if (d.state === 'play' && r.audio.paused) r.audio.play().catch(()=>{}); else if (d.state === 'pause') r.audio.pause(); } catch(e){} } return; }
 
     const token = {};
+    // محاولة صوت مخفي للمستمع (بدون إظهار قالب)
+    try {
+      const rr = await fetch('/api/youtube/audio/' + encodeURIComponent(d.videoId), { headers: { 'x-user-id': (st().currentUser && st().currentUser.id) || '' } });
+      const jj = await rr.json().catch(()=>null);
+      if (rr.ok && jj && jj.success && jj.url) {
+        const audio = new Audio();
+        audio.crossOrigin = 'anonymous';
+        audio.src = jj.url;
+        audio.currentTime = Math.max(0, (Number(d.time)||0));
+        if (m.ytRemoteMuted) audio.muted = true;
+        r = { userId: d.userId, videoId: d.videoId, token, last: d, lastRecv: Date.now(), audio, box: null, player: null };
+        m.ytRemote = r;
+        audio.onended = () => ytRemoteStop();
+        audio.onerror = () => ytRemoteStop();
+        r.watch = setInterval(() => {
+          if (!ctx || r.token !== token) return clearInterval(r.watch);
+          if (Date.now() - r.lastRecv > 20000) ytRemoteStop();
+        }, 5000);
+        if (d.state === 'play') { try { await audio.play(); } catch(e) { /* يحتاج تفاعل */ } }
+        return;
+      }
+    } catch (e) {}
+
     r = { userId: d.userId, videoId: d.videoId, token, last: d, lastRecv: Date.now(), player: null, box: ytMakeBox('remote', d.title) };
     m.ytRemote = r;
     const muteBtn = r.box.querySelector('.rv-yt-mute');
     muteBtn.onclick = () => {
       m.ytRemoteMuted = !m.ytRemoteMuted;
+      try { if (r.audio) r.audio.muted = m.ytRemoteMuted; } catch(e){}
       try { if (m.ytRemoteMuted) r.player.mute(); else r.player.unMute(); } catch (e) {}
       muteBtn.textContent = m.ytRemoteMuted ? '🔇' : '🔊';
     };
@@ -1046,7 +1078,6 @@
       r.player = player;
       if (m.ytRemoteMuted) { try { player.mute(); } catch (e) {} }
       ytRemoteSync(r, r.last);
-      // إن توقف البث (خرج صاحب المقعد) نزيل المشغّل بعد 20 ثانية بلا تحديثات
       r.watch = setInterval(() => {
         if (!ctx || r.token !== token) return clearInterval(r.watch);
         if (r.last.state === 'play' && Date.now() - r.lastRecv > 20000) ytRemoteStop();
@@ -1684,9 +1715,21 @@
       if (await window.uiConfirm(`${d.fromName} يدعوك للصعود إلى المايك 🎙️`, { icon: '🎙️', okText: 'صعود' })) App().takeSeatAction(d.seatIndex);
     });
     on('user_joined_room', (d) => {
-      if (!ctx || !ctx.chat.auto_welcome || ctx.room.host_id !== me().id) return;
-      const u = d && d.user; if (!u || u.id === me().id) return;
-      st().socket.emit('send_room_message', { roomId: roomId(), userId: me().id, content: `أهلاً وسهلاً بـ ${u.name} في الغرفة 🌹` });
+      if (!ctx || ctx.room.host_id !== me().id) return;
+      const u = d && d.user;
+      if (u && u.id !== me().id && ctx.chat.auto_welcome) {
+        st().socket.emit('send_room_message', { roomId: roomId(), userId: me().id, content: `أهلاً وسهلاً بـ ${u.name} في الغرفة 🌹` });
+      }
+      // إعلام الوافد الجديد أن هناك موسيقى تعمل (عبر المايك) ليظهر المؤشر والتذبذبات دون الحاجة لإظهار يوتيوب
+      if (ctx.music.playing && ctx.music.ownerId === me().id && ctx.music.current) {
+        // تأخير بسيط حتى يدخل الغرفة
+        setTimeout(() => { if (ctx && ctx.music.playing) publishRoomMusic('room_music_started', ctx.music.current); }, 800);
+        // في وضع YT المخفي لا نرسل room_yt_state — الوافد يسمع عبر WebRTC فقط
+        if (ctx.music.ytPlayer && ctx.music.current && ctx.music.current.yt_id) {
+          // هذا فقط للاحتياطي YT المرئي السابق — الآن مخفي، لذا لا نرسل إلا إذا فشل الصوت المخفي
+          // لا نرسل شيئاً هنا لتجنب ظهور يوتيوب عند الآخرين
+        }
+      }
     });
     on('room_music_started', (d) => {
       if (!ctx || d.roomId !== roomId() || d.userId === me().id) return;
