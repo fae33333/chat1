@@ -2322,14 +2322,64 @@ app.get('/api/music-library', async (req, res) => {
   }
 });
 
-// حفظ أغنية من يوتيوب في مكتبة المستخدم (رفع الملفات من الجهاز أُلغي)
+// رفع ملف موسيقى من جهاز المستخدم (MP3 / M4A / WAV / OGG / WEBM) حتى 25 ميجا
+const MUSIC_AUDIO_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/webm', 'audio/opus', 'audio/x-mp3'];
+const musicUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const dir = path.join(__dirname, 'public', 'uploads');
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+      const orig = Buffer.from(file.originalname || 'audio', 'latin1').toString('utf8');
+      const ext = path.extname(orig) || (file.mimetype && file.mimetype.includes('mpeg') ? '.mp3' : (file.mimetype && file.mimetype.includes('mp4') ? '.m4a' : '.webm'));
+      cb(null, `music-${Date.now()}-${uuidv4().slice(0, 8)}${ext}`);
+    }
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (MUSIC_AUDIO_TYPES.includes(String(file.mimetype).toLowerCase()) || /\.(mp3|m4a|aac|wav|ogg|webm|opus)$/i.test(file.originalname)) return cb(null, true);
+    cb(new Error('نوع الملف غير مدعوم. المسموح: MP3 / M4A / AAC / WAV / OGG / WEBM'));
+  }
+});
+app.post('/api/music-library/upload', (req, res) => {
+  musicUpload.single('file')(req, res, async (err) => {
+    try {
+      const userId = await requireMusicUser(req, res); if (!userId) return;
+      if (err) {
+        const msg = err.code === 'LIMIT_FILE_SIZE' ? 'حجم الملف كبير (الحد الأقصى 25 ميجا)' : err.message;
+        return res.status(400).json({ success: false, error: msg });
+      }
+      if (!req.file) return res.status(400).json({ success: false, error: 'لم يتم اختيار ملف' });
+      const count = await get('SELECT COUNT(*) AS n FROM user_music_tracks WHERE user_id = ?', [userId]);
+      if (count && count.n >= 300) { try { fs.unlinkSync(req.file.path); } catch (e) {} return res.status(400).json({ success: false, error: 'وصلت للحد الأقصى من الأغاني (300)، احذف بعضها أولاً' }); }
+      const origName = Buffer.from(req.file.originalname || '', 'latin1').toString('utf8').replace(/[\u0000-\u001f<>"]/g, '').trim();
+      const base = path.parse(origName).name || 'مقطع صوتي';
+      const title = String(req.body.title || base || 'موسيقى').slice(0, 100) || 'موسيقى';
+      const artist = String(req.body.artist || '').slice(0, 80);
+      const id = uuidv4();
+      const url = `/uploads/${req.file.filename}`;
+      await run(`INSERT INTO user_music_tracks (id, user_id, title, source, url, file_name, artist, thumbnail, yt_id)
+                 VALUES (?, ?, ?, 'upload', ?, ?, ?, NULL, NULL)`,
+        [id, userId, title, url, req.file.filename, artist || null]);
+      res.json({ success: true, track: { id, title, source: 'upload', url, file_name: req.file.filename, artist: artist || null, thumbnail: null, yt_id: null } });
+    } catch (e) {
+      console.error('music upload error:', e);
+      if (req.file) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
+      res.status(500).json({ success: false, error: 'تعذر رفع الملف' });
+    }
+  });
+});
+
+// حفظ أغنية من يوتيوب في مكتبة المستخدم
 app.post('/api/music-library', async (req, res) => {
   try {
     const userId = await requireMusicUser(req, res); if (!userId) return;
     const body = req.body || {};
     const ytId = String(body.youtube_id || '').trim();
     if (!/^[A-Za-z0-9_-]{11}$/.test(ytId)) {
-      return res.status(400).json({ error: 'أضف الأغاني عن طريق البحث في يوتيوب' });
+      return res.status(400).json({ error: 'أضف الأغاني عن طريق البحث في يوتيوب أو ارفع ملفاً صوتياً من جهازك' });
     }
     const dup = await get('SELECT id, title, source, url, file_name, artist, thumbnail, yt_id FROM user_music_tracks WHERE user_id = ? AND yt_id = ?', [userId, ytId]);
     if (dup) return res.json({ success: true, track: dup, duplicate: true });

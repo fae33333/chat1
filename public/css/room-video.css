@@ -342,10 +342,19 @@
 .rv-ms-back { background: none; border: 0; width: 26px; height: 30px; display: grid; place-items: center; }
 .rv-ms-back svg { width: 19px; height: 19px; stroke-width: 2.4; }
 .rv-ms-head-add { padding-bottom: 6px; }
-.rv-ms-tabs { display: flex; gap: 22px; align-items: flex-start; }
-.rv-ms-tabs b { position: relative; font-size: 14px; font-weight: 500; color: #55555b; cursor: pointer; padding: 5px 0 13px; }
-.rv-ms-tabs b.sel { color: #fff; font-weight: 700; }
-.rv-ms-tabs b.sel::after { content: ""; position: absolute; bottom: 3px; left: 50%; width: 9px; height: 2px; margin-left: -4.5px; border-radius: 2px; background: #fff; }
+.rv-ms-tabs { display: flex; gap: 4px; padding: 0 14px 10px; border-bottom: 1px solid #1e1e22; margin-bottom: 4px; }
+.rv-ms-tab { flex: 1; border: 0; background: transparent; color: #74747b; font-family: inherit; font-size: 12px; font-weight: 600; padding: 9px 0 11px; cursor: pointer; border-radius: 10px 10px 0 0; position: relative; }
+.rv-ms-tab.on { color: #fff; }
+.rv-ms-tab.on::after { content: ""; position: absolute; bottom: -1px; left: 25%; right: 25%; height: 2px; border-radius: 2px; background: linear-gradient(90deg, #8b5cf6, #ec4899); }
+.rv-upload-panel { padding: 10px 14px 14px; direction: rtl; }
+.rv-up-drop { border: 1.5px dashed #3a3a42; border-radius: 16px; padding: 22px 14px; text-align: center; color: #b8b8bf; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; transition: border-color .15s, background .15s; background: rgba(255,255,255,.02); }
+.rv-up-drop:hover, .rv-up-drop.drag { border-color: #8b5cf6; background: rgba(139,92,246,.08); color: #fff; }
+.rv-up-drop svg { color: #8b5cf6; }
+.rv-up-drop b { font-size: 13px; color: #e9e9ea; font-weight: 600; }
+.rv-up-drop small { font-size: 10px; color: #6f6f76; }
+.rv-up-go { border: 0; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 13px; border-radius: 22px; }
+.rv-up-go:disabled { opacity: .5; cursor: wait; }
+.rv-yt-note { font-size: 10.5px; color: #8b8b92; text-align: center; padding-top: 10px; }
 .rv-ms-searchrow { padding: 0 14px 8px; flex: none; }
 .rv-ms-searchrow input { width: 100%; box-sizing: border-box; height: 34px; border-radius: 17px; border: 0; outline: 0; background: #1b1b1b; color: #fff; padding: 0 14px; font-family: inherit; font-size: 12px; direction: rtl; }
 .rv-ms-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 14px 10px; display: flex; flex-direction: column; gap: 10px; scrollbar-width: none; }

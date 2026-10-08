@@ -130,7 +130,8 @@
     ctx = { room, modal, container, layer: null, bg: null, admin: isAdminUser(room), chat: jp(room.chat_settings, {}), seatS: jp(room.seat_settings, {}),
             mutedSeats: new Set(), allMuted: false, allLocked: false, audioMuted: false, bgPicked: loadMyBgs(),
             music: { selectedId: null, current: null, audio: null, audioContext: null, mediaSource: null, destination: null, playing: false, minimized: false, ownerId: null, remote: null, seatIndex: null,
-                     view: 'list', yt: { q: '', lastQ: '', items: [], next: null, busy: false, err: '' }, ytPlayer: null, ytBox: null, ytToken: null, ytHb: null, ytTick: null, ytRemote: null, ytRemoteMuted: false, sort: 'added', query: '', searchOpen: false, repeat: 'all', volume: 1, paused: false, gain: null, volTimer: null } };
+                     view: 'list', subView: '', upFile: null, upTitle: '', upArtist: '', upBusy: false, upErr: '',
+                     yt: { q: '', lastQ: '', items: [], next: null, busy: false, err: '' }, ytPlayer: null, ytBox: null, ytToken: null, ytHb: null, ytTick: null, ytRemote: null, ytRemoteMuted: false, sort: 'added', query: '', searchOpen: false, repeat: 'all', volume: 1, paused: false, gain: null, volTimer: null } };
     if (musicLibraryOwnerId !== me()?.id) musicLibrary.splice(0, musicLibrary.length);
     loadMusicLibrary();
     (room.seats || []).forEach(s => { if (s.seat_index > 0 && s.is_muted && !s.user_id) ctx.mutedSeats.add(s.seat_index); });
@@ -417,8 +418,13 @@
         <b class="rv-ms-title" style="display:flex;align-items:center;gap:6px;"><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:#FF0000;"><svg viewBox="0 0 24 24" width="12" height="12"><path fill="#fff" d="M10 8.5l5 3.5-5 3.5z"/></svg></span> يوتيوب</b>
         <span class="rv-ms-grow"></span>
       </div>
+      <div class="rv-ms-tabs" role="tablist">
+        <button type="button" class="rv-ms-tab on" data-act="yt-tab">🔎 يوتيوب</button>
+        <button type="button" class="rv-ms-tab" data-act="up-tab">📁 من جهازي</button>
+      </div>
+      ${m.subView === 'upload' ? uploadPanelHTML() : `
       <div class="rv-ms-searchrow rv-yt-row"><input type="text" id="rv-yt-q" placeholder="ابحث عن أغنية أو فنان" value="${esc(m.yt.q)}" autocomplete="off"><button type="button" class="rv-ms-pill rv-yt-go" data-act="yt-go">بحث</button></div>
-      <div class="rv-ms-searchrow" style="margin-top:6px;"><input type="url" id="rv-yt-url" placeholder="أو الصق رابط يوتيوب مباشرة" dir="ltr" autocomplete="off"><button type="button" class="rv-ms-pill" data-act="yt-url-go" style="background:#FF0000;color:#fff;">＋</button></div>`;
+      <div class="rv-ms-searchrow" style="margin-top:6px;"><input type="url" id="rv-yt-url" placeholder="أو الصق رابط يوتيوب مباشرة" dir="ltr" autocomplete="off"><button type="button" class="rv-ms-pill" data-act="yt-url-go" style="background:#FF0000;color:#fff;">＋</button></div>`}`;
     }
     return `<div class="rv-ms-head">
       <b class="rv-ms-title">قائمة الموسيقى</b>
@@ -427,6 +433,24 @@
       <button type="button" class="rv-ms-btn" data-act="sort" aria-label="ترتيب">${mIcon('sort')}</button>
       ${musicLibrary.length ? '<button type="button" class="rv-ms-pill rv-ms-addpill" data-act="add">اضافة</button>' : ''}
     </div>${m.searchOpen ? searchRowHTML() : ''}`;
+  }
+
+  function uploadPanelHTML() {
+    const m = ctx.music;
+    return `<div class="rv-upload-panel">
+      <div class="rv-up-drop" id="rv-up-drop">
+        <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V5"/><path d="M7 10l5-5 5 5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+        <b>اسحب المقطع الصوتي هنا أو اضغط للاختيار</b>
+        <small>MP3 · M4A · WAV · OGG · WEBM — الحد الأقصى 25 ميجا</small>
+        <input type="file" id="rv-up-file" accept="audio/*" hidden>
+      </div>
+      <div class="rv-ms-searchrow" style="margin-top:10px;"><input type="text" id="rv-up-title" placeholder="عنوان المقطع (اختياري)" value="${esc(m.upTitle||'')}"></div>
+      <div class="rv-ms-searchrow" style="margin-top:6px;"><input type="text" id="rv-up-artist" placeholder="اسم الفنان (اختياري)" value="${esc(m.upArtist||'')}"></div>
+      <button type="button" class="rv-ms-pill rv-up-go" data-act="up-go" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;padding:12px;">
+        ${m.upBusy ? 'جارٍ الرفع…' : '⬆ رفع وإضافة للقائمة'}
+      </button>
+      ${m.upErr ? `<div class="rv-yt-note" style="color:#f87171;">⚠️ ${esc(m.upErr)}</div>` : ''}
+    </div>`;
   }
   function searchRowHTML() {
     return `<div class="rv-ms-searchrow"><input type="text" id="rv-ms-q" placeholder="بحث" value="${esc(ctx.music.query)}" autocomplete="off"></div>`;
@@ -451,6 +475,12 @@
     if (!body || !foot) return;
     const m = ctx.music;
     let html = '', cta = '';
+    if (m.view === 'add' && m.subView === 'upload') {
+      // لوحة الرفع موجودة في الـ head (top) — نجعل body فارغاً ونربط الأحداث بعد الرسم
+      body.innerHTML = ''; foot.innerHTML = ''; foot.hidden = true;
+      setTimeout(bindUploadPanel, 0);
+      return;
+    }
     if (m.view === 'list') {
       const tracks = visibleTracks();
       if (!musicLibrary.length) {
@@ -512,10 +542,15 @@
         toast(m.sort === 'name' ? 'الترتيب حسب الاسم' : 'الترتيب حسب وقت الإضافة');
         paintMusicBody();
       } else if (a === 'add') {
-        m.view = 'add'; m.query = ''; m.searchOpen = false; paintMusicSheet();
+        m.view = 'add'; m.subView = 'youtube'; m.query = ''; m.searchOpen = false; paintMusicSheet();
         const q = ctx.layer.querySelector('#rv-yt-q'); if (q) q.focus();
+      } else if (a === 'yt-tab') {
+        m.subView = 'youtube'; paintMusicSheet();
+        const q = ctx.layer.querySelector('#rv-yt-q'); if (q) q.focus();
+      } else if (a === 'up-tab') {
+        m.subView = 'upload'; m.upErr = ''; paintMusicSheet();
       } else if (a === 'back') {
-        m.view = 'list'; m.query = ''; m.searchOpen = false; paintMusicSheet();
+        m.view = 'list'; m.subView = ''; m.query = ''; m.upErr = ''; m.searchOpen = false; paintMusicSheet();
       } else if (a === 'yt-go') {
         ytSearch(false);
       } else if (a === 'yt-more') {
@@ -524,6 +559,9 @@
         const inp = ctx.layer.querySelector('#rv-yt-url');
         if (inp && inp.value.trim()) saveYtDirect(inp.value.trim());
         else toast('الصق رابط يوتيوب أولاً');
+      } else if (a === 'up-go') {
+        uploadMusicFile();
+        return;
       }
       return;
     }
@@ -537,10 +575,61 @@
     }
   }
 
+  function bindUploadPanel() {
+    if (!ctx) return;
+    const drop = ctx.layer.querySelector('#rv-up-drop');
+    const file = ctx.layer.querySelector('#rv-up-file');
+    const title = ctx.layer.querySelector('#rv-up-title');
+    const artist = ctx.layer.querySelector('#rv-up-artist');
+    if (!drop || drop._bound) return;
+    drop._bound = true;
+    drop.addEventListener('click', () => file && file.click());
+    ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); drop.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); drop.classList.remove('drag'); }));
+    drop.addEventListener('drop', (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) { ctx.music.upFile = f; if (title && !title.value) title.value = f.name.replace(/\.[^.]+$/, ''); drop.querySelector('b').textContent = '✅ ' + f.name; }
+    });
+    if (file) file.addEventListener('change', () => {
+      const f = file.files && file.files[0];
+      if (f) { ctx.music.upFile = f; if (title && !title.value) title.value = f.name.replace(/\.[^.]+$/, ''); drop.querySelector('b').textContent = '✅ ' + f.name; }
+    });
+  }
+
+  async function uploadMusicFile() {
+    const m = ctx.music;
+    const titleEl = ctx.layer.querySelector('#rv-up-title');
+    const artistEl = ctx.layer.querySelector('#rv-up-artist');
+    const file = m.upFile || (ctx.layer.querySelector('#rv-up-file')?.files?.[0]);
+    if (!file) { m.upErr = 'اختر ملفاً صوتياً أولاً'; paintMusicSheet(); return; }
+    if (!/^audio\//i.test(file.type) && !/\.(mp3|m4a|aac|wav|ogg|webm|opus)$/i.test(file.name)) { m.upErr = 'الملف ليس مقطعاً صوتياً'; paintMusicSheet(); return; }
+    if (file.size > 25 * 1024 * 1024) { m.upErr = 'حجم الملف يتجاوز 25 ميجا'; paintMusicSheet(); return; }
+    m.upBusy = true; m.upErr = ''; paintMusicSheet();
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('title', (titleEl?.value || '').trim());
+      fd.append('artist', (artistEl?.value || '').trim());
+      const res = await fetch('/api/music-library/upload', { method: 'POST', headers: { 'x-user-id': (me() && me().id) || '' }, body: fd });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.success) throw new Error(j.error || ('HTTP ' + res.status));
+      if (j.track) musicLibrary.unshift(normalizeMusicTrack(j.track));
+      m.upFile = null; m.upTitle = ''; m.upArtist = '';
+      toast('تم رفع المقطع وإضافته للقائمة 🎵');
+      m.view = 'list'; m.subView = '';
+      paintMusicSheet();
+    } catch (e) {
+      m.upErr = e.message || 'تعذر رفع الملف';
+      paintMusicSheet();
+    } finally {
+      m.upBusy = false;
+    }
+  }
+
   function openMusicSheet() {
     if (!ctx) return;
     const m = ctx.music;
-    m.view = 'list'; m.query = ''; m.searchOpen = false;
+    m.view = 'list'; m.query = ''; m.searchOpen = false; m.subView = ''; m.upErr = ''; m.upBusy = false;
     const l = showLayer(`
       <div class="rv-sheet rv-music-sheet" role="dialog" aria-label="قائمة الموسيقى">
         <div id="rv-ms-top"></div>
@@ -1081,7 +1170,9 @@
     if (track.source === 'youtube' && track.yt_id) { playYoutubeTrack(track); return; }
     const m = ctx.music;
     const audio = new Audio();
-    audio.crossOrigin = 'anonymous'; audio.src = track.url; audio.preload = 'auto'; audio.loop = m.repeat === 'one';
+    // الملفات المرفوعة من نفس الأصل (public/uploads) لا تحتاج CORS؛ الروابط الخارجية نستخدم لها crossOrigin
+    if (track.source !== 'upload' && !String(track.url || '').startsWith('/')) audio.crossOrigin = 'anonymous';
+    audio.src = track.url; audio.preload = 'metadata'; audio.loop = m.repeat === 'one';
     m.audio = audio; m.current = track; m.minimized = false; m.paused = false; m.ownerId = me().id; m.seatIndex = st().userSeatIndex;
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) {
