@@ -5350,7 +5350,7 @@
       <div class="live-room-container">
         <!-- Room Header -->
         <div class="live-room-header">
-          <img src="${room.host_avatar || (room.host_id === state.currentUser?.id ? state.currentUser.avatar : '')}" class="live-room-host-avatar ${room.host_frame ? 'avatar-frame-' + room.host_frame : ''}" id="live-room-host-avatar" title="${room.host_name || 'المضيف'}" onerror="this.src='/avatars/avatar-1.png'" />
+          <img src="${room.cover_image || room.host_avatar || (room.host_id === state.currentUser?.id ? state.currentUser.avatar : '')}" class="live-room-host-avatar ${room.host_frame ? 'avatar-frame-' + room.host_frame : ''}" id="live-room-host-avatar" title="${room.host_name || 'المضيف'}" onerror="this.src='/avatars/avatar-1.png'" />
           <div class="live-room-title-box">
             <div class="live-room-name">
               <span class="live-room-mic-icon">🎙️</span>

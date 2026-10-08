@@ -189,6 +189,20 @@ async function initDB() {
     )
   `);
 
+  // Personal music repository. Uploaded tracks survive room closes and browser refreshes.
+  await run(`
+    CREATE TABLE IF NOT EXISTS user_music_tracks (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      source TEXT DEFAULT 'device',
+      url TEXT NOT NULL,
+      file_name TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_user_music_tracks_user ON user_music_tracks(user_id, created_at DESC)`);
+
   await run(`
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,

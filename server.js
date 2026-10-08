@@ -68,6 +68,18 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024 } // 15MB limit
 });
 
+// Dedicated storage guard for the personal music repository.
+const musicUpload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const audioExt = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.opus', '.webm']);
+    if (/^audio\//i.test(file.mimetype || '') || audioExt.has(ext)) return cb(null, true);
+    cb(new Error('الملف ليس ملفاً صوتياً صالحاً'));
+  }
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -1760,6 +1772,78 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Personal music repository: uploaded files and online audio links are persisted per user.
+function musicFilePath(url) {
+  if (typeof url !== 'string' || !url.startsWith('/uploads/')) return null;
+  const uploadsDir = path.join(__dirname, 'public', 'uploads');
+  const full = path.resolve(__dirname, 'public', url.replace(/^\//, ''));
+  return path.dirname(full) === uploadsDir ? full : null;
+}
+
+async function requireMusicUser(req, res) {
+  const userId = String(req.headers['x-user-id'] || '').trim();
+  if (!userId) { res.status(401).json({ error: 'يجب تسجيل الدخول أولاً' }); return null; }
+  const user = await get('SELECT id FROM users WHERE id = ?', [userId]);
+  if (!user) { res.status(401).json({ error: 'المستخدم غير موجود' }); return null; }
+  return user.id;
+}
+
+app.get('/api/music-library', async (req, res) => {
+  try {
+    const userId = await requireMusicUser(req, res); if (!userId) return;
+    const tracks = await all(`
+      SELECT id, title, source, url, file_name, created_at
+      FROM user_music_tracks WHERE user_id = ? ORDER BY created_at DESC
+    `, [userId]);
+    res.json({ success: true, tracks });
+  } catch (err) {
+    res.status(500).json({ error: 'تعذر تحميل مكتبة الموسيقى' });
+  }
+});
+
+app.post('/api/music-library', (req, res, next) => {
+  musicUpload.single('file')(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'تعذر رفع الملف الصوتي' });
+    try {
+      const userId = await requireMusicUser(req, res); if (!userId) {
+        if (req.file) { try { fs.unlinkSync(req.file.path); } catch (e) {} }
+        return;
+      }
+      const rawTitle = req.body && req.body.title;
+      const title = String(rawTitle || (req.file ? path.parse(req.file.originalname).name : '') || 'موسيقى').trim().slice(0, 100);
+      let url = req.file ? `/uploads/${req.file.filename}` : String(req.body && req.body.url || '').trim().slice(0, 1000);
+      if (!url || !(/^(https?:\/\/|\/uploads\/)/i.test(url))) {
+        if (req.file) { try { fs.unlinkSync(req.file.path); } catch (e) {} }
+        return res.status(400).json({ error: 'أدخل رابطاً صوتياً صالحاً أو ارفع ملفاً صوتياً' });
+      }
+      const source = req.file ? 'device' : 'online';
+      const id = uuidv4();
+      await run(`INSERT INTO user_music_tracks (id, user_id, title, source, url, file_name) VALUES (?, ?, ?, ?, ?, ?)`, [
+        id, userId, title, source, url, req.file ? req.file.originalname : null
+      ]);
+      const track = { id, title, source, url, file_name: req.file ? req.file.originalname : null };
+      res.json({ success: true, track });
+    } catch (e) {
+      if (req.file) { try { fs.unlinkSync(req.file.path); } catch (err) {} }
+      res.status(500).json({ error: 'تعذر حفظ الموسيقى في مكتبتك' });
+    }
+  });
+});
+
+app.delete('/api/music-library/:id', async (req, res) => {
+  try {
+    const userId = await requireMusicUser(req, res); if (!userId) return;
+    const track = await get('SELECT id, url FROM user_music_tracks WHERE id = ? AND user_id = ?', [req.params.id, userId]);
+    if (!track) return res.status(404).json({ error: 'النغمة غير موجودة' });
+    await run('DELETE FROM user_music_tracks WHERE id = ? AND user_id = ?', [req.params.id, userId]);
+    const filePath = musicFilePath(track.url);
+    if (filePath && fs.existsSync(filePath)) { try { fs.unlinkSync(filePath); } catch (e) {} }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'تعذر حذف النغمة' });
   }
 });
 
