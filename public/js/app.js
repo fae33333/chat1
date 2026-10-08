@@ -5355,9 +5355,7 @@
             </div>
             <div class="live-room-id-tag">ID: ${room.id} • 👥 <span id="live-audience-counter">${room.audience_count !== undefined ? room.audience_count : 1}</span> مستمع</div>
           </div>
-          <div class="live-room-actions">
-            <button class="close-room-btn" id="leave-room-btn">🚪 خروج</button>
-          </div>
+          <div class="live-room-actions"></div>
         </div>
 
         ${isRoomAdmin ? `
@@ -5525,11 +5523,6 @@
         toggleFavoriteRoom(room.id, favToggleBtn);
       };
     }
-
-    // Event: Leave Room
-    modal.querySelector('#leave-room-btn').onclick = () => {
-      leaveActiveVoiceRoom();
-    };
 
     // Event: In-Room Private Messages Button (Located at Bottom Controls next to gifts)
     const inroomMsgBtn = modal.querySelector('#room-inroom-messages-btn');

@@ -170,19 +170,9 @@
   // ====== الشريط العلوي / السفلي / الألعاب ======
   function buildTopButtons() {
     const actions = ctx.modal.querySelector('.live-room-actions');
-    const leave = ctx.modal.querySelector('#leave-room-btn');
     if (!actions) return;
     const mk = (html, title, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'rv-top-btn'; b.title = title; b.innerHTML = html; b.onclick = fn; return b; };
-    actions.insertBefore(mk(ico('dots', true), 'إعدادات الغرفة', openControl), leave);
-    actions.insertBefore(mk(ico('share'), 'مشاركة الغرفة', shareRoom), leave);
-    if (leave) { leave.title = 'خروج'; }
-  }
-  async function shareRoom() {
-    const url = location.origin + '/?room=' + encodeURIComponent(roomId());
-    try {
-      if (navigator.share) { await navigator.share({ title: ctx.room.title, text: 'انضم إلى غرفتي في SoulChill 🎙️', url }); return; }
-      await navigator.clipboard.writeText(url); toast('تم نسخ رابط الغرفة');
-    } catch (e) { /* أُلغيت المشاركة */ }
+    actions.appendChild(mk(ico('dots', true), 'إعدادات الغرفة', openControl));
   }
 
   function buildBottomBar() {
@@ -294,29 +284,32 @@
 
   function renderMusicSeatIndicator() {
     if (!ctx || !ctx.music) return;
+    ctx.modal.querySelectorAll('.rv-seat-music, .rv-seat-music-label').forEach(node => node.remove());
     const active = ctx.music.playing && (ctx.music.current || ctx.music.remote);
     const ownerId = ctx.music.ownerId;
     const seatIndex = ctx.music.seatIndex;
-    if (!active || seatIndex === undefined || seatIndex === null) {
-      ctx.modal.querySelectorAll('.rv-seat-music').forEach(node => node.remove());
-      return;
-    }
+    if (!active || seatIndex === undefined || seatIndex === null) return;
+
+    const seatRoot = seatIndex === 0
+      ? ctx.modal.querySelector('#host-seat-0')
+      : ctx.modal.querySelector(`#stage-seat-${seatIndex}`);
     const seat = seatIndex === 0
-      ? ctx.modal.querySelector('#host-seat-0 .host-avatar-box')
-      : ctx.modal.querySelector(`#stage-seat-${seatIndex} .seat-avatar-container`);
-    if (!seat) return;
-    ctx.modal.querySelectorAll('.rv-seat-music').forEach(node => {
-      if (node.parentNode !== seat) node.remove();
-    });
-    let badge = seat.querySelector('.rv-seat-music');
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.className = 'rv-seat-music';
-      seat.appendChild(badge);
-    }
-    const item = ctx.music.current || ctx.music.remote;
-    badge.innerHTML = `<span class="rv-seat-music-note">♫</span><span class="rv-seat-music-bars"><i></i><i></i><i></i></span><small>${esc(item.title || 'موسيقى')}</small>`;
+      ? seatRoot?.querySelector('.host-avatar-box')
+      : seatRoot?.querySelector('.seat-avatar-container');
+    if (!seatRoot || !seat) return;
+
+    const badge = document.createElement('div');
+    badge.className = 'rv-seat-music';
+    badge.innerHTML = '<span class="rv-seat-music-note">♫</span><span class="rv-seat-music-bars"><i></i><i></i><i></i></span>';
     badge.title = `الموسيقى على المقعد ${ownerId ? '🎵' : ''}`;
+    seat.appendChild(badge);
+
+    const item = ctx.music.current || ctx.music.remote;
+    const label = document.createElement('div');
+    label.className = 'rv-seat-music-label';
+    label.title = item.title || 'موسيقى';
+    label.innerHTML = `<span>♫</span><b>${esc(item.title || 'موسيقى')}</b>`;
+    seatRoot.appendChild(label);
   }
 
   function paintMusicSheet() {
