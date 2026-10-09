@@ -1,0 +1,60 @@
+/* ثيم عام: أزرار بنية، والباقي أبيض — يُحمَّل آخراً ليغطي الألوان السابقة */
+:root {
+  --bg-deep: #ffffff;
+  --bg-dark: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #faf6f1;
+  --border-glass: #e7dccf;
+  --border-glow: #b08968;
+  --primary: #8b5e3c;
+  --primary-gradient: linear-gradient(135deg, #8b5e3c 0%, #6f4a2e 100%);
+  --secondary: #a47148;
+  --secondary-gradient: linear-gradient(135deg, #a47148 0%, #8b5e3c 100%);
+  --accent-gold: #8b5e3c;
+  --accent-gold-gradient: linear-gradient(135deg, #8b5e3c 0%, #6f4a2e 100%);
+  --accent-cyan: #8b5e3c;
+  --text-primary: #3b2a1e;
+  --text-secondary: #7a6453;
+  --text-muted: #a18b7a;
+  --shadow-sm: 0 2px 8px rgba(59, 42, 30, 0.08);
+  --shadow-glow: 0 0 18px rgba(139, 94, 60, 0.18);
+  --shadow-glow-pink: 0 0 18px rgba(139, 94, 60, 0.18);
+  --shadow-glow-gold: 0 0 18px rgba(139, 94, 60, 0.18);
+}
+
+/* الخلفيات والنصوص */
+html, body, .app-container, .app-main, #app-main-content, .pf-me, .pf-page, .profile-tab-container,
+.rus-sheet, .rus-backdrop .rus-sheet, .pf-prof, .pf-cover-ed {
+  background-color: #ffffff !important;
+  color: #3b2a1e !important;
+}
+.rus-sheet { background-image: none !important; border: 1px solid #e7dccf; }
+.pf-me::before { background: linear-gradient(180deg, #f7efe6 0%, #ffffff 100%) !important; }
+.pf-me.has-cover::before { background: linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,.7) 65%, #ffffff 100%), var(--pf-cover) center / cover no-repeat !important; }
+.pf-me-title, .pf-me-name, .pf-prof-name, .rus-name { color: #3b2a1e !important; }
+.pf-me-uid, .rus-uid, .rus-card small { color: #7a6453 !important; }
+
+/* الأزرار: بني */
+button.btn, .btn, [class*="btn-"], .pf-cover-save:not(:disabled), .pf-post-fab,
+.rus-btn.follow, .rus-btn.gift, .pf-item, .pf-menu-row .ic {
+  color: #ffffff !important;
+}
+button.btn, .btn, [class*="btn-"]:not(.btn-ghost), .pf-cover-save:not(:disabled), .pf-post-fab,
+.rus-btn.follow, .rus-btn.gift {
+  background: #8b5e3c !important;
+  background-image: none !important;
+  border-color: #8b5e3c !important;
+  box-shadow: 0 2px 8px rgba(139, 94, 60, 0.25) !important;
+}
+button.btn:hover, .btn:hover, .pf-post-fab:hover, .rus-btn.follow:hover, .rus-btn.gift:hover {
+  background: #6f4a2e !important;
+}
+.pf-item, .pf-menu-row { background: #ffffff !important; color: #3b2a1e !important; border-color: #e7dccf !important; }
+.pf-item .ic, .pf-menu-row .ic { color: #8b5e3c !important; }
+.pf-cover-save:disabled { background: #e7dccf !important; color: #a18b7a !important; box-shadow: none !important; }
+
+/* حقول الإدخال */
+input, textarea, select {
+  background: #ffffff !important; color: #3b2a1e !important; border-color: #e7dccf !important;
+}
+input::placeholder, textarea::placeholder { color: #a18b7a !important; }
