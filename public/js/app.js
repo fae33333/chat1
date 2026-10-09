@@ -926,6 +926,25 @@
     // Voice Match & Blind 5-Min Call Events (SoulChill Planet)
     state.socket.on('voice_match_connected', (data) => {
       openVoiceMatchScreen(data);
+      refreshVoiceMatchRemaining();
+    });
+
+    // جارِ البحث في طابور الانتظار الحقيقي
+    state.socket.on('voice_match_searching', ({ remaining } = {}) => {
+      const label = document.getElementById('voice-match-remaining-label');
+      if (label && typeof remaining === 'number') {
+        label.innerText = `💫 المحاولات المتبقية: ${remaining} من 3 (كل 24 ساعة)`;
+      }
+    });
+
+    // إشارات WebRTC (صوت فقط) من الشريك الحقيقي
+    state.socket.on('voice_match_signal', (payload) => {
+      if (voiceMatchPeer && voiceMatchPeer.pc) {
+        handleVoiceMatchSignal(payload);
+      } else if (activeVoiceMatchSession) {
+        // Signal وصل قبل جاهزية الاتصال — نخزّنه مؤقتاً
+        voiceMatchPeer.pending.push(payload);
+      }
     });
 
     state.socket.on('partner_revealed_identity', () => {
@@ -952,14 +971,27 @@
       triggerVoiceMatchReactionBurst(emoji);
     });
 
-    state.socket.on('voice_match_ended', () => {
-      closeVoiceMatchScreen(true);
+    state.socket.on('voice_match_ended', ({ reason } = {}) => {
+      const wasActive = !!document.getElementById('voice-match-active-modal');
+      closeVoiceMatchScreen(false);
+      if (!wasActive) return;
+      if (reason === 'time_up') {
+        showToast('⏳ انتهت مدة المكالمة (5 دقائق) دون كشف الهوية المتبادل! 🪐');
+      } else if (reason === 'disconnected') {
+        showToast('📴 انقطع اتصال الشريك! 🪐');
+      } else {
+        showToast('تم إنهاء مكالمة التوافق الصوتي 🪐');
+      }
+      refreshVoiceMatchRemaining();
     });
 
-    state.socket.on('voice_match_error', ({ message }) => {
+    state.socket.on('voice_match_error', ({ message, code } = {}) => {
       const radar = document.getElementById('voice-match-radar-modal');
       if (radar) radar.remove();
       showToast(message || 'تعذر التوافق الصوتي حالياً');
+      if (code === 'LIMIT_REACHED') {
+        refreshVoiceMatchRemaining();
+      }
     });
 
     // Realtime Global Rooms Grid Updates (No Refresh Needed!)
@@ -1572,6 +1604,15 @@
   let voiceMatchAudioContext = null;
   let voiceMatchAnalyser = null;
   let voiceMatchSimInterval = null;
+  // اتصال WebRTC الصوتي الحقيقي (1-to-1) مع الشريك
+  let voiceMatchPeer = { pc: null, remoteSet: false, pendingIce: [], pending: [] };
+  const VOICE_MATCH_RTC_CONFIG = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' }
+    ]
+  };
 
   function toArabicNumerals(num) {
     const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -1834,7 +1875,7 @@
               <div class="planet-card-sub">تحدث مع من يفهمك</div>
             </div>
             <div class="planet-card-footer">
-              <span class="planet-card-remaining">تبقى 2</span>
+              <span class="planet-card-remaining" id="planet-card-soul-match-remaining">تبقى 3</span>
               <div class="planet-card-3d-icon">
                 <!-- 3D Glowing Pink/Magenta Heart Padlock & Silver Key -->
                 <svg viewBox="0 0 84 70" width="68" height="58">
@@ -1872,38 +1913,7 @@
             </div>
           </div>
 
-          <!-- Card 3 (Bottom-Right in RTL): الأحداث -->
-          <div class="planet-feature-card" id="planet-card-events">
-            <div class="planet-card-top-pill blue-pill">
-              <span>مكافآت وتحديات يومية</span>
-              <span class="pill-bolt">🔥</span>
-            </div>
-            <div class="planet-card-header">
-              <div class="planet-card-title">الأحداث</div>
-              <div class="planet-card-sub">شارك واربح جوائز قيمة</div>
-            </div>
-            <div class="planet-card-footer">
-              <button type="button" class="planet-card-start-btn">
-                <span>إبدأ</span>
-                <span class="start-arrow">◂</span>
-              </button>
-              <div class="planet-card-3d-icon">
-                <svg viewBox="0 0 80 70" width="62" height="54">
-                  <defs>
-                    <radialGradient id="goldStarGrad" cx="35%" cy="30%" r="70%">
-                      <stop offset="0%" stop-color="#fef9c3" />
-                      <stop offset="50%" stop-color="#facc15" />
-                      <stop offset="100%" stop-color="#b45309" />
-                    </radialGradient>
-                  </defs>
-                  <circle cx="38" cy="36" r="19" fill="#312e81" stroke="#818cf8" stroke-width="1.5" />
-                  <polygon points="38,17 43,29 56,30 46,39 49,51 38,44 27,51 30,39 20,30 33,29" fill="url(#goldStarGrad)" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 4 (Bottom-Left in RTL): غرف الدردشة -->
+          <!-- Card 3 (Bottom-Left in RTL): غرف الدردشة -->
           <div class="planet-feature-card" id="planet-card-party">
             <div class="planet-card-header">
               <div class="planet-card-title">غرف الدردشة</div>
@@ -1960,6 +1970,9 @@
       }, 3500);
     }
 
+    // تحديث عدّاد محاولات التوافق الصوتي المتبقية (3 كل 24 ساعة)
+    refreshVoiceMatchRemaining();
+
     // Wire Card Clicks
     const voiceMatchCard = container.querySelector('#planet-card-voice-match');
     if (voiceMatchCard) {
@@ -1974,11 +1987,6 @@
     const partyCard = container.querySelector('#planet-card-party');
     if (partyCard) {
       partyCard.onclick = () => switchTab('rooms');
-    }
-
-    const eventsCard = container.querySelector('#planet-card-events');
-    if (eventsCard) {
-      eventsCard.onclick = () => showPlanetEventsModal();
     }
 
     const soulTestBtn = container.querySelector('#open-soul-test-btn');
@@ -3193,6 +3201,23 @@
   // ============================================
   // SOULCHILL 5-MINUTE ANONYMOUS VOICE MATCH SYSTEM
   // ============================================
+
+  // تحديث عدّاد المحاولات المتبقية للتوافق الصوتي (3 محاولات / 24 ساعة) في بطاقات الكواكب
+  async function refreshVoiceMatchRemaining() {
+    try {
+      if (!state.currentUser) return;
+      const res = await fetch('/api/voice-match/status', { headers: { 'x-user-id': state.currentUser.id } });
+      if (!res.ok) return;
+      const data = await res.json();
+      const limit = data.limit || 3;
+      const remaining = Math.max(0, data.remaining ?? limit);
+      const vmPill = document.getElementById('planet-card-voice-match-remaining');
+      if (vmPill) vmPill.textContent = `🎙️ ${remaining} محاولات متبقية / 24 ساعة`;
+      const smPill = document.getElementById('planet-card-soul-match-remaining');
+      if (smPill) smPill.textContent = `تبقى ${remaining}`;
+    } catch (e) {}
+  }
+
   function startVoiceMatchSession(type = 'voice') {
     if (!requireAuth()) return;
 
@@ -3217,16 +3242,15 @@
         <div style="font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 6px;">
           ${type === 'voice' ? '🎙️ رادار التوافق الصوتي (Voice Match)' : '🪐 توافق الروح المباشر (Soul Match)'}
         </div>
-        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
-          جارِ البحث في المجرة عن روح متوافقة تشاركك نفس الاهتمامات لمكالمة صوتية مجهولة مدتها 5 دقائق... 🌌
+        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.5;">
+          جارِ البحث عن شريك حقيقي متصل الآن — اتصال صوتي فقط (مجهول) لمدة 5 دقائق 🔒
         </p>
-
-        <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 22px;">
-          <span class="cat-pill active" style="font-size: 10px; padding: 2px 8px;">#موسيقى</span>
-          <span class="cat-pill active" style="font-size: 10px; padding: 2px 8px;">#سوالف</span>
-          <span class="cat-pill active" style="font-size: 10px; padding: 2px 8px;">#شات_مجهول</span>
-          <span class="cat-pill active" style="font-size: 10px; padding: 2px 8px;">#رواق</span>
-        </div>
+        <p style="font-size: 11px; color: #c084fc; margin-bottom: 10px; line-height: 1.5;">
+          المطابقة بين شخصين متوافقين (نفس الكوكب/الاهتمامات) أو بنسبة توافق ≥ 70% 🎯
+        </p>
+        <p id="voice-match-remaining-label" style="font-size: 11px; color: #fbbf24; font-weight: 700; margin-bottom: 18px;">
+          💫 3 محاولات متاحة / 24 ساعة ⏳
+        </p>
 
         <button class="vmatch-end-btn" id="btn-cancel-voice-radar" style="padding: 8px 24px; font-size: 13px;">إلغاء البحث</button>
       </div>
@@ -3302,7 +3326,7 @@
           <!-- Compatibility Heart & Waves -->
           <div class="vmatch-compatibility-heart">
             <div class="heart-pulse-icon">💖</div>
-            <div class="heart-score-val">${data.partner?.soul_score || 94}% توافق الروح</div>
+            <div class="heart-score-val">${data.compatibility ?? 0}% توافق</div>
             <div class="vmatch-audio-waves" id="vmatch-audio-waves">
               <div class="vmatch-wave-bar" style="height: 12px;"></div>
               <div class="vmatch-wave-bar" style="height: 18px;"></div>
@@ -3370,16 +3394,18 @@
 
       if (voiceMatchSecondsLeft <= 0) {
         clearInterval(voiceMatchTimerInterval);
-        closeVoiceMatchScreen(true);
-        showToast('انتهت الـ 5 دقائق للمكالمة المجهولة دون كشف متبادل! يمكنك بدء توافق صوتي جديد أو كشف الهوية في المرة القادمة 🪐');
+        if (document.getElementById('voice-match-active-modal')) {
+          // انتهت 5 دقائق: إنهاء الجلسة من الخادم وإشعار الطرف الآخر
+          state.socket.emit('end_voice_match', { sessionId: activeVoiceMatchSession?.sessionId });
+          closeVoiceMatchScreen(false);
+          showToast('⏳ انتهت مدة المكالمة (5 دقائق) دون كشف الهوية المتبادل! 🪐');
+          refreshVoiceMatchRemaining();
+        }
       }
     }, 1000);
 
-    // Setup Local Microphone & Speech Wave Visualization
-    setupVoiceMatchAudioCapture();
-
-    // Setup Simulated Partner Speech Animation
-    startPartnerVoiceWaveSimulation();
+    // Setup Real P2P Voice Connection (WebRTC — صوت فقط) + Local Speech Wave Visualization
+    setupVoiceMatchAudio(data);
 
     // Wire End Call Button
     modal.querySelector('#btn-end-voice-match').onclick = async () => {
@@ -3420,11 +3446,13 @@
       showToast(isVoiceMatchMuted ? 'تم كتم الميكروفون' : 'تم تفعيل الميكروفون 🎙️');
     };
 
-    // Wire Speaker Toggle
+    // Wire Speaker Toggle (Real remote audio)
     const spkBtn = modal.querySelector('#vmatch-speaker-btn');
     spkBtn.onclick = () => {
       isVoiceMatchSpeakerOn = !isVoiceMatchSpeakerOn;
       spkBtn.classList.toggle('active', isVoiceMatchSpeakerOn);
+      const remoteAudio = document.getElementById('vmatch-remote-audio');
+      if (remoteAudio) remoteAudio.muted = !isVoiceMatchSpeakerOn;
       showToast(isVoiceMatchSpeakerOn ? 'مكبر الصوت مفعّل 🔊' : 'سماعة الهاتف 📱');
     };
 
@@ -3574,12 +3602,66 @@
     }
   }
 
-  // Setup Web Audio Capture for Local Voice Waves
-  async function setupVoiceMatchAudioCapture() {
+  // ===== اتصال صوتي حقيقي (WebRTC — صوت فقط) بين طرفي التوافق + موجات الصوت المحلية =====
+  async function setupVoiceMatchAudio(data) {
+    voiceMatchPeer = { pc: null, remoteSet: false, pendingIce: [], pending: [] };
+
+    // 1. التقاط الميكروفون — صوت فقط، بدون فيديو
     try {
-      voiceMatchMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceMatchMicStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch (err) {
+      console.warn('Voice match mic access denied:', err);
+      showToast('⚠️ تعذر الوصول إلى الميكروفون — لن يسمعك الشريك!');
+    }
+
+    // 2. إنشاء اتصال WebRTC من نظير لنظير (صوت فقط) — offerer يرسل العرض، answerer يرد عليه
+    try {
+      const pc = new RTCPeerConnection(VOICE_MATCH_RTC_CONFIG);
+      voiceMatchPeer.pc = pc;
+      if (voiceMatchMicStream) {
+        voiceMatchMicStream.getTracks().forEach(track => pc.addTrack(track, voiceMatchMicStream));
+      }
+      pc.onicecandidate = (e) => {
+        if (e.candidate && activeVoiceMatchSession) {
+          state.socket.emit('voice_match_signal', { sessionId: activeVoiceMatchSession.sessionId, data: { candidate: e.candidate } });
+        }
+      };
+      pc.ontrack = (e) => {
+        const remoteAudio = document.getElementById('vmatch-remote-audio');
+        if (remoteAudio && e.streams && e.streams[0]) {
+          remoteAudio.srcObject = e.streams[0];
+          remoteAudio.muted = !isVoiceMatchSpeakerOn;
+          const p = remoteAudio.play();
+          if (p && p.catch) p.catch(() => {});
+        }
+      };
+      pc.onconnectionstatechange = () => {
+        if (!voiceMatchPeer.pc) return;
+        if (pc.connectionState === 'connected') {
+          showToast('🔊 تم الاتصال الصوتي بالشريك الحقيقي! 🎙️');
+        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          showToast('⚠️ انقطع الاتصال الصوتي... 🔌');
+        }
+      };
+
+      // معالجة أي إشارات وصلت قبل جاهزية الاتصال
+      const queued = voiceMatchPeer.pending.splice(0);
+      for (const sig of queued) await handleVoiceMatchSignal(sig);
+
+      // من كان ينتظر (offerer) هو من يبدأ Offer
+      if (data && data.role === 'offerer') {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        state.socket.emit('voice_match_signal', { sessionId: data.sessionId, data: { type: 'offer', sdp: offer.sdp } });
+      }
+    } catch (err) {
+      console.error('Voice match WebRTC setup error:', err);
+    }
+
+    // 3. Web Audio — موجات الصوت المحلية + إرسال حالة التحدث للشريك الحقيقي
+    try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) {
+      if (AudioCtx && voiceMatchMicStream) {
         voiceMatchAudioContext = new AudioCtx();
         const source = voiceMatchAudioContext.createMediaStreamSource(voiceMatchMicStream);
         voiceMatchAnalyser = voiceMatchAudioContext.createAnalyser();
@@ -3587,6 +3669,7 @@
         source.connect(voiceMatchAnalyser);
 
         const dataArray = new Uint8Array(voiceMatchAnalyser.frequencyBinCount);
+        let lastSpeakingSent = null;
 
         const updateWaveAnimation = () => {
           if (!activeVoiceMatchSession || !document.getElementById('voice-match-active-modal')) return;
@@ -3606,6 +3689,15 @@
           if (selfCircle) {
             const isSpeaking = avg > 25 && !isVoiceMatchMuted;
             selfCircle.classList.toggle('speaking', isSpeaking);
+            // إرسال حالة التحدث للطرف الآخر (فقط عند تغيّر الحالة)
+            if (isSpeaking !== lastSpeakingSent) {
+              lastSpeakingSent = isSpeaking;
+              state.socket.emit('voice_match_speaking', {
+                sessionId: activeVoiceMatchSession.sessionId,
+                userId: state.currentUser.id,
+                isSpeaking
+              });
+            }
           }
 
           requestAnimationFrame(updateWaveAnimation);
@@ -3613,21 +3705,36 @@
         updateWaveAnimation();
       }
     } catch (err) {
-      console.log('Voice match audio capture initialized in simulation mode:', err.message);
+      console.log('Voice match audio capture error:', err.message);
     }
   }
 
-  // Partner Voice Simulation for natural call dynamics
-  function startPartnerVoiceWaveSimulation() {
-    let partnerSpeaking = false;
-    voiceMatchSimInterval = setInterval(() => {
-      if (!activeVoiceMatchSession || !document.getElementById('voice-match-active-modal')) return;
-      partnerSpeaking = Math.random() > 0.45;
-      const partnerCircle = document.getElementById('vmatch-partner-avatar-circle');
-      if (partnerCircle) {
-        partnerCircle.classList.toggle('speaking', partnerSpeaking);
+  // معالجة إشارات WebRTC (offer/answer/ICE) القادمة من الشريك الحقيقي
+  async function handleVoiceMatchSignal({ sessionId, data: sig } = {}) {
+    if (!activeVoiceMatchSession || sessionId !== activeVoiceMatchSession.sessionId) return;
+    const pc = voiceMatchPeer && voiceMatchPeer.pc;
+    if (!pc || !sig) return;
+    try {
+      if (sig.type === 'offer') {
+        await pc.setRemoteDescription({ type: 'offer', sdp: sig.sdp });
+        voiceMatchPeer.remoteSet = true;
+        for (const c of voiceMatchPeer.pendingIce) await pc.addIceCandidate(c).catch(() => {});
+        voiceMatchPeer.pendingIce = [];
+        const ans = await pc.createAnswer();
+        await pc.setLocalDescription(ans);
+        state.socket.emit('voice_match_signal', { sessionId, data: { type: 'answer', sdp: ans.sdp } });
+      } else if (sig.type === 'answer') {
+        await pc.setRemoteDescription({ type: 'answer', sdp: sig.sdp });
+        voiceMatchPeer.remoteSet = true;
+        for (const c of voiceMatchPeer.pendingIce) await pc.addIceCandidate(c).catch(() => {});
+        voiceMatchPeer.pendingIce = [];
+      } else if (sig.candidate) {
+        if (voiceMatchPeer.remoteSet) await pc.addIceCandidate(sig.candidate).catch(() => {});
+        else voiceMatchPeer.pendingIce.push(sig.candidate);
       }
-    }, 2500);
+    } catch (e) {
+      console.error('voice match signal error', e);
+    }
   }
 
   // Reaction Emoji Float-Up Burst Animation
@@ -3644,6 +3751,22 @@
 
   // Close Voice Match Call Screen and clean up
   function closeVoiceMatchScreen(notify = false) {
+    // إغلاق الاتصال الصوتي الحقيقي (WebRTC) وتنظيف صوت الطرف الآخر
+    if (voiceMatchPeer && voiceMatchPeer.pc) {
+      try {
+        voiceMatchPeer.pc.onicecandidate = null;
+        voiceMatchPeer.pc.ontrack = null;
+        voiceMatchPeer.pc.onconnectionstatechange = null;
+        voiceMatchPeer.pc.close();
+      } catch (e) {}
+      voiceMatchPeer.pc = null;
+    }
+    voiceMatchPeer.remoteSet = false;
+    voiceMatchPeer.pendingIce = [];
+    voiceMatchPeer.pending = [];
+    const remoteAudio = document.getElementById('vmatch-remote-audio');
+    if (remoteAudio) remoteAudio.srcObject = null;
+
     if (voiceMatchTimerInterval) {
       clearInterval(voiceMatchTimerInterval);
       voiceMatchTimerInterval = null;
@@ -3668,45 +3791,6 @@
     if (notify) {
       showToast('تمت مغادرة مكالمة التوافق الصوتي 🪐');
     }
-  }
-
-  // Planet Tab Events Modal (Matching Events Card)
-  function showPlanetEventsModal() {
-    const modal = document.createElement('div');
-    modal.className = 'soul-modal-backdrop';
-    modal.id = 'planet-events-modal';
-    modal.innerHTML = `
-      <div class="soul-modal-content" style="max-width: 400px; text-align: center; padding: 24px;">
-        <button class="soul-modal-close-btn" id="close-events-btn">✕</button>
-        <div style="font-size: 36px; margin-bottom: 8px;">🎈🎪</div>
-        <div style="font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 4px;">فعاليات ومهرجانات كوكب SoulChill</div>
-        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px;">شارك في بطولات الغرف والصوت واكسب جوائز ضخمة!</div>
-
-        <div style="display: flex; flex-direction: column; gap: 10px; text-align: right; margin-bottom: 16px;">
-          <div style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-glass); border-radius: 14px; padding: 12px; display: flex; align-items: center; justify-content: space-between;">
-            <div>
-              <div style="font-size: 13px; font-weight: 800; color: #fbbf24;">🎙️ مسابقة بلبل السول (Soul Voice)</div>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">جوائز تصل إلى 100,000 كوينز + إطار ذهبي</div>
-            </div>
-            <button class="wallet-btn primary" style="padding: 6px 12px; font-size: 11px;">انضمام</button>
-          </div>
-
-          <div style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-glass); border-radius: 14px; padding: 12px; display: flex; align-items: center; justify-content: space-between;">
-            <div>
-              <div style="font-size: 13px; font-weight: 800; color: #ec4899;">💖 كرنفال التوافق والهدايا (Soul Match Fiesta)</div>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">تضاعف نقاط التوافق 2X عند كشف الهوية</div>
-            </div>
-            <button class="wallet-btn primary" style="padding: 6px 12px; font-size: 11px;">مشاركة</button>
-          </div>
-        </div>
-
-        <button class="wallet-btn secondary" id="close-events-btn-bottom" style="width: 100%;">إغلاق</button>
-      </div>
-    `;
-    document.body.appendChild(modal);
-
-    modal.querySelector('#close-events-btn').onclick = () => modal.remove();
-    modal.querySelector('#close-events-btn-bottom').onclick = () => modal.remove();
   }
 
   // First Recharge Rewards Modal (مكافآت الشحنة الاولى)

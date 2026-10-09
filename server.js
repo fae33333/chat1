@@ -1761,6 +1761,24 @@ app.post('/api/users/soul-test', async (req, res) => {
   }
 });
 
+// حالة التوافق الصوتي (المحاولات المتبقية من 3 كل 24 ساعة)
+app.get('/api/voice-match/status', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const used = await getVoiceMatchUsageCount(userId);
+    const row = await get(`SELECT MAX(created_at) AS last_used FROM voice_match_usage WHERE user_id = ?`, [userId]);
+    res.json({
+      limit: VOICE_MATCH_LIMIT,
+      used,
+      remaining: Math.max(0, VOICE_MATCH_LIMIT - used),
+      last_used: row ? row.last_used : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 6. Recharge / Top-up simulated
 app.post(['/api/users/recharge', '/api/wallet/recharge'], async (req, res) => {
   try {
@@ -5159,6 +5177,96 @@ function endDmCall(callId, reason) {
   else emitToUser(c.calleeId, 'dm_call_ended', payload);
 }
 
+// ==========================================
+// نظام التوافق الصوتي الحقيقي (مكالمة صوتية مجهولة بين شخصين حقيقيين)
+// - 3 محاولات فقط لكل حساب خلال 24 ساعة
+// - المطابقة بين شخصين حقيقيين متصلين: نفس التوافق (نفس الكوكب/الاهتمامات) أو نسبة توافق ≥ 70%
+// - اتصال صوتي حقيقي (WebRTC) لمدة 5 دقائق فقط، بلا حدود عند كشف الهوية المتبادل
+// ==========================================
+const VOICE_MATCH_LIMIT = 3; // محاولات لكل 24 ساعة
+const VOICE_MATCH_WINDOW_MS = 24 * 60 * 60 * 1000;
+const VOICE_MATCH_DURATION_MS = parseInt(process.env.VOICE_MATCH_DURATION_MS, 10) || 5 * 60 * 1000; // 5 دقائق (افتراضياً)
+const VOICE_MATCH_QUEUE_TIMEOUT_MS = 90 * 1000; // مهلة الانتظار في طابور البحث
+const VOICE_MATCH_MIN_COMPAT = 70; // حد التوافق الأدنى للمطابقة
+const voiceMatchQueue = []; // [{ userId, socketId, user, enqueuedAt, timeout }] — مشترك بين جميع السوكيتات
+const activeVoiceMatchSessions = new Map(); // sessionId -> { id, userA, userB, startedAt, duration, isUnlimited, timer }
+
+function parseSoulTags(tags) {
+  return new Set(String(tags || '').split(',').map(t => t.trim()).filter(Boolean));
+}
+
+// نسبة التوافق الحقيقية بين شخصين (0-100): اهتمامات مشتركة 70% + نفس الكوكب 20% + نفس البلد 10%
+function computeSoulCompatibility(a, b) {
+  const tagsA = parseSoulTags(a && a.soul_tags);
+  const tagsB = parseSoulTags(b && b.soul_tags);
+  let shared = 0;
+  tagsA.forEach(t => { if (tagsB.has(t)) shared++; });
+  const union = new Set([...tagsA, ...tagsB]).size || 1;
+  let score = Math.round((shared / union) * 70);
+  if (a && b && a.soul_planet && b.soul_planet && a.soul_planet === b.soul_planet) score += 20;
+  if (a && b && a.country_code && b.country_code && a.country_code === b.country_code) score += 10;
+  return Math.min(100, score);
+}
+
+// قاعدة المطابقة: نفس التوافق (نفس الكوكب أو نفس الاهتمامات بالكامل) أو نسبة توافق ≥ 70%
+function isVoiceMatchCompatible(a, b) {
+  if (!a || !b || !a.id || !b.id || a.id === b.id) return false;
+  const tagsA = parseSoulTags(a.soul_tags);
+  const tagsB = parseSoulTags(b.soul_tags);
+  const samePlanet = !!(a.soul_planet && b.soul_planet && a.soul_planet === b.soul_planet);
+  const sameTags = tagsA.size > 0 && tagsA.size === tagsB.size && [...tagsA].every(t => tagsB.has(t));
+  if (samePlanet || sameTags) return true;
+  return computeSoulCompatibility(a, b) >= VOICE_MATCH_MIN_COMPAT;
+}
+
+// عدد محاولات التوافق الصوتي خلال آخر 24 ساعة
+async function getVoiceMatchUsageCount(userId) {
+  try {
+    const row = await get(`SELECT COUNT(*) AS c FROM voice_match_usage WHERE user_id = ? AND created_at > datetime('now', '-24 hours')`, [userId]);
+    return row ? (row.c || 0) : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+async function recordVoiceMatchUsage(userId, sessionId) {
+  try {
+    await run(`INSERT INTO voice_match_usage (user_id, session_id) VALUES (?, ?)`, [userId, sessionId]);
+  } catch (e) { console.error('voice_match_usage insert error:', e); }
+}
+
+// إنهاء جلسة التوافق الصوتي وإشعار الطرفين
+function endVoiceMatchSession(sessionId, reason) {
+  const s = activeVoiceMatchSessions.get(sessionId);
+  if (!s) return;
+  activeVoiceMatchSessions.delete(sessionId);
+  if (s.timer) { clearTimeout(s.timer); s.timer = null; }
+  const payload = { sessionId, reason };
+  if (s.userA && s.userA.socketId) io.to(s.userA.socketId).emit('voice_match_ended', payload);
+  if (s.userB && s.userB.socketId) io.to(s.userB.socketId).emit('voice_match_ended', payload);
+}
+
+// إزالة مستخدم من طابور الانتظار (حسب السوكيت أو User ID)
+function removeFromVoiceMatchQueue(socketId, userId) {
+  const idx = voiceMatchQueue.findIndex(q => q.socketId === socketId || (userId && q.userId === userId));
+  if (idx === -1) return null;
+  const [q] = voiceMatchQueue.splice(idx, 1);
+  if (q.timeout) clearTimeout(q.timeout);
+  return q;
+}
+
+// تنظيف طابور الانتظار من الإدخالات الميتة (سوكيت منقطع)
+function pruneVoiceMatchQueue() {
+  for (let i = voiceMatchQueue.length - 1; i >= 0; i--) {
+    const q = voiceMatchQueue[i];
+    const alive = io.sockets.sockets.has(q.socketId) && userSockets.has(q.userId) && userSockets.get(q.userId).has(q.socketId);
+    if (!alive) {
+      if (q.timeout) clearTimeout(q.timeout);
+      voiceMatchQueue.splice(i, 1);
+    }
+  }
+}
+
 io.on('connection', (socket) => {
   let currentUserId = null;
   let currentRoomId = null;
@@ -6295,6 +6403,13 @@ io.on('connection', (socket) => {
     for (const c of Array.from(dmCalls.values())) {
       if (c.callerSocket === socket.id || c.calleeSocket === socket.id) endDmCall(c.callId, 'disconnected');
     }
+    // تنظيف التوافق الصوتي: إزالة من طابور الانتظار + إنهاء أي جلسة نشطة لهذا السوكيت
+    removeFromVoiceMatchQueue(socket.id);
+    for (const s of Array.from(activeVoiceMatchSessions.values())) {
+      if (s.userA.socketId === socket.id || s.userB.socketId === socket.id) {
+        endVoiceMatchSession(s.id, 'disconnected');
+      }
+    }
   });
 
   // ============================================
@@ -6585,103 +6700,134 @@ io.on('connection', (socket) => {
   });
 
   // ============================================
-  // 16. ANONYMOUS 5-MINUTE VOICE MATCH (SOULCHILL BLIND CALL & IDENTITY REVEAL)
+  // 16. التوافق الصوتي الحقيقي (مكالمة صوتية مجهولة WebRTC بين شخصين حقيقيين)
   // ============================================
-  const voiceMatchQueue = [];
-  const activeVoiceMatchSessions = new Map();
 
-  socket.on('start_voice_match', async ({ userId, tags, planet }) => {
+  socket.on('start_voice_match', async ({ userId }) => {
     if (!userId) return;
 
     try {
+      // بيانات المستخدم تُقرأ دائماً من قاعدة البيانات (لا يُؤخذ tags/planet من العميل)
       const currentUser = await get('SELECT * FROM users WHERE id = ?', [userId]);
       if (!currentUser) return;
 
-      // 1. Check if another real user is waiting in the queue
-      const qIdx = voiceMatchQueue.findIndex(q => q.userId !== userId && q.socketId !== socket.id);
-      let partner = null;
-      let isSimulated = false;
+      // تنظيف أي إدخال قديم لهذا المستخدم/السوكيت + إزالة الإدخالات الميتة من الطابور
+      removeFromVoiceMatchQueue(socket.id, userId);
+      pruneVoiceMatchQueue();
 
-      if (qIdx !== -1) {
-        const waiting = voiceMatchQueue.splice(qIdx, 1)[0];
-        const pUser = await get('SELECT * FROM users WHERE id = ?', [waiting.userId]);
-        if (pUser) {
-          partner = { user: pUser, socketId: waiting.socketId };
+      // منع الدخول إذا كان المستخدم في جلسة توافق صوتي نشطة (من أي جهاز)
+      for (const s of activeVoiceMatchSessions.values()) {
+        if (s.userA.id === userId || s.userB.id === userId) {
+          return socket.emit('voice_match_error', { code: 'BUSY', message: 'أنت في مكالمة توافق صوتي حالياً 🎙️' });
         }
       }
 
-      // 2. If no real user is currently waiting, match with an active community Souler from DB
-      if (!partner) {
-        const candidates = await all('SELECT * FROM users WHERE id != ? ORDER BY RANDOM() LIMIT 8', [userId]);
-        if (candidates && candidates.length > 0) {
-          // Select best soul compatibility candidate
-          partner = { user: candidates[0], socketId: null };
-          isSimulated = true;
-        }
-      }
-
-      if (!partner) {
-        return socket.emit('voice_match_error', { message: 'تعذر العثور على شريك متوافق في الوقت الحالي' });
-      }
-
-      const sessionId = `vmatch-${Date.now()}`;
-      const sessionData = {
-        id: sessionId,
-        userA: { id: userId, socketId: socket.id, user: currentUser, revealed: false },
-        userB: { id: partner.user.id, socketId: partner.socketId, user: partner.user, revealed: false, isSimulated },
-        startedAt: Date.now(),
-        duration: 300, // 5 minutes
-        isUnlimited: false
-      };
-      activeVoiceMatchSessions.set(sessionId, sessionData);
-
-      // Masked Anonymous Partner profile
-      const maskedPartner = {
-        id: partner.user.id,
-        maskedName: `روح متوافقة #${partner.user.id.slice(-4)}`,
-        maskedAvatar: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=300&q=80',
-        soul_planet: partner.user.soul_planet || 'كوكب السول 🪐',
-        soul_score: partner.user.soul_score || (85 + Math.floor(Math.random() * 12)),
-        soul_tags: partner.user.soul_tags || 'موسيقى,شات,رواق,ألعاب',
-        bio: '🔒 الهوية مشفرة ومحجوبة لحين كشف الهوية المتبادل',
-        level: partner.user.level || 5
-      };
-
-      // Masked Anonymous Self profile
-      const maskedSelf = {
-        id: currentUser.id,
-        maskedName: `روح غامضة #${currentUser.id.slice(-4)}`,
-        maskedAvatar: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=300&q=80',
-        soul_planet: currentUser.soul_planet || 'كوكب السول 🪐',
-        soul_score: currentUser.soul_score || 94,
-        soul_tags: currentUser.soul_tags || 'موسيقى,ألعاب,سوالف',
-        bio: '🔒 هويتك مخفية عن الشريك حتى تقررا كشفها',
-        level: currentUser.level || 5
-      };
-
-      // Notify initiating client
-      socket.emit('voice_match_connected', {
-        sessionId,
-        isAnonymous: true,
-        duration: 300,
-        partner: maskedPartner,
-        selfMasked: maskedSelf,
-        isSimulated
-      });
-
-      // If partner is a real connected socket, notify them too
-      if (partner.socketId) {
-        io.to(partner.socketId).emit('voice_match_connected', {
-          sessionId,
-          isAnonymous: true,
-          duration: 300,
-          partner: maskedSelf,
-          selfMasked: maskedPartner,
-          isSimulated: false
+      // 1. حد أقصى: 3 محاولات فقط لكل حساب خلال 24 ساعة
+      const used = await getVoiceMatchUsageCount(userId);
+      if (used >= VOICE_MATCH_LIMIT) {
+        return socket.emit('voice_match_error', {
+          code: 'LIMIT_REACHED',
+          remaining: 0,
+          message: `لقد استنفدت محاولاتك الـ ${VOICE_MATCH_LIMIT} للتوافق الصوتي خلال 24 ساعة. عد غداً 🌌`
         });
       }
+
+      // 2. البحث في طابور الانتظار الحقيقي عن شريك متصل متوافق:
+      //    نفس التوافق (نفس الكوكب/الاهتمامات) أو نسبة توافق ≥ 70%
+      let bestIdx = -1;
+      let bestScore = -1;
+      for (let i = 0; i < voiceMatchQueue.length; i++) {
+        const q = voiceMatchQueue[i];
+        if (q.userId === userId || q.socketId === socket.id) continue;
+        if (!isVoiceMatchCompatible(currentUser, q.user)) continue;
+        const partnerUsed = await getVoiceMatchUsageCount(q.userId);
+        if (partnerUsed >= VOICE_MATCH_LIMIT) continue; // الشريك استنفد محاولاته
+        const score = computeSoulCompatibility(currentUser, q.user);
+        if (score > bestScore) { bestScore = score; bestIdx = i; }
+      }
+
+      if (bestIdx !== -1) {
+        // 3. تم العثور على شريك حقيقي → إنشاء جلسة اتصال صوتي حقيقية بين شخصين
+        const waiting = voiceMatchQueue.splice(bestIdx, 1)[0];
+        if (waiting.timeout) clearTimeout(waiting.timeout);
+        const partnerUser = waiting.user;
+        const compatibility = computeSoulCompatibility(currentUser, partnerUser);
+
+        const sessionId = `vmatch-${Date.now()}-${uuidv4().slice(0, 6)}`;
+        const sessionData = {
+          id: sessionId,
+          userA: { id: partnerUser.id, socketId: waiting.socketId, user: partnerUser, revealed: false }, // A = من كان ينتظر (offerer)
+          userB: { id: userId, socketId: socket.id, user: currentUser, revealed: false }, // B = القادم الجديد (answerer)
+          startedAt: Date.now(),
+          duration: VOICE_MATCH_DURATION_MS / 1000, // 5 دقائق
+          isUnlimited: false,
+          timer: null
+        };
+        // فرض حد 5 دقائق من الخادم — ينتهي تلقائياً إذا لم يكشف الطرفان هويتيهما
+        sessionData.timer = setTimeout(() => {
+          const s = activeVoiceMatchSessions.get(sessionId);
+          if (s && !s.isUnlimited) endVoiceMatchSession(sessionId, 'time_up');
+        }, VOICE_MATCH_DURATION_MS);
+        activeVoiceMatchSessions.set(sessionId, sessionData);
+
+        // كل طرف يستهلك محاولة واحدة من 3 محاولاته اليومية
+        await recordVoiceMatchUsage(userId, sessionId);
+        await recordVoiceMatchUsage(partnerUser.id, sessionId);
+
+        // ملف تعريف الشريك المجهول (الهوية محمية لحين الكشف المتبادل)
+        const maskedPartner = {
+          id: partnerUser.id,
+          maskedName: `روح متوافقة #${String(partnerUser.id).slice(-4)}`,
+          maskedAvatar: '/avatars/masked-avatar.png',
+          soul_planet: partnerUser.soul_planet || 'كوكب السول 🪐',
+          compatibility,
+          level: partnerUser.level || 5
+        };
+        const maskedSelf = {
+          id: currentUser.id,
+          maskedName: `روح غامضة #${String(currentUser.id).slice(-4)}`,
+          maskedAvatar: '/avatars/masked-avatar.png',
+          soul_planet: currentUser.soul_planet || 'كوكب السول 🪐',
+          compatibility,
+          level: currentUser.level || 5
+        };
+
+        // الطرف القادم (B) يبدأ المكالمة
+        socket.emit('voice_match_connected', {
+          sessionId,
+          isAnonymous: true,
+          duration: VOICE_MATCH_DURATION_MS / 1000,
+          compatibility,
+          role: 'answerer',
+          remaining: Math.max(0, VOICE_MATCH_LIMIT - used - 1),
+          partner: maskedPartner,
+          selfMasked: maskedSelf
+        });
+        // الطرف المنتظر (A) ينضم للمكالمة
+        io.to(waiting.socketId).emit('voice_match_connected', {
+          sessionId,
+          isAnonymous: true,
+          duration: VOICE_MATCH_DURATION_MS / 1000,
+          compatibility,
+          role: 'offerer',
+          remaining: Math.max(0, VOICE_MATCH_LIMIT - (await getVoiceMatchUsageCount(partnerUser.id))),
+          partner: maskedSelf,
+          selfMasked: maskedPartner
+        });
+        return;
+      }
+
+      // 4. لا يوجد شريك متوافق الآن → الدخول في طابور الانتظار الحقيقي
+      const entry = { userId, socketId: socket.id, user: currentUser, enqueuedAt: Date.now(), timeout: null };
+      entry.timeout = setTimeout(() => {
+        removeFromVoiceMatchQueue(socket.id, userId);
+        socket.emit('voice_match_error', { code: 'NO_MATCH', message: 'لم نجد روحاً متوافقة معك الآن... حاول مرة أخرى لاحقاً 🪐' });
+      }, VOICE_MATCH_QUEUE_TIMEOUT_MS);
+      voiceMatchQueue.push(entry);
+      socket.emit('voice_match_searching', { remaining: Math.max(0, VOICE_MATCH_LIMIT - used) });
     } catch (err) {
       console.error('Voice match error:', err);
+      socket.emit('voice_match_error', { code: 'ERROR', message: 'حدث خطأ أثناء البحث عن شريك متوافق' });
     }
   });
 
@@ -6694,26 +6840,14 @@ io.on('connection', (socket) => {
       session.userA.revealed = true;
     } else if (session.userB.id === userId) {
       session.userB.revealed = true;
-    }
-
-    // If partner is simulated, partner automatically reveals too after a brief dramatic delay!
-    if (session.userB.isSimulated) {
-      setTimeout(() => {
-        session.userB.revealed = true;
-        session.isUnlimited = true;
-        socket.emit('voice_match_both_revealed', {
-          sessionId,
-          realPartner: session.userB.user,
-          realSelf: session.userA.user,
-          isUnlimited: true
-        });
-      }, 1000);
+    } else {
       return;
     }
 
-    // Real partner sockets
+    // إذا كشف الطرفان هويتيهما → المكالمة تصبح بلا حدود (إلغاء عدّاد 5 دقائق)
     if (session.userA.revealed && session.userB.revealed) {
       session.isUnlimited = true;
+      if (session.timer) { clearTimeout(session.timer); session.timer = null; }
       if (session.userA.socketId) {
         io.to(session.userA.socketId).emit('voice_match_both_revealed', {
           sessionId,
@@ -6731,7 +6865,7 @@ io.on('connection', (socket) => {
         });
       }
     } else {
-      // One party revealed, inform other party
+      // طرف واحد كشف هويته → إشعار الطرف الآخر
       const otherSockId = session.userA.id === userId ? session.userB.socketId : session.userA.socketId;
       if (otherSockId) {
         io.to(otherSockId).emit('partner_revealed_identity', { sessionId });
@@ -6757,14 +6891,27 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('end_voice_match', ({ sessionId }) => {
-    if (!sessionId) return;
+  // إرسال إشارات WebRTC (صوت فقط) بين طرفي الجلسة — اتصال صوتي حقيقي بين شخصين
+  socket.on('voice_match_signal', ({ sessionId, data }) => {
+    if (!sessionId || !data) return;
     const session = activeVoiceMatchSessions.get(sessionId);
-    if (session) {
-      activeVoiceMatchSessions.delete(sessionId);
-      if (session.userA.socketId) io.to(session.userA.socketId).emit('voice_match_ended', { sessionId });
-      if (session.userB.socketId) io.to(session.userB.socketId).emit('voice_match_ended', { sessionId });
+    if (!session) return;
+    let target = null;
+    if (socket.id === session.userA.socketId) target = session.userB.socketId;
+    else if (socket.id === session.userB.socketId) target = session.userA.socketId;
+    if (target) io.to(target).emit('voice_match_signal', { sessionId, data });
+  });
+
+  socket.on('end_voice_match', ({ sessionId } = {}) => {
+    if (!sessionId) {
+      // إلغاء البحث: إزالة المستخدم من طابور الانتظار
+      removeFromVoiceMatchQueue(socket.id);
+      return;
     }
+    const session = activeVoiceMatchSessions.get(sessionId);
+    if (!session) return;
+    if (socket.id !== session.userA.socketId && socket.id !== session.userB.socketId) return;
+    endVoiceMatchSession(sessionId, 'ended');
   });
 
   // 17. Supreme Owner Global Broadcast to All Rooms

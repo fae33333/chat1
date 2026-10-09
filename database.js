@@ -338,6 +338,17 @@ async function initDB() {
     )
   `);
 
+  // سجل استخدام التوافق الصوتي (حد 3 مكالمات لكل حساب كل 24 ساعة)
+  await run(`
+    CREATE TABLE IF NOT EXISTS voice_match_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      session_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_voice_match_usage_user ON voice_match_usage (user_id, created_at)`);
+
   // زوار الملف الشخصي (زائرين صفحتي / زياراتي)
   await run(`
     CREATE TABLE IF NOT EXISTS profile_visits (
