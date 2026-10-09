@@ -6649,3 +6649,7 @@ video.seamless-room-entry-gif { background: transparent; }
 .pf-cover-hint { text-align: center; color: #cfcde0; font-size: 12px; margin-top: 18px; }
 .pf-cover-note { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding: 10px 12px; border-radius: 10px; background: #1a1a22; font-size: 12px; color: #d6d4e6; }
 .pf-cover-note-ic { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; background: #ef4444; color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; }
+
+/* صورة الغلاف في بطاقة الغرفة وفي صفحة "أنت" */
+.rus-hero.has-cover { border-radius: 16px; padding: 14px 12px 12px; background-size: cover; background-position: center; margin-top: 4px; }
+.pf-me.has-cover::before { background: linear-gradient(180deg, rgba(10,10,15,.2) 0%, rgba(10,10,15,.55) 60%, #0a0a0f 100%), var(--pf-cover) center / cover no-repeat; }

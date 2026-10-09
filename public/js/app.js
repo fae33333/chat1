@@ -2797,6 +2797,20 @@
     return `<span class="rus-emoji">${fEsc(s)}</span>`;
   }
 
+  // صورة الغلاف (أول صورة في الخلفيات) كقيمة background-image جاهزة
+  function coverBgValue(u) {
+    const c = pfParseCovers(u)[0];
+    if (!c) return '';
+    return `url("${encodeURI(c).replace(/"/g, '%22')}")`;
+  }
+  function rusApplyCover(wrap, u) {
+    const hero = wrap.querySelector('.rus-hero');
+    const bg = coverBgValue(u);
+    if (!hero || !bg) return;
+    hero.classList.add('has-cover');
+    hero.style.backgroundImage = `linear-gradient(180deg, rgba(10,10,15,.25), rgba(10,10,15,.8)), ${bg}`;
+  }
+
   function closeRoomUserSheet() {
     const el = document.getElementById('room-user-sheet');
     if (!el) return;
@@ -2848,6 +2862,13 @@
         </div>`}
       </div>`;
     document.body.appendChild(wrap);
+    if (isSelf && me) rusApplyCover(wrap, me);
+    else if (user.cover_images !== undefined) rusApplyCover(wrap, user);
+    else if (user.id) {
+      fetch(`/api/users/${encodeURIComponent(user.id)}`).then(r => r.ok ? r.json() : null).then(d => {
+        if (d && wrap.isConnected) rusApplyCover(wrap, d);
+      }).catch(() => {});
+    }
 
     const $ = (sel) => wrap.querySelector(sel);
     const sheetState = { following: false, user };
@@ -10228,6 +10249,9 @@
       moments: () => pfOpenProfilePage(state.currentUser, 'posts'),
       admin: () => window.open('/admin', '_blank')
     };
+    const meCover = coverBgValue(user);
+    const meEl = container.querySelector('.pf-me');
+    if (meCover && meEl) { meEl.classList.add('has-cover'); meEl.style.setProperty('--pf-cover', meCover); }
     container.querySelectorAll('[data-pf]').forEach(el => {
       el.onclick = (e) => {
         e.stopPropagation();
