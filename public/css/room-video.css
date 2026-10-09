@@ -360,9 +360,12 @@
 .rv-ms-state svg { width: 12px; height: 12px; }
 .rv-ms-del { flex: none; border: 0; background: none; padding: 2px; color: #66666c; cursor: pointer; display: grid; place-items: center; }
 .rv-ms-del svg { width: 16px; height: 16px; stroke-width: 1.8; }
+.rv-ms-failed { color: #f87171; font-style: normal; }
+.rv-ms-retry { flex: none; border: 1px solid rgba(248,113,113,.38); border-radius: 8px; padding: 4px 7px; background: rgba(248,113,113,.1); color: #fca5a5; font: inherit; font-size: 11px; cursor: pointer; }
 .rv-ms-row.on { background: rgba(108,73,245,.24); }
 .rv-ms-row.on .rv-ms-copy b, .rv-ms-row.on .rv-ms-idx { color: #8f7cff; }
 .rv-ms-row.on .rv-ms-copy small { color: #6d5cc9; }
+.rv-ms-row.on .rv-ms-copy .rv-ms-failed { color: #f87171; }
 .rv-ms-row.on .rv-ms-state { color: #7c63ff; }
 .rv-ms-row.on .rv-ms-del { color: #6d5cc9; }
 .rv-ms-plus { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 0; padding: 0; background: #7b57f4; color: #fff; display: grid; place-items: center; cursor: pointer; }

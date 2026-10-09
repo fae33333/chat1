@@ -2378,6 +2378,35 @@ app.post('/api/music-library', async (req, res) => {
   }
 });
 
+// إعادة محاولة التحويل إلى MP3 بعد فشل التنزيل (مثلاً بعد إضافة cookies أو بروكسي).
+app.post('/api/music-library/:id/retry', async (req, res) => {
+  try {
+    const userId = await requireMusicUser(req, res); if (!userId) return;
+    const track = await get(`SELECT id, title, source, url, file_name, artist, thumbnail, yt_id, audio_status
+      FROM user_music_tracks WHERE id = ? AND user_id = ?`, [req.params.id, userId]);
+    if (!track) return res.status(404).json({ error: 'الأغنية غير موجودة' });
+    if (!track.yt_id || track.source !== 'youtube') return res.status(400).json({ error: 'إعادة المحاولة متاحة لأغاني يوتيوب التي لم تكتمل معالجتها فقط' });
+    if (track.audio_status === 'processing') return res.json({ success: true, track });
+
+    const ready = ytMp3.existing(track.yt_id);
+    if (ready) {
+      track.source = 'device'; track.url = ready.url; track.file_name = path.basename(ready.file); track.audio_status = 'ready';
+      await run(`UPDATE user_music_tracks SET source = 'device', url = ?, file_name = ?, audio_status = 'ready' WHERE yt_id = ? AND audio_status != 'ready'`,
+        [ready.url, track.file_name, track.yt_id]);
+      return res.json({ success: true, track });
+    }
+
+    track.source = 'youtube'; track.url = `https://www.youtube.com/watch?v=${track.yt_id}`; track.file_name = null; track.audio_status = 'processing';
+    await run(`UPDATE user_music_tracks SET source = 'youtube', url = ?, file_name = NULL, audio_status = 'processing' WHERE id = ? AND user_id = ?`,
+      [track.url, track.id, userId]);
+    res.json({ success: true, track });
+    startYtAudioJob(track.yt_id);
+  } catch (e) {
+    console.error('music-library retry error:', e);
+    if (!res.headersSent) res.status(500).json({ error: 'تعذر بدء إعادة معالجة الأغنية' });
+  }
+});
+
 app.delete('/api/music-library/:id', async (req, res) => {
   try {
     const userId = await requireMusicUser(req, res); if (!userId) return;
@@ -2649,16 +2678,28 @@ function ensureYtDlp() {
 }
 setTimeout(() => { ensureYtDlp(); }, 1500);
 
+function ytDlpAuthArgs() {
+  const args = [];
+  if (process.env.YTDLP_PROXY) args.push('--proxy', process.env.YTDLP_PROXY);
+  if (process.env.YTDLP_COOKIES) args.push('--cookies', process.env.YTDLP_COOKIES);
+  else if (process.env.YTDLP_COOKIES_FROM_BROWSER) args.push('--cookies-from-browser', process.env.YTDLP_COOKIES_FROM_BROWSER);
+  return args;
+}
 function ytDlpAudioUrl(videoId) {
   return new Promise((resolve, reject) => {
     const bin = findYtDlp(); if (!bin) return reject(new Error('yt-dlp not installed'));
     const { execFile } = require('child_process');
-    execFile(bin, ['-f', 'bestaudio[ext=m4a]/bestaudio', '-g', '--no-playlist', '--no-warnings', 'https://www.youtube.com/watch?v=' + videoId],
-      { timeout: 25000 }, (err, out) => {
-        const url = String(out || '').trim().split('\n')[0];
-        if (err || !/^https?:\/\//.test(url)) return reject(new Error('yt-dlp: ' + ((err && err.message) || 'no url').slice(0, 200)));
-        resolve({ url, ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36', duration: 0, title: '' });
-      });
+    // هذا المسار للتشغيل المباشر فقط. مرّر له إعدادات البروكسي/الكوكيز نفسها المستخدمة في التنزيل.
+    const args = ['-f', 'bestaudio[ext=m4a]/bestaudio', '-g', '--no-playlist', '--no-warnings', '--js-runtimes', 'node',
+      ...ytDlpAuthArgs(), 'https://www.youtube.com/watch?v=' + videoId];
+    execFile(bin, args, { timeout: 25000, maxBuffer: 2 * 1024 * 1024 }, (err, out, stderr) => {
+      const url = String(out || '').trim().split('\n')[0];
+      if (err || !/^https?:\/\//.test(url)) {
+        const detail = String(stderr || (err && err.message) || 'no url').replace(/\s+/g, ' ').slice(0, 240);
+        return reject(new Error('yt-dlp: ' + detail));
+      }
+      resolve({ url, ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36', duration: 0, title: '' });
+    });
   });
 }
 const YT_CLIENTS = [
@@ -2730,8 +2771,9 @@ app.get('/api/youtube/audio/:videoId', async (req, res) => {
     const data = await getYoutubeAudioUrl(videoId);
     res.json({ success: true, ...data });
   } catch (err) {
-    console.error('youtube audio error:', err.message);
-    res.status(502).json({ success: false, error: 'تعذر تشغيل هذا المقطع حالياً (قد يكون مقيّداً). جرّب مقطعاً آخر.' });
+    // هذا المسار خاص بجلب رابط تشغيل مباشر؛ حفظ MP3 يعمل في /api/music-library بشكل منفصل.
+    console.error('youtube audio playback error:', err.message);
+    res.status(502).json({ success: false, error: 'تعذر جلب رابط الصوت المباشر؛ قد يحجب يوتيوب خادم الموقع.' });
   }
 });
 
@@ -2800,11 +2842,9 @@ async function ytDlpDownloadFile(videoId, cacheDir) {
   const base = path.join(cacheDir, videoId);
   const errs = [];
   for (const ex of YTDLP_CLIENT_SETS) {
-    const args = ['-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio', '--no-playlist', '--no-warnings', '--no-part', '--js-runtimes', 'node', '-o', base + '.%(ext)s'];
+    const args = ['-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio', '--no-playlist', '--no-warnings', '--no-part', '--js-runtimes', 'node',
+      ...ytDlpAuthArgs(), '-o', base + '.%(ext)s'];
     if (ex) args.push('--extractor-args', ex);
-    if (process.env.YTDLP_PROXY) args.push('--proxy', process.env.YTDLP_PROXY);
-    if (process.env.YTDLP_COOKIES) args.push('--cookies', process.env.YTDLP_COOKIES);
-    else if (process.env.YTDLP_COOKIES_FROM_BROWSER) args.push('--cookies-from-browser', process.env.YTDLP_COOKIES_FROM_BROWSER);
     args.push('https://www.youtube.com/watch?v=' + videoId);
     const found = await new Promise((resolve) => {
       execFile(bin, args, { timeout: 60000 }, (err, so, se) => {

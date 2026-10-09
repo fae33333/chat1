@@ -416,7 +416,7 @@
     musicPollCount = 0;
     musicPollTimer = setInterval(async () => {
       musicPollCount++;
-      if (!hasProcessingTracks() || musicPollCount > 60) { clearInterval(musicPollTimer); musicPollTimer = null; return; }
+      if (!hasProcessingTracks() || musicPollCount > 180) { clearInterval(musicPollTimer); musicPollTimer = null; return; }
       const ownerId = me()?.id;
       if (!ownerId) return;
       try {
@@ -489,7 +489,7 @@
       const data = await api('POST', '/api/music-library', { youtube_id: it.id, title: it.title, artist: it.channel, thumbnail: it.thumbnail });
       if (data.track) musicLibrary.unshift(normalizeMusicTrack(data.track));
       musicLibraryOwnerId = me()?.id || musicLibraryOwnerId;
-      toast(data.track && data.track.audio_status === 'processing' ? 'تم الحفظ — جارٍ تجهيز الصوت 🎵' : 'تم حفظ الأغنية في قائمتك 🎵');
+      toast(data.track && data.track.audio_status === 'processing' ? 'تم الحفظ — جارٍ تجهيز MP3 منخفض الحجم 🎵' : 'تم حفظ الأغنية في قائمتك 🎵');
       startMusicAudioPoll();
     } catch (err) {
       toast(err.message);
@@ -506,6 +506,19 @@
     if (ctx.music.current && ctx.music.current.id === id) stopRoomMusic(true);
     if (ctx.music.selectedId === id) ctx.music.selectedId = null;
     paintMusicSheet();
+  }
+
+  async function retryYtAudio(id) {
+    const track = musicLibrary.find(t => t.id === id);
+    if (!track || track.audio_status !== 'failed') return;
+    try {
+      const data = await api('POST', `/api/music-library/${encodeURIComponent(id)}/retry`);
+      if (data.track) Object.assign(track, normalizeMusicTrack(data.track));
+      else track.audio_status = 'processing';
+      toast('جارٍ إعادة تجهيز ملف MP3 منخفض الحجم…');
+      startMusicAudioPoll();
+      if (ctx) paintMusicSheet();
+    } catch (err) { toast(err.message || 'تعذرت إعادة المحاولة'); }
   }
 
   // ----- قائمة الموسيقى -----
@@ -543,7 +556,7 @@
       const data = await api('POST', '/api/music-library', { youtube_id: id, title, artist: channel, thumbnail: thumb });
       if (data.track) musicLibrary.unshift(normalizeMusicTrack(data.track));
       musicLibraryOwnerId = me()?.id || musicLibraryOwnerId;
-      toast(data.track && data.track.audio_status === 'processing' ? 'تم الحفظ — جارٍ تجهيز الصوت 🎵' : 'تم حفظ الأغنية في قائمتك 🎵');
+      toast(data.track && data.track.audio_status === 'processing' ? 'تم الحفظ — جارٍ تجهيز MP3 منخفض الحجم 🎵' : 'تم حفظ الأغنية في قائمتك 🎵');
       startMusicAudioPoll();
       if (ctx) paintMusicSheet();
     } catch (err) { toast(err.message); }
@@ -576,8 +589,9 @@
     const cur = m.selectedId === track.id && m.playing && m.current && m.current.id === track.id;
     return `<div class="rv-ms-row ${cur ? 'on' : ''}" data-track-id="${esc(track.id)}">
       ${safeThumb(track.thumbnail) ? `<img class="rv-yt-thumb" src="${esc(safeThumb(track.thumbnail))}" alt="" loading="lazy">` : `<span class="rv-ms-idx">${idx + 1}</span>`}
-      <span class="rv-ms-copy"><b>${esc(track.title)}</b><small>${esc(track.artist || UNKNOWN)}${track.audio_status === 'processing' ? ' · <em class="rv-ms-proc">جارٍ تجهيز الصوت…</em>' : ''}</small></span>
+      <span class="rv-ms-copy"><b>${esc(track.title)}</b><small>${esc(track.artist || UNKNOWN)}${track.audio_status === 'processing' ? ' · <em class="rv-ms-proc">جارٍ تجهيز MP3…</em>' : track.audio_status === 'failed' ? ' · <em class="rv-ms-failed">تعذر تجهيز MP3</em>' : ''}</small></span>
       <span class="rv-ms-state">${cur ? `<span class="rv-eq ${m.paused ? '' : 'live'}"><i></i><i></i><i></i></span>` : mIcon('play')}</span>
+      ${track.audio_status === 'failed' && track.yt_id ? `<button type="button" class="rv-ms-retry" data-retry="${esc(track.id)}" aria-label="إعادة تجهيز MP3">إعادة</button>` : ''}
       <button type="button" class="rv-ms-del" data-del="${esc(track.id)}" aria-label="حذف">${mIcon('trash')}</button>
     </div>`;
   }
@@ -637,6 +651,8 @@
   function onMusicSheetClick(ev) {
     if (!ctx) return;
     const m = ctx.music, t = ev.target;
+    const retry = t.closest('[data-retry]');
+    if (retry) { ev.stopPropagation(); return retryYtAudio(retry.dataset.retry); }
     const del = t.closest('[data-del]');
     if (del) { ev.stopPropagation(); return deleteMusicTrack(del.dataset.del); }
     const act = t.closest('[data-act]');
