@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SoulChill - عالم الأرواح والدردشة الصوتية | سول شل</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/stream.css">
+  <link rel="stylesheet" href="css/room-pro.css">
+  <link rel="stylesheet" href="css/room-video.css">
+  <link rel="stylesheet" href="css/room-user-sheet.css">
+  <link rel="stylesheet" href="css/dm-new.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/framework7-icons@5.0.5/css/framework7-icons.css">
+  <link rel="stylesheet" href="css/f7-icons-fix.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪐</text></svg>">
+  <!-- Official Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+  <!-- Main Viewport Wrapper -->
+  <div class="app-viewport">
+    <div class="app-container tab-planet-active" id="main-app-container">
+
+      <!-- Simulated Mobile Phone Status Bar -->
+      <div class="phone-status-bar">
+        <span>9:41</span>
+        <div class="status-bar-notch"></div>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <span>5G</span>
+          <span>100% <i class="f7-icons f7-ui" style="font-size:14px">battery_100</i></span>
+        </div>
+      </div>
+
+      <!-- App Top Header (Shown on secondary tabs; Planet tab uses its own authentic SoulChill header) -->
+      <header class="app-top-header" id="main-app-top-header">
+        <!-- شريط تبويب «المنشورات» الثابت (يظهر فقط عند فتح المنشورات) -->
+        <div class="moments-top-bar" id="moments-top-bar">
+          <div class="moments-top-tabs">
+            <button type="button" class="mtb-tab active" data-scope="all" id="moments-tab-all">المنشورات</button>
+            <button type="button" class="mtb-tab" data-scope="friends" id="moments-tab-friends">الأصدقاء</button>
+          </div>
+          <button type="button" class="mtb-plus" id="moments-top-add-btn" title="نشر منشور" aria-label="نشر منشور">+</button>
+        </div>
+
+        <!-- شريط تبويب «حفلة» الثابت (يظهر فقط عند فتح تبويب الحفلة) -->
+        <div class="rooms-top-bar" id="rooms-top-bar">
+          <div class="rooms-top-title">حفلة</div>
+          <div class="rooms-top-actions">
+            <button type="button" class="rtb-btn" id="rooms-top-search-btn" title="بحث" aria-label="بحث">
+              <i class="f7-icons f7-ui" style="font-size:22px">search</i>
+            </button>
+            <button type="button" class="rtb-btn rtb-flag" id="rooms-top-interests-btn" title="مركز اهتماماتي" aria-label="مركز اهتماماتي">
+              <i class="f7-icons f7-ui" style="font-size:22px">flag_fill</i>
+            </button>
+            <button type="button" class="rtb-btn rtb-create" id="rooms-top-create-btn" title="إنشاء غرفة صوتية" aria-label="إنشاء غرفة صوتية">
+              <i class="f7-icons f7-ui" style="font-size:22px">house_fill</i>
+            </button>
+            <button class="notif-bell-btn rtb-btn rtb-bell" type="button" title="الإشعارات" aria-label="الإشعارات"><i class="f7-icons f7-ui" style="font-size:22px">bell_fill</i><span class="notif-bell-badge" style="display:none;">0</span></button>
+          </div>
+        </div>
+
+        <div class="brand-wrapper">
+          <div class="brand-logo-icon"><i class="f7-icons f7-ui" style="font-size:26px">moon_stars_fill|globe</i></div>
+          <div>
+            <div class="brand-text-title">SoulChill</div>
+            <div class="brand-text-sub">سول شل • عالم الأرواح</div>
+          </div>
+        </div>
+
+        <div class="header-user-status">
+          <!-- Currency Badges -->
+          <div class="currency-badge coins" id="header-coins-badge" title="عملات سول">
+            <span><i class="f7-icons f7-ui" style="font-size:16px">money_dollar_circle_fill</i></span>
+            <span id="header-coins-val">2,000</span>
+          </div>
+          <div class="currency-badge diamonds" id="header-diamonds-badge" title="ألماس ملكي">
+            <span><i class="f7-icons f7-ui" style="font-size:16px">suit_diamond_fill</i></span>
+            <span id="header-diamonds-val">500</span>
+          </div>
+
+          <!-- Notifications bell -->
+          <button class="notif-bell-btn header-action-btn" id="header-notif-bell-btn" type="button" title="الإشعارات"><i class="f7-icons f7-ui" style="font-size:22px">bell_fill</i><span class="notif-bell-badge" style="display:none;">0</span></button>
+
+          <!-- Mode switcher (Phone / Fullscreen) -->
+          <button class="header-action-btn" id="header-mode-toggle-btn" title="تبديل حجم الشاشة"><i class="f7-icons f7-ui" style="font-size:20px">device_laptop|desktopcomputer</i></button>
+
+          <!-- Language toggle -->
+          <button class="header-action-btn" id="header-lang-toggle-btn" title="تغيير اللغة" style="font-size: 11px; font-weight: 800;">EN</button>
+
+          <!-- Admin Panel Button (Strictly for owner, super_master, super_admin) -->
+          <a href="/admin" class="header-action-btn admin-link-btn" id="header-admin-link-btn" title="لوحة تحكم وإدارة الدردشة" target="_blank" style="display: none; background: rgba(245, 158, 11, 0.18); border: 1.5px solid #fbbf24; color: #fbbf24; text-decoration: none; align-items: center; justify-content: center; font-size: 13px;">🛡️</a>
+
+          <!-- User Avatar -->
+          <div class="header-user-avatar-btn" id="header-user-avatar-btn" title="الملف الشخصي">
+            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80" id="header-user-avatar" alt="Avatar" />
+          </div>
+        </div>
+      </header>
+
+      <!-- Daily Bonus Quick Bar -->
+      <div class="daily-banner-strip" id="main-daily-banner-strip">
+        <div class="bonus-text">
+          <span><i class="f7-icons f7-ui" style="font-size:18px">gift_fill</i></span>
+          <span id="daily-bonus-text">سجل حضورك اليومي واحصل على <strong>+500 عملة مجاناً!</strong></span>
+        </div>
+        <button id="header-daily-checkin-btn">استلام المكافأة <i class="f7-icons f7-ui" style="font-size:14px">bolt_fill</i></button>
+      </div>
+
+      <!-- Main Dynamic Content Container (Where tabs render) -->
+      <main class="app-content" id="app-main-content">
+        <!-- Tab content injected here via app.js -->
+      </main>
+
+      <!-- App Bottom Navigation Bar (5 iconic SoulChill tabs matching the GIF) -->
+      <nav class="app-bottom-nav">
+        <!-- Tab 1 (Rightmost in RTL): الكوكب -->
+        <button class="nav-tab-item active" data-tab="planet">
+          <span class="tab-icon planet-orb-nav-icon">
+            <i class="f7-icons f7-ui" style="font-size:26px">globe</i>
+          </span>
+          <span class="tab-label">الكوكب</span>
+        </button>
+
+        <!-- Tab 2: حفلة -->
+        <button class="nav-tab-item" data-tab="rooms">
+          <span class="tab-icon">
+            <i class="f7-icons f7-ui" style="font-size:26px">house_fill</i>
+          </span>
+          <span class="tab-label">حفلة</span>
+        </button>
+
+        <!-- Tab 3 (Center): المنشورات -->
+        <button class="nav-tab-item" data-tab="moments">
+          <span class="tab-icon">
+            <i class="f7-icons f7-ui" style="font-size:26px">sparkles</i>
+          </span>
+          <span class="tab-label">المنشورات</span>
+        </button>
+
+        <!-- Tab 4: رسائل -->
+        <button class="nav-tab-item" data-tab="chat">
+          <span class="tab-icon">
+            <i class="f7-icons f7-ui" style="font-size:26px">chat_bubble_2_fill</i>
+          </span>
+          <span class="tab-label">رسائل</span>
+          <span class="unread-badge" id="nav-chat-unread-badge" style="display: none;">0</span>
+        </button>
+
+        <!-- Tab 5 (Leftmost in RTL): انا -->
+        <button class="nav-tab-item" data-tab="profile">
+          <span class="tab-icon" style="position: relative;">
+            <i class="f7-icons f7-ui" style="font-size:26px">person_fill</i>
+          </span>
+          <span class="tab-label">أنت</span>
+        </button>
+      </nav>
+
+    </div>
+  </div>
+
+  <!-- Socket.IO & App Scripts -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/dialogs.js"></script>
+  <script src="js/sounds.js"></script>
+  <script src="js/radar.js"></script>
+  <script src="js/gifts-effects.js"></script>
+  <script src="js/frames.js"></script>
+  <script src="js/voice-rings.js"></script>
+  <script src="js/webrtc.js?v=20261009"></script>
+  <script src="js/app.js"></script>
+  <script src="js/room-pro.js"></script>
+  <script src="js/room-video.js?v=20261009"></script>
+  <script src="js/dm-new.js"></script>
+  <script src="js/f7-icons.js"></script>
+</body>
+</html>
