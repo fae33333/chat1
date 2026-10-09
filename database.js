@@ -149,6 +149,7 @@ async function initDB() {
   try { await run(`ALTER TABLE users ADD COLUMN moment_rules_seen INTEGER DEFAULT 0`); } catch (e) {}
   try { await run(`ALTER TABLE users ADD COLUMN checkin_streak INTEGER DEFAULT 0`); } catch (e) {}
   try { await run(`ALTER TABLE users ADD COLUMN checkin_cycle_start TEXT`); } catch (e) {}
+  try { await run(`ALTER TABLE users ADD COLUMN cover_images TEXT DEFAULT ''`); } catch (e) {}
   try { await run(`ALTER TABLE rooms ADD COLUMN max_seats INTEGER DEFAULT 8`); } catch (e) {}
   try { await run(`ALTER TABLE moments ADD COLUMN media_type TEXT`); } catch (e) {}
   try { await run(`ALTER TABLE moments ADD COLUMN video_url TEXT`); } catch (e) {}

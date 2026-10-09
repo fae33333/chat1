@@ -681,6 +681,26 @@ app.get('/api/users/:id', async (req, res) => {
 });
 
 // 3. Update User Profile
+// صور خلفية الملف الشخصي: حتى 6 صور، والصورة الأولى هي صورة الغلاف
+app.put('/api/users/covers', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!Array.isArray(req.body.images)) return res.status(400).json({ error: 'قائمة الصور غير صالحة' });
+    const clean = req.body.images
+      .filter(u => typeof u === 'string' && (u.startsWith('/uploads/') || /^https:\/\//i.test(u)))
+      .map(u => u.slice(0, 500))
+      .slice(0, 6);
+    const exists = await get('SELECT id FROM users WHERE id = ?', [userId]);
+    if (!exists) return res.status(404).json({ error: 'User not found' });
+    await run('UPDATE users SET cover_images = ? WHERE id = ?', [JSON.stringify(clean), userId]);
+    const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    res.json({ success: true, images: clean, user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.put('/api/users/profile', async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];

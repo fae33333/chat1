@@ -10502,7 +10502,7 @@
     const me = state.currentUser;
     const isSelf = !!(me && me.id === u0.id);
     let u = isSelf ? me : u0;
-    if (!isSelf && (!u.created_at || u.gender === undefined)) {
+    if (!isSelf && (!u.created_at || u.gender === undefined || u.cover_images === undefined)) {
       try {
         const r = await fetch(`/api/users/${encodeURIComponent(u0.id)}`);
         if (r.ok) u = { ...u0, ...(await r.json()) };
@@ -10550,12 +10550,21 @@
         setTimeout(() => fx.remove(), 3800);
       }).catch(() => {});
     }
+    const covers = pfParseCovers(u);
+    if (covers.length) {
+      const cv = document.createElement('div');
+      cv.className = 'pf-prof-cover';
+      cv.style.backgroundImage = `url("${encodeURI(covers[0]).replace(/"/g, '%22')}")`;
+      el.insertBefore(cv, el.firstChild);
+    }
     el.querySelectorAll('[data-soon]').forEach(b => b.onclick = pfSoon);
     const bodyScroll = el.querySelector('.pf-page-body');
     const titleEl = el.querySelector('.pf-page-title');
     bodyScroll.addEventListener('scroll', () => { titleEl.textContent = bodyScroll.scrollTop > 140 ? u.name : ''; });
     const editBtn = el.querySelector('[data-edit]');
-    if (editBtn) editBtn.onclick = () => showEditProfileModal();
+    if (editBtn) editBtn.onclick = () => pfOpenCoverEditor();
+    const nameEl = el.querySelector('.pf-prof-name');
+    if (isSelf && nameEl) { nameEl.style.cursor = 'pointer'; nameEl.onclick = () => showEditProfileModal(); }
     el.querySelectorAll('[data-rel]').forEach(b => b.onclick = () => pfOpenRelations(b.dataset.rel, u.id));
 
     const st = { gifts: null, posts: null, stats: null };
@@ -10680,6 +10689,135 @@
       if (activeTab === 'profile') renderTab();
     }).catch(() => { st.gifts = { summary: [], totalCount: 0 }; });
     loadPosts();
+  }
+
+  // ---------- تعديل الخلفية: حتى 6 صور، الأولى هي صورة الغلاف ----------
+  const PF_COVER_MAX = 6;
+  function pfParseCovers(u) {
+    try {
+      const a = JSON.parse((u && u.cover_images) || '[]');
+      return Array.isArray(a) ? a.filter(x => typeof x === 'string' && x) : [];
+    } catch (e) { return []; }
+  }
+  function pfOpenCoverEditor() {
+    if (!requireAuth()) return;
+    pfSprite();
+    const user = state.currentUser;
+    const original = pfParseCovers(user);
+    let items = original.slice();
+    let busy = false;
+    let drag = null; // { from }
+
+    const el = pfPage({
+      id: 'pf-cover-page', cls: 'pf-cover-ed', title: 'تعديل الخلفية',
+      actionHtml: '<button type="button" class="pf-cover-save" disabled>حفظ</button>',
+      body: `
+        <div class="pf-cover-grid"></div>
+        <div class="pf-cover-hint">انقر واسحب الصورة لتتمكن من تغيير ترتيبها</div>
+        <div class="pf-cover-note"><span class="pf-cover-note-ic">!</span><span>اختر صورتك المفضلة كخلفية الصفحة لتزيد من جاذبية صفحتك</span></div>
+        <input type="file" accept="image/*" class="pf-cover-file" hidden />`
+    });
+    el.querySelector('.pf-back').innerHTML = '<i class="f7-icons f7-ui" style="font-size:22px">xmark</i>';
+    const grid = el.querySelector('.pf-cover-grid');
+    const saveBtn = el.querySelector('.pf-cover-save');
+    const fileIn = el.querySelector('.pf-cover-file');
+    const dirty = () => JSON.stringify(items) !== JSON.stringify(original);
+    const cssUrl = (s) => encodeURI(s).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
+
+    const render = () => {
+      saveBtn.disabled = busy || !dirty();
+      saveBtn.textContent = busy ? 'جارٍ…' : 'حفظ';
+      let html = '';
+      for (let i = 0; i < PF_COVER_MAX; i++) {
+        if (i < items.length) {
+          html += `<div class="pf-cv-tile filled" data-i="${i}" style="background-image:url('${cssUrl(items[i])}')">`
+            + `${i === 0 ? '<span class="pf-cv-tag">الغلاف</span>' : ''}`
+            + `<button type="button" class="pf-cv-x" data-x="${i}" aria-label="حذف">✕</button></div>`;
+        } else {
+          html += `<button type="button" class="pf-cv-tile empty" data-add="1" aria-label="إضافة صورة"><span class="pf-cv-plus">+</span></button>`;
+        }
+      }
+      grid.innerHTML = html;
+    };
+
+    // حذف صورة / إضافة صورة (بالنقر على خانة فارغة)
+    grid.addEventListener('click', (e) => {
+      const x = e.target.closest('[data-x]');
+      if (x) { items.splice(+x.dataset.x, 1); render(); return; }
+      if (e.target.closest('[data-add]') && items.length < PF_COVER_MAX && !busy) fileIn.click();
+    });
+
+    // ترتيب الصور بالسحب (مؤشر واحد يعمل مع اللمس والفأرة)
+    grid.addEventListener('pointerdown', (e) => {
+      const tile = e.target.closest('.pf-cv-tile.filled');
+      if (!tile || e.target.closest('.pf-cv-x') || busy) return;
+      drag = { from: +tile.dataset.i };
+      grid.setPointerCapture(e.pointerId);
+      tile.classList.add('dragging');
+    });
+    grid.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const t = under && under.closest && under.closest('.pf-cv-tile.filled');
+      if (!t) return;
+      const to = +t.dataset.i;
+      if (to === drag.from || to >= items.length) return;
+      const [m] = items.splice(drag.from, 1);
+      items.splice(to, 0, m);
+      drag.from = to;
+      render();
+      const moved = grid.querySelector(`[data-i="${to}"]`);
+      if (moved) moved.classList.add('dragging');
+    });
+    const endDrag = () => { if (drag) { drag = null; render(); } };
+    grid.addEventListener('pointerup', endDrag);
+    grid.addEventListener('pointercancel', endDrag);
+
+    fileIn.onchange = async () => {
+      const f = fileIn.files && fileIn.files[0];
+      fileIn.value = '';
+      if (!f) return;
+      if (!/^image\//.test(f.type)) { showToast('اختر ملف صورة'); return; }
+      if (items.length >= PF_COVER_MAX) return;
+      busy = true; render(); showToast('جارٍ رفع الصورة…');
+      try {
+        const fd = new FormData();
+        fd.append('file', f);
+        const r = await fetch('/api/upload', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (!r.ok || !d.url) throw new Error(d.error || 'upload failed');
+        items.push(d.url);
+      } catch (err) {
+        console.error('cover upload error:', err);
+        showToast('تعذر رفع الصورة');
+      }
+      busy = false; render();
+    };
+
+    saveBtn.onclick = async () => {
+      if (busy || !dirty()) return;
+      busy = true; render();
+      try {
+        const r = await fetch('/api/users/covers', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+          body: JSON.stringify({ images: items })
+        });
+        const d = await r.json();
+        if (!r.ok || !d.success) throw new Error(d.error || 'save failed');
+        state.currentUser = d.user;
+        localStorage.setItem('soulchill_user', JSON.stringify(d.user));
+        showToast('تم حفظ الخلفية ✨');
+        el.remove();
+        pfOpenProfilePage(state.currentUser, 'profile');
+      } catch (err) {
+        console.error('cover save error:', err);
+        showToast('تعذر حفظ الخلفية');
+        busy = false; render();
+      }
+    };
+
+    render();
   }
 
   // ---------- الإعدادات (الترس) ----------
