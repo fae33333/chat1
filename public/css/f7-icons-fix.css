@@ -1,0 +1,71 @@
+/* ===== Framework7 Icons — تنسيق الأيقونات المستبدلة ===== */
+.f7-icons.f7-emo {
+  font-size: 1.15em;
+  width: auto;
+  height: auto;
+  line-height: 1;
+  vertical-align: -0.14em;
+  display: inline-block;
+  font-style: normal;
+}
+/* أيقونة وحيدة داخل زر/حاوية: توسيط كامل */
+.f7-icons.f7-emo.f7-solo { font-size: 1.25em; vertical-align: middle; }
+
+/* ألوان دلالية بدل ألوان الإيموجي */
+.f7-icons[data-c="red"]    { color: #ef4444; }
+.f7-icons[data-c="pink"]   { color: #ff4fa3; }
+.f7-icons[data-c="heart"]  { color: #ff3d5a; }
+.f7-icons[data-c="purple"] { color: #a855f7; }
+.f7-icons[data-c="blue"]   { color: #3b82f6; }
+.f7-icons[data-c="cyan"]   { color: #38bdf8; }
+.f7-icons[data-c="green"]  { color: #22c55e; }
+.f7-icons[data-c="gold"]   { color: #fbbf24; }
+.f7-icons[data-c="spark"]  { color: #fcd34d; }
+.f7-icons[data-c="orange"] { color: #fb923c; }
+.f7-icons[data-c="amber"]  { color: #f59e0b; }
+
+/* أيقونات الـ SVG المستبدلة بالأيقونات الجاهزة */
+.f7-icons.f7-ui { font-size: 22px; line-height: 1; display: inline-block; vertical-align: middle; }
+.f7-icons.f7-ui.sm { font-size: 16px; }
+.f7-icons.f7-ui.xs { font-size: 13px; }
+.f7-icons.f7-ui.lg { font-size: 26px; }
+
+/* محتوى الـ ::before / ::after */
+.f7-pseudo::after, .f7-pseudo::before { font-family: 'Framework7 Icons'; font-style: normal; }
+
+/* ===== أحجام الأيقونات داخل المراسلة الخاصة (كانت تُضبط على svg) ===== */
+.dm-new .dm-head-btn i.f7-icons { font-size: 22px; }
+.dm-new .dm-emoji-btn i.f7-icons { font-size: 22px; }
+.dm-new .dm-tool i.f7-icons { font-size: 24px; }
+.dm-plus-cell i.f7-icons { font-size: 26px; }
+.dm-call-btn i.f7-icons { font-size: 28px; }
+
+/* ===== أحجام الأيقونات داخل الغرفة (room-video) ===== */
+.rv-f7 { font-size: 20px; line-height: 1; color: inherit; }
+.rv-top-btn i.f7-icons { font-size: 16px; }
+.rv-ctl i.f7-icons { font-size: 22px; color: #fff; }
+.rv-act-grid .rv-ctl i.f7-icons { font-size: 24px; }
+.rv-seat-opt i.f7-icons { font-size: 24px; color: #fff; }
+.rv-seat-opt .rv-lk i.f7-icons { font-size: 11px; }
+.rv-mini .rv-mini-x i.f7-icons { font-size: 11px; }
+.rv-ent-x i.f7-icons { font-size: 20px; }
+.rv-ms-btn i.f7-icons { font-size: 21px; }
+.rv-ms-pill i.f7-icons { font-size: 13px; }
+.rv-ms-back i.f7-icons { font-size: 19px; }
+.rv-ms-state i.f7-icons { font-size: 12px; }
+.rv-ms-del i.f7-icons { font-size: 16px; }
+.rv-ms-plus i.f7-icons { font-size: 12px; }
+.rv-mini-music-pause i.f7-icons { font-size: 11px; }
+.rv-vol-ic i.f7-icons { font-size: 22px; }
+.rv-exit-panel .rv-x i.f7-icons { font-size: 17px; }
+.rv-exit-panel .rv-ctl i.f7-icons.rv-cf { font-size: 30px; display: block; }
+.rv-mp-ic i.f7-icons, [data-mp] i.f7-icons { font-size: 24px; }
+.rv-mp-play i.f7-icons { font-size: 30px; }
+.rv-back i.f7-icons, .rv-search i.f7-icons { font-size: 18px; color: #fff; }
+
+/* ===== أزرار الشريط العلوي والتنقل السفلي ===== */
+.rtb-btn i.f7-icons { font-size: 22px; }
+.nav-tab-item .tab-icon i.f7-icons { font-size: 26px; }
+.header-action-btn i.f7-icons { font-size: 20px; }
+.notif-bell-btn i.f7-icons { font-size: 22px; }
+.currency-badge i.f7-icons { font-size: 16px; }

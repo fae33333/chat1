@@ -1,0 +1,13 @@
+# Local secrets and environment configuration
+.env
+cookies.txt
+bin/cookies.txt
+
+# Generated YouTube audio and download cache
+/cache/yt/
+/public/uploads/.ytm-tmp-*/
+/public/uploads/ytm-*.mp3
+/public/uploads/ytm-*.m4a
+/public/uploads/ytm-*.webm
+/public/uploads/ytm-*.opus
+/public/uploads/ytm-*.mp4
