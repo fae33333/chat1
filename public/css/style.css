@@ -6617,3 +6617,14 @@ video.seamless-room-entry-gif { background: transparent; }
   width: 28px; height: 28px; flex-basis: 28px; border-radius: 50%; margin-inline-start: -6px;
   display: inline-flex; align-items: center; justify-content: center; line-height: 1;
 }
+
+/* زر «+» العائم لنشر منشور في صفحة الملف الشخصي (تبويب المنشورات) */
+.pf-post-fab {
+  position: absolute; left: 18px; bottom: 22px; z-index: 6;
+  width: 54px; height: 54px; border-radius: 50%; border: 0;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  color: #fff; font-size: 34px; line-height: 1; font-weight: 300;
+  box-shadow: 0 8px 22px rgba(124, 58, 237, .55);
+  display: grid; place-items: center; cursor: pointer;
+}
+.pf-post-fab:active { transform: scale(.94); }

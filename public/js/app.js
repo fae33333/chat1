@@ -9677,7 +9677,9 @@
     return data.url;
   }
 
-  function showCreateMomentModal() {
+  // opts.types: أنواع مسموحة فقط (مثلاً من صفحة الملف الشخصي: يوتيوب/صورة/فيديو)
+  // opts.onPosted: يُستدعى بعد نجاح النشر
+  function showCreateMomentModal(opts = {}) {
     if (!requireAuth()) return;
     const presetImages = [
       'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80',
@@ -9694,12 +9696,15 @@
     document.body.appendChild(modal);
 
     const YT_ICON = '<span class="mc-yt-badge"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#FF0000"/><path fill="#fff" d="M10 15.5l6-3.5-6-3.5v7z"/></svg></span>';
-    const TYPES = [
+    const ALL_TYPES = [
       { id: 'text_image', icon: '✍️', title: 'كتابة مع صورة', sub: 'نص مع صورة مرفقة' },
       { id: 'image', icon: '🖼️', title: 'صورة فقط', sub: 'بدون نص' },
       { id: 'video', icon: '🎬', title: 'مقطع فيديو', sub: 'ارفع فيديو من جهازك' },
       { id: 'youtube', icon: YT_ICON, title: 'يوتيوب', sub: 'ابحث واختر مقطعاً' }
     ];
+    const TYPES = Array.isArray(opts.types) && opts.types.length
+      ? ALL_TYPES.filter(t => opts.types.includes(t.id))
+      : ALL_TYPES;
 
     const close = () => modal.remove();
     modal.onclick = (e) => { if (e.target === modal) close(); };
@@ -9993,6 +9998,7 @@
           if (data.success) {
             close();
             showToast('تم نشر لحظتك بنجاح! ✨');
+            if (typeof opts.onPosted === 'function') opts.onPosted(data);
           } else {
             showToast(data.error || 'تعذر النشر');
           }
@@ -10557,7 +10563,28 @@
     const tabsDef = () => [['profile', 'الملف الشخصي'], ['rel', 'علاقة'], ['posts', `المنشورات${st.posts ? ' · ' + st.posts.length : ''}`]];
     const tabContent = el.querySelector('.pf-tab-content');
 
+    // زر «+» العائم لنشر منشور (يظهر في تبويب المنشورات لصاحب الحساب فقط)
+    const postFab = isSelf ? document.createElement('button') : null;
+    if (postFab) {
+      postFab.type = 'button';
+      postFab.className = 'pf-post-fab';
+      postFab.setAttribute('aria-label', 'نشر منشور');
+      postFab.textContent = '+';
+      el.appendChild(postFab);
+      postFab.onclick = () => showCreateMomentModal({
+        types: ['youtube', 'image', 'video'],
+        onPosted: () => loadPosts()
+      });
+    }
+
+    const loadPosts = () => fetch('/api/moments', { headers: followHeaders() }).then(r => r.ok ? r.json() : []).then(list => {
+      if (!el.isConnected) return;
+      st.posts = (Array.isArray(list) ? list : []).filter(m => m.user_id === u.id);
+      renderTab();
+    }).catch(() => { st.posts = st.posts || []; renderTab(); });
+
     const renderTab = () => {
+      if (postFab) postFab.style.display = activeTab === 'posts' ? '' : 'none';
       el.querySelector('.pf-tabs').innerHTML = tabsDef().map(t => `<button type="button" class="pf-tab ${t[0] === activeTab ? 'active' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('');
       el.querySelectorAll('.pf-tabs .pf-tab').forEach(b => { b.onclick = () => { activeTab = b.dataset.t; renderTab(); }; });
       if (activeTab === 'profile') {
@@ -10652,11 +10679,7 @@
       st.gifts = d || { summary: [], totalCount: 0 };
       if (activeTab === 'profile') renderTab();
     }).catch(() => { st.gifts = { summary: [], totalCount: 0 }; });
-    fetch('/api/moments', { headers: followHeaders() }).then(r => r.ok ? r.json() : []).then(list => {
-      if (!el.isConnected) return;
-      st.posts = (Array.isArray(list) ? list : []).filter(m => m.user_id === u.id);
-      renderTab();
-    }).catch(() => { st.posts = []; renderTab(); });
+    loadPosts();
   }
 
   // ---------- الإعدادات (الترس) ----------
