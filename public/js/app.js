@@ -13960,15 +13960,77 @@
       (accountStatus === 'existing' ? passInput : nickInput).focus();
     }
 
-    // زر Google: ينقل المستخدم إلى شاشة «اختيار حساب» الكاملة من Google ثم يعود إلى التطبيق
+    // زر Google الرسمي: يفتح شاشة «اختيار حساب» الرسمية من Google (نفس شاشة التطبيقات الرسمية)
+    // بعد اختيار الحساب يعود بـ ID Token نتحقق منه في الخادم ونمنح تذكرة لإكمال الاسم/العمر/كلمة المرور
+    function getGsi() {
+      const g = window.google;
+      return (g && g.accounts && g.accounts.id) ? g.accounts.id : null;
+    }
+
+    // بديل احتياطي إن تعذر تحميل سكربت Google الرسمي: إعادة التوجيه الكاملة
+    function renderGoogleRedirectFallback() {
+      const holder = $('google-btn-render');
+      holder.innerHTML = `<button type="button" class="google-official-primary-btn" id="btn-google-redirect" style="width: 100%;">${googleG}<span>التسجيل بحساب Google</span></button>`;
+      holder.querySelector('#btn-google-redirect').onclick = () => { window.location.href = '/api/auth/google/start'; };
+      $('google-btn-slot').style.display = 'block';
+    }
+
+    // نجاح اختيار الحساب من شاشة Google الرسمية
+    async function onGoogleCredential(response) {
+      try {
+        const { ok, data } = await postJSON('/api/auth/google', { credential: response && response.credential });
+        if (ok && data.success && data.ticket) {
+          enterSetup(data); // شاشة الاسم المستعار + العمر + كلمة المرور
+        } else if (data.code === 'email_registered') {
+          showToast(data.error);
+          show('nickname');
+          $('auth-login-nick').focus();
+        } else {
+          showToast(data.error || 'تعذّر التحقق من حساب Google، حاول مجدداً');
+        }
+      } catch (err) {
+        console.error('Google credential error:', err);
+        showToast('حدث خطأ أثناء الاتصال بالخادم');
+      }
+    }
+
     async function initGoogleButton() {
       try {
         const cfg = await (await fetch('/api/auth/google-config')).json();
-        if (!cfg || !cfg.enabled) return; // غير مفعّل: يبقى التسجيل برمز Gmail فقط
+        if (!cfg || !cfg.enabled || !cfg.clientId) return; // غير مفعّل: يبقى التسجيل برمز Gmail فقط
+
+        // ننتظر اكتمال تحميل سكربت Google الرسمي (يُحمّل async في index.html)
+        let gsi = getGsi();
+        const deadline = Date.now() + 6000;
+        while (!gsi && Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 150));
+          gsi = getGsi();
+        }
+        if (!gsi) { renderGoogleRedirectFallback(); return; }
+
+        try {
+          gsi.initialize({
+            client_id: cfg.clientId,
+            callback: onGoogleCredential,
+            locale: 'ar',        // واجهة عربية مثل الصورة
+            auto_select: false   // يعرض دائماً قائمة «اختيار حساب»
+          });
+        } catch (e) { renderGoogleRedirectFallback(); return; }
+
         const holder = $('google-btn-render');
-        holder.innerHTML = `<button type="button" class="google-official-primary-btn" id="btn-google-redirect" style="width: 100%;">${googleG}<span>التسجيل بحساب Google</span></button>`;
-        holder.querySelector('#btn-google-redirect').onclick = () => { window.location.href = '/api/auth/google/start'; };
+        holder.innerHTML = '';
+        // نظهر الحاوية قبل الرسم كي يملأ الزر الرسمي العرض المتاح
         $('google-btn-slot').style.display = 'block';
+        try {
+          gsi.renderButton(holder, {
+            type: 'standard',
+            size: 'large',
+            theme: 'outline',
+            text: 'continue_with',
+            shape: 'pill',
+            logo_alignment: 'center'
+          });
+        } catch (e) { renderGoogleRedirectFallback(); }
       } catch (e) { /* نكمل بدون زر Google */ }
     }
 

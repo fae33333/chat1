@@ -11,3 +11,6 @@ bin/cookies.txt
 /public/uploads/ytm-*.webm
 /public/uploads/ytm-*.opus
 /public/uploads/ytm-*.mp4
+
+# Dependencies (kept out of the repo)
+node_modules/
