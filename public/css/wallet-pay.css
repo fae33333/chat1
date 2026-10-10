@@ -1,0 +1,55 @@
+/* المحفظة: طرق الشحن (Visa + وكلاء الشحن) — مطابق لتصميم الفيديو */
+.pf-wallet .pf-region-chip { border: 0; cursor: pointer; font-family: inherit; }
+
+/* قائمة قابلة للطي */
+.pf-acc { margin: 0 14px 10px; border-radius: 16px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.05); position: relative; }
+.pf-acc-head { width: 100%; display: flex; align-items: center; gap: 10px; background: none; border: 0; color: #fff; padding: 16px 14px 12px; cursor: pointer; font-family: inherit; text-align: right; }
+.pf-acc-head b { font-size: 14px; font-weight: 800; flex: 1; }
+.pf-acc-head .off { position: absolute; top: -9px; right: 10px; background: #3a3846; color: #cfcde0; font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 6px 6px 0 0; }
+.pf-acc-head .chev, .pf-acc-link .chev { display: inline-block; color: #9a97ad; font-size: 20px; line-height: 1; transform: rotate(90deg); transition: transform .2s; }
+.pf-acc.open .pf-acc-head .chev { transform: rotate(-90deg); }
+.pf-acc-body { display: none; padding: 0 12px 6px; }
+.pf-acc.open .pf-acc-body { display: block; }
+.pf-acc .pf-pack { padding: 10px 4px; }
+.pf-brands { display: inline-flex; gap: 4px; }
+.pf-brands i { font-style: normal; font-size: 8px; font-weight: 900; color: #fff; padding: 3px 5px; border-radius: 4px; letter-spacing: .3px; }
+
+.pf-acc-link { width: calc(100% - 28px); margin: 0 14px 10px; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.05); border-radius: 16px; color: #fff; padding: 15px 14px; cursor: pointer; font-family: inherit; text-align: right; }
+.pf-acc-link b { flex: 1; font-size: 14px; font-weight: 800; }
+.pf-acc-link .chev { transform: rotate(180deg); }
+.pf-acc-ic { width: 22px; height: 22px; display: inline-grid; place-items: center; }
+.pf-acc-ic svg { width: 100%; height: 100%; }
+
+.pf-fx-note { margin: 12px 18px 0; font-size: 10.5px; line-height: 1.7; color: #7d7a90; }
+
+/* صفحة وكلاء الشحن */
+.pf-agents .pf-agents-region { padding: 6px 18px 10px; font-size: 12px; color: #9a97ad; }
+.pf-agents-list { padding: 0 14px 24px; }
+.pf-agents-empty { text-align: center; color: #8d8aa0; font-size: 13px; padding: 60px 20px; }
+.pf-agent { display: flex; align-items: center; gap: 12px; padding: 12px 4px; }
+.pf-agent-av { position: relative; width: 64px; height: 64px; flex: 0 0 64px; }
+.pf-agent-av img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.pf-online { position: absolute; bottom: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #22c55e; border: 2px solid #0b0a12; }
+.pf-agent-main { flex: 1; min-width: 0; text-align: right; }
+.pf-agent-name { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 14px; }
+.pf-agent-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-verified { font-style: normal; flex: 0 0 16px; width: 16px; height: 16px; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 10px; display: grid; place-items: center; }
+.pf-agent-sub { font-size: 11px; color: #8d8aa0; margin-top: 2px; }
+.pf-agent-methods { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.pf-mb { font-size: 9px; font-weight: 800; color: #fff; padding: 3px 7px; border-radius: 5px; }
+.pf-agent-btn { border: 0; border-radius: 999px; padding: 8px 20px; background: linear-gradient(135deg,#8b58ff,#6a3bea); color: #fff; font-weight: 800; font-size: 13px; cursor: pointer; font-family: inherit; flex: 0 0 auto; }
+
+/* نافذة اختيار المنطقة */
+.pf-sheet-ov { position: absolute; inset: 0; z-index: 400; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; direction: rtl; font-family: 'Tajawal','Outfit',sans-serif; animation: pfFade .18s ease; }
+@keyframes pfFade { from { opacity: 0; } to { opacity: 1; } }
+.pf-sheet { width: 100%; background: #14121d; border-radius: 22px 22px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); position: relative; color: #fff; animation: pfUp .22s ease; }
+@keyframes pfUp { from { transform: translateY(40px); } to { transform: none; } }
+.pf-sheet-x { position: absolute; top: 14px; right: 16px; background: none; border: 0; color: #cfcde0; font-size: 18px; cursor: pointer; }
+.pf-sheet-title { text-align: center; font-weight: 800; font-size: 15px; margin-bottom: 8px; }
+.pf-wheel { height: calc(var(--h) * 7); overflow-y: auto; scroll-snap-type: y mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent); }
+.pf-wheel::-webkit-scrollbar { display: none; }
+.pf-wheel-pad { height: calc(var(--h) * 3); }
+.pf-wheel-item { height: var(--h); display: grid; place-items: center; scroll-snap-align: center; font-size: 16px; color: #6d6a80; cursor: pointer; transition: color .15s, font-size .15s; }
+.pf-wheel-item[data-d="0"] { color: #fff; font-weight: 800; font-size: 18px; }
+.pf-wheel-item[data-d="1"] { color: #a9a6bd; }
+.pf-sheet-save { width: 100%; margin-top: 12px; border: 0; border-radius: 999px; padding: 14px 0; font-size: 15px; font-weight: 800; color: #fff; background: linear-gradient(135deg,#8b58ff,#6a3bea); cursor: pointer; font-family: inherit; }

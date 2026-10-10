@@ -1,0 +1,18 @@
+/* نافذة شراء VIP */
+.vip-backdrop { position: fixed; inset: 0; z-index: 10050; background: rgba(0,0,0,.6); display: flex; align-items: flex-end; justify-content: center; }
+.vip-sheet { width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; background: #17131f; color: #fff; border-radius: 20px 20px 0 0; padding: 14px 16px calc(18px + env(safe-area-inset-bottom, 0px)); direction: rtl; }
+.vip-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.vip-head h3 { margin: 0; font-size: 17px; }
+.vip-close { background: rgba(255,255,255,.1); border: 0; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
+.vip-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 12px; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); font-size: 13px; margin-bottom: 12px; }
+.vip-status b { color: #fbbf24; }
+.vip-bal { font-weight: 800; white-space: nowrap; }
+.vip-plans { display: flex; flex-direction: column; gap: 8px; }
+.vip-plan { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
+.vip-plan.on { border-color: #fbbf24; }
+.vip-plan-info b { display: block; font-size: 15px; }
+.vip-plan-info small { color: rgba(255,255,255,.55); }
+.vip-buy { border: 0; border-radius: 22px; padding: 9px 16px; font-weight: 800; font-size: 13px; color: #1a1200; background: linear-gradient(135deg, #fde68a, #f59e0b); cursor: pointer; }
+.vip-buy:disabled { opacity: .45; cursor: not-allowed; }
+.vip-empty { text-align: center; color: rgba(255,255,255,.55); }
+@media (min-width: 640px) { .vip-backdrop { align-items: center; } .vip-sheet { border-radius: 20px; } }

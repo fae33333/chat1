@@ -1,0 +1,2756 @@
+/* SoulChill — Room Video Skin: الغرفة + لوحات التحكم مطابقة لفيديو "تحكم ادمن الغرفة" */
+#live-voice-room-modal {
+    background: #07040d !important;
+}
+
+#live-voice-room-modal .live-room-container {
+    background: #0b0814 !important;
+    overflow: hidden;
+    isolation: isolate;
+    --rv-accent: #6d4aff;
+    --rv-sheet: #0e0b15;
+    --rv-sheet2: #1a1624;
+    --rv-line: rgba(255,255,255,.08);
+}
+
+/* طبقة الخلفية (تتغير من «الخلفية») */
+.rv-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    transition: background .4s;
+}
+
+.rv-bg::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,.25) 0%, rgba(0,0,0,.05) 35%, rgba(0,0,0,.55) 100%);
+}
+
+#live-voice-room-modal .live-room-header, #live-voice-room-modal .room-stage-section, #live-voice-room-modal .room-audience-strip-container, #live-voice-room-modal .room-chat-stream, #live-voice-room-modal .room-bottom-controls {
+    position: relative;
+    z-index: 1;
+}
+
+/* ---------- الشريط العلوي ---------- */
+#live-voice-room-modal .live-room-header {
+    direction: ltr;
+    background: transparent;
+    border: 0;
+    backdrop-filter: none;
+    padding: 8px 10px 4px;
+    gap: 8px;
+}
+
+#live-voice-room-modal .live-room-actions {
+    order: 1;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+#live-voice-room-modal .live-room-title-box {
+    order: 2;
+    direction: rtl;
+    text-align: right;
+    align-items: flex-start;
+}
+
+#live-voice-room-modal .live-room-host-avatar {
+    order: 3;
+    width: 34px;
+    height: 34px;
+    border: 2px solid rgba(255,255,255,.7);
+}
+
+#live-voice-room-modal .live-room-mic-icon {
+    display: none;
+}
+
+#live-voice-room-modal .live-room-name {
+    font-size: 12px;
+    justify-content: flex-start;
+}
+
+#live-voice-room-modal .live-room-id-tag {
+    font-size: 9.5px;
+    opacity: .75;
+}
+
+#live-voice-room-modal .close-room-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    padding: 0;
+    font-size: 0;
+    background: rgba(255,255,255,.1);
+    border: 0;
+    color: #fff;
+    position: relative;
+}
+
+#live-voice-room-modal .close-room-btn::before {
+    content: "‹";
+    font-size: 22px;
+    line-height: 26px;
+    display: block;
+    text-align: center;
+}
+
+.rv-top-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(255,255,255,.1);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    padding: 0;
+}
+
+.rv-top-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.rv-top-btn:active {
+    transform: scale(.92);
+}
+
+#live-voice-room-modal .host-admin-toolbar {
+    display: none !important;
+}
+
+#live-voice-room-modal .rp-gift-banner {
+    top: 50px;
+}
+
+/* ---------- المسرح: المضيف + المقاعد ---------- */
+#live-voice-room-modal .room-stage-section {
+    padding: 6px 8px 2px;
+    gap: 8px;
+}
+
+#live-voice-room-modal .host-avatar-box {
+    width: 52px;
+    height: 52px;
+}
+
+#live-voice-room-modal .host-avatar-box img {
+    border: 2px solid rgba(255,255,255,.85);
+    box-shadow: 0 0 14px rgba(160,120,255,.45);
+}
+
+#live-voice-room-modal .host-crown-badge {
+    display: none;
+}
+
+#live-voice-room-modal .host-name-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    margin-top: 3px;
+    color: #fff;
+    text-shadow: 0 1px 3px #000;
+}
+
+#live-voice-room-modal .guest-seats-grid {
+    grid-template-columns: repeat(var(--rv-cols, 4), 1fr);
+    gap: 10px 4px;
+    max-width: 360px;
+}
+
+#live-voice-room-modal .seat-avatar-container {
+    width: 44px;
+    height: 44px;
+    background: rgba(255,255,255,.1);
+    border: 0;
+    box-shadow: none;
+    backdrop-filter: blur(3px);
+}
+
+#live-voice-room-modal .stage-seat.occupied .seat-avatar-container {
+    background: transparent;
+}
+
+#live-voice-room-modal .seat-avatar-container img {
+    border: 2px solid rgba(255,255,255,.85);
+}
+
+#live-voice-room-modal .seat-number-badge {
+    display: none;
+}
+
+#live-voice-room-modal .seat-empty-plus, #live-voice-room-modal .host-avatar-box .seat-empty-plus {
+    font-size: 0 !important;
+    color: transparent !important;
+    width: 24px;
+    height: 24px;
+    display: block;
+    opacity: .75;
+    background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 13l2.5-7.5A2 2 0 017.4 4h9.2a2 2 0 011.9 1.5L21 13v5a2 2 0 01-2 2H5a2 2 0 01-2-2z'/%3E%3Cpath d='M3 13h5l1.2 2.5h5.6L16 13h5'/%3E%3C/svg%3E");
+}
+
+#live-voice-room-modal .stage-seat.locked .seat-empty-plus {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='2'/%3E%3Cpath d='M8 11V8a4 4 0 018 0v3'/%3E%3C/svg%3E");
+}
+
+#live-voice-room-modal .host-avatar-box.empty-host-seat {
+    width: 52px !important;
+    height: 52px !important;
+    border: 0 !important;
+    background: rgba(255,255,255,.1) !important;
+    border-radius: 50%;
+}
+
+#live-voice-room-modal .stage-seat .seat-user-name {
+    font-size: 9.5px;
+    color: rgba(255,255,255,.85);
+    text-shadow: 0 1px 3px #000;
+    max-width: 62px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#live-voice-room-modal .stage-seat:not(.occupied) .seat-user-name {
+    display: none;
+}
+
+#live-voice-room-modal .stage-seat:not(.occupied)::after {
+    content: "رقم " attr(data-seat-idx);
+    font-size: 9.5px;
+    color: rgba(255,255,255,.6);
+    margin-top: 3px;
+}
+
+#live-voice-room-modal .stage-seat.locked:not(.occupied)::after {
+    content: "مقعد مقفل";
+}
+
+#live-voice-room-modal .host-name-label[style*="fbbf24"] {
+    color: rgba(255,255,255,.6) !important;
+}
+
+/* ثيمات المقاعد */
+#live-voice-room-modal.rv-theme-neon .seat-avatar-container img {
+    border-color: #22d3ee;
+    box-shadow: 0 0 10px #22d3ee99;
+}
+
+#live-voice-room-modal.rv-theme-gold .seat-avatar-container img {
+    border-color: #f5c451;
+    box-shadow: 0 0 10px #f5c45199;
+}
+
+/* نجوم على المقاعد */
+#live-voice-room-modal.rv-stars-on .stage-seat.occupied .seat-avatar-container::after {
+    content: "★";
+    position: absolute;
+    top: -4px;
+    inset-inline-start: -3px;
+    font-size: 12px;
+    color: #fbbf24;
+    text-shadow: 0 0 4px #000;
+    z-index: 3;
+}
+
+/* ---------- شريط المتواجدين (مطابق للصورة: شريط داكن + مربعان: أيقونة وعدد) ---------- */
+#live-voice-room-modal .room-audience-strip-container {
+    width: calc(100% - 12px);
+    max-width: none;
+    box-sizing: border-box;
+    margin: 6px 6px 4px;
+    padding: 5px 7px;
+    min-height: 38px;
+    background: rgba(0,0,0,.26) !important;
+    border: 0 !important;
+    border-radius: 10px;
+    backdrop-filter: none;
+    direction: ltr;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 7px;
+}
+
+#live-voice-room-modal .room-audience-scroll-track {
+    direction: rtl;
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-start;
+}
+
+#live-voice-room-modal .room-people-btn, #live-voice-room-modal .audience-strip-badge-pill {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 28px;
+    min-width: 0;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-sizing: border-box;
+    display: grid !important;
+    place-items: center;
+    border: 0 !important;
+    border-radius: 9px !important;
+    background: rgba(255,255,255,.13) !important;
+    color: #fff;
+    cursor: pointer;
+}
+
+#live-voice-room-modal .room-people-btn {
+    order: -2;
+    font-size: 0;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-size: 18px 18px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='white' d='M3 5.5A1.5 1.5 0 014.5 4h15A1.5 1.5 0 0121 5.5v9a1.5 1.5 0 01-1.5 1.5H9l-4 4v-4h-.5A1.5 1.5 0 013 14.5z'/%3E%3Cpath fill='%235b1a8c' d='M11 4h2v12h-2z'/%3E%3Cpath fill='%235b1a8c' d='M3 8.6h18v1.7H3z'/%3E%3Cpath fill='none' stroke='%235b1a8c' stroke-width='1.4' stroke-linejoin='round' d='M12 8.4C10.6 5.2 7.6 5.6 8.3 7.2c.5 1 2.2 1.1 3.7 1.2zM12 8.4c1.4-3.2 4.4-2.8 3.7-1.2-.5 1-2.2 1.1-3.7 1.2z'/%3E%3C/svg%3E") !important;
+}
+
+#live-voice-room-modal .room-people-btn .room-people-icon, #live-voice-room-modal .room-people-btn b, #live-voice-room-modal .audience-person-icon {
+    display: none !important;
+}
+
+#live-voice-room-modal .audience-strip-badge-pill {
+    order: -1;
+}
+
+#live-voice-room-modal .audience-count-pill {
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+}
+
+/* ---------- منطقة الدردشة ---------- */
+#live-voice-room-modal .room-chat-stream {
+    padding: 6px 12px;
+    gap: 8px;
+    align-items: stretch;
+}
+
+#live-voice-room-modal .room-chat-bubble {
+    background: rgba(14,11,20,.62);
+    border: 0;
+    border-radius: 12px;
+    padding: 9px 12px;
+    min-width: 0;
+    max-width: 100%;
+    font-size: 11px;
+    line-height: 1.7;
+    color: rgba(255,255,255,.82);
+    backdrop-filter: blur(4px);
+    box-shadow: none;
+}
+
+#live-voice-room-modal .room-chat-bubble.rv-tip {
+    color: rgba(255,255,255,.7);
+}
+
+#live-voice-room-modal.rv-hide-sys .room-chat-bubble.system-notice, #live-voice-room-modal.rv-hide-sys .room-admin-system-notice, #live-voice-room-modal.rv-hide-sys .room-chat-bubble.gift-notice, #live-voice-room-modal.rv-hide-sys .room-chat-bubble.rv-tip {
+    display: none !important;
+}
+
+#live-voice-room-modal.rv-hide-all .room-chat-stream {
+    visibility: hidden;
+}
+
+#live-voice-room-modal.rv-hide-emoji .room-chat-emoji-btn {
+    opacity: .25;
+    pointer-events: none;
+}
+
+/* ---------- الشريط السفلي ---------- */
+#live-voice-room-modal .room-bottom-controls {
+    direction: ltr;
+    background: linear-gradient(180deg, transparent, rgba(7,4,13,.9) 40%);
+    border: 0;
+    padding: 6px 10px 10px;
+    gap: 2px;
+}
+
+#live-voice-room-modal .room-bottom-controls .room-tool-btn {
+    width: 34px;
+    height: 34px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+#live-voice-room-modal .room-bottom-controls .room-tool-btn:hover {
+    background: rgba(255,255,255,.08);
+    transform: none;
+}
+
+#live-voice-room-modal #room-open-gifts-btn {
+    order: 1;
+}
+
+#live-voice-room-modal #room-inroom-messages-btn {
+    order: 2;
+}
+
+#live-voice-room-modal .rv-menu-btn {
+    order: 3;
+}
+
+#live-voice-room-modal #room-mic-toggle-btn {
+    order: 4;
+}
+
+#live-voice-room-modal .room-chat-input-wrapper {
+    order: 5;
+    direction: rtl;
+    flex: 1;
+    min-width: 100px;
+    height: 34px;
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 18px;
+    padding: 2px 8px 2px 4px;
+    margin-inline-start: 4px; }
+
+#live-voice-room-modal .room-chat-send-btn {
+    display: none;
+}
+
+#live-voice-room-modal .room-chat-input {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+}
+
+#live-voice-room-modal .room-chat-input::placeholder {
+    color: rgba(255,255,255,.55);
+}
+
+#live-voice-room-modal #room-open-chest-btn, #live-voice-room-modal #room-accessories-btn {
+    display: none !important;
+}
+
+/* ---------- الطبقة واللوحات ---------- */
+.rv-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 70;
+    display: none;
+    background: rgba(0,0,0,.55);
+}
+
+.rv-layer.on {
+    display: block;
+}
+
+.rv-top-panel {
+    position: absolute;
+    top: 0;
+    inset-inline: 0;
+    background: var(--rv-sheet);
+    color: #fff;
+    border-radius: 0 0 16px 16px;
+    padding: 10px 12px 16px;
+    animation: rvDown .22s ease;
+    direction: rtl;
+}
+
+@keyframes rvDown {
+    from {
+        transform: translateY(-100%);
+    }
+
+    to {
+        transform: none;
+    }
+}
+
+@keyframes rvUp {
+    from {
+        transform: translateY(100%);
+    }
+
+    to {
+        transform: none;
+    }
+}
+
+.rv-tp-head {
+    text-align: center;
+    padding: 4px 0 10px;
+    line-height: 1.5;
+    position: relative;
+}
+
+.rv-tp-head b {
+    display: block;
+    font-size: 14px;
+}
+
+.rv-tp-head small {
+    font-size: 10px;
+    opacity: .75;
+    letter-spacing: .5px;
+}
+
+.rv-x {
+    position: absolute;
+    top: 4px;
+    inset-inline-end: 4px;
+    background: none;
+    border: 0;
+    color: rgba(255,255,255,.6);
+    font-size: 17px;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.rv-tp-sub {
+    font-size: 10px;
+    color: rgba(255,255,255,.5);
+    padding: 0 4px 8px;
+}
+
+.rv-grid5 {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px 2px;
+}
+
+.rv-ctl {
+    background: none;
+    border: 0;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font: 500 9px/1.25 inherit;
+    text-align: center;
+    padding: 0;
+}
+
+.rv-ctl i {
+    /* width: 40px; */
+    /* height: 40px; */
+    border-radius: 50%;
+    background: var(--rv-sheet2);
+    display: grid;
+    place-items: center;
+}
+
+.rv-ctl svg {
+    width: 20px;
+    height: 20px;
+    stroke: #fff;
+    fill: none;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.rv-ctl:active i {
+    transform: scale(.92);
+    background: #2a2438;
+}
+
+.rv-ctl span {
+    max-width: 58px;
+}
+
+.rv-sheet {
+    position: absolute;
+    bottom: 0;
+    inset-inline: 0;
+    max-height: 86%;
+    overflow-y: auto;
+    background: var(--rv-sheet);
+    color: #fff;
+    border-radius: 16px 16px 0 0;
+    padding: 14px 14px 16px;
+    animation: rvUp .22s ease;
+    direction: rtl;
+}
+
+.rv-sheet-title {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 2px 24px 14px;
+}
+
+.rv-sheet.rv-actions {
+    background: #0f0c16;
+    padding-top: 22px;
+}
+
+.rv-act-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px 2px;
+    padding-bottom: 6px;
+}
+
+.rv-act-grid .rv-ctl i {
+    background: transparent;
+    width: 44px;
+    height: 44px;
+}
+
+.rv-act-grid .rv-ctl svg {
+    width: 24px;
+    height: 24px;
+}
+
+.rv-act-grid .rv-ctl {
+    font-size: 10px;
+}
+
+.rv-act-grid .rv-ctl.dis {
+    opacity: .35;
+    pointer-events: none;
+}
+
+.rv-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 4px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.rv-switch {
+    position: relative;
+    width: 38px;
+    height: 22px;
+    flex: none;
+    border-radius: 12px;
+    background: #3a3547;
+    border: 0;
+    cursor: pointer;
+    transition: background .2s;
+    padding: 0;
+}
+
+.rv-switch::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    inset-inline-start: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    transition: inset-inline-start .2s;
+}
+
+.rv-switch.on {
+    background: var(--rv-accent);
+}
+
+.rv-switch.on::after {
+    inset-inline-start: 19px;
+}
+
+.rv-primary {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    border: 0;
+    border-radius: 22px;
+    padding: 12px;
+    font: 700 14px inherit;
+    color: #fff;
+    background: var(--rv-accent);
+    cursor: pointer;
+}
+
+.rv-primary:disabled {
+    background: #3b2f78;
+    color: rgba(255,255,255,.55);
+    cursor: default;
+}
+
+.rv-seg {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.rv-seg button {
+    border: 0;
+    border-radius: 22px;
+    padding: 10px;
+    font: 600 12px inherit;
+    background: #2a2535;
+    color: #fff;
+    cursor: pointer;
+}
+
+.rv-seg button.sel {
+    background: #fff;
+    color: #111;
+}
+
+/* عدد المقاعد */
+.rv-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 22px;
+    font-size: 13px;
+    padding-bottom: 12px;
+}
+
+.rv-tabs b {
+    color: rgba(255,255,255,.5);
+    font-weight: 500;
+    cursor: pointer;
+    position: relative;
+    padding-bottom: 4px;
+}
+
+.rv-tabs b.sel {
+    color: #fff;
+    font-weight: 700;
+}
+
+.rv-tabs b.sel::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 30%;
+    right: 30%;
+    height: 2px;
+    background: #fff;
+    border-radius: 2px;
+}
+
+.rv-back {
+    position: absolute;
+    top: 14px;
+    inset-inline-start: 12px;
+    background: none;
+    border: 0;
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.rv-seat-opts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.rv-seat-opt {
+    position: relative;
+    background: var(--rv-sheet2);
+    border: 1.5px solid transparent;
+    border-radius: 12px;
+    padding: 16px 6px 14px;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font: 500 11px/1.4 inherit;
+    text-align: center;
+}
+
+.rv-seat-opt.sel {
+    border-color: #fff;
+}
+
+.rv-seat-opt svg {
+    width: 24px;
+    height: 24px;
+    stroke: #fff;
+    fill: none;
+    stroke-width: 1.7;
+}
+
+.rv-seat-opt small {
+    font-size: 9px;
+    color: rgba(255,255,255,.55);
+}
+
+.rv-seat-opt .rv-lk {
+    display: inline-flex;
+    vertical-align: middle;
+    margin-inline-start: 3px; }
+
+.rv-seat-opt .rv-lk svg {
+    width: 11px;
+    height: 11px;
+}
+
+.rv-themes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.rv-theme {
+    background: var(--rv-sheet2);
+    border: 1.5px solid transparent;
+    border-radius: 12px;
+    padding: 16px 4px;
+    color: #fff;
+    cursor: pointer;
+    font: 500 11px inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+}
+
+.rv-theme.sel {
+    border-color: #fff;
+}
+
+.rv-theme u {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #444;
+    border: 2px solid #fff;
+    display: block;
+}
+
+.rv-theme[data-t="neon"] u {
+    border-color: #22d3ee;
+    box-shadow: 0 0 8px #22d3ee;
+}
+
+.rv-theme[data-t="gold"] u {
+    border-color: #f5c451;
+    box-shadow: 0 0 8px #f5c451;
+}
+
+/* صفحات كاملة: صورة الغرفة + الخلفية */
+.rv-full {
+    position: absolute;
+    inset: 0;
+    background: #0b0910;
+    color: #fff;
+    overflow-y: auto;
+    padding: 0 16px 90px;
+    animation: rvUp .22s ease;
+    direction: rtl;
+}
+
+.rv-full-title {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 54px 0 14px;
+}
+
+.rv-lbl {
+    font-size: 10.5px;
+    color: rgba(255,255,255,.5);
+    margin: 14px 2px 8px;
+}
+
+.rv-avatar-pick {
+    width: 74px;
+    height: 74px;
+    border-radius: 50%;
+    position: relative;
+    margin: 0 0 0 auto;
+    cursor: pointer;
+}
+
+.rv-avatar-pick img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255,255,255,.2);
+    background: #222;
+}
+
+.rv-avatar-pick em {
+    position: absolute;
+    bottom: 0;
+    inset-inline-start: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #111;
+    border: 1.5px solid #fff;
+    display: grid;
+    place-items: center;
+    font-style: normal;
+    font-size: 11px;
+}
+
+.rv-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #17131f;
+    border: 1px solid var(--rv-line);
+    border-radius: 12px;
+    padding: 0 12px;
+    height: 46px;
+}
+
+.rv-field input {
+    flex: 1;
+    background: none;
+    border: 0;
+    outline: 0;
+    color: #fff;
+    font: 600 13px inherit;
+    text-align: center;
+    min-width: 0;
+}
+
+.rv-field button {
+    background: none;
+    border: 0;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0;
+}
+
+.rv-chips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px 0 6px;
+    scrollbar-width: none;
+}
+
+.rv-chips::-webkit-scrollbar {
+    display: none;
+}
+
+.rv-chip {
+    flex: none;
+    border: 0;
+    border-radius: 20px;
+    padding: 9px 14px;
+    font: 600 11px inherit;
+    background: #1d1827;
+    color: rgba(255,255,255,.85);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.rv-chip.sel {
+    background: #fff;
+    color: #111;
+}
+
+.rv-ta {
+    position: relative;
+    background: #17131f;
+    border: 1px solid var(--rv-line);
+    border-radius: 12px;
+    padding: 10px 12px 22px;
+    min-height: 96px;
+}
+
+.rv-ta textarea {
+    width: 100%;
+    min-height: 60px;
+    background: none;
+    border: 0;
+    outline: 0;
+    resize: none;
+    color: #fff;
+    font: 500 12px/1.6 inherit;
+}
+
+.rv-ta small {
+    position: absolute;
+    bottom: 6px;
+    inset-inline-start: 12px;
+    font-size: 9.5px;
+    color: rgba(255,255,255,.35);
+}
+
+.rv-save-bar {
+    position: sticky;
+    bottom: 0;
+    padding: 12px 0 0;
+    background: linear-gradient(180deg, transparent, #0b0910 40%);
+}
+
+.rv-bg-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0 8px;
+    position: sticky;
+    top: 0;
+    background: #0b0910;
+    z-index: 3;
+}
+
+.rv-bg-head h4 {
+    margin: 0;
+    font-size: 14px;
+    flex: 1;
+    text-align: center;
+}
+
+.rv-pill {
+    border: 0;
+    border-radius: 16px;
+    padding: 6px 16px;
+    background: #6d4aff;
+    color: #fff;
+    font: 700 11px inherit;
+    cursor: pointer;
+}
+
+.rv-bg-head .rv-pill:disabled {
+    background: #3b2f78;
+    opacity: .7;
+}
+
+.rv-bg-tabs {
+    display: flex;
+    justify-content: space-around;
+    padding: 6px 0 10px;
+    font-size: 11.5px;
+    color: rgba(255,255,255,.55);
+    border-bottom: 1px solid var(--rv-line);
+    margin-bottom: 10px;
+}
+
+.rv-bg-tabs b {
+    font-weight: 500;
+    cursor: pointer;
+    padding: 4px 6px 8px;
+    position: relative;
+}
+
+.rv-bg-tabs b.sel {
+    color: #fff;
+    font-weight: 700;
+}
+
+.rv-bg-tabs b.sel::after {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: #fff;
+}
+
+.rv-bg-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.rv-bg-item {
+    aspect-ratio: 9 / 16;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    background-size: cover;
+    background-position: center;
+    position: relative;
+    overflow: hidden;
+    padding: 0;
+    color: #fff;
+}
+
+.rv-bg-item > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.rv-bg-sec {
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255,255,255,.7);
+    padding: 14px 4px 8px;
+    text-align: right;
+}
+
+.rv-bg-item.sel {
+    border-color: #6d4aff;
+    box-shadow: 0 0 0 1px #6d4aff;
+}
+
+.rv-bg-item span {
+    position: absolute;
+    bottom: 0;
+    inset-inline: 0;
+    font-size: 9.5px;
+    padding: 12px 4px 4px;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,.7));
+    text-align: center;
+}
+
+.rv-bg-item.add {
+    background: #17131f;
+    display: grid;
+    place-items: center;
+    font-size: 26px;
+    color: rgba(255,255,255,.7);
+}
+
+.rv-bg-bottom {
+    position: sticky;
+    bottom: 0;
+    padding-top: 10px;
+    background: linear-gradient(180deg, transparent, #0b0910 35%);
+}
+
+.rv-bg-bottom .rv-primary {
+    margin-top: 0;
+    padding: 14px;
+    font-size: 15px;
+}
+
+/* خلفيات متحركة */
+@keyframes rvFlow {
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+@keyframes rvTwinkle {
+    0%,100% {
+        opacity: .55;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+.rv-anim-aurora {
+    background: linear-gradient(120deg, #04110f, #0b3d3a, #2a2a6e, #1d6b5a, #04110f);
+    background-size: 400% 400%;
+    animation: rvFlow 14s ease infinite;
+}
+
+.rv-anim-nebula {
+    background: radial-gradient(circle at 30% 25%, #7a2fd6 0%, transparent 45%), radial-gradient(circle at 75% 60%, #1c60d8 0%, transparent 50%), #07040f;
+    background-size: 160% 160%;
+    animation: rvFlow 18s ease infinite;
+}
+
+.rv-anim-stars {
+    background: radial-gradient(1.5px 1.5px at 20% 30%, #fff 50%, transparent), radial-gradient(1.5px 1.5px at 70% 20%, #fff 50%, transparent), radial-gradient(1px 1px at 40% 70%, #fff 50%, transparent), radial-gradient(1.5px 1.5px at 85% 80%, #fff 50%, transparent), radial-gradient(1px 1px at 10% 85%, #fff 50%, transparent), linear-gradient(180deg, #060818, #17103a);
+    animation: rvTwinkle 3s ease-in-out infinite;
+}
+
+.rv-anim-waves {
+    background: linear-gradient(120deg, #021a3a, #0a5a9a, #0fa3b5, #0a5a9a, #021a3a);
+    background-size: 400% 400%;
+    animation: rvFlow 10s ease infinite;
+}
+
+/* مؤشرات ومصغّر */
+.rv-toast {
+    position: absolute;
+    left: 50%;
+    bottom: 96px;
+    transform: translateX(-50%);
+    z-index: 90;
+    background: rgba(30,26,40,.95);
+    color: #fff;
+    font-size: 12px;
+    padding: 10px 16px;
+    border-radius: 22px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    animation: rvUp .2s ease;
+    pointer-events: none;
+}
+
+.rv-toast::before {
+    content: "";
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #5b3fd0 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='M5 12l4 4 10-9'/%3E%3C/svg%3E") center/12px no-repeat;
+}
+
+#live-voice-room-modal.rv-minimized {
+    display: none !important;
+}
+
+.rv-mini {
+    position: fixed;
+    z-index: 9000;
+    left: 0;
+    top: 0;
+    width: 58px;
+    height: 58px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: left .22s ease, top .22s ease;
+}
+
+.rv-mini.dragging {
+    cursor: grabbing;
+    transition: none;
+}
+
+.rv-mini > img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+    border: 2px solid rgba(255,255,255,.92);
+    box-shadow: 0 6px 18px rgba(0,0,0,.55), 0 0 0 0 rgba(74,222,128,.55);
+    animation: rvMiniPulse 2.4s ease-out infinite;
+}
+
+.rv-mini.dragging > img {
+    animation: none;
+    transform: scale(1.06);
+}
+
+.rv-mini .rv-mini-x {
+    position: absolute;
+    top: -5px;
+    inset-inline-end: -5px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #fff;
+    color: #222;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 1px 6px rgba(0,0,0,.5);
+}
+
+.rv-mini .rv-mini-x svg {
+    width: 11px;
+    height: 11px;
+    display: block;
+}
+
+@keyframes rvMiniPulse {
+    0% {
+        box-shadow: 0 6px 18px rgba(0,0,0,.55), 0 0 0 0 rgba(74,222,128,.5);
+    }
+
+    70%, 100% {
+        box-shadow: 0 6px 18px rgba(0,0,0,.55), 0 0 0 12px rgba(74,222,128,0);
+    }
+}
+
+/* قائمة الدعوة */
+.rv-invite {
+    position: absolute;
+    inset: 0;
+    background: #0b0910;
+    color: #fff;
+    padding: 0 14px;
+    direction: rtl;
+    animation: rvUp .22s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.rv-invite h4 {
+    margin: 0;
+    text-align: center;
+    padding: 18px 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.rv-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #17131f;
+    border-radius: 22px;
+    padding: 0 14px;
+    height: 40px;
+}
+
+.rv-search input {
+    flex: 1;
+    background: none;
+    border: 0;
+    outline: 0;
+    color: #fff;
+    font: 500 12px inherit;
+    min-width: 0;
+}
+
+.rv-ulist {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 0;
+}
+
+.rv-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 2px;
+}
+
+.rv-user img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.rv-user div {
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.rv-user small {
+    display: block;
+    font-size: 10px;
+    opacity: .55;
+    font-weight: 400;
+}
+
+.rv-user button {
+    border: 0;
+    border-radius: 16px;
+    padding: 6px 14px;
+    background: #6d4aff;
+    color: #fff;
+    font: 700 11px inherit;
+    cursor: pointer;
+}
+
+.rv-user button:disabled {
+    background: #3b2f78;
+}
+
+.rv-empty {
+    text-align: center;
+    color: rgba(255,255,255,.4);
+    font-size: 11px;
+    padding: 70px 0;
+}
+
+.rv-empty svg {
+    width: 90px;
+    opacity: .35;
+    display: block;
+    margin: 0 auto 6px;
+}
+
+/* تذبذبات الموسيقى تطابق تذبذبات الكلام حول صورة مقعد المايك. */
+.rv-music-avatar-speaking::before, .rv-music-avatar-speaking::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 2px solid #10b981;
+    animation: speakingRipple 1.2s cubic-bezier(0, .2, .8, 1) infinite;
+    pointer-events: none;
+}
+
+.rv-music-avatar-speaking::after {
+    animation-delay: .6s;
+}
+
+/* كتم المقعد بنفس الشارة البيضاء الدائرية الظاهرة في صورة الغرفة. */
+#live-voice-room-modal .seat-mic-status {
+    top: -5px !important;
+    left: -5px !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 18px !important;
+    height: 18px !important;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff !important;
+    border: 1px solid rgba(24, 10, 55, .55);
+    color: #2a145e;
+    font-size: 9px !important;
+    line-height: 1;
+    box-shadow: 0 1px 4px rgba(0,0,0,.35);
+    z-index: 9;
+}
+
+#live-voice-room-modal .seat-mic-status.unmuted {
+    display: none !important;
+}
+
+/* =====================================================================
+   مركز الترفيه + قائمة الموسيقى + المشغّل + الصوت
+   (مطابقة لفيديو «الصوت والأغاني»)
+   ===================================================================== */
+.rv-layer[data-sheet="music"] {
+    background: rgba(0,0,0,.5);
+}
+
+.rv-layer[data-sheet="music"] ~ .rv-toast {
+    bottom: 64px;
+    z-index: 95;
+    background: #262629;
+    font-size: 12px;
+    padding: 9px 16px 9px 14px;
+}
+
+.rv-layer[data-sheet="music"] ~ .rv-toast::before {
+    background-color: #6c49f5;
+}
+
+/* ---------- مركز الترفيه ---------- */
+#live-voice-room-modal .rv-ent-sheet {
+    background: #131014;
+    border-radius: 14px 14px 0 0;
+    max-height: none;
+    min-height: 37%;
+    padding: 16px 14px calc(30px + env(safe-area-inset-bottom, 0px));
+}
+
+.rv-ent-x {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: rgba(255,255,255,.55);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+}
+
+.rv-ent-x svg {
+    width: 20px;
+    height: 20px;
+}
+
+.rv-ent-title {
+    text-align: center;
+    font-size: 15px;
+    font-weight: 500;
+    color: #fff;
+    padding: 3px 28px 26px;
+}
+
+.rv-ent-sec {
+    font-size: 10.5px;
+    font-weight: 500;
+    color: rgba(255,255,255,.92);
+    padding: 0 4px 14px;
+}
+
+.rv-ent-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px 0;
+    padding: 2px 0 0;
+}
+
+.rv-ent-item {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.rv-ent-item i {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: #1a161c;
+    display: grid;
+    place-items: center;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+}
+
+.rv-ent-item span {
+    font-size: 9.5px;
+    color: rgba(255,255,255,.9);
+    white-space: nowrap;
+}
+
+.rv-ent-item:active i {
+    transform: scale(.92);
+    background: #251f28;
+}
+
+/* ---------- قائمة الموسيقى ---------- */
+#live-voice-room-modal .rv-music-sheet {
+    height: 51.5%;
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: #121212;
+    border-radius: 14px 14px 0 0;
+}
+
+.rv-ms-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 14px 14px 10px;
+    min-height: 56px;
+    flex: none;
+}
+
+.rv-ms-grow {
+    flex: 1;
+}
+
+.rv-ms-title {
+    font-size: 16.5px;
+    font-weight: 500;
+    color: #fff;
+}
+
+.rv-ms-btn, .rv-ms-pill, .rv-ms-back {
+    border: 0;
+    background: #171717;
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0;
+}
+
+.rv-ms-btn {
+    width: 40px;
+    height: 34px;
+    border-radius: 17px;
+    display: grid;
+    place-items: center;
+}
+
+.rv-ms-btn svg {
+    width: 21px;
+    height: 21px;
+    stroke-width: 2.2;
+}
+
+.rv-ms-pill {
+    height: 32px;
+    padding: 0 13px;
+    border-radius: 15px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: #e9e9ea;
+    white-space: nowrap;
+}
+
+.rv-ms-pill svg {
+    width: 13px;
+    height: 13px;
+}
+
+.rv-ms-addpill {
+    font-size: 9.5px;
+    padding: 0 11px;
+}
+
+.rv-ms-back {
+    background: none;
+    border: 0;
+    width: 26px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+}
+
+.rv-ms-back svg {
+    width: 19px;
+    height: 19px;
+    stroke-width: 2.4;
+}
+
+.rv-ms-head-add {
+    padding-bottom: 6px;
+}
+
+.rv-ms-tabs {
+    display: flex;
+    gap: 22px;
+    align-items: flex-start;
+}
+
+.rv-ms-tabs b {
+    position: relative;
+    font-size: 14px;
+    font-weight: 500;
+    color: #55555b;
+    cursor: pointer;
+    padding: 5px 0 13px;
+}
+
+.rv-ms-tabs b.sel {
+    color: #fff;
+    font-weight: 700;
+}
+
+.rv-ms-tabs b.sel::after {
+    content: "";
+    position: absolute;
+    bottom: 3px;
+    left: 50%;
+    width: 9px;
+    height: 2px;
+    margin-left: -4.5px;
+    border-radius: 2px;
+    background: #fff;
+}
+
+.rv-ms-searchrow {
+    padding: 0 14px 8px;
+    flex: none;
+}
+
+.rv-ms-searchrow input {
+    width: 100%;
+    box-sizing: border-box;
+    height: 34px;
+    border-radius: 17px;
+    border: 0;
+    outline: 0;
+    background: #1b1b1b;
+    color: #fff;
+    padding: 0 14px;
+    font-family: inherit;
+    font-size: 12px;
+    direction: rtl;
+}
+
+.rv-ms-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 14px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    scrollbar-width: none;
+}
+
+.rv-ms-body::-webkit-scrollbar {
+    display: none;
+}
+
+.rv-ms-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    direction: rtl;
+    flex: none;
+    min-height: 52px;
+    padding: 6px 14px;
+    border-radius: 12px;
+    background: #1b1b1b;
+    cursor: pointer;
+    line-height: 1.3;
+}
+
+.rv-ms-row-add {
+    cursor: default;
+    flex-direction: row;
+}
+
+.rv-ms-idx {
+    width: 12px;
+    text-align: center;
+    font-size: 11px;
+    color: #8a8a90;
+    flex: none;
+}
+
+.rv-ms-copy {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: right;
+}
+
+.rv-ms-copy b {
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rv-ms-copy small {
+    font-size: 9px;
+    line-height: 1.2;
+    color: #66666c;
+}
+
+.rv-ms-state {
+    flex: none;
+    width: 20px;
+    display: grid;
+    place-items: center;
+    color: #77777d;
+}
+
+.rv-ms-state svg {
+    width: 12px;
+    height: 12px;
+}
+
+.rv-ms-del {
+    flex: none;
+    border: 0;
+    background: none;
+    padding: 2px;
+    color: #66666c;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+}
+
+.rv-ms-del svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.8;
+}
+
+.rv-ms-failed {
+    color: #f87171;
+    font-style: normal;
+}
+
+.rv-ms-retry {
+    flex: none;
+    border: 1px solid rgba(248,113,113,.38);
+    border-radius: 8px;
+    padding: 4px 7px;
+    background: rgba(248,113,113,.1);
+    color: #fca5a5;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.rv-ms-row.on {
+    background: rgba(108,73,245,.24);
+}
+
+.rv-ms-row.on .rv-ms-copy b, .rv-ms-row.on .rv-ms-idx {
+    color: #8f7cff;
+}
+
+.rv-ms-row.on .rv-ms-copy small {
+    color: #6d5cc9;
+}
+
+.rv-ms-row.on .rv-ms-copy .rv-ms-failed {
+    color: #f87171;
+}
+
+.rv-ms-row.on .rv-ms-state {
+    color: #7c63ff;
+}
+
+.rv-ms-row.on .rv-ms-del {
+    color: #6d5cc9;
+}
+
+.rv-ms-plus {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 0;
+    padding: 0;
+    background: #7b57f4;
+    color: #fff;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+}
+
+.rv-ms-plus svg {
+    width: 12px;
+    height: 12px;
+    stroke-width: 3;
+}
+
+.rv-ms-plus.done {
+    background: #26262a;
+    color: #6b6b72;
+    cursor: default;
+}
+
+.rv-ms-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    color: #4b4b52;
+    font-size: 11px;
+    text-align: center;
+    padding: 0 22px;
+}
+
+.rv-ms-empty svg {
+    width: 112px;
+    height: 94px;
+    color: #55555c;
+    stroke-width: 1.3;
+}
+
+.rv-ms-foot {
+    flex: none;
+    padding: 6px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+}
+
+.rv-ms-foot[hidden] {
+    display: none;
+}
+
+.rv-ms-cta {
+    display: block;
+    width: 100%;
+    height: 46px;
+    border: 0;
+    border-radius: 23px;
+    background: #6c49f5;
+    color: #e6deff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.rv-ms-cta:active {
+    background: #5a3ad8;
+}
+
+.rv-ms-online {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 6px;
+}
+
+.rv-ms-online input {
+    width: 100%;
+    box-sizing: border-box;
+    height: 44px;
+    border-radius: 12px;
+    border: 0;
+    outline: 0;
+    background: #1b1b1b;
+    color: #fff;
+    padding: 0 14px;
+    font-family: inherit;
+    font-size: 12px;
+    direction: rtl;
+}
+
+.rv-ms-online input::placeholder, .rv-ms-searchrow input::placeholder {
+    color: #66666c;
+}
+
+.rv-ms-online input#rv-ms-url {
+    direction: ltr;
+    text-align: left;
+}
+
+/* مؤشر التشغيل (أعمدة المعادل) */
+.rv-eq {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 11px;
+}
+
+.rv-eq i {
+    display: block;
+    width: 2px;
+    background: currentColor;
+    border-radius: 1px;
+    height: 40%;
+}
+
+.rv-eq i:nth-child(2) {
+    height: 85%;
+}
+
+.rv-eq i:nth-child(3) {
+    height: 60%;
+}
+
+.rv-eq.live i {
+    animation: rvEq .9s ease-in-out infinite;
+}
+
+.rv-eq.live i:nth-child(2) {
+    animation-delay: .22s;
+}
+
+.rv-eq.live i:nth-child(3) {
+    animation-delay: .44s;
+}
+
+@keyframes rvEq {
+    0%,100% {
+        height: 25%;
+    }
+
+    50% {
+        height: 100%;
+    }
+}
+
+/* ---------- مشغّل الموسيقى ---------- */
+.rv-now-playing {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: calc(51.5% + 10px);
+    top: auto;
+    z-index: 75;
+    display: none;
+    flex-direction: column;
+    direction: ltr;
+    color: #fff;
+    padding: 15px 16px 12px;
+    border-radius: 18px;
+    overflow: hidden;
+    background: radial-gradient(130% 80% at 50% 0%, #2a2447 0%, #17151f 48%, #101013 100%);
+    box-shadow: 0 8px 30px rgba(0,0,0,.55);
+}
+
+.rv-now-playing.on {
+    display: flex;
+}
+
+.rv-now-playing svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.rv-now-playing button {
+    font-family: inherit;
+}
+
+.rv-mp-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rv-mp-ic, .rv-mp-min {
+    flex: none;
+    /* width: 30px; */
+    height: 30px;
+    border: 0;
+    padding: 7px;
+    border-radius: 50%;
+    color: #fff;
+    cursor: pointer;
+    background: rgba(255,255,255,.07);
+}
+
+.rv-mp-min {
+    background: none;
+    padding: 6px;
+}
+
+.rv-mp-title {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    direction: rtl;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.rv-mp-title b {
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rv-mp-title small {
+    font-size: 9px;
+    color: #6f6f78;
+}
+
+.rv-mp-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 18px;
+    margin: 16px 0 0;
+    padding: 0;
+    background: transparent;
+    direction: rtl;
+    cursor: pointer;
+    --p: 0%;
+}
+
+.rv-mp-range:focus {
+    outline: none;
+}
+
+.rv-mp-range::-webkit-slider-runnable-track {
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(to left, #9a8ff0 var(--p), #544c82 var(--p));
+}
+
+.rv-mp-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 9px;
+    margin-top: -3.5px;
+    border-radius: 50%;
+    background: #fff;
+    border: 0;
+}
+
+.rv-mp-range::-moz-range-track {
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(to left, #9a8ff0 var(--p), #544c82 var(--p));
+}
+
+.rv-mp-range::-moz-range-thumb {
+    width: 14px;
+    height: 9px;
+    border-radius: 50%;
+    background: #fff;
+    border: 0;
+}
+
+.rv-mp-times {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 10px;
+    color: #77777f;
+    font-variant-numeric: tabular-nums;
+}
+
+.rv-mp-ctl {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 14px;
+    padding: 0 2px;
+}
+
+.rv-mp-ctl button {
+    width: 34px;
+    height: 34px;
+    padding: 7px;
+    border: 0;
+    background: none;
+    color: #fff;
+    cursor: pointer;
+    position: relative;
+}
+
+.rv-mp-ctl .rv-mp-play {
+    width: 56px;
+    height: 34px;
+    padding: 8px 17px;
+    border-radius: 17px;
+    background: #6c49f5;
+}
+
+.rv-mp-ctl .rv-mp-rep.one {
+    color: #8f7cff;
+}
+
+.rv-mp-ctl .rv-mp-rep em {
+    position: absolute;
+    top: 5px;
+    right: 6px;
+    font-style: normal;
+    font-size: 7px;
+    font-weight: 800;
+    line-height: 1;
+    color: #8f7cff;
+}
+
+/* المشغّل المصغّر */
+.rv-music-mini {
+    position: absolute;
+    top: 90px;
+    inset-inline-start: 10px;
+    z-index: 23;
+    display: none;
+    align-items: center;
+    gap: 4px;
+    max-width: 100px;
+    padding: 2px 4px;
+    border: 0;
+    background: none;
+    color: rgba(255,255,255,.78);
+    font-family: inherit;
+    font-size: 9.5px;
+    direction: rtl;
+    cursor: pointer;
+}
+
+.rv-music-mini.on {
+    display: flex;
+}
+
+.rv-mini-music-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: ltr;
+}
+
+.rv-mini-music-pause {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    display: grid;
+    place-items: center;
+}
+
+.rv-mini-music-pause svg {
+    width: 11px;
+    height: 11px;
+}
+
+/* ---------- Volume ---------- */
+.rv-vol-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 85;
+    background: rgba(0,0,0,.62);
+}
+
+.rv-vol-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #131313;
+    color: #fff;
+    direction: ltr;
+    text-align: center;
+    padding: 34px 16px calc(46px + env(safe-area-inset-bottom, 0px));
+    animation: rvUp .18s ease;
+}
+
+.rv-vol-title {
+    font: 700 14px -apple-system, "Helvetica Neue", Arial, sans-serif;
+    margin-bottom: 44px;
+}
+
+.rv-vol-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.rv-vol-ic {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    color: #fff;
+}
+
+.rv-vol-ic svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.rv-vol-range {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    min-width: 0;
+    height: 20px;
+    margin: 0;
+    background: transparent;
+    direction: rtl;
+    cursor: pointer;
+    --v: 100%;
+}
+
+.rv-vol-range:focus {
+    outline: none;
+}
+
+.rv-vol-range::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(to left, #fff var(--v), #4a4a4d var(--v));
+}
+
+.rv-vol-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -6.5px;
+    border-radius: 50%;
+    background: #fff;
+    border: 0;
+    box-shadow: 0 1px 4px rgba(0,0,0,.4);
+}
+
+.rv-vol-range::-moz-range-track {
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(to left, #fff var(--v), #4a4a4d var(--v));
+}
+
+.rv-vol-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 0;
+}
+
+/* =====================================================================
+   رسالة الدردشة (room-chat-bubble) + لوحة التحكم/الخروج
+   (مطابقة لفيديو «قالب الخروج»)
+   ===================================================================== */
+#live-voice-room-modal .room-chat-bubble:not(.system-notice):not(.gift-notice):not(.rv-tip) {
+    background: rgba(58,0,110,.42) !important;
+    border: 1px solid rgba(206,104,255,.72);
+    border-radius: 12px;
+    padding: 7px 10px 8px;
+    line-height: 1.5;
+    align-self: flex-start;
+    width: fit-content;
+    min-width: 96px;
+    max-width: 100%;
+}
+
+#live-voice-room-modal .room-chat-card-inner {
+    gap: 3px;
+}
+
+#live-voice-room-modal .room-chat-header-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+    direction: rtl;
+}
+
+#live-voice-room-modal .room-chat-avatar {
+    width: 22px;
+    height: 22px;
+    border: 1.5px solid rgba(255,255,255,.85);
+}
+
+#live-voice-room-modal .room-chat-sender-name {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #ffd9a3;
+    max-width: 120px;
+}
+
+#live-voice-room-modal .room-chat-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+    margin-top: 1px;
+    padding-right: 0;
+    line-height: 1.6;
+}
+
+/* الليفل بجانب الاسم */
+#live-voice-room-modal .room-chat-level-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex: none;
+    direction: ltr;
+    height: 15px;
+    padding: 0 6px 0 2px;
+    border-radius: 8px;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 15px;
+    color: #fff;
+    background: linear-gradient(180deg, #5fd64b 0%, #2fa73a 100%);
+    border: 1px solid rgba(190,255,170,.55);
+    text-shadow: 0 1px 1px rgba(0,0,0,.35);
+}
+
+#live-voice-room-modal .room-chat-level-pill.level-tier-magenta {
+    background: linear-gradient(180deg, #e75cd0, #a42bb5);
+    border-color: rgba(255,190,245,.6);
+}
+
+#live-voice-room-modal .room-chat-level-pill.level-tier-royal {
+    background: linear-gradient(180deg, #ffb840, #d4571a);
+    border-color: rgba(255,230,160,.7);
+}
+
+#live-voice-room-modal .room-chat-level-pill .level-emblem {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex: none;
+    background: radial-gradient(circle, #fff6c4 0 22%, #f2c63c 26% 58%, #1f7a2c 62% 100%);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.55);
+}
+
+/* لوحة التحكم */
+.rv-exit-panel {
+    background: #0d0a10;
+    border-radius: 0 0 16px 16px;
+    padding: 14px 14px 16px;
+}
+
+.rv-exit-panel .rv-x {
+    top: 14px;
+    inset-inline-end: auto;
+    left: 14px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    color: rgba(255,255,255,.42);
+    display: grid;
+    place-items: center;
+}
+
+.rv-exit-panel .rv-x svg {
+    width: 17px;
+    height: 17px;
+}
+
+.rv-exit-panel .rv-tp-head {
+    text-align: right;
+    padding: 2px 0 0;
+    line-height: 1.55;
+}
+
+.rv-exit-panel .rv-tp-head b {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.rv-exit-panel .rv-tp-head small {
+    font-size: 12.5px;
+    font-weight: 600;
+    opacity: 1;
+    color: #fff;
+    letter-spacing: 0;
+}
+
+.rv-exit-panel .rv-tp-sub {
+    font-size: 10px;
+    color: rgba(255,255,255,.38);
+    padding: 18px 2px 8px;
+}
+
+.rv-exit-panel .rv-grid5 {
+    gap: 14px 2px;
+    align-items: start;
+}
+
+.rv-exit-panel .rv-grid-row2 {
+    margin-top: 10px !important;
+}
+
+.rv-exit-panel .rv-ctl {
+    gap: 6px;
+    font-size: 10px;
+    color: rgba(255,255,255,.92);
+}
+
+.rv-exit-panel .rv-ctl i {
+    /* width: 56px; */
+    /* height: 56px; */
+    background: #15121a;
+}
+
+.rv-exit-panel .rv-ctl:active i {
+    background: #26212d;
+}
+
+.rv-exit-panel .rv-ctl span {
+    max-width: 56px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.35;
+}
+
+.rv-exit-panel .rv-ctl svg.rv-cf {
+    width: 30px;
+    height: 30px;
+    display: block;
+    fill: #fff;
+    color: #fff;
+    stroke: none;
+    stroke-width: 0;
+}
+
+.rv-cf .s {
+    fill: none;
+    stroke: #fff;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.rv-cf .k {
+    fill: none;
+    stroke: #15121a;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+}
+
+.rv-cf .kf {
+    fill: #15121a;
+    stroke: none;
+}
+
+/* ===== يوتيوب داخل الغرفة ===== */
+.rv-yt-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.rv-yt-row input {
+    flex: 1;
+}
+
+.rv-yt-go {
+    background: #7b57f4;
+    color: #fff;
+    border: 0;
+    cursor: pointer;
+}
+
+.rv-yt-thumb {
+    flex: none;
+    width: 56px;
+    height: 42px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: #26262a;
+}
+
+.rv-yt-more {
+    align-self: center;
+    margin: 8px auto;
+    background: #26262a;
+    border: 0;
+    color: #e9e9ea;
+    cursor: pointer;
+}
+
+.rv-yt-note {
+    text-align: center;
+    color: #66666c;
+    font-size: 11px;
+    padding: 8px;
+}
+
+.rv-yt-box {
+    position: absolute;
+    top: 74px;
+    left: 8px;
+    width: 200px;
+    z-index: 40;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 6px 22px rgba(0,0,0,.55);
+}
+
+/* مخفي تماماً مثل مقاطع الصوت — يبقى الصوت مع التذبذبات دون إظهار قالب يوتيوب */
+.rv-yt-box.rv-yt-hidden, .rv-yt-box.rv-yt-host-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    left: -9999px !important;
+    top: -9999px !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    clip: rect(0,0,0,0) !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.rv-yt-box.rv-yt-remote {
+    /* للمستمعين الاحتياطي فقط — يبقى مخفياً إلا إذا احتاج نقرة */
+    left: auto;
+    right: 8px;
+    top: auto;
+    bottom: 92px;
+    width: 160px;
+}
+
+.rv-yt-box.rv-yt-remote.rv-yt-hidden {
+    left: -9999px !important;
+    right: auto !important;
+    bottom: auto !important;
+}
+
+.rv-yt-frame, .rv-yt-frame iframe {
+    display: block;
+    width: 200px;
+    height: 200px;
+    border: 0;
+}
+
+.rv-yt-cap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 9px;
+    background: #111;
+    color: #fff;
+    font-size: 11px;
+    direction: rtl;
+}
+
+.rv-yt-ttl {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rv-yt-mute {
+    flex: none;
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 2px;
+}
+
+.rv-yt-tap {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 200px;
+    border: 0;
+    background: rgba(0,0,0,.65);
+    color: #fff;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.rv-yt-tap[hidden] {
+    display: none;
+}
+
+/* خلفيات الغرف: السعر تحت كل خلفية */
+.rv-bg-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+}
+
+.rv-bg-cell > .rv-bg-item {
+    width: 100%;
+}
+
+.rv-bg-price {
+    font-style: normal;
+    font-size: 11px;
+    text-align: center;
+    color: rgba(255,255,255,.65);
+}
+
+.rv-bg-price.paid {
+    color: #fbbf24;
+    font-weight: 700;
+}
+
+/* مشغّل يوتيوب المخفي يعيش في body ويبقى «ظاهراً» تقنياً خارج الشاشة حتى لا يوقفه المتصفح */
+body > .rv-yt-box.rv-yt-hidden {
+    position: fixed !important;
+    width: 200px !important;
+    height: 200px !important;
+    left: -9999px !important;
+    top: 0 !important;
+    overflow: hidden !important;
+    opacity: 0.01 !important;
+    pointer-events: none !important;
+    clip: auto !important;
+}
+
+body > .rv-yt-box:not(.rv-yt-hidden).rv-yt-remote {
+    position: fixed;
+    right: 8px;
+    bottom: 92px;
+    left: auto;
+    top: auto;
+    z-index: 100000;
+}
+
+/* داخل نطاق الشاشة (لا خارجها) بشفافية شبه كاملة، لأن المتصفح قد يوقف مشغّلاً خارج الشاشة عند تبديل التبويب */
+body > .rv-yt-box.rv-yt-hidden {
+    left: auto !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: 120px !important;
+    height: 68px !important;
+    opacity: 0.02 !important;
+    z-index: -1 !important;
+}
+
+/* حالة تجهيز صوت يوتيوب (تحويل mp3 في الخلفية) */
+.rv-ms-proc {
+    font-style: normal;
+    color: #a78bfa;
+    animation: rv-ms-proc-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes rv-ms-proc-blink {
+    50% {
+        opacity: .45;
+    }
+}
+
+/* زر «من دخل وغادر»: شخص + العدد، بجانب زر أشخاص الغرفة */
+#live-voice-room-modal .room-left-btn, .room-left-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 28px;
+    min-width: 30px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 9px;
+    background: rgba(255,255,255,.13);
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.room-left-btn i.f7-icons {
+    font-size: 15px;
+    line-height: 1;
+}
+
+.room-left-btn b {
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+#live-voice-room-modal .room-left-btn {
+    order: -2;
+}
+
+/* ===== بطاقة الغرفة (شيت سفلي) ===== */
+.rv-layer[data-sheet="roomcard"] { display: flex; align-items: flex-end; }
+.rv-room-card {
+    width: 100%; background: #0d0a10; color: #fff; direction: rtl;
+    border-radius: 18px 18px 0 0; padding: 16px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+    animation: rvUp .22s ease; max-height: 80%; overflow-y: auto;
+}
+@keyframes rvUp { from { transform: translateY(100%); } to { transform: none; } }
+.rv-rc-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.rv-rc-gear { background: none; border: 0; color: #fff; font-size: 22px; width: 36px; height: 36px; display: grid; place-items: center; margin-inline-start: auto; }
+.rv-rc-info { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.rv-rc-info b { font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-rc-info small { color: rgba(255,255,255,.65); font-size: 12px; }
+.rv-rc-tag { align-self: flex-start; background: rgba(255,255,255,.1); border-radius: 8px; padding: 2px 8px; font-size: 11px; }
+.rv-rc-cover { width: 58px; height: 58px; border-radius: 50%; object-fit: cover; flex: 0 0 58px; border: 2px solid rgba(255,255,255,.2); }
+.rv-rc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.rv-rc-box { background: #1a1624; border: 0; border-radius: 14px; color: #fff; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; text-align: start; font: inherit; }
+.rv-rc-box small { color: rgba(255,255,255,.6); font-size: 11px; }
+.rv-rc-box b { font-size: 20px; }
+.rv-rc-row { width: 100%; background: #1a1624; border: 0; border-radius: 14px; color: #fff; padding: 12px 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; font: inherit; text-align: start; }
+.rv-rc-txt { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.rv-rc-txt b { font-size: 15px; }
+.rv-rc-txt small { color: rgba(255,255,255,.55); font-size: 11px; }
+.rv-rc-ico { width: 38px; height: 38px; border-radius: 10px; background: #f5a623; display: grid; place-items: center; color: #fff; }
+.rv-rc-arrow { opacity: .5; }
+.rv-rc-delete { width: 100%; margin-top: 6px; padding: 13px; border: 1px solid #ef4444; background: rgba(239,68,68,.18); color: #fca5a5; border-radius: 14px; font: inherit; font-weight: 700; font-size: 15px; }
+.rv-rc-delete:active { background: rgba(239,68,68,.32); }
