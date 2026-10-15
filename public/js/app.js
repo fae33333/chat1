@@ -11711,6 +11711,7 @@
       ov.onclick = close;
       // تعمل مرة واحدة فقط حتى تنتهي ثم تُغلق المعاينة تلقائياً
       scPlayOnce(ov.querySelector('.pf-ac-prev-stage'), t.image_url, 'pf-ac-prev-media', close);
+      pfPrevApplyOrientation(ov, ov.querySelector('video'));
     };
     // شراء عنصر (مع تأكيد إن كان مدفوعاً)؛ يُرجع true عند النجاح
     const buyItem = async (url, name, x) => {
@@ -11994,6 +11995,21 @@
     const close = () => { if (ov.isConnected) ov.remove(); };
     ov.onclick = close;
     scPlayOnce(ov.querySelector('.pf-ac-prev-stage'), src, 'pf-ac-prev-media', close);
+    pfPrevApplyOrientation(ov, ov.querySelector('video'));
+  }
+
+  // اتجاه المعاينة حسب أبعاد الفيديو: العريض ← يبدأ من أسفل الشاشة · الطولي ← يملأ الشاشة كاملة
+  function pfPrevApplyOrientation(ov, mediaEl) {
+    if (!ov || !mediaEl || mediaEl.tagName !== 'VIDEO') return;
+    const apply = () => {
+      if (!ov.isConnected) return;
+      const w = mediaEl.videoWidth || 0, h = mediaEl.videoHeight || 0;
+      if (!w || !h) return;
+      if (w > h) { ov.classList.add('pf-ac-prev-wide'); ov.classList.remove('pf-ac-prev-tall'); }
+      else { ov.classList.add('pf-ac-prev-tall'); ov.classList.remove('pf-ac-prev-wide'); }
+    };
+    if (mediaEl.videoWidth) apply();
+    else mediaEl.addEventListener('loadedmetadata', apply, { once: true });
   }
 
   // أهداف النقر داخل بطاقة المتجر: زر التشغيل والوسائط ← معاينة · العملة ← نافذة الشراء · بقيتها ← إجراء البطاقة نفسه
