@@ -168,7 +168,7 @@
   }
 
   function currentUserId() {
-    try { var u = JSON.parse(localStorage.getItem('soulchill_user') || 'null'); return (u && u.id) || ''; } catch (e) { return ''; }
+    try { var u = JSON.parse(sessionStorage.getItem('soulchill_user') || 'null'); return (u && u.id) || ''; } catch (e) { return ''; }
   }
 
   // تحميل قائمة الإطارات (مع owned للمستخدم الحالي)

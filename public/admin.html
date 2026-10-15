@@ -2287,6 +2287,14 @@
 
   <script src="js/dialogs.js"></script>
   <script>
+    // تنظيف أي بيانات قديمة من التخزين الدائم — نستخدم sessionStorage فقط
+    // (الجلسة الحالية فقط، تُمحى بإغلاق المتصفح)
+    try {
+      for (var pi = localStorage.length - 1; pi >= 0; pi--) {
+        var pk = localStorage.key(pi);
+        if (pk && (pk.indexOf('soulchill') === 0 || pk.indexOf('rv_') === 0)) localStorage.removeItem(pk);
+      }
+    } catch (e) {}
     // ===== YouTube Key Admin =====
     // TAB: Google Sign-In settings
     async function fetchGoogleSettings() {
@@ -2426,10 +2434,10 @@
     }
     function getAdminUserId(){
       // نحاول قراءة أي مستخدم محفوظ للاختبار
-      try{ const u=JSON.parse(localStorage.getItem('soulchill_user')||'null'); if(u&&u.id) return u.id; }catch(e){}
+      try{ const u=JSON.parse(sessionStorage.getItem('soulchill_user')||'null'); if(u&&u.id) return u.id; }catch(e){}
       return 'sc-owner-001';
     }
-    function getAdminToken(){ return localStorage.getItem('soulchill_admin_token') || ''; }
+    function getAdminToken(){ return sessionStorage.getItem('soulchill_admin_token') || ''; }
 
 </script>
   <script>
@@ -2475,7 +2483,7 @@
     }
 
     const state = {
-      token: localStorage.getItem('soulchill_admin_token'),
+      token: sessionStorage.getItem('soulchill_admin_token'),
       admin: null,
       stats: null,
       users: [],
@@ -2546,7 +2554,7 @@
         if (data.success) {
           state.token = data.token;
           state.admin = data.admin;
-          localStorage.setItem('soulchill_admin_token', data.token);
+          sessionStorage.setItem('soulchill_admin_token', data.token);
           showDashboardView();
           showToast('مرحباً بك في لوحة تحكم SoulChill! 🛡️', 'success');
         } else {
@@ -2570,7 +2578,7 @@
         } catch (e) {}
         state.token = null;
         state.admin = null;
-        localStorage.removeItem('soulchill_admin_token');
+        sessionStorage.removeItem('soulchill_admin_token');
         showLoginView();
       }
     }

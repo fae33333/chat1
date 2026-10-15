@@ -17,7 +17,7 @@
     if (!u) return;
     const st = App().state;
     st.currentUser = Object.assign(st.currentUser || {}, u);
-    try { localStorage.setItem('soulchill_user', JSON.stringify(st.currentUser)); } catch (e) {}
+    try { sessionStorage.setItem('soulchill_user', JSON.stringify(st.currentUser)); } catch (e) {}
     App().updateHeaderUI();
   }
   const toast = (m) => App().showToast(m);

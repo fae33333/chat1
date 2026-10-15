@@ -323,8 +323,8 @@
     }
     ctx.room.bg_image = val;
   }
-  function loadMyBgs() { try { return JSON.parse(localStorage.getItem('rv_my_bgs') || '[]'); } catch (e) { return []; } }
-  function saveMyBgs(a) { try { localStorage.setItem('rv_my_bgs', JSON.stringify(a.slice(0, 18))); } catch (e) {} }
+  function loadMyBgs() { try { return JSON.parse(sessionStorage.getItem('rv_my_bgs') || '[]'); } catch (e) { return []; } }
+  function saveMyBgs(a) { try { sessionStorage.setItem('rv_my_bgs', JSON.stringify(a.slice(0, 18))); } catch (e) {} }
 
   // ====== الشريط العلوي / السفلي / الألعاب ======
   function buildTopButtons() {

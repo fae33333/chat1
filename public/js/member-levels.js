@@ -3,7 +3,7 @@
   'use strict';
 
   function me() {
-    try { return JSON.parse(localStorage.getItem('soulchill_user') || 'null'); } catch (e) { return null; }
+    try { return JSON.parse(sessionStorage.getItem('soulchill_user') || 'null'); } catch (e) { return null; }
   }
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

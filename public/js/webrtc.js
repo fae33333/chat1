@@ -20,7 +20,7 @@ class SoulRtcEngine {
     this.isVoiceMuted = false;
     this.userAudioMap = new Map(); // userId -> Set of HTMLAudioElement
     // Camera mirroring preference: default to natural selfie mirror
-    this.isCameraMirrored = localStorage.getItem('soulchill_video_mirror') !== '0';
+    this.isCameraMirrored = sessionStorage.getItem('soulchill_video_mirror') !== '0';
     this.peerConnections = new Map(); // key -> RTCPeerConnection
     this.audioElements = new Map(); // key -> HTMLAudioElement
     this.rtcConfig = {
@@ -38,7 +38,7 @@ class SoulRtcEngine {
     } else {
       this.isCameraMirrored = !this.isCameraMirrored;
     }
-    localStorage.setItem('soulchill_video_mirror', this.isCameraMirrored ? '1' : '0');
+    sessionStorage.setItem('soulchill_video_mirror', this.isCameraMirrored ? '1' : '0');
     this.applyCameraMirroring();
     return this.isCameraMirrored;
   }

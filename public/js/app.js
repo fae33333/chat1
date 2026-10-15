@@ -1,6 +1,15 @@
 // SoulChill Master Application Controller
 (function() {
   'use strict';
+  // لا نستخدم التخزين الدائم في المتصفح إطلاقاً: نحذف فوراً أي بيانات قديمة
+  // كانت محفوظة في localStorage — الجلسة الحالية فقط عبر sessionStorage
+  // وتُمحى تلقائياً بمجرد إغلاق المتصفح
+  try {
+    for (var pi = localStorage.length - 1; pi >= 0; pi--) {
+      var pk = localStorage.key(pi);
+      if (pk && (pk.indexOf('soulchill') === 0 || pk.indexOf('rv_') === 0)) localStorage.removeItem(pk);
+    }
+  } catch (e) {}
 
   // Global State
   const state = {
@@ -311,7 +320,7 @@
   async function tryAdminDeepLinkLogin() {
     const params = new URLSearchParams(location.search);
     if (!params.get('room') || params.get('as') !== 'admin') return false;
-    const adminToken = localStorage.getItem('soulchill_admin_token');
+    const adminToken = sessionStorage.getItem('soulchill_admin_token');
     if (!adminToken) return false;
     try {
       const res = await fetch('/api/admin/enter-as-user', {
@@ -321,10 +330,10 @@
       const d = await res.json();
       if (!d.success || !d.user) return false;
       state.currentUser = d.user;
-      state.token = localStorage.getItem('soulchill_token') || 'device-persistent-token';
-      localStorage.setItem('soulchill_user', JSON.stringify(d.user));
-      localStorage.setItem('soulchill_user_id', d.user.id);
-      localStorage.setItem('soulchill_token', state.token);
+      state.token = sessionStorage.getItem('soulchill_token') || 'device-persistent-token';
+      sessionStorage.setItem('soulchill_user', JSON.stringify(d.user));
+      sessionStorage.setItem('soulchill_user_id', d.user.id);
+      sessionStorage.setItem('soulchill_token', state.token);
       onUserAuthenticated();
       return true;
     } catch (e) {
@@ -440,7 +449,7 @@
     state.socket.on('user_role_updated', ({ role, roleTitle, message }) => {
       if (state.currentUser) {
         state.currentUser.role = role;
-        localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
+        sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
         updateHeaderUI();
         if (state.currentTab === 'profile') {
           renderProfileTab(document.getElementById('app-main-content'));
@@ -514,7 +523,7 @@
       state.currentUser.coins = b.coins;
       state.currentUser.diamonds = b.diamonds;
       if (b.level != null) state.currentUser.level = b.level;
-      try { localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser)); } catch (e) {}
+      try { sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser)); } catch (e) {}
       updateHeaderUI();
       if (b.added && (b.added.coins || b.added.diamonds)) {
         if (window.soundManager && window.soundManager.playCheer) window.soundManager.playCheer();
@@ -531,7 +540,7 @@
       ['wealth_level', 'charm_level', 'wealth_points', 'popularity_points', 'vip_level', 'vip_until'].forEach(k => {
         if (m[k] !== undefined) state.currentUser[k] = m[k];
       });
-      try { localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser)); } catch (e) {}
+      try { sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser)); } catch (e) {}
       const rusSheet = document.querySelector('.rus-sheet');
       if (rusSheet && state.currentUser) {
         const set = (sel, html) => { const n = rusSheet.querySelector(sel); if (n) n.innerHTML = html; };
@@ -1233,7 +1242,7 @@
     state.socket.on('user_avatar_changed', ({ userId, avatar }) => {
       if (state.currentUser && state.currentUser.id === userId) {
         state.currentUser.avatar = avatar;
-        localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
+        sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
         updateHeaderUI();
         const profileImg = document.getElementById('profile-page-avatar');
         if (profileImg) profileImg.src = avatar;
@@ -1260,9 +1269,9 @@
   }
 
   async function checkStoredAuth() {
-    const savedUser = localStorage.getItem('soulchill_user');
-    const savedToken = localStorage.getItem('soulchill_token') || localStorage.getItem('soulchill_auth_token') || 'device-persistent-token';
-    const savedUserId = localStorage.getItem('soulchill_user_id');
+    const savedUser = sessionStorage.getItem('soulchill_user');
+    const savedToken = sessionStorage.getItem('soulchill_token') || sessionStorage.getItem('soulchill_auth_token') || 'device-persistent-token';
+    const savedUserId = sessionStorage.getItem('soulchill_user_id');
 
     if (savedUser) {
       try {
@@ -1270,8 +1279,8 @@
         if (parsed && parsed.id && parsed.id !== 'undefined' && parsed.id !== 'null') {
           state.currentUser = parsed;
           state.token = savedToken;
-          localStorage.setItem('soulchill_user_id', parsed.id);
-          localStorage.setItem('soulchill_token', savedToken);
+          sessionStorage.setItem('soulchill_user_id', parsed.id);
+          sessionStorage.setItem('soulchill_token', savedToken);
           onUserAuthenticated();
           return;
         }
@@ -1288,8 +1297,8 @@
           if (u && u.id) {
             state.currentUser = u;
             state.token = savedToken;
-            localStorage.setItem('soulchill_user', JSON.stringify(u));
-            localStorage.setItem('soulchill_token', savedToken);
+            sessionStorage.setItem('soulchill_user', JSON.stringify(u));
+            sessionStorage.setItem('soulchill_token', savedToken);
             onUserAuthenticated();
             return;
           }
@@ -1356,11 +1365,11 @@
       });
       if (res.ok) {
         state.currentUser = await res.json();
-        localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
-        localStorage.setItem('soulchill_user_id', state.currentUser.id);
+        sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
+        sessionStorage.setItem('soulchill_user_id', state.currentUser.id);
         updateHeaderUI();
       }
-      // Never wipe localStorage on network latency to guarantee device persistence
+      // Never wipe sessionStorage on network latency to guarantee device persistence
     } catch (err) {
       console.warn('Silent profile sync error:', err);
     }
@@ -1369,7 +1378,7 @@
   // Favorite Rooms Helpers ("المفضلة")
   async function loadFavoriteRooms() {
     try {
-      const raw = localStorage.getItem('soulchill_favorite_rooms');
+      const raw = sessionStorage.getItem('soulchill_favorite_rooms');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
@@ -1388,7 +1397,7 @@
         if (Array.isArray(data.favoriteRoomIds)) {
           const merged = Array.from(new Set([...state.favoriteRoomIds, ...data.favoriteRoomIds]));
           state.favoriteRoomIds = merged;
-          localStorage.setItem('soulchill_favorite_rooms', JSON.stringify(merged));
+          sessionStorage.setItem('soulchill_favorite_rooms', JSON.stringify(merged));
         }
       }
     } catch (err) {
@@ -1414,7 +1423,7 @@
     } else {
       state.favoriteRoomIds = state.favoriteRoomIds.filter(id => id !== roomId);
     }
-    localStorage.setItem('soulchill_favorite_rooms', JSON.stringify(state.favoriteRoomIds));
+    sessionStorage.setItem('soulchill_favorite_rooms', JSON.stringify(state.favoriteRoomIds));
 
     // Update UI button immediately
     const updateBtnVisual = (el, favState) => {
@@ -1446,7 +1455,7 @@
           const data = await res.json();
           if (Array.isArray(data.favoriteRoomIds)) {
             state.favoriteRoomIds = data.favoriteRoomIds;
-            localStorage.setItem('soulchill_favorite_rooms', JSON.stringify(data.favoriteRoomIds));
+            sessionStorage.setItem('soulchill_favorite_rooms', JSON.stringify(data.favoriteRoomIds));
           }
         }
       } catch (e) {}
@@ -4352,7 +4361,7 @@
               const data = await res.json();
               if (data.success) {
                 state.currentUser = data.user;
-                localStorage.setItem('soulchill_user', JSON.stringify(data.user));
+                sessionStorage.setItem('soulchill_user', JSON.stringify(data.user));
                 if (window.soundManager) window.soundManager.playCheer();
 
                 modal.innerHTML = `
@@ -4621,14 +4630,14 @@
   function getRoomsViewMode() {
     if (!state.roomsView) {
       let v = 'list';
-      try { v = localStorage.getItem('soulchill_rooms_view') === 'grid' ? 'grid' : 'list'; } catch (e) {}
+      try { v = sessionStorage.getItem('soulchill_rooms_view') === 'grid' ? 'grid' : 'list'; } catch (e) {}
       state.roomsView = v;
     }
     return state.roomsView;
   }
   function setRoomsViewMode(mode) {
     state.roomsView = mode === 'grid' ? 'grid' : 'list';
-    try { localStorage.setItem('soulchill_rooms_view', state.roomsView); } catch (e) {}
+    try { sessionStorage.setItem('soulchill_rooms_view', state.roomsView); } catch (e) {}
   }
   const cssUrl = (u) => encodeURI(String(u || '')).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/"/g, '%22');
 
@@ -6827,7 +6836,7 @@
       if (!bodyEl) return;
 
       if (activeAccTab === 'chat_frames') {
-        const selectedFrame = (state.currentUser && state.currentUser.chat_frame) || localStorage.getItem('soulchill_chat_frame') || '';
+        const selectedFrame = (state.currentUser && state.currentUser.chat_frame) || sessionStorage.getItem('soulchill_chat_frame') || '';
         bodyEl.innerHTML = `
           <div style="font-size: 11px; color: #cbd5e1; margin-bottom: 10px; text-align: center;">
             اختر إطار رسالتك ليظهر لجميع المتواجدين في الدردشة العامة داخل الغرفة 💬✨
@@ -6856,10 +6865,10 @@
           card.onclick = async () => {
             let frameId = card.dataset.chatFrameId;
             if (frameId === selectedFrame) frameId = ''; // نقرة ثانية = خلع الإطار
-            localStorage.setItem('soulchill_chat_frame', frameId);
+            sessionStorage.setItem('soulchill_chat_frame', frameId);
             if (state.currentUser) {
               state.currentUser.chat_frame = frameId;
-              localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
+              sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
               refreshAfterAccessoryChange();
               try {
                 await fetch('/api/users/accessories', {
@@ -6919,7 +6928,7 @@
       const syncUser = (u) => {
         if (!u) return;
         state.currentUser = Object.assign(state.currentUser || {}, u);
-        localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
+        sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
         updateHeaderUI();
         refreshAfterAccessoryChange();
       };
@@ -6990,7 +6999,7 @@
       const syncUser = (u) => {
         if (!u) return;
         state.currentUser = Object.assign(state.currentUser || {}, u);
-        localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
+        sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
         updateHeaderUI();
         refreshAfterAccessoryChange();
       };
@@ -7077,7 +7086,7 @@
       const updateUserFromServer = (user) => {
         if (!user) return;
         state.currentUser = Object.assign(state.currentUser || {}, user);
-        localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
+        sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
         updateHeaderUI();
         refreshAfterAccessoryChange();
       };
@@ -7404,7 +7413,7 @@
     // Determine equipped chat bubble frame
     let chatFrame = msg.sender_chat_frame || '';
     if (!chatFrame && state.currentUser && msg.sender_id === state.currentUser.id) {
-      chatFrame = state.currentUser.chat_frame || localStorage.getItem('soulchill_chat_frame') || '';
+      chatFrame = state.currentUser.chat_frame || sessionStorage.getItem('soulchill_chat_frame') || '';
     }
     const frameClass = chatFrame ? `chat-frame-${chatFrame}` : '';
 
@@ -10917,7 +10926,7 @@
   }
   function pfGetRegion() {
     let c = '';
-    try { c = localStorage.getItem('soulchill_region') || ''; } catch (e) {}
+    try { c = sessionStorage.getItem('soulchill_region') || ''; } catch (e) {}
     if (!c && state.currentUser && state.currentUser.country_code) c = String(state.currentUser.country_code).toUpperCase();
     return PF_REGION_CODES.includes(c) ? c : 'GLOBAL';
   }
@@ -10966,7 +10975,7 @@
     ov.onclick = (e) => { if (e.target === ov) close(); };
     ov.querySelector('.pf-sheet-save').onclick = () => {
       const code = list[picked].code;
-      try { localStorage.setItem('soulchill_region', code); } catch (e) {}
+      try { sessionStorage.setItem('soulchill_region', code); } catch (e) {}
       close();
       if (onSave) onSave(code);
     };
@@ -11141,7 +11150,7 @@
               const d = await r.json();
               if (d.success) {
                 state.currentUser = d.user;
-                localStorage.setItem('soulchill_user', JSON.stringify(d.user));
+                sessionStorage.setItem('soulchill_user', JSON.stringify(d.user));
                 updateHeaderUI();
                 showToast(`تم استبدال ${fmt(cost)} كريستال بـ ${fmt(cost * 100)} عملة ✅`);
                 render();
@@ -11516,7 +11525,7 @@
         const d = await r.json();
         if (!r.ok || !d.success) throw new Error(d.error || 'save failed');
         state.currentUser = d.user;
-        localStorage.setItem('soulchill_user', JSON.stringify(d.user));
+        sessionStorage.setItem('soulchill_user', JSON.stringify(d.user));
         showToast('تم حفظ الخلفية ✨');
         el.remove();
         pfOpenProfilePage(state.currentUser, 'profile');
@@ -11582,7 +11591,7 @@
         const data = await res.json();
         if (data.success) {
           state.currentUser = data.user;
-          localStorage.setItem('soulchill_user', JSON.stringify(data.user));
+          sessionStorage.setItem('soulchill_user', JSON.stringify(data.user));
           updateHeaderUI();
           const area = document.getElementById('app-main-content');
           if (area && state.currentTab === 'profile') renderProfileTab(area);
@@ -11643,7 +11652,7 @@
     const saveUser = (u) => {
       if (!u) return;
       state.currentUser = u;
-      try { localStorage.setItem('soulchill_user', JSON.stringify(u)); } catch (e) {}
+      try { sessionStorage.setItem('soulchill_user', JSON.stringify(u)); } catch (e) {}
       try { updateHeaderUI(); } catch (e) {}
     };
     const card = ({ media, name, date, on, attr, price, extra }) => `
@@ -11823,7 +11832,7 @@
               const r = await fetch('/api/users/accessories', { method: 'POST', headers: pfHdr(), body: JSON.stringify({ chat_frame: id }) });
               const d = await r.json();
               if (!r.ok || !d.success) { showToast(d.error || 'تعذّر التفعيل'); return; }
-              try { localStorage.setItem('soulchill_chat_frame', id); } catch (e) {}
+              try { sessionStorage.setItem('soulchill_chat_frame', id); } catch (e) {}
               saveUser(d.user);
               try { refreshAfterAccessoryChange(); } catch (e) {}
               showToast(id ? 'تم تفعيل إطار الرسالة 💬' : 'تم إلغاء إطار الرسالة');
@@ -11965,7 +11974,7 @@
     const saveUser = (u) => {
       if (!u) return;
       state.currentUser = u;
-      try { localStorage.setItem('soulchill_user', JSON.stringify(u)); } catch (e) {}
+      try { sessionStorage.setItem('soulchill_user', JSON.stringify(u)); } catch (e) {}
       try { updateHeaderUI(); } catch (e) {}
       refreshBal();
     };
@@ -12741,7 +12750,7 @@
       const data = await res.json();
       if (data.success) {
         state.currentUser = data.user;
-        localStorage.setItem('soulchill_user', JSON.stringify(data.user));
+        sessionStorage.setItem('soulchill_user', JSON.stringify(data.user));
         updateHeaderUI();
         if (state.currentTab === 'profile') {
           renderProfileTab(document.getElementById('app-main-content'));
@@ -12765,7 +12774,7 @@
       const data = await res.json();
       if (data.success) {
         state.currentUser = data.user;
-        localStorage.setItem('soulchill_user', JSON.stringify(data.user));
+        sessionStorage.setItem('soulchill_user', JSON.stringify(data.user));
         updateHeaderUI();
         if (window.soundManager) window.soundManager.playCheer();
         showToast(data.message);
@@ -13270,7 +13279,7 @@
         const data = await res.json();
         if (data.success) {
           state.currentUser = data.user;
-          localStorage.setItem('soulchill_user', JSON.stringify(data.user));
+          sessionStorage.setItem('soulchill_user', JSON.stringify(data.user));
           updateHeaderUI();
           if (window.soundManager) window.soundManager.playCheer();
           showToast(`تم شحن ${coins} عملة و ${diamonds} ألماسة بنجاح! 💎🪙`);
@@ -13384,7 +13393,7 @@
         const data = await res.json();
         if (data.success) {
           state.currentUser = data.user;
-          localStorage.setItem('soulchill_user', JSON.stringify(data.user));
+          sessionStorage.setItem('soulchill_user', JSON.stringify(data.user));
           updateHeaderUI();
           showToast('تم حفظ الملف الشخصي بنجاح! ✨');
           modal.remove();
@@ -13403,11 +13412,11 @@
   // Sign out & Account Switching
   function handleSignOut() {
     // Clear stored active session credentials
-    localStorage.removeItem('soulchill_user');
-    localStorage.removeItem('soulchill_token');
-    localStorage.removeItem('soulchill_user_id');
-    localStorage.removeItem('soulchill_device_persistent');
-    localStorage.removeItem('soulchill_auth_email');
+    sessionStorage.removeItem('soulchill_user');
+    sessionStorage.removeItem('soulchill_token');
+    sessionStorage.removeItem('soulchill_user_id');
+    sessionStorage.removeItem('soulchill_device_persistent');
+    sessionStorage.removeItem('soulchill_auth_email');
 
     // Notify backend socket session
     if (state.socket) {
@@ -13782,7 +13791,7 @@
 
           sent++;
           state.currentUser = data.sender;
-          localStorage.setItem('soulchill_user', JSON.stringify(data.sender));
+          sessionStorage.setItem('soulchill_user', JSON.stringify(data.sender));
           updateHeaderUI();
 
           const chipEl = recipientChips.find(c => c.dataset.userId === rid);
@@ -13821,7 +13830,7 @@
   // Helpers to persist and retrieve registered accounts on this device
   function getSavedDeviceAccounts() {
     try {
-      const raw = localStorage.getItem('soulchill_saved_device_accounts');
+      const raw = sessionStorage.getItem('soulchill_saved_device_accounts');
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -13849,7 +13858,7 @@
       });
       // Keep up to 6 registered accounts on this device
       if (accounts.length > 6) accounts = accounts.slice(0, 6);
-      localStorage.setItem('soulchill_saved_device_accounts', JSON.stringify(accounts));
+      sessionStorage.setItem('soulchill_saved_device_accounts', JSON.stringify(accounts));
     } catch (e) {
       console.warn('Error saving device account:', e);
     }
@@ -13862,14 +13871,14 @@
   function persistLogin(data) {
     state.currentUser = data.user;
     state.token = data.token;
-    localStorage.setItem('soulchill_user_id', data.user.id);
-    localStorage.setItem('soulchill_user', JSON.stringify(data.user));
-    localStorage.setItem('soulchill_token', data.token);
-    localStorage.setItem('soulchill_device_persistent', 'true');
-    if (data.user.email) localStorage.setItem('soulchill_auth_email', data.user.email);
+    sessionStorage.setItem('soulchill_user_id', data.user.id);
+    sessionStorage.setItem('soulchill_user', JSON.stringify(data.user));
+    sessionStorage.setItem('soulchill_token', data.token);
+    sessionStorage.setItem('soulchill_device_persistent', 'true');
+    if (data.user.email) sessionStorage.setItem('soulchill_auth_email', data.user.email);
     try {
       const nick = data.nickname || data.user.name;
-      if (nick) localStorage.setItem('soulchill_last_nickname', nick);
+      if (nick) sessionStorage.setItem('soulchill_last_nickname', nick);
     } catch (e) {}
   }
 
@@ -13881,7 +13890,7 @@
     modal.className = 'soul-modal-backdrop';
     modal.id = 'google-auth-modal';
 
-    const lastNick = (() => { try { return localStorage.getItem('soulchill_last_nickname') || ''; } catch (e) { return ''; } })();
+    const lastNick = (() => { try { return sessionStorage.getItem('soulchill_last_nickname') || ''; } catch (e) { return ''; } })();
     const googleG = `<svg class="google-g-icon" viewBox="0 0 24 24" style="width: 22px; height: 22px;">
       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
       <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -14517,9 +14526,9 @@
           }
         }
 
-        // Save persistent user in localStorage
-        localStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
-        localStorage.setItem('soulchill_user_id', state.currentUser.id);
+        // Save persistent user in sessionStorage
+        sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser));
+        sessionStorage.setItem('soulchill_user_id', state.currentUser.id);
 
         // Update DOM elements everywhere
         updateHeaderUI();
