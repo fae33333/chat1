@@ -820,6 +820,9 @@
         <button class="tab-btn" onclick="switchAdminTab('broadcast')">
           <span>📢</span> إذاعة إعلان عام للجميع
         </button>
+        <button class="tab-btn" onclick="switchAdminTab('livekit')">
+          <span>🎙️</span> LiveKit — البث الصوتي
+        </button>
         <button class="tab-btn" onclick="switchAdminTab('room-message')">
           <span>🛡️</span> رسالة الغرف الثابتة
         </button>
@@ -1530,34 +1533,47 @@
         </div>
       </div>
 
-        <div class="content-box" style="max-width: 600px; margin-top: 18px;">
+      <!-- TAB: LiveKit — قسم مستقل لإعدادات البث الصوتي والمرئي المباشر -->
+      <div class="tab-pane" id="tab-livekit">
+        <div class="content-box" style="max-width: 720px;">
           <div class="content-box-title">
             <span>🎙️ LiveKit — البث الصوتي والمرئي المباشر (الراديو والكاميرا والميكروفون)</span>
           </div>
-          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
-            مقاعد الصوت وبث الكاميرا والشريك (PK) والمكالمات الصوتية والتوافق الصوتي تعمل الآن عبر LiveKit بدل WebRTC.
-            شغّل خادم LiveKit محلياً بأمر واحد (وضع التطوير):
-            <code style="display:block;margin-top:8px;padding:8px;background:rgba(0,0,0,.35);border-radius:8px;user-select:all;color:#4ade80;word-break:break-all;" dir="ltr">docker run --rm -p 7880:7880 -p 7881:7881 -p 50051:50051 livekit/livekit-server --dev</code>
-            أو استخدم LiveKit Cloud (يحصل على API Key/Secret تلقائياً). اترك الحقول فارغة لتعطيل البث وإرجاع رسالة إرشادية للمستخدمين.
+          <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.9;">
+            مقاعد الصوت وبث الكاميرا والشريك (PK) والمكالمات الخاصة والتوافق الصوتي كلها عبر LiveKit.
+            عند الحفظ تُطبَّق الإعدادات <b style="color:#4ade80;">فوراً على كل الغرف بلا إعادة تشغيل</b> —
+            من كانوا في غرفة وانتظر البث ينضمون تلقائياً لحظة الحفظ.
+            <span id="lk-badge" style="display:inline-block;margin-inline-start:8px;padding:2px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:rgba(255,255,255,.08);"></span>
           </p>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">
+            <div style="margin-bottom:6px;">شغّل خادم LiveKit محلياً بأمر واحد (وضع التطوير) أو استخدم LiveKit Cloud:</div>
+            <code style="display:block;padding:9px 12px;background:rgba(0,0,0,.35);border-radius:8px;user-select:all;color:#4ade80;word-break:break-all;" dir="ltr">docker run --rm -p 7880:7880 -p 7881:7881 -p 50051:50051 livekit/livekit-server --dev</code>
+            <div style="margin-top:6px;">متغيرات البيئة المكافئة (بديل الإعداد داخل التطبيق): <code dir="ltr" style="user-select:all;">LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET</code></div>
+          </div>
           <form onsubmit="saveLiveKitSettings(event)" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;">
             <div class="form-group" style="grid-column:1/-1;">
-              <label class="form-label">رابط الخادم (WebSocket URL):</label>
+              <label class="form-label">Websocket URL — رابط الخادم:</label>
               <input type="text" class="form-input" id="lk-url" placeholder="ws://SERVER_IP:7880  أو  wss://xxx.livekit.cloud" autocomplete="off" dir="ltr" />
             </div>
             <div class="form-group">
-              <label class="form-label">API Key:</label>
-              <input type="text" class="form-input" id="lk-api-key" placeholder="APIxxxxxxxx" autocomplete="off" dir="ltr" />
+              <label class="form-label">API key — المفتاح:</label>
+              <div style="display:flex;gap:8px;">
+                <input type="text" class="form-input" id="lk-api-key" placeholder="APIxxxxxxxx" autocomplete="off" dir="ltr" style="flex:1;" />
+                <button type="button" class="btn-action" id="lk-gen-btn" onclick="generateLiveKitKeys()" style="padding:8px 12px;white-space:nowrap;">🎲 توليد</button>
+              </div>
             </div>
             <div class="form-group">
-              <label class="form-label">API Secret:</label>
-              <input type="password" class="form-input" id="lk-api-secret" placeholder="اتركه فارغاً للإبقاء على المحفوظ" autocomplete="new-password" dir="ltr" />
+              <label class="form-label">API secret — السرّ:</label>
+              <input type="password" class="form-input" id="lk-api-secret" placeholder="🎲 زر توليد أو الصقه — يظهر مرة واحدة عند الحفظ" autocomplete="new-password" dir="ltr" />
             </div>
             <div style="grid-column:1/-1;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-              <button type="submit" class="btn-submit" id="lk-save-btn" style="width:auto;padding:10px 28px;margin:0;">💾 حفظ إعدادات LiveKit</button>
+              <button type="submit" class="btn-submit" id="lk-save-btn" style="width:auto;padding:10px 28px;margin:0;">💾 حفظ وتفعيل فوري</button>
               <span id="lk-status" style="font-size:12.5px;"></span>
             </div>
           </form>
+          <p style="font-size:11.5px;color:var(--text-muted);margin-top:12px;line-height:1.8;">
+            ℹ️ سرّ API لا يُعرض مجدداً بعد إغلاق نافذة الإنشاء — انسخه حين تُنشئه، أو أعد توليده لاحقاً (يُستبدل عند الحفظ).
+          </p>
         </div>
       </div>
 
@@ -2413,9 +2429,42 @@
       } catch (err) { status.innerHTML = '<span style="color:#f87171;">❌ ' + err.message + '</span>'; }
     }
 
-    // ===== LiveKit (البث الصوتي والمرئي المباشر) =====
+    // ===== LiveKit (قسم مستقل) — جلب/توليد/حفظ + حوار الإنشاء =====
+    function lkEsc(v) {
+      return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function lkRand(n, alphabet) {
+      const a = alphabet || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      const arr = new Uint8Array(n);
+      crypto.getRandomValues(arr);
+      let out = '';
+      for (let i = 0; i < n; i++) out += a[arr[i] % a.length];
+      return out;
+    }
+    async function lkCopy(text, btn) {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch (e2) {}
+        ta.remove();
+      }
+      if (btn) {
+        const old = btn.textContent;
+        btn.textContent = '✓ نُسخ';
+        setTimeout(() => { btn.textContent = old; }, 1400);
+      }
+    }
+    function generateLiveKitKeys() {
+      document.getElementById('lk-api-key').value = 'API' + lkRand(27);
+      document.getElementById('lk-api-secret').value = lkRand(42, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_');
+      const st = document.getElementById('lk-status');
+      if (st) st.innerHTML = '<span style="color:#60a5fa;">🎲 وُلِّدت مفاتيح جديدة — اضغط «حفظ وتفعيل فوري» لتفعيلها في كل الغرف</span>';
+    }
     async function fetchLiveKitSettings() {
       const status = document.getElementById('lk-status');
+      const badge = document.getElementById('lk-badge');
       try {
         const res = await fetch('/api/admin/settings/livekit', { headers: { 'x-admin-token': getAdminToken() } });
         const d = await res.json();
@@ -2423,14 +2472,71 @@
         document.getElementById('lk-url').value = d.url || '';
         document.getElementById('lk-api-key').value = d.api_key || '';
         document.getElementById('lk-api-secret').value = '';
-        if (status) {
+        if (badge) {
+          badge.textContent = d.configured ? '✅ مهيأ وفعال' : '⚠️ غير مهيأ';
+          badge.style.color = d.configured ? '#4ade80' : '#fbbf24';
+          badge.style.background = d.configured ? 'rgba(74,222,128,.12)' : 'rgba(251,191,36,.12)';
+        }
+        if (status && !status.innerHTML.includes('وُلِّدت')) {
           status.innerHTML = d.configured
-            ? '<span style="color:#4ade80;">✅ LiveKit مهيأ وفعال</span>'
-            : '<span style="color:#fbbf24;">⚠️ غير مهيأ — لن يعمل البث المباشر حتى تُدخل الرابط والمفتاح والسرّ</span>';
+            ? '<span style="color:#4ade80;">✅ LiveKit مهيأ — البث يعمل في كل الغرف</span>'
+            : '<span style="color:#fbbf24;">⚠️ غير مهيأ — لن يعمل البث المباشر حتى تحفظ الرابط والمفتاح والسرّ</span>';
         }
       } catch (err) {
-        if (status) status.innerHTML = '<span style="color:#f87171;">❌ ' + err.message + '</span>';
+        if (status) status.innerHTML = '<span style="color:#f87171;">❌ ' + lkEsc(err.message) + '</span>';
       }
+    }
+    function showLiveKitCreatedDialog(d) {
+      document.getElementById('lk-created-overlay')?.remove();
+      const envText = 'LIVEKIT_URL=' + d.url + '\nLIVEKIT_API_KEY=' + d.api_key + '\nLIVEKIT_API_SECRET=' + d.api_secret;
+      const row = (label, id, value, sub) => `
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px;">
+            <span style="font-size:12.5px;font-weight:700;color:#c4b5fd;" dir="ltr">${label}</span>
+            <button type="button" class="btn-action" style="padding:4px 12px;font-size:11.5px;" onclick="lkCopy(document.getElementById('${id}').value, this)">نسخ</button>
+          </div>
+          <input id="${id}" readonly dir="ltr" value="${lkEsc(value)}" style="width:100%;padding:9px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.35);color:#e5e7eb;font-family:monospace;font-size:13px;user-select:all;" />
+          ${sub ? `<div style="font-size:11px;color:#9ca3af;margin-top:4px;">${sub}</div>` : ''}
+        </div>`;
+      const ov = document.createElement('div');
+      ov.id = 'lk-created-overlay';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.66);backdrop-filter:blur(3px);padding:18px;';
+      ov.innerHTML = `
+        <div style="width:min(560px,100%);max-height:90vh;overflow:auto;background:#171733;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px 22px 18px;box-shadow:0 24px 70px rgba(0,0,0,.6);color:#e5e7eb;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+            <span style="font-size:20px;">🔑</span>
+            <span style="font-size:17px;font-weight:800;" dir="ltr">Generated API key</span>
+          </div>
+          <div style="font-size:12.5px;color:#9ca3af;margin-bottom:16px;">مفاتيح LiveKit جاهزة وتم تفعيلها — تظهر هنا مرة واحدة فقط عند الإنشاء/الحفظ.</div>
+          ${row('Websocket URL', 'lk-dlg-url', d.url)}
+          ${row('API key', 'lk-dlg-key', d.api_key)}
+          ${row('API secret', 'lk-dlg-secret', d.api_secret, d.secretNote || '')}
+          <div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);border-radius:10px;padding:10px 12px;margin:14px 0;font-size:12px;line-height:1.8;color:#fde68a;">
+            <div dir="ltr" style="font-weight:700;">⚠️ Copy the API secret now. It's only shown here, at creation — you won't be able to view it again after closing this dialog.</div>
+            <div>⚠️ انسخ سرّ API الآن — يظهر فقط هنا عند الإنشاء، ولن تتمكن من رؤيته مجدداً بعد إغلاق هذا النافذة.</div>
+          </div>
+          <div style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px;">
+              <span style="font-size:12.5px;font-weight:700;color:#c4b5fd;" dir="ltr">Environment variables</span>
+              <button type="button" class="btn-action" style="padding:4px 12px;font-size:11.5px;" onclick="lkCopy(document.getElementById('lk-dlg-env').value, this)">نسخ</button>
+            </div>
+            <textarea id="lk-dlg-env" readonly rows="3" dir="ltr" style="width:100%;padding:9px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.45);color:#86efac;font-family:monospace;font-size:12px;resize:vertical;user-select:all;">${lkEsc(envText)}</textarea>
+            <div style="font-size:11px;color:#9ca3af;margin-top:4px;">انسخها إلى ملف البيئة (.env) أو مساحة متغيرات خادم LiveKit إن كنت تشغّله خارج التطبيق.</div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:10px;">
+            <button type="button" class="btn-submit" id="lk-dlg-close" style="width:auto;padding:9px 30px;margin:0;background:linear-gradient(135deg,#6366f1,#8b5cf6);">Close · إغلاق</button>
+          </div>
+        </div>`;
+      const close = () => {
+        ov.remove();
+        const sec = document.getElementById('lk-api-secret');
+        if (sec) sec.value = '';
+        fetchLiveKitSettings();
+        if (typeof showToast === 'function') showToast('✅ تم حفظ إعدادات LiveKit — البث المباشر مفعّل فوراً في كل الغرف');
+      };
+      ov.onclick = (e) => { if (e.target === ov) close(); };
+      ov.querySelector('#lk-dlg-close').onclick = close;
+      document.body.appendChild(ov);
     }
     async function saveLiveKitSettings(e) {
       e.preventDefault();
@@ -2442,9 +2548,10 @@
         api_secret: document.getElementById('lk-api-secret').value.trim()
       };
       if (!body.url || !body.api_key) {
-        status.innerHTML = '<span style="color:#f87171;">❌ أدخل رابط الخادم ومفتاح API (والسرّ إن لم يكن محفوظاً)</span>';
+        status.innerHTML = '<span style="color:#f87171;">❌ أدخل Websocket URL ومفتاح API (والسرّ إن لم يكن محفوظاً) — أو اضغط 🎲 توليد</span>';
         return;
       }
+      const secretCreated = body.api_secret !== '';
       btn.disabled = true; status.textContent = 'جارٍ الحفظ...';
       try {
         const res = await fetch('/api/admin/settings/livekit', {
@@ -2454,12 +2561,23 @@
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || 'فشل الحفظ');
-        status.innerHTML = d.configured
-          ? '<span style="color:#4ade80;">✅ تم حفظ إعدادات LiveKit وتفعيل البث المباشر فوراً</span>'
-          : '<span style="color:#fbbf24;">⚠️ تم الحفظ لكن الإعدادات غير مكتملة (رابط + مفتاح + سرّ)</span>';
-        document.getElementById('lk-api-secret').value = '';
+        if (secretCreated) {
+          // لحظة الإنشاء: نعرض المفاتيح مرة واحدة ثم تختفي بعد الإغلاق
+          showLiveKitCreatedDialog({
+            url: body.url,
+            api_key: body.api_key,
+            api_secret: body.api_secret,
+            secretNote: 'صُدِّر/حُفظ للتو — لن يظهر مجدداً'
+          });
+        } else {
+          status.innerHTML = d.configured
+            ? '<span style="color:#4ade80;">✅ تم الحفظ — مفعّل فوراً في كل الغرف</span>'
+            : '<span style="color:#fbbf24;">⚠️ تم الحفظ لكن الإعدادات غير مكتملة (رابط + مفتاح + سرّ)</span>';
+          fetchLiveKitSettings();
+          if (typeof showToast === 'function') showToast('✅ حُفظت إعدادات LiveKit — مفعّلة فورياً في كل الغرف');
+        }
       } catch (err) {
-        status.innerHTML = '<span style="color:#f87171;">❌ ' + err.message + '</span>';
+        status.innerHTML = '<span style="color:#f87171;">❌ ' + lkEsc(err.message) + '</span>';
       } finally { btn.disabled = false; }
     }
 
@@ -2701,7 +2819,7 @@
       if (tabId === 'smtp') fetchSmtpSettings();
       if (tabId === 'youtube') fetchYtKeyStatus();
       if (tabId === 'google') fetchGoogleSettings();
-      if (tabId === 'broadcast') fetchLiveKitSettings();
+      if (tabId === 'livekit') fetchLiveKitSettings();
       if (tabId === 'room-message') fetchRoomSystemMessage();
       if (tabId === 'wallet') { fetchWalletSettings(); fetchPaypalSettings(); fetchPaypalOrders(); }
       if (tabId === 'charge-agents') loadChargeAgentsTab();

@@ -123,6 +123,13 @@ class SoulRtcEngine {
         userIds.forEach(uid => this.removeRemoteUserAudio(uid));
       }
     });
+
+    // الإدارة حفظت إعدادات LiveKit أثناء وجودنا في غرفة: ننضم فورًا بلا إعادة تحميل
+    this.socket.on('livekit_settings_updated', ({ configured } = {}) => {
+      if (configured && this.currentRoomId && (!this.lkRoom || this.lkRoom.state === 'disconnected')) {
+        this.requestRoomStream(this.currentRoomId);
+      }
+    });
   }
 
   setCurrentRoom(roomId) {

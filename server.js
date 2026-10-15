@@ -931,6 +931,8 @@ app.post('/api/admin/settings/livekit', async (req, res) => {
     await upsert('livekit_api_key', apiKey);
     if (apiSecret !== '') await upsert('livekit_api_secret', apiSecret); // اتركه فارغاً للإبقاء على المحفوظ
     const cfg = await getLiveKitSettings();
+    // تطبيق فوري على كل الغرف: يُخطر العملاء المتصلين لإعادة الانضمام والحصول على رمز جديد
+    try { if (typeof io !== 'undefined') io.emit('livekit_settings_updated', { configured: cfg.configured }); } catch (e) {}
     res.json({ ok: true, configured: cfg.configured, url: cfg.url });
   } catch (err) {
     console.error('livekit settings save error:', err);
