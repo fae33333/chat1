@@ -5021,17 +5021,17 @@ body.ltr .room-country-badge {
   inset: auto 0 0 0;
   height: 62%;
   animation: roomEntryBottomIn 0.5s ease-out forwards;
-  /* بلا حدود: حواف الطبقة كلها متلاشية مع خلفية الغرفة (تُدمج مع تلاشٍ العلوي للّوسائط نفسها) */
-  -webkit-mask-image: radial-gradient(ellipse 82% 90% at 50% 62%, #000 54%, transparent 97%);
-  mask-image: radial-gradient(ellipse 82% 90% at 50% 62%, #000 54%, transparent 97%);
+  /* بلا زوايا ولا حدود: تلاشٍ مبكّر وواسع لكل الأطراف حتى يختفي أي أثر مستطيل */
+  -webkit-mask-image: radial-gradient(ellipse 74% 84% at 50% 58%, #000 38%, rgba(0,0,0,.55) 72%, transparent 94%);
+  mask-image: radial-gradient(ellipse 74% 84% at 50% 58%, #000 38%, rgba(0,0,0,.55) 72%, transparent 94%);
 }
 .soulchill-seamless-room-entry-layer.entry-bottom.fade-out { opacity: 0; transition: opacity 0.6s ease; }
 .soulchill-seamless-room-entry-layer.entry-bottom .seamless-room-entry-gif {
   width: 100%; height: 100%;
   object-fit: cover;
   object-position: center bottom;
-  opacity: 1;
-  mix-blend-mode: normal;
+  opacity: .9;
+  mix-blend-mode: lighten; /* خلفية الفيديو شفافة ومتداخلة مع خلفية الدردشة */
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.85) 14%, #000 30%);
   mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.85) 14%, #000 30%);
 }
