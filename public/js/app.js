@@ -1038,15 +1038,8 @@
       }
     });
 
-    // إشارات WebRTC (صوت فقط) من الشريك الحقيقي
-    state.socket.on('voice_match_signal', (payload) => {
-      if (voiceMatchPeer && voiceMatchPeer.pc) {
-        handleVoiceMatchSignal(payload);
-      } else if (activeVoiceMatchSession) {
-        // Signal وصل قبل جاهزية الاتصال — نخزّنه مؤقتاً
-        voiceMatchPeer.pending.push(payload);
-      }
-    });
+    // لا إشارات WebRTC بعد الآن — صوت التوافق الصوتي يمر عبر غرفة LiveKit المباشرة
+    state.socket.on('voice_match_signal', () => { /* أُلغيت — الوسيط LiveKit */ });
 
     state.socket.on('partner_revealed_identity', () => {
       showToast('🌟 الشريك قام بكشف هويته لك! انقر على "كشف هويتي" لتتحول المكالمة إلى بلا حدود!');
@@ -1201,7 +1194,7 @@
       showGlobalAnnouncementBanner(`📢 [${sender || 'إدارة التطبيق'}]: ${title} - ${message}`);
     });
 
-    // Initialize WebRTC Real Audio/Video Engine
+    // Initialize LiveKit Audio/Video Streaming Engine (يحل محل WebRTC)
     if (window.soulRtc) {
       window.soulRtc.init(state.socket, state.currentUser);
     }
@@ -1702,6 +1695,7 @@
   let isVoiceMatchMuted = false;
   let isVoiceMatchSpeakerOn = true;
   let voiceMatchMicStream = null;
+  let voiceMatchLkRoom = null;
   let voiceMatchAudioContext = null;
   let voiceMatchAnalyser = null;
   let voiceMatchSimInterval = null;
@@ -3832,7 +3826,7 @@
       }
     }, 1000);
 
-    // Setup Real P2P Voice Connection (WebRTC — صوت فقط) + Local Speech Wave Visualization
+    // Setup LiveKit Voice Connection (غرفة LiveKit — صوت فقط) + Local Speech Wave Visualization
     setupVoiceMatchAudio(data);
 
     // Wire End Call Button
@@ -4042,48 +4036,40 @@
       showToast('⚠️ تعذر الوصول إلى الميكروفون — لن يسمعك الشريك!');
     }
 
-    // 2. إنشاء اتصال WebRTC من نظير لنظير (صوت فقط) — offerer يرسل العرض، answerer يرد عليه
+    // 2. الاتصال الصوتي المباشر عبر LiveKit (مكتبة livekit-client) — بلا إشارات SDP/ICE
     try {
-      const pc = new RTCPeerConnection(VOICE_MATCH_RTC_CONFIG);
-      voiceMatchPeer.pc = pc;
-      if (voiceMatchMicStream) {
-        voiceMatchMicStream.getTracks().forEach(track => pc.addTrack(track, voiceMatchMicStream));
+      if (voiceMatchLkRoom) {
+        try { voiceMatchLkRoom.disconnect(); } catch (e) {}
+        voiceMatchLkRoom = null;
       }
-      pc.onicecandidate = (e) => {
-        if (e.candidate && activeVoiceMatchSession) {
-          state.socket.emit('voice_match_signal', { sessionId: activeVoiceMatchSession.sessionId, data: { candidate: e.candidate } });
+      if (window.scLivekit && data && data.sessionId) {
+        const userId = state.currentUser && state.currentUser.id;
+        const room = await window.scLivekit.joinRoom('vmatch-' + data.sessionId, {
+          onTrackSubscribed: (track) => {
+            if (track.kind !== 'audio') return;
+            const remoteAudio = document.getElementById('vmatch-remote-audio');
+            if (remoteAudio) {
+              remoteAudio.srcObject = track.mediaStream || new MediaStream([track.mediaStreamTrack]);
+              remoteAudio.muted = !isVoiceMatchSpeakerOn;
+              const p = remoteAudio.play();
+              if (p && p.catch) p.catch(() => {});
+            }
+          },
+          onParticipantConnected: () => {
+            if (document.getElementById('voice-match-active-modal')) {
+              showToast('🔊 تم الاتصال الصوتي بالشريك الحقيقي! 🎙️');
+            }
+          }
+        }, { userId, canPublish: !!voiceMatchMicStream });
+        if (voiceMatchMicStream) {
+          const t = voiceMatchMicStream.getAudioTracks()[0];
+          if (t) await room.localParticipant.publishTrack(t, { source: 'microphone', name: 'mic' });
         }
-      };
-      pc.ontrack = (e) => {
-        const remoteAudio = document.getElementById('vmatch-remote-audio');
-        if (remoteAudio && e.streams && e.streams[0]) {
-          remoteAudio.srcObject = e.streams[0];
-          remoteAudio.muted = !isVoiceMatchSpeakerOn;
-          const p = remoteAudio.play();
-          if (p && p.catch) p.catch(() => {});
-        }
-      };
-      pc.onconnectionstatechange = () => {
-        if (!voiceMatchPeer.pc) return;
-        if (pc.connectionState === 'connected') {
-          showToast('🔊 تم الاتصال الصوتي بالشريك الحقيقي! 🎙️');
-        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-          showToast('⚠️ انقطع الاتصال الصوتي... 🔌');
-        }
-      };
-
-      // معالجة أي إشارات وصلت قبل جاهزية الاتصال
-      const queued = voiceMatchPeer.pending.splice(0);
-      for (const sig of queued) await handleVoiceMatchSignal(sig);
-
-      // من كان ينتظر (offerer) هو من يبدأ Offer
-      if (data && data.role === 'offerer') {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        state.socket.emit('voice_match_signal', { sessionId: data.sessionId, data: { type: 'offer', sdp: offer.sdp } });
+        voiceMatchLkRoom = room;
       }
     } catch (err) {
-      console.error('Voice match WebRTC setup error:', err);
+      console.error('Voice match LiveKit setup error:', err);
+      if (window.scLivekit && window.scLivekit.notifyUnavailable) window.scLivekit.notifyUnavailable(err);
     }
 
     // 3. Web Audio — موجات الصوت المحلية + إرسال حالة التحدث للشريك الحقيقي
@@ -4137,33 +4123,8 @@
     }
   }
 
-  // معالجة إشارات WebRTC (offer/answer/ICE) القادمة من الشريك الحقيقي
-  async function handleVoiceMatchSignal({ sessionId, data: sig } = {}) {
-    if (!activeVoiceMatchSession || sessionId !== activeVoiceMatchSession.sessionId) return;
-    const pc = voiceMatchPeer && voiceMatchPeer.pc;
-    if (!pc || !sig) return;
-    try {
-      if (sig.type === 'offer') {
-        await pc.setRemoteDescription({ type: 'offer', sdp: sig.sdp });
-        voiceMatchPeer.remoteSet = true;
-        for (const c of voiceMatchPeer.pendingIce) await pc.addIceCandidate(c).catch(() => {});
-        voiceMatchPeer.pendingIce = [];
-        const ans = await pc.createAnswer();
-        await pc.setLocalDescription(ans);
-        state.socket.emit('voice_match_signal', { sessionId, data: { type: 'answer', sdp: ans.sdp } });
-      } else if (sig.type === 'answer') {
-        await pc.setRemoteDescription({ type: 'answer', sdp: sig.sdp });
-        voiceMatchPeer.remoteSet = true;
-        for (const c of voiceMatchPeer.pendingIce) await pc.addIceCandidate(c).catch(() => {});
-        voiceMatchPeer.pendingIce = [];
-      } else if (sig.candidate) {
-        if (voiceMatchPeer.remoteSet) await pc.addIceCandidate(sig.candidate).catch(() => {});
-        else voiceMatchPeer.pendingIce.push(sig.candidate);
-      }
-    } catch (e) {
-      console.error('voice match signal error', e);
-    }
-  }
+  // (أُلغيت إشارات WebRTC — صوت التوافق الصوتي يمر عبر غرفة LiveKit المباشرة)
+  async function handleVoiceMatchSignal() { /* LiveKit — لا إشارات SDP/ICE */ }
 
   // Reaction Emoji Float-Up Burst Animation
   function triggerVoiceMatchReactionBurst(emoji) {
@@ -4179,7 +4140,11 @@
 
   // Close Voice Match Call Screen and clean up
   function closeVoiceMatchScreen(notify = false) {
-    // إغلاق الاتصال الصوتي الحقيقي (WebRTC) وتنظيف صوت الطرف الآخر
+    // إغلاق اتصال LiveKit الصوتي وتنظيف صوت الطرف الآخر
+    if (voiceMatchLkRoom) {
+      try { voiceMatchLkRoom.disconnect(); } catch (e) {}
+      voiceMatchLkRoom = null;
+    }
     if (voiceMatchPeer && voiceMatchPeer.pc) {
       try {
         voiceMatchPeer.pc.onicecandidate = null;
@@ -5171,15 +5136,15 @@
           activeVideoStream = stream;
           videoEl.style.display = 'block';
           fallbackEl.style.display = 'none';
-          showToast('📹 تم تشغيل الكاميرا وتدفق الفيديو والصوت عبر WebRTC!');
+          showToast('📹 تم تشغيل الكاميرا وتدفق الفيديو والصوت عبر LiveKit!');
         }).catch(err => {
-          console.warn('WebRTC broadcast failed:', err);
+          console.warn('LiveKit broadcast failed:', err);
         });
       }
     } else {
       if (window.soulRtc) {
         window.soulRtc.requestRoomStream(room.id);
-        showToast('📡 جارِ استقبال تدفق البث المباشر والصوت عبر WebRTC...');
+        showToast('📡 جارِ استقبال تدفق البث المباشر والصوت عبر LiveKit...');
       }
     }
 

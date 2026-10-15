@@ -1530,6 +1530,37 @@
         </div>
       </div>
 
+        <div class="content-box" style="max-width: 600px; margin-top: 18px;">
+          <div class="content-box-title">
+            <span>🎙️ LiveKit — البث الصوتي والمرئي المباشر (الراديو والكاميرا والميكروفون)</span>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+            مقاعد الصوت وبث الكاميرا والشريك (PK) والمكالمات الصوتية والتوافق الصوتي تعمل الآن عبر LiveKit بدل WebRTC.
+            شغّل خادم LiveKit محلياً بأمر واحد (وضع التطوير):
+            <code style="display:block;margin-top:8px;padding:8px;background:rgba(0,0,0,.35);border-radius:8px;user-select:all;color:#4ade80;word-break:break-all;" dir="ltr">docker run --rm -p 7880:7880 -p 7881:7881 -p 50051:50051 livekit/livekit-server --dev</code>
+            أو استخدم LiveKit Cloud (يحصل على API Key/Secret تلقائياً). اترك الحقول فارغة لتعطيل البث وإرجاع رسالة إرشادية للمستخدمين.
+          </p>
+          <form onsubmit="saveLiveKitSettings(event)" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;">
+            <div class="form-group" style="grid-column:1/-1;">
+              <label class="form-label">رابط الخادم (WebSocket URL):</label>
+              <input type="text" class="form-input" id="lk-url" placeholder="ws://SERVER_IP:7880  أو  wss://xxx.livekit.cloud" autocomplete="off" dir="ltr" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">API Key:</label>
+              <input type="text" class="form-input" id="lk-api-key" placeholder="APIxxxxxxxx" autocomplete="off" dir="ltr" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">API Secret:</label>
+              <input type="password" class="form-input" id="lk-api-secret" placeholder="اتركه فارغاً للإبقاء على المحفوظ" autocomplete="new-password" dir="ltr" />
+            </div>
+            <div style="grid-column:1/-1;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <button type="submit" class="btn-submit" id="lk-save-btn" style="width:auto;padding:10px 28px;margin:0;">💾 حفظ إعدادات LiveKit</button>
+              <span id="lk-status" style="font-size:12.5px;"></span>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- TAB: رسالة الإدارة الثابتة لكل الغرف -->
       <div class="tab-pane" id="tab-room-message">
         <div class="content-box" style="max-width: 600px;">
@@ -2382,6 +2413,56 @@
       } catch (err) { status.innerHTML = '<span style="color:#f87171;">❌ ' + err.message + '</span>'; }
     }
 
+    // ===== LiveKit (البث الصوتي والمرئي المباشر) =====
+    async function fetchLiveKitSettings() {
+      const status = document.getElementById('lk-status');
+      try {
+        const res = await fetch('/api/admin/settings/livekit', { headers: { 'x-admin-token': getAdminToken() } });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'فشل الجلب');
+        document.getElementById('lk-url').value = d.url || '';
+        document.getElementById('lk-api-key').value = d.api_key || '';
+        document.getElementById('lk-api-secret').value = '';
+        if (status) {
+          status.innerHTML = d.configured
+            ? '<span style="color:#4ade80;">✅ LiveKit مهيأ وفعال</span>'
+            : '<span style="color:#fbbf24;">⚠️ غير مهيأ — لن يعمل البث المباشر حتى تُدخل الرابط والمفتاح والسرّ</span>';
+        }
+      } catch (err) {
+        if (status) status.innerHTML = '<span style="color:#f87171;">❌ ' + err.message + '</span>';
+      }
+    }
+    async function saveLiveKitSettings(e) {
+      e.preventDefault();
+      const status = document.getElementById('lk-status');
+      const btn = document.getElementById('lk-save-btn');
+      const body = {
+        url: document.getElementById('lk-url').value.trim(),
+        api_key: document.getElementById('lk-api-key').value.trim(),
+        api_secret: document.getElementById('lk-api-secret').value.trim()
+      };
+      if (!body.url || !body.api_key) {
+        status.innerHTML = '<span style="color:#f87171;">❌ أدخل رابط الخادم ومفتاح API (والسرّ إن لم يكن محفوظاً)</span>';
+        return;
+      }
+      btn.disabled = true; status.textContent = 'جارٍ الحفظ...';
+      try {
+        const res = await fetch('/api/admin/settings/livekit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-token': getAdminToken() },
+          body: JSON.stringify(body)
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'فشل الحفظ');
+        status.innerHTML = d.configured
+          ? '<span style="color:#4ade80;">✅ تم حفظ إعدادات LiveKit وتفعيل البث المباشر فوراً</span>'
+          : '<span style="color:#fbbf24;">⚠️ تم الحفظ لكن الإعدادات غير مكتملة (رابط + مفتاح + سرّ)</span>';
+        document.getElementById('lk-api-secret').value = '';
+      } catch (err) {
+        status.innerHTML = '<span style="color:#f87171;">❌ ' + err.message + '</span>';
+      } finally { btn.disabled = false; }
+    }
+
     async function fetchYtKeyStatus() {
       try {
         const res = await fetch('/api/admin/youtube-key', { headers: { 'x-admin-token': getAdminToken() } });
@@ -2620,6 +2701,7 @@
       if (tabId === 'smtp') fetchSmtpSettings();
       if (tabId === 'youtube') fetchYtKeyStatus();
       if (tabId === 'google') fetchGoogleSettings();
+      if (tabId === 'broadcast') fetchLiveKitSettings();
       if (tabId === 'room-message') fetchRoomSystemMessage();
       if (tabId === 'wallet') { fetchWalletSettings(); fetchPaypalSettings(); fetchPaypalOrders(); }
       if (tabId === 'charge-agents') loadChargeAgentsTab();

@@ -831,6 +831,108 @@ app.get('/api/users/me', async (req, res) => {
 });
 
 
+// ===== LiveKit: البث الصوتي والمرئي المباشر (الراديو والكاميرا والميكروفون) =====
+// إعدادات الخادم فقط: app_settings (لوحة الإدارة) مع احتياط متغيرات البيئة LIVEKIT_*.
+// لا تُحفظ هذه الإعدادات في متصفح المستخدم إطلاقًا (قيود الخصوصية).
+async function getLiveKitSettings() {
+  let stored = {};
+  try {
+    const rows = await all(`SELECT key, value FROM app_settings WHERE key IN ('livekit_url','livekit_api_key','livekit_api_secret')`);
+    (rows || []).forEach(r => { stored[r.key] = r.value; });
+  } catch (e) {}
+  const url = String(stored.livekit_url || process.env.LIVEKIT_URL || '').trim();
+  const apiKey = String(stored.livekit_api_key || process.env.LIVEKIT_API_KEY || '').trim();
+  const apiSecret = String(stored.livekit_api_secret || process.env.LIVEKIT_API_SECRET || '').trim();
+  return { url, apiKey, apiSecret, configured: !!(url && apiKey && apiSecret) };
+}
+
+// توقيع JWT (HS256) لرمز انضمام LiveKit مباشرةً بـ node:crypto — بلا أي مكتبة خارجية
+function signLiveKitJwt(apiKey, apiSecret, grants) {
+  const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const header = b64({ alg: 'HS256', typ: 'JWT' });
+  const payload = b64(grants);
+  const sig = crypto.createHmac('sha256', apiSecret).update(`${header}.${payload}`).digest('base64url');
+  return `${header}.${payload}.${sig}`;
+}
+
+// إصدار رمز انضمام مشارك إلى غرفة LiveKit (يتحقق من المستخدم عبر x-user-id كبقية الواجهات)
+app.post('/api/livekit/token', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'] || '';
+    if (!userId) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+    const room = String((req.body && req.body.room) || '');
+    if (!/^[A-Za-z0-9_\-.]{3,64}$/.test(room)) return res.status(400).json({ error: 'اسم غرفة LiveKit غير صالح' });
+    const cfg = await getLiveKitSettings();
+    if (!cfg.configured) {
+      return res.status(503).json({ error: 'خدمة LiveKit غير مهيأة بعد — افتح لوحة الإدارة ← تبويب «البث» وأدخل رابط LiveKit ومفتاح API وسرّه لتفعيل البث الصوتي والمرئي المباشر (الراديو والكاميرا والميكروفون).' });
+    }
+    const canPublish = !(req.body && req.body.canPublish === false);
+    const now = Math.floor(Date.now() / 1000);
+    const token = signLiveKitJwt(cfg.apiKey, cfg.apiSecret, {
+      iss: cfg.apiKey,
+      sub: String(userId),
+      nbf: now - 10,
+      exp: now + 6 * 3600, // رمز صالح 6 ساعات — يُجدد مع كل انضمام
+      video: {
+        room,
+        roomJoin: true,
+        canPublish,
+        canSubscribe: true,
+        canPublishData: true,
+        canUpdateOwnMetadata: true
+      }
+    });
+    res.json({ token, url: cfg.url, room, expiresIn: 6 * 3600 });
+  } catch (err) {
+    console.error('livekit token error:', err);
+    res.status(500).json({ error: 'تعذر إصدار رمز LiveKit' });
+  }
+});
+
+// حالة الإعدادات للواجهة العامة (لا تكشف الأسرار أبدًا)
+app.get('/api/livekit/config', async (req, res) => {
+  try {
+    const cfg = await getLiveKitSettings();
+    res.json({ configured: cfg.configured, url: cfg.configured ? cfg.url : null });
+  } catch (err) {
+    res.status(500).json({ error: 'خطأ داخلي في الخادم' });
+  }
+});
+
+// قراءة/حفظ إعدادات LiveKit من لوحة الإدارة
+app.get('/api/admin/settings/livekit', async (req, res) => {
+  const session = await verifyAdminToken(req);
+  if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+  try {
+    const cfg = await getLiveKitSettings();
+    res.json({ url: cfg.url, api_key: cfg.apiKey, has_secret: !!cfg.apiSecret, configured: cfg.configured });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/settings/livekit', async (req, res) => {
+  const session = await verifyAdminToken(req);
+  if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+  try {
+    const url = String(req.body?.url ?? '').trim();
+    const apiKey = String(req.body?.api_key ?? '').trim();
+    const apiSecret = String(req.body?.api_secret ?? '').trim();
+    if (url && !/^https?:\/\//i.test(url) && !/^wss?:\/\//i.test(url)) {
+      return res.status(400).json({ error: 'رابط LiveKit يجب أن يبدأ بـ ws:// أو wss:// أو http(s)://' });
+    }
+    const upsert = (k, v) => run(`INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [k, v]);
+    await upsert('livekit_url', url);
+    await upsert('livekit_api_key', apiKey);
+    if (apiSecret !== '') await upsert('livekit_api_secret', apiSecret); // اتركه فارغاً للإبقاء على المحفوظ
+    const cfg = await getLiveKitSettings();
+    res.json({ ok: true, configured: cfg.configured, url: cfg.url });
+  } catch (err) {
+    console.error('livekit settings save error:', err);
+    res.status(500).json({ error: 'تعذر حفظ إعدادات LiveKit' });
+  }
+});
+
 // ===== رسالة الإدارة الثابتة التي تظهر لكل من يدخل أي غرفة (يضبطها الأدمن) =====
 app.get('/api/settings/room-system-message', async (req, res) => {
   try {

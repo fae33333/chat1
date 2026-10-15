@@ -291,11 +291,11 @@
   }
 
   // =========================================================
-  // المكالمات الصوتية الخاصة (WebRTC + إشارات socket.io)
+  // المكالمات الصوتية الخاصة (LiveKit + إشارات socket.io للتحكم)
   // =========================================================
   const Call = (function () {
     const RTC_CFG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
-    let ov = null, pc = null, local = null, callId = null, peer = null, role = null;
+    let ov = null, pc = null, lkRoom = null, local = null, callId = null, peer = null, role = null;
     let timer = null, secs = 0, pendingIce = [], remoteSet = false, cancelPending = false;
     let ringCtx = null, ringTimer = null, bound = null, handlers = null;
 
@@ -374,22 +374,39 @@
       }
     }
 
-    function makePc() {
-      pc = new RTCPeerConnection(RTC_CFG);
-      remoteSet = false; pendingIce = [];
-      local.getTracks().forEach((t) => pc.addTrack(t, local));
-      pc.onicecandidate = (e) => {
-        if (e.candidate && sock() && callId) sock().emit('dm_call_signal', { callId, data: { candidate: e.candidate } });
-      };
-      pc.ontrack = (e) => {
-        const a = ov && ov.querySelector('#dm-call-audio');
-        if (a) { a.srcObject = e.streams[0]; const p = a.play(); if (p && p.catch) p.catch(() => {}); }
-      };
-      pc.onconnectionstatechange = () => {
-        if (!pc) return;
-        if (pc.connectionState === 'connected') onConnected();
-        else if (pc.connectionState === 'failed') { toast('انقطع الاتصال'); hangup(); }
-      };
+    // الانضمام إلى غرفة LiveKit الخاصة بالمكالمة — البديل الكامل لـ WebRTC
+    async function joinCallRoom() {
+      if (!callId || !window.scLivekit) return false;
+      const myCall = callId;
+      const userId = (App().state && App().state.currentUser && App().state.currentUser.id) || 0;
+      try {
+        const room = await window.scLivekit.joinRoom('call-' + myCall, {
+          onTrackSubscribed: (track) => {
+            if (track.kind !== 'audio') return;
+            const a = ov && ov.querySelector('#dm-call-audio');
+            if (a) {
+              a.srcObject = track.mediaStream || new MediaStream([track.mediaStreamTrack]);
+              const pr = a.play(); if (pr && pr.catch) pr.catch(() => {});
+            }
+          },
+          onParticipantConnected: () => onConnected()
+        }, { userId, canPublish: true });
+        if (callId !== myCall) { // انتهت المكالمة أثناء الانضمام
+          try { room.disconnect(); } catch (e) {}
+          return false;
+        }
+        if (room.participants && room.participants.size > 0) onConnected();
+        if (local) {
+          const t = local.getAudioTracks()[0];
+          if (t) await room.localParticipant.publishTrack(t, { source: 'microphone', name: 'mic' });
+        }
+        lkRoom = room;
+        return true;
+      } catch (e) {
+        console.warn('LiveKit DM call join failed:', e);
+        if (window.scLivekit && window.scLivekit.notifyUnavailable) window.scLivekit.notifyUnavailable(e);
+        return false;
+      }
     }
 
     function onConnected() {
@@ -405,7 +422,8 @@
     function cleanup() {
       stopRing();
       if (timer) { clearInterval(timer); timer = null; }
-      if (pc) { try { pc.onicecandidate = pc.ontrack = pc.onconnectionstatechange = null; pc.close(); } catch (e) {} pc = null; }
+      if (lkRoom) { try { lkRoom.disconnect(); } catch (e) {} lkRoom = null; }
+      pc = null;
       if (local) { local.getTracks().forEach((t) => t.stop()); local = null; }
       if (ov) { ov.remove(); ov = null; }
       callId = null; peer = null; role = null; pendingIce = []; remoteSet = false; secs = 0;
@@ -429,7 +447,7 @@
       stopRing();
       local = await getMic();
       if (!local) { sock().emit('dm_call_reject', { callId }); cleanup(); return; }
-      makePc();
+      joinCallRoom().catch(() => {});
       render('calling');
       setStatus('جارِ الاتصال…');
       sock().emit('dm_call_accept', { callId });
@@ -444,28 +462,7 @@
     }
 
     // ---------- أحداث الخادم ----------
-    async function onSignal({ callId: id, data }) {
-      if (id !== callId || !pc || !data) return;
-      try {
-        if (data.type === 'offer') {
-          await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp });
-          remoteSet = true;
-          for (const c of pendingIce) await pc.addIceCandidate(c).catch(() => {});
-          pendingIce = [];
-          const ans = await pc.createAnswer();
-          await pc.setLocalDescription(ans);
-          sock().emit('dm_call_signal', { callId, data: { type: 'answer', sdp: ans.sdp } });
-        } else if (data.type === 'answer') {
-          await pc.setRemoteDescription({ type: 'answer', sdp: data.sdp });
-          remoteSet = true;
-          for (const c of pendingIce) await pc.addIceCandidate(c).catch(() => {});
-          pendingIce = [];
-        } else if (data.candidate) {
-          if (remoteSet) await pc.addIceCandidate(data.candidate).catch(() => {});
-          else pendingIce.push(data.candidate);
-        }
-      } catch (e) { console.error('call signal error', e); }
-    }
+    // أحداث التحكم فقط (رنين/قبول/رفض/انتهاء) — صوت المكالمة يمر عبر LiveKit
 
     function bind(s) {
       if (bound === s) return;
@@ -491,14 +488,12 @@
         dm_call_accepted: async ({ callId: id }) => {
           if (id !== callId || role !== 'caller' || !local) return;
           try {
-            makePc();
             setStatus('جارِ الاتصال…');
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            s.emit('dm_call_signal', { callId, data: { type: 'offer', sdp: offer.sdp } });
+            const ok = await joinCallRoom();
+            if (!ok) { toast('تعذر بدء المكالمة عبر LiveKit'); hangup(); }
           } catch (e) { console.error(e); toast('تعذر بدء المكالمة'); hangup(); }
         },
-        dm_call_signal: onSignal,
+        dm_call_signal: () => { /* لا إشارات SDP/ICE — الوسيط LiveKit */ },
         dm_call_ended: ({ callId: id, reason }) => {
           if (id !== callId) return;
           const msg = { rejected: 'تم رفض المكالمة', no_answer: 'لم يتم الرد', disconnected: 'انقطع الاتصال', ended: 'انتهت المكالمة' }[reason];
