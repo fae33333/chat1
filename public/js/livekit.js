@@ -33,9 +33,12 @@
   }
 
   async function fetchToken(roomName, userId, canPublish) {
+    // معرّف لحظي من حالة التطبيق: تسجيل الدخول قد يكتمل بعد تهيئة المحرك (كان سبب 401)
+    const liveId = (window.SoulChillApp && window.SoulChillApp.state && window.SoulChillApp.state.currentUser && window.SoulChillApp.state.currentUser.id) || '';
+    const uid = (userId !== undefined && userId !== null && String(userId) !== '') ? userId : liveId;
     const res = await fetch('/api/livekit/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-user-id': String(userId || '') },
+      headers: { 'Content-Type': 'application/json', 'x-user-id': String(uid || '') },
       body: JSON.stringify({ room: roomName, canPublish: canPublish !== false })
     });
     let data = null;

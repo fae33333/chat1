@@ -858,19 +858,24 @@ function signLiveKitJwt(apiKey, apiSecret, grants) {
 // إصدار رمز انضمام مشارك إلى غرفة LiveKit (يتحقق من المستخدم عبر x-user-id كبقية الواجهات)
 app.post('/api/livekit/token', async (req, res) => {
   try {
-    const userId = req.headers['x-user-id'] || '';
-    if (!userId) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+    // المعرّف من x-user-id؛ الزائر بلا معرّف يحصل على هوية مؤقتة للمشاهدة فقط
+    const rawUser = String(req.headers['x-user-id'] || '').replace(/[^A-Za-z0-9_\-.]/g, '').slice(0, 64);
+    const isGuest = !rawUser;
+    // لاحقة عشوائية لكل رمز: تمنع دفع جلسة واحدة عند انضمام علبة تبويبين لنفس الحساب
+    const identity = isGuest
+      ? 'guest~' + crypto.randomBytes(4).toString('hex')
+      : rawUser + '~' + crypto.randomBytes(3).toString('hex');
     const room = String((req.body && req.body.room) || '');
     if (!/^[A-Za-z0-9_\-.]{3,64}$/.test(room)) return res.status(400).json({ error: 'اسم غرفة LiveKit غير صالح' });
     const cfg = await getLiveKitSettings();
     if (!cfg.configured) {
       return res.status(503).json({ error: 'خدمة LiveKit غير مهيأة بعد — افتح لوحة الإدارة ← تبويب «البث» وأدخل رابط LiveKit ومفتاح API وسرّه لتفعيل البث الصوتي والمرئي المباشر (الراديو والكاميرا والميكروفون).' });
     }
-    const canPublish = !(req.body && req.body.canPublish === false);
+    const canPublish = !isGuest && !(req.body && req.body.canPublish === false); // الزائر للمشاهدة فقط
     const now = Math.floor(Date.now() / 1000);
     const token = signLiveKitJwt(cfg.apiKey, cfg.apiSecret, {
       iss: cfg.apiKey,
-      sub: String(userId),
+      sub: identity,
       nbf: now - 10,
       exp: now + 6 * 3600, // رمز صالح 6 ساعات — يُجدد مع كل انضمام
       video: {

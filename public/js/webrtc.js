@@ -165,8 +165,9 @@ class SoulRtcEngine {
     }
 
     this.lkJoinPromise = (async () => {
+      const liveId = (window.SoulChillApp && window.SoulChillApp.state && window.SoulChillApp.state.currentUser && window.SoulChillApp.state.currentUser.id) || '';
       const room = await window.scLivekit.joinRoom(want, this._livekitHandlers(), {
-        userId: this.currentUser?.id
+        userId: liveId || (this.currentUser && this.currentUser.id) || ''
       });
       this.lkRoom = room;
       this.lkRoomName = want;
@@ -221,12 +222,11 @@ class SoulRtcEngine {
     };
   }
 
-  // المعرّف يحمل معرّف المستخدم قبل الشرطة (معرّف فريد لكل علبة تبويب/جهاز)
+  // الهوية = معرّف المستخدم + '~' + لاحقة فريدة لكل انضمام (تمنع دفع علبة تبويب مزدوجة)
   _identityUserId(participant) {
     const idn = participant && participant.identity ? String(participant.identity) : '';
     if (!idn) return null;
-    const num = idn.split('-')[0];
-    return num || null;
+    return idn.split('~')[0] || null;
   }
 
   _onRemoteTrack(track, publication, participant) {
