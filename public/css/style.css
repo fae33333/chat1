@@ -6119,10 +6119,11 @@ body, .app-container {
 .pf-st-av { width: 70px; height: 70px; display: grid; place-items: center; }
 .pf-st-av img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; }
 .pf-st-micav { width: 54px !important; height: 54px !important; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,.9); }
-.pf-st-play { width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,.16); color: #fff; font-size: 7px; display: grid; place-items: center; margin-top: 7px; padding-inline-start: 1px; }
+.pf-st-play { width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,.16); color: #fff; font-size: 7px; display: grid; place-items: center; margin-top: 7px; padding-inline-start: 1px; cursor: pointer; transition: transform .15s, background .15s; }
+.pf-st-play:hover { transform: scale(1.18); background: rgba(255,255,255,.32); }
 .pf-st-name { font-size: 10px; color: #8c89a1; margin-top: 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-st-dim { color: #6f6c82; }
-.pf-st-price { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 6px; direction: rtl; }
+.pf-st-price { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 6px; direction: rtl; cursor: pointer; }
 .pf-st-price b { font-size: 12.5px; color: #fff; font-weight: 800; }
 .pf-st-price small { font-size: 10px; color: #77748a; }
 .pf-st-state { margin-top: 7px; font-size: 11px; font-weight: 700; padding: 3px 14px; border-radius: 12px; background: rgba(124,77,255,.2); color: #cbbcff; }

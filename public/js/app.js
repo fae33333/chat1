@@ -11965,22 +11965,8 @@
     { id: 'fire_dragon', name: 'تنين اللهب' }, { id: 'angel_wings', name: 'أجنحة الملاك' },
     { id: 'cosmic_ring', name: 'خاتم السول' }
   ];
-  // عناصر العرض كما في الفيديو (الترتيب من اليمين لليسار)
-  const PF_ST_STATIC = {
-    rooms: [['Majestic rose', 2000, 7, 'NEW'], ['Royalty', 2000, 7, 'NEW'], ['عين حورس', 2000, 7], ['Sword of Power', 2000, 7]],
-    idcard: [['Majestic rose', 2500, 7, 'NEW'], ['Royalty', 2500, 7, 'NEW'], ['Golden Lion', 2000, 7], ['روليكس', 3000, 7]],
-    badges: [
-      { cp: 'red', name: '', love: true }, { cp: 'pink', name: '', love: true },
-      { chip: 'شحن', name: 'Taillight', price: 440000, days: 999 }, { chip: 'Gold', name: 'Taillight', price: 900, days: 3 }
-    ]
-  };
   const PF_STORE_CATS = ['idcard', 'badges', 'bubble', 'mic', 'relation', 'family'];
-  const PF_ENTRY_FALLBACK = [
-    { name: 'السيارة الذهبية', price: 20000, image_url: PF_IMG + 'fx_car.png', badge: 'جديدة' },
-    { name: 'الأميرة العربية', price: 15000, image_url: PF_IMG + 'fx_princess.png', badge: 'جديدة' },
-    { name: 'مؤثر دخول', price: 12000, image_url: PF_IMG + 'fx_knight.png' },
-    { name: 'private plane', price: 38000, image_url: PF_IMG + 'fx_plane.png' }
-  ];
+  // لا توجد أي عناصر ثابتة في المتجر — كل الفئات تُملأ حصراً من لوحة الإدارة
 
   function pfStCard({ badge, media = '', name = '', price, days, sub = '', cls = '', attr = '' }) {
     return `
@@ -11990,6 +11976,43 @@
         <div class="pf-st-name">${name}</div>
         ${price != null ? `<div class="pf-st-price">${pfGem(14)}<b>${pfFmt(price)}</b><small>· ${Number(days) > 0 ? days + ' يوم' : 'دائم'}</small></div>` : sub}
       </div>`;
+  }
+
+  // معاينة وسائط المتجر بالحجم الكبير: فيديو بصوت وتحكم أو صورة — النقر بالخارج أو ✕ أو Esc يغلق
+  function pfStPreviewMedia(url, name) {
+    const src = String(url || '').trim();
+    if (!src) return;
+    const isVid = scIsVideoUrl(src);
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.86);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);cursor:pointer';
+    ov.innerHTML = (isVid
+      ? `<video src="${fEsc(src)}" controls autoplay loop playsinline style="max-width:92vw;max-height:76vh;border-radius:14px;background:#000;box-shadow:0 24px 70px rgba(0,0,0,.65)"></video>`
+      : `<img src="${fEsc(src)}" alt="" style="max-width:92vw;max-height:76vh;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.65)" />`)
+      + `<button type="button" aria-label="إغلاق" style="position:absolute;top:14px;inset-inline-end:14px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:20px;cursor:pointer">✕</button>`
+      + (name ? `<div style="position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#fff;font-weight:800;font-size:15px;text-shadow:0 2px 10px rgba(0,0,0,.85);pointer-events:none">${fEsc(name)}</div>` : '');
+    const onEsc = e => { if (e.key === 'Escape') close(); };
+    const close = () => {
+      try { const v = ov.querySelector('video'); if (v) v.pause(); } catch (e) {}
+      ov.remove();
+      document.removeEventListener('keydown', onEsc);
+    };
+    ov.addEventListener('click', e => { if (e.target === ov || e.target.tagName === 'BUTTON') close(); });
+    document.addEventListener('keydown', onEsc);
+    document.body.appendChild(ov);
+  }
+
+  // أهداف النقر داخل بطاقة المتجر: زر التشغيل والوسائط ← معاينة · العملة ← نافذة الشراء · بقيتها ← إجراء البطاقة نفسه
+  function pfStBindCard(cardEl, action, previewUrl) {
+    if (previewUrl) {
+      const nameEl = cardEl.querySelector('.pf-st-name');
+      const prev = e => { e.stopPropagation(); pfStPreviewMedia(typeof previewUrl === 'function' ? previewUrl() : previewUrl, nameEl ? nameEl.textContent : ''); };
+      const play = cardEl.querySelector('.pf-st-play');
+      if (play) play.addEventListener('click', prev);
+      const media = cardEl.querySelector('.pf-st-media');
+      if (media) media.addEventListener('click', prev);
+    }
+    const price = cardEl.querySelector('.pf-st-price');
+    if (price && action) price.addEventListener('click', e => { e.stopPropagation(); action(); });
   }
 
   function pfOpenStore(initialTab) {
@@ -12142,6 +12165,10 @@
             if (el.isConnected) paint();
           };
         });
+        grid.querySelectorAll('[data-cframe]').forEach(c => {
+          const f = cf.frames.find(x => x.id === c.dataset.cframe);
+          if (f) pfStBindCard(c, () => c.onclick(), null);
+        });
         return;
       }
 
@@ -12149,14 +12176,7 @@
         grid.innerHTML = skeleton(4);
         const e = await loadEntry();
         if (!el.isConnected || active !== 'entry') return;
-        if (!e.templates.length) {
-          grid.innerHTML = PF_ENTRY_FALLBACK.map(t => pfStCard({
-            badge: t.badge, name: t.name, price: t.price, days: 7, attr: 'data-soon',
-            media: `<img src="${t.image_url}" alt="" /><span class="pf-st-play">▶</span>`
-          })).join('');
-          grid.querySelectorAll('[data-soon]').forEach(c => c.onclick = pfSoon);
-          return;
-        }
+        if (!e.templates.length) { grid.innerHTML = emptyMsg; return; }
         const notOwnedT = e.templates.filter(t => !t.owned && Number(t.price) > 0); // المتجر: غير المشترى فقط
         if (!notOwnedT.length) { grid.innerHTML = emptyMsg; return; }
         grid.innerHTML = notOwnedT.map((t, i) => {
@@ -12169,7 +12189,10 @@
           });
         }).join('');
         grid.querySelectorAll('[data-tpl]').forEach(c => {
-          c.onclick = () => { const t = e.templates.find(x => x.id === c.dataset.tpl); if (t) entryAction(t); };
+          const t = e.templates.find(x => x.id === c.dataset.tpl);
+          if (!t) return;
+          c.onclick = () => entryAction(t);
+          pfStBindCard(c, () => entryAction(t), t.image_url);
         });
         return;
       }
@@ -12190,7 +12213,7 @@
             const eq = rc.equipped === c.id;
             return pfStCard({
               badge: i < 2 && !c.owned ? 'NEW' : '', name: fEsc(c.name), attr: `data-rcard="${fEsc(c.id)}"`,
-              media: `<div class="pf-st-roomcard" style="background-image:url('${fEsc(encodeURI(c.image_url))}')"></div>`,
+              media: `<div class="pf-st-roomcard" style="background-image:url('${fEsc(encodeURI(c.image_url))}')"></div><span class="pf-st-play">▶</span>`,
               price: c.owned ? null : (Number(c.price) || 0), days: Number(c.duration_days) || 0,
               sub: c.owned ? `<div class="pf-st-state ${eq ? 'on' : ''}">${eq ? 'مفعّلة الآن' : 'تفعيل'}</div>` : ''
             });
@@ -12221,6 +12244,10 @@
               if (el.isConnected) paint();
             };
           });
+          grid.querySelectorAll('[data-rcard]').forEach(c => {
+            const card = rc.cards.find(x => x.id === c.dataset.rcard);
+            if (card) pfStBindCard(c, () => c.onclick(), card.image_url);
+          });
           return;
         }
       }
@@ -12237,38 +12264,22 @@
             const eq = si.equipped[tab] === t.id;
             return pfStCard({
               badge: t.badge || (i < 2 && !t.owned ? 'NEW' : ''), name: fEsc(t.name), attr: `data-sitem="${fEsc(t.id)}"`,
-              media: `<img src="${fEsc(encodeURI(t.image_url))}" alt="" style="max-width:100%;max-height:100%;object-fit:contain" onerror="this.style.visibility='hidden'" />`,
+              media: `<img src="${fEsc(encodeURI(t.image_url))}" alt="" style="max-width:100%;max-height:100%;object-fit:contain" onerror="this.style.visibility='hidden'" /><span class="pf-st-play">▶</span>`,
               price: t.owned ? null : (Number(t.price) || 0), days: Number(t.duration_days) || 0,
               sub: t.owned ? `<div class="pf-st-state ${eq ? 'on' : ''}">${eq ? 'مفعّل الآن' : 'تفعيل'}</div>` : ''
             });
           }).join('');
           grid.querySelectorAll('[data-sitem]').forEach(c => {
             c.onclick = () => { const t = si.items.find(x => x.id === c.dataset.sitem); if (t) storeItemAction(t, si, tab); };
+            const t = si.items.find(x => x.id === c.dataset.sitem);
+            if (t) pfStBindCard(c, () => storeItemAction(t, si, tab), t.image_url);
           });
           return;
         }
       }
 
-      if (tab === 'rooms' || tab === 'idcard') {
-        grid.innerHTML = PF_ST_STATIC[tab].map(([n, p, d, b]) => pfStCard({ badge: b, name: n, price: p, days: d, attr: 'data-soon' })).join('');
-      } else if (tab === 'badges') {
-        grid.innerHTML = PF_ST_STATIC.badges.map(b => b.cp
-          ? pfStCard({
-              media: `<div class="pf-st-cp ${b.cp}">CP</div>`, name: '<span class="pf-st-dim">خاص بعصافير الحب</span>',
-              sub: `<div class="pf-st-love">خاص بعصافير الحب ${PF_CHEV_L}</div>`, attr: 'data-soon'
-            })
-          : pfStCard({ media: `<span class="pf-st-chip">${b.chip}</span>`, name: b.name, price: b.price, days: b.days, attr: 'data-soon' })
-        ).join('');
-      } else if (tab === 'mic') {
-        grid.innerHTML = [0, 1, 2].map(() => pfStCard({
-          media: `<img class="pf-st-micav" src="${myAv}" onerror="this.src='/avatars/avatar-1.png'" alt="" />`,
-          name: '<span class="pf-st-dim">خاص بعصافير الحب</span>',
-          sub: `<div class="pf-st-love">خاص بعصافير الحب ${PF_CHEV_L}</div>`, attr: 'data-soon'
-        })).join('');
-      } else {
-        grid.innerHTML = emptyMsg; // family / relation / bubble: تُضاف من لوحة الإدارة
-      }
-      grid.querySelectorAll('[data-soon]').forEach(c => c.onclick = pfSoon);
+      // لا توجد أي عناصر ثابتة إطلاقاً: أي فئة لم تُضَع لها عناصر من الإدارة تظهر فارغة تماماً
+      grid.innerHTML = emptyMsg;
     }
     paint();
   }
