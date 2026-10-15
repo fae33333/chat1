@@ -11978,27 +11978,22 @@
       </div>`;
   }
 
-  // معاينة وسائط المتجر بالحجم الكبير: فيديو بصوت وتحكم أو صورة — النقر بالخارج أو ✕ أو Esc يغلق
+  // معاينة فوق الصفحة بنفس أسلوب تأثير الدخول تماماً: تعمل مرة واحدة حتى تنتهي ثم تُغلق تلقائياً
+  // (الإغلاق من أي نقرة — بمن فيهم زر ✕ بعد أن يستبدله f7-icons.js بأيقونة)
   function pfStPreviewMedia(url, name) {
     const src = String(url || '').trim();
     if (!src) return;
-    const isVid = scIsVideoUrl(src);
+    const old = document.getElementById('pf-ac-preview'); if (old) old.remove();
     const ov = document.createElement('div');
-    ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.86);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);cursor:pointer';
-    ov.innerHTML = (isVid
-      ? `<video src="${fEsc(src)}" controls autoplay loop playsinline style="max-width:92vw;max-height:76vh;border-radius:14px;background:#000;box-shadow:0 24px 70px rgba(0,0,0,.65)"></video>`
-      : `<img src="${fEsc(src)}" alt="" style="max-width:92vw;max-height:76vh;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.65)" />`)
-      + `<button type="button" aria-label="إغلاق" style="position:absolute;top:14px;inset-inline-end:14px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:20px;cursor:pointer">✕</button>`
-      + (name ? `<div style="position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#fff;font-weight:800;font-size:15px;text-shadow:0 2px 10px rgba(0,0,0,.85);pointer-events:none">${fEsc(name)}</div>` : '');
-    const onEsc = e => { if (e.key === 'Escape') close(); };
-    const close = () => {
-      try { const v = ov.querySelector('video'); if (v) v.pause(); } catch (e) {}
-      ov.remove();
-      document.removeEventListener('keydown', onEsc);
-    };
-    ov.addEventListener('click', e => { if (e.target === ov || e.target.tagName === 'BUTTON') close(); });
-    document.addEventListener('keydown', onEsc);
+    ov.id = 'pf-ac-preview';
+    ov.className = 'pf-ac-prev';
+    ov.innerHTML = `<div class="pf-ac-prev-top"><span>معاينة · ${fEsc(name || '')}</span><button type="button" aria-label="إغلاق">✕</button></div>
+      <div class="pf-ac-prev-stage"></div>
+      <div class="pf-ac-prev-hint">اضغط في أي مكان للإغلاق</div>`;
     document.body.appendChild(ov);
+    const close = () => { if (ov.isConnected) ov.remove(); };
+    ov.onclick = close;
+    scPlayOnce(ov.querySelector('.pf-ac-prev-stage'), src, 'pf-ac-prev-media', close);
   }
 
   // أهداف النقر داخل بطاقة المتجر: زر التشغيل والوسائط ← معاينة · العملة ← نافذة الشراء · بقيتها ← إجراء البطاقة نفسه
