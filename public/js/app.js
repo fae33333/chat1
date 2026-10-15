@@ -537,7 +537,7 @@
     // تحديث فوري للثروة / الرواج / VIP بعد إرسال أو استلام هدية أو شراء VIP
     state.socket.on('member_stats_updated', (m) => {
       if (!m || !state.currentUser) return;
-      ['wealth_level', 'charm_level', 'wealth_points', 'popularity_points', 'vip_level', 'vip_until'].forEach(k => {
+      ['wealth_level', 'charm_level', 'wealth_points', 'popularity_points', 'vip_level', 'vip_until', 'level', 'level_points'].forEach(k => {
         if (m[k] !== undefined) state.currentUser[k] = m[k];
       });
       try { sessionStorage.setItem('soulchill_user', JSON.stringify(state.currentUser)); } catch (e) {}
@@ -14034,10 +14034,10 @@
         <!-- الشاشة 4: الدخول بالاسم المستعار (جهاز آخر) -->
         <div id="auth-step-nickname" style="display: none;">
           <div style="${titleStyle}">الدخول بالاسم المستعار</div>
-          <p style="${subStyle}">أدخل الاسم المستعار وكلمة المرور اللذين أنشأتهما عند التسجيل</p>
+          <p style="${subStyle}">أدخل الاسم المستعار (أو بريد Gmail) وكلمة المرور اللذين أنشأتهما عند التسجيل</p>
           <div class="form-group-soul" style="margin-bottom: 10px;">
-            <label>الاسم المستعار:</label>
-            <input type="text" id="auth-login-nick" class="form-input-soul" maxlength="30" autocomplete="username" />
+            <label>الاسم المستعار أو بريد Gmail:</label>
+            <input type="text" id="auth-login-nick" class="form-input-soul" maxlength="100" placeholder="username أو name@gmail.com" autocomplete="username" />
           </div>
           <div class="form-group-soul" style="margin-bottom: 14px;">
             <label>كلمة المرور:</label>
@@ -14360,7 +14360,7 @@
     btnLogin.onclick = async () => {
       const nickname = $('auth-login-nick').value.replace(/\s+/g, ' ').trim();
       const password = $('auth-login-pass').value;
-      if (!nickname || !password) { showToast('أدخل الاسم المستعار وكلمة المرور'); return; }
+      if (!nickname || !password) { showToast('أدخل الاسم المستعار (أو بريد Gmail) وكلمة المرور'); return; }
       setBtn(btnLogin, true, 'جارِ الدخول... ⏳');
       try {
         const { ok, data } = await postJSON('/api/auth/login-nickname', { nickname, password });

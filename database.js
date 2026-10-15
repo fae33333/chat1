@@ -109,6 +109,7 @@ async function initDB() {
       coins INTEGER DEFAULT 1200,
       diamonds INTEGER DEFAULT 350,
       level INTEGER DEFAULT 5,
+      level_points INTEGER NOT NULL DEFAULT 0,
       wealth_level INTEGER DEFAULT 3,
       charm_level INTEGER DEFAULT 4,
       avatar_frame TEXT DEFAULT 'cosmic_ring',
@@ -150,6 +151,8 @@ async function initDB() {
   try { await run(`ALTER TABLE users ADD COLUMN room_card TEXT DEFAULT ''`); } catch (e) {}
   // عناصر المتجر المُعدّة من الإدارة (بطاقة التعريف، شارات، فقاعة الدردشة، مقاعد المايك...) المفعّل لكل قسم يُحفظ كـ JSON
   try { await run(`ALTER TABLE users ADD COLUMN store_equipped TEXT DEFAULT '{}'`); } catch (e) {}
+  // نقاط المستوى العام: ترتفع بالتفاعل والصعود على المايك والهدايا والمشتريات (لا تنزل)
+  try { await run(`ALTER TABLE users ADD COLUMN level_points INTEGER NOT NULL DEFAULT 0`); } catch (e) {}
   try { await run(`ALTER TABLE users ADD COLUMN moment_rules_seen INTEGER DEFAULT 0`); } catch (e) {}
   try { await run(`ALTER TABLE users ADD COLUMN checkin_streak INTEGER DEFAULT 0`); } catch (e) {}
   try { await run(`ALTER TABLE users ADD COLUMN checkin_cycle_start TEXT`); } catch (e) {}

@@ -896,7 +896,9 @@
             </button>
           </div>
           <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
-            قم بتوليد اسم مستخدم وكلمة مرور مخصصة لإعطائها لأي شخص ليدخل بها كمشرف عام معتمد على كامل الغرف والدردشة!
+            قم بتوليد حساب جديد وحدد نوعه: <b style="color: #60a5fa;">مشرف عام</b> بصلاحية إشراف كاملة، أو
+            <b style="color: #34d399;">زائر عادي</b> بدون أي صلاحيات. يدخل صاحب الحساب من الشاشة الرئيسية ←
+            «لدي حساب قديم؟» ← <b>الدخول بالاسم المستعار</b> باسم المستخدم وكلمة المرور، أو عبر بريد Gmail إن كان مرتبطاً بالحساب.
           </p>
 
           <form onsubmit="handleGenerateModerator(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
@@ -915,6 +917,13 @@
             <div class="form-group">
               <label class="form-label">ملاحظات / وصف اختياري:</label>
               <input type="text" class="form-input" id="gen-mod-notes" placeholder="مثال: مشرف قسم الطرب والسوالف" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">نوع الحساب:</label>
+              <select class="form-input" id="gen-mod-role">
+                <option value="moderator">🛡️ مشرف عام (إشراف كامل على الغرف)</option>
+                <option value="user">👤 زائر عادي (بدون أي صلاحيات)</option>
+              </select>
             </div>
             <div style="grid-column: 1 / -1;">
               <button type="submit" class="btn-submit" style="margin-top: 6px; background: linear-gradient(135deg, #3b82f6, #6366f1);">
@@ -2671,10 +2680,12 @@
         <tr>
           <td>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 16px;">🛡️</span>
+              <span style="font-size: 16px;">${(m.user_role || 'moderator') === 'moderator' ? '🛡️' : '👤'}</span>
               <div>
                 <strong style="color: #fff;">${m.display_name}</strong>
-                <div style="font-size: 10px; color: #a78bfa;">ID: ${m.user_id}</div>
+                <div style="font-size: 10px;">${(m.user_role || 'moderator') === 'moderator'
+                  ? '<span style="color: #60a5fa;">🛡️ مشرف عام</span>'
+                  : '<span style="color: #34d399;">👤 زائر عادي</span>'} · <span style="color: #a78bfa;">ID: ${m.user_id}</span></div>
               </div>
             </div>
           </td>
@@ -2688,7 +2699,7 @@
           <td style="font-size: 11px; color: var(--text-muted);">${new Date(m.created_at).toLocaleDateString('ar-EG')}</td>
           <td>
             <div style="display: flex; gap: 6px;">
-              <button class="btn-action green" onclick="copyModeratorCredentials('${m.username}', '${m.password}', '${m.display_name}')" title="نسخ بيانات الدخول">
+              <button class="btn-action green" onclick="copyModeratorCredentials('${m.username}', '${m.password}', '${m.display_name}', '${m.user_role || 'moderator'}')" title="نسخ بيانات الدخول">
                 📋 نسخ البيانات
               </button>
               <button class="btn-action danger" onclick="deleteGeneratedModerator('${m.id}', '${m.username}')" title="حذف هذا الحساب">
@@ -2706,6 +2717,7 @@
       const username = document.getElementById('gen-mod-username').value.trim();
       const password = document.getElementById('gen-mod-password').value.trim();
       const notes = document.getElementById('gen-mod-notes').value.trim();
+      const role = document.getElementById('gen-mod-role').value === 'user' ? 'user' : 'moderator';
 
       try {
         const res = await fetch('/api/admin/moderators/generate', {
@@ -2714,13 +2726,15 @@
             'Content-Type': 'application/json',
             'x-admin-token': state.token
           },
-          body: JSON.stringify({ display_name, username, password, notes })
+          body: JSON.stringify({ display_name, username, password, notes, role })
         });
         const data = await res.json();
         if (data.success) {
-          showToast(`تم توليد حساب المشرف [${username}] بنجاح! 🔑🛡️`, 'success');
+          showToast(role === 'user'
+            ? `تم توليد الزائر العادي [${username}] بنجاح! 🔑👤`
+            : `تم توليد حساب المشرف [${username}] بنجاح! 🔑🛡️`, 'success');
           // Copy to clipboard immediately
-          copyModeratorCredentials(username, password, display_name);
+          copyModeratorCredentials(username, password, display_name, role);
           fetchGeneratedModerators();
           fetchDashboardStats();
           // Reset form
@@ -2728,6 +2742,7 @@
           document.getElementById('gen-mod-username').value = '';
           document.getElementById('gen-mod-password').value = '';
           document.getElementById('gen-mod-notes').value = '';
+          document.getElementById('gen-mod-role').value = 'moderator';
         } else {
           showAdminNotice(data.error || 'فشل توليد الحساب!');
         }
@@ -2736,12 +2751,16 @@
       }
     }
 
-    function copyModeratorCredentials(u, p, name) {
-      const text = `🛡️ بيانات حساب مشرف SoulChill:\n• الاسم: ${name}\n• اسم المستخدم: ${u}\n• كلمة المرور: ${p}\n• رابط الدخول: ${window.location.origin}\n(اختر "دخول المشرفين" وسجّل دخولك بهذه البيانات)`;
+    function copyModeratorCredentials(u, p, name, role) {
+      const isMod = (role || 'moderator') !== 'user';
+      const text = (isMod ? '🛡️ بيانات حساب مشرف SoulChill' : '👤 بيانات زائر عادي في SoulChill')
+        + `:\n• الاسم الظاهر بالشات: ${name}\n• اسم المستخدم للدخول: ${u}\n• كلمة المرور: ${p}`
+        + `\n• رابط الدخول: ${window.location.origin}`
+        + '\n(من الشاشة الرئيسية ← «لدي حساب قديم؟» ← الدخول بالاسم المستعار وكلمة المرور — أو عبر Gmail إن كان مرتبطاً)';
       navigator.clipboard.writeText(text).then(() => {
-        showToast('تم نسخ بيانات المشرف إلى الحافظة بنجاح! جاهزة للإرسال 📋✨', 'success');
+        showToast(isMod ? 'تم نسخ بيانات المشرف إلى الحافظة بنجاح! جاهزة للإرسال 📋✨' : 'تم نسخ بيانات الزائر العادي إلى الحافظة! 📋✨', 'success');
       }).catch(() => {
-        uiPrompt('انسخ بيانات المشرف يدوياً', { icon: '📋', type: 'textarea', value: text, okText: 'تم' });
+        uiPrompt('انسخ بيانات الحساب يدوياً', { icon: '📋', type: 'textarea', value: text, okText: 'تم' });
       });
     }
 

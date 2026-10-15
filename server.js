@@ -562,7 +562,12 @@ app.post('/api/auth/login-nickname', async (req, res) => {
       return res.status(429).json({ error: 'محاولات خاطئة كثيرة، حاول بعد بضع دقائق' });
     }
 
-    const cred = await get('SELECT * FROM user_credentials WHERE nickname = ?', [nickname]);
+    let cred = await get('SELECT * FROM user_credentials WHERE nickname = ?', [nickname]);
+    // يقبل أيضاً بريد Gmail كاسم دخول: يُطابَق البريد مع حسابه ثم يُتحقق من كلمة مروره
+    if (!cred && EMAIL_RE.test(nickname)) {
+      const byEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [nickname]);
+      if (byEmail) cred = await get('SELECT * FROM user_credentials WHERE user_id = ?', [byEmail.id]);
+    }
     const ok = cred
       ? await checkPassword(password, cred.password_salt, cred.password_hash)
       : (await hashPassword(password, '00000000000000000000000000000000'), false); // تقريب زمن الرد
@@ -1113,6 +1118,13 @@ async function buyInventoryItem(userId, type, item, label) {
   } catch (e) {
     await run('UPDATE users SET diamonds = diamonds + ? WHERE id = ?', [price, userId]);
     return { status: 400, error: `تملك ${label} بالفعل` };
+  }
+  // الشراء يرفع نقاط المستوى (حسب سعر العنصر بالكريستالات)
+  if (price > 0) {
+    try {
+      const ps = await getPointSettings();
+      await addLevelPoints(userId, memberLevels.pointsForAmount(price, 'diamonds', ps));
+    } catch (e) {}
   }
   return { ok: true };
 }
@@ -2348,6 +2360,17 @@ app.post(['/api/users/recharge', '/api/wallet/recharge'], async (req, res) => {
       WHERE id = ?
     `, [addCoins, addDiamonds, userId]);
 
+    // الشحن يضيف نقاط الثروة حسب الكريستالات المضافة (والمستوى كنوع من الشراء)
+    if (addDiamonds > 0) {
+      try {
+        const ps = await getPointSettings();
+        const pts = memberLevels.pointsForAmount(addDiamonds, 'diamonds', ps);
+        await addMemberPoints(userId, 'wealth', pts);
+        await addLevelPoints(userId, pts);
+        notifyMemberStats(userId);
+      } catch (e) {}
+    }
+
     const updated = await get('SELECT * FROM users WHERE id = ?', [userId]);
     res.json({ success: true, user: updated });
   } catch (err) {
@@ -2612,6 +2635,14 @@ app.post('/api/paypal/capture-order', async (req, res) => {
       [cap.id || null, payerEmail, orderId]);
     if (upd.changes === 1) {
       await run('UPDATE users SET diamonds = diamonds + ? WHERE id = ?', [row.crystals, userId]);
+      // الشحن بالكريستالات يضيف نقاط الثروة (والمستوى كنوع من الشراء)
+      try {
+        const ps = await getPointSettings();
+        const pts = memberLevels.pointsForAmount(row.crystals, 'diamonds', ps);
+        await addMemberPoints(userId, 'wealth', pts);
+        await addLevelPoints(userId, pts);
+        notifyMemberStats(userId);
+      } catch (e) {}
     }
     return respondUser({ already: upd.changes !== 1 });
   } catch (err) {
@@ -2698,7 +2729,16 @@ app.post('/api/admin/paypal/reconcile', async (req, res) => {
     if (cap.status !== 'COMPLETED') return res.status(409).json({ success: false, message: 'الدفع غير مكتمل لدى PayPal: ' + (cap.status || r.data.status) });
     if (String(amt.value) !== String(row.amount) || amt.currency_code !== row.currency) return res.status(409).json({ success: false, message: 'المبلغ لا يطابق الطلب' });
     const upd = await run(`UPDATE paypal_orders SET status = 'COMPLETED', capture_id = ?, completed_at = CURRENT_TIMESTAMP WHERE order_id = ? AND status != 'COMPLETED'`, [cap.id || null, orderId]);
-    if (upd.changes === 1) await run('UPDATE users SET diamonds = diamonds + ? WHERE id = ?', [row.crystals, row.user_id]);
+    if (upd.changes === 1) {
+      await run('UPDATE users SET diamonds = diamonds + ? WHERE id = ?', [row.crystals, row.user_id]);
+      try {
+        const ps = await getPointSettings();
+        const pts = memberLevels.pointsForAmount(row.crystals, 'diamonds', ps);
+        await addMemberPoints(row.user_id, 'wealth', pts);
+        await addLevelPoints(row.user_id, pts);
+        notifyMemberStats(row.user_id);
+      } catch (e) {}
+    }
     res.json({ success: true, credited: upd.changes === 1, crystals: row.crystals, user_id: row.user_id });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -2887,6 +2927,16 @@ app.post('/api/wallet/chat-credit', async (req, res) => {
     if (!target) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
 
     await run('UPDATE users SET coins = coins + ?, diamonds = diamonds + ? WHERE id = ?', [coins, diamonds, target_id]);
+    // الشحن من الإدارة يضيف نقاط الثروة حسب الألماس المضاف (والمستوى كنوع من الشراء)
+    if (diamonds > 0) {
+      try {
+        const ps = await getPointSettings();
+        const pts = memberLevels.pointsForAmount(diamonds, 'diamonds', ps);
+        await addMemberPoints(target_id, 'wealth', pts);
+        await addLevelPoints(target_id, pts);
+        notifyMemberStats(target_id);
+      } catch (e) {}
+    }
     const updated = await get('SELECT id, name, coins, diamonds, level FROM users WHERE id = ?', [target_id]);
 
     // رسالة تأكيد داخل نفس المحادثة
@@ -3388,6 +3438,9 @@ app.post('/api/messages', async (req, res) => {
       INSERT INTO messages (id, sender_id, receiver_id, message_type, content, media_url, metadata)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [msgId, userId, receiver_id, message_type || 'text', content, media_url, metadata ? JSON.stringify(metadata) : null]);
+
+    // نقاط المستوى: التفاعل في المحادثات الخاصة (مقيَّد زمنياً ضد السبام)
+    addChatInteractionXp(userId, 5);
 
     const createdMsg = await get(`
       SELECT m.*, u.name as sender_name, u.avatar as sender_avatar
@@ -4380,10 +4433,37 @@ async function addMemberPoints(userId, kind, points) {
   const u = await get(`SELECT ${col} AS pts, ${lvCol} AS lvl FROM users WHERE id = ?`, [userId]);
   if (!u) return;
   const computed = memberLevels.levelFromPoints(u.pts).level;
-  // الحسابات الخاصة (مالك = 99 مثلاً) لا نخفض مستواها
-  if ((Number(u.lvl) || 0) <= memberLevels.MAX_LEVEL && Number(u.lvl) !== computed) {
+  // المستوى يرتفع بالنقاط الجديدة ولا ينزل أبداً (ويحمي كذلك الحسابات الخاصة التي تتجاوز حد المقياس)
+  if (computed > (Number(u.lvl) || 0)) {
     await run(`UPDATE users SET ${lvCol} = ? WHERE id = ?`, [computed, userId]);
   }
+}
+
+// ===================== نقاط المستوى العام للمستخدم (pill «المستوى» في الملف الشخصي) =====================
+// المصادر كما طلب الإدارة: التفاعل في الدردشة، الصعود على المايك، إرسال الهدايا، والشراء/الشحن — تُضاف فقط ولا تنزل أبداً
+async function addLevelPoints(userId, points) {
+  points = Math.max(0, Math.floor(Number(points)) || 0);
+  if (!userId || !points) return;
+  try {
+    await run('UPDATE users SET level_points = COALESCE(level_points, 0) + ? WHERE id = ?', [points, userId]);
+    const u = await get('SELECT level, level_points FROM users WHERE id = ?', [userId]);
+    if (!u) return;
+    const computed = memberLevels.levelFromPoints(u.level_points || 0).level;
+    if (computed > (Number(u.level) || 0)) {
+      await run('UPDATE users SET level = ? WHERE id = ?', [computed, userId]);
+      notifyMemberStats(userId); // لتحديث pf-pills في الملف الشخصي فوراً
+    }
+  } catch (e) { console.error('addLevelPoints error:', e.message); }
+}
+
+// نقاط تفاعل الدردشة مقيدة زمنياً (ثانيتان كحد أدنى) حتى لا يرتفع المستوى بالسبام
+const _chatXpAt = new Map();
+function addChatInteractionXp(userId, xp) {
+  const now = Date.now();
+  if (now - (_chatXpAt.get(userId) || 0) < 2000) return;
+  _chatXpAt.set(userId, now);
+  if (_chatXpAt.size > 5000) _chatXpAt.clear();
+  addLevelPoints(userId, xp);
 }
 
 async function logMemberActivity(a) {
@@ -4404,6 +4484,7 @@ async function notifyMemberStats(userId) {
     const payload = {
       wealth_level: u.wealth_level, charm_level: u.charm_level,
       wealth_points: u.wealth_points || 0, popularity_points: u.popularity_points || 0,
+      level: u.level || 1, level_points: u.level_points || 0,
       vip_level: memberLevels.activeVipLevel(u), vip_until: u.vip_until || null,
       coins: u.coins, diamonds: u.diamonds, cards: memberLevels.buildCards(u)
     };
@@ -4485,6 +4566,7 @@ app.post('/api/vip/buy', async (req, res) => {
     const settings = await getPointSettings();
     const pts = memberLevels.pointsForAmount(plan.price_diamonds, 'diamonds', settings);
     await addMemberPoints(userId, 'wealth', pts);
+    await addLevelPoints(userId, pts); // شراء VIP يرفع المستوى
     await logMemberActivity({
       user_id: userId, type: 'vip_purchase', ref_id: plan.level, ref_name: plan.name,
       amount: plan.price_diamonds, currency: 'diamonds', points: pts, points_kind: 'wealth'
@@ -4687,6 +4769,7 @@ app.post('/api/gifts/send', async (req, res) => {
       const ptSettings = await getPointSettings();
       const pts = memberLevels.pointsForAmount(gift.cost, gift.currency, ptSettings);
       await addMemberPoints(senderId, 'wealth', pts);
+      await addLevelPoints(senderId, pts); // إرسال الهدايا يرفع المستوى أيضاً
       await logMemberActivity({ user_id: senderId, type: 'gift_sent', other_user_id: receiver_id, ref_id: gift.id, ref_name: gift.name,
         amount: gift.cost, currency: gift.currency, points: pts, points_kind: 'wealth', room_id });
       if (receiver_id !== senderId) {
@@ -5926,6 +6009,16 @@ app.post('/api/admin/users/:id/add-balance', async (req, res) => {
     const exists = await get('SELECT id FROM users WHERE id = ?', [id]);
     if (!exists) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
     await run('UPDATE users SET coins = coins + ?, diamonds = diamonds + ? WHERE id = ?', [coins, diamonds, id]);
+    // تعبئة الرصيد من الإدارة تضيف نقاط الثروة حسب الألماس المضاف (والمستوى كنوع من الشراء)
+    if (diamonds > 0) {
+      try {
+        const ps = await getPointSettings();
+        const pts = memberLevels.pointsForAmount(diamonds, 'diamonds', ps);
+        await addMemberPoints(id, 'wealth', pts);
+        await addLevelPoints(id, pts);
+        notifyMemberStats(id);
+      } catch (e) {}
+    }
     const updated = await get('SELECT id, name, coins, diamonds, level FROM users WHERE id = ?', [id]);
     const set = userSockets.get(id);
     if (set) {
@@ -6470,7 +6563,7 @@ app.get('/api/admin/moderators', async (req, res) => {
 
   try {
     const moderators = await all(`
-      SELECT m.*, u.name as user_name, u.avatar as user_avatar, u.is_banned
+      SELECT m.*, u.name as user_name, u.avatar as user_avatar, u.is_banned, u.role as user_role
       FROM moderator_accounts m
       LEFT JOIN users u ON m.user_id = u.id
       ORDER BY m.created_at DESC
@@ -6488,6 +6581,8 @@ app.post('/api/admin/moderators/generate', async (req, res) => {
 
   try {
     let { username, password, display_name, notes } = req.body;
+    // نوع الحساب الجديد: مشرف عام (moderator) أو زائر عادي (user) — يحدده المدير من الاستمارة
+    const role = String((req.body || {}).role || 'moderator') === 'user' ? 'user' : 'moderator';
 
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     if (!username || !username.trim()) {
@@ -6513,21 +6608,47 @@ app.post('/api/admin/moderators/generate', async (req, res) => {
     if (existing) {
       return res.status(400).json({ error: 'اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار اسم آخر' });
     }
+    // اسم الدخول يجب ألا يكون مستخدماً كاسم مستعار أو كاسم ظاهر لحساب آخر (قاعدة دخول الشات)
+    const takenNick = await get(
+      `SELECT user_id AS id FROM user_credentials WHERE LOWER(nickname) = LOWER(?)
+       UNION SELECT id FROM users WHERE LOWER(name) = LOWER(?)`,
+      [username, username]
+    );
+    if (takenNick) {
+      return res.status(400).json({ error: 'اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار اسم آخر' });
+    }
 
     const modAccountId = `mod-acc-${Date.now()}`;
     const userId = `sc-mod-${randomSuffix}`;
     const modEmail = `${username}@soulchill.mod`;
 
-    // Create user in users table with role 'moderator'
-    await run(`
-      INSERT INTO users (id, name, email, role, avatar, avatar_frame, level, coins, diamonds, soul_planet, bio)
-      VALUES (?, ?, ?, 'moderator', ?, 'galaxy', 50, 50000, 5000, 'كوكب القيادة والإشراف 🛡️', 'مشرف عام معتمد على دردشة SoulChill')
-    `, [
-      userId,
-      display_name,
-      modEmail,
-      `/avatars/avatar-${Math.floor(1 + Math.random() * 6)}.png`
-    ]);
+    // إنشاء الحساب في جدول users: مشرف عام بصلاحيات كاملة، أو زائر عادي بدون صلاحيات
+    const avatarPath = `/avatars/avatar-${Math.floor(1 + Math.random() * 6)}.png`;
+    if (role === 'user') {
+      await run(`
+        INSERT INTO users (id, name, email, role, avatar, level, coins, diamonds, bio)
+        VALUES (?, ?, ?, 'user', ?, 1, 2500, 600, 'عضو في دردشة SoulChill 🪐')
+      `, [userId, display_name, modEmail, avatarPath]);
+    } else {
+      await run(`
+        INSERT INTO users (id, name, email, role, avatar, avatar_frame, level, coins, diamonds, soul_planet, bio)
+        VALUES (?, ?, ?, 'moderator', ?, 'galaxy', 50, 50000, 5000, 'كوكب القيادة والإشراف 🛡️', 'مشرف عام معتمد على دردشة SoulChill')
+      `, [userId, display_name, modEmail, avatarPath]);
+    }
+
+    // بيانات الدخول بالاسم المستعار: بدونها لا يدخل الحساب من شاشة الدخول العادية في الشات
+    const { salt: modSalt, hash: modHash } = await hashPassword(password);
+    try {
+      await run('INSERT INTO user_credentials (user_id, nickname, password_hash, password_salt) VALUES (?, ?, ?, ?)',
+        [userId, username, modHash, modSalt]);
+    } catch (credErr) {
+      // اسم مستعار وُخذ بالتزامن: لا نترك حساباً يتيماً محجوزاً للاسم
+      if (String(credErr.message || '').includes('UNIQUE')) {
+        await run('DELETE FROM users WHERE id = ?', [userId]);
+        return res.status(409).json({ error: 'هذا الاسم المستعار مستخدم، اختر اسماً آخر' });
+      }
+      throw credErr;
+    }
 
     // Insert into moderator_accounts
     await run(`
@@ -6537,8 +6658,8 @@ app.post('/api/admin/moderators/generate', async (req, res) => {
 
     const createdMod = await get('SELECT * FROM moderator_accounts WHERE id = ?', [modAccountId]);
 
-    // Broadcast announcement about new moderator appointment
-    io.emit('room_message', {
+    // إعلان تعيين المشرف الجديد — يُنشر فقط عند توليد حساب مشرف (لا يُعلن عن الزائر العادي)
+    if (role === 'moderator') io.emit('room_message', {
       id: `sys-mod-${Date.now()}`,
       sender_id: 'system',
       sender_name: '🛡️ الإدارة العليا',
@@ -6552,7 +6673,10 @@ app.post('/api/admin/moderators/generate', async (req, res) => {
     res.json({
       success: true,
       moderator: createdMod,
-      message: 'تم توليد حساب المشرف وبيانات الدخول بنجاح!'
+      role,
+      message: role === 'user'
+        ? 'تم توليد الزائر العادي وبياناته! الاسم الظاهر بالشات هو ما اخترته، والدخول من زر «الدخول بالاسم المستعار»'
+        : 'تم توليد حساب المشرف وبيانات الدخول بنجاح! الدخول من زر «الدخول بالاسم المستعار» باسم المستخدم وكلمة المرور'
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -6574,12 +6698,52 @@ app.delete('/api/admin/moderators/:id', async (req, res) => {
     // Downgrade user role
     await run("UPDATE users SET role = 'user' WHERE id = ?", [mod.user_id]);
     await run('DELETE FROM moderator_accounts WHERE id = ?', [id]);
+    // حذف بيانات الدخول بالاسم المستعار أيضاً: يحرّر الاسم ويمنع الدخول بعد الحذف
+    await run('DELETE FROM user_credentials WHERE user_id = ?', [mod.user_id]);
 
     res.json({ success: true, message: 'تم حذف حساب المشرف وإلغاء صلاحياته بنجاح' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ===== تهيئة أولية عند الإقلاع =====
+// 1) الحسابات المولَّدة قبل هذا التحديث كانت تحفظ كلمة المرور نصاً في moderator_accounts —
+//    نحوّلها إلى بيانات دخول مشفّرة تسمح بالدخول من شاشة «الدخول بالاسم المستعار» في الشات
+async function backfillGeneratedCredentials() {
+  try {
+    const rows = await all(`
+      SELECT m.username, m.password, m.user_id FROM moderator_accounts m
+      LEFT JOIN user_credentials c ON c.user_id = m.user_id
+      WHERE c.user_id IS NULL
+    `);
+    for (const r of rows) {
+      const dup = await get('SELECT user_id FROM user_credentials WHERE LOWER(nickname) = LOWER(?)', [r.username]);
+      if (dup && dup.user_id !== r.user_id) {
+        console.warn('[backfill] تعذّر تحويل حساب (اسم مستعار محجوز):', r.username);
+        continue;
+      }
+      const { salt, hash } = await hashPassword(String(r.password || ''));
+      await run('INSERT INTO user_credentials (user_id, nickname, password_hash, password_salt) VALUES (?, ?, ?, ?)',
+        [r.user_id, r.username, hash, salt]);
+      console.log('[backfill] تم إنشاء بيانات دخول للحساب المولَّد:', r.username);
+    }
+  } catch (e) { console.error('backfillGeneratedCredentials error:', e.message); }
+}
+
+// 2) نقاط بداية للمستوى: كل حساب موجود تحصل نقاطاً تكافئ مستواه الحالي حتى يبدو التقدم مستمراً
+async function backfillLevelPointsBaseline() {
+  try {
+    const rows = await all('SELECT id, level, level_points FROM users WHERE COALESCE(level_points, 0) = 0 AND level > 1 AND level <= 30');
+    for (const r of rows) {
+      const baseline = memberLevels.levelThreshold(r.level);
+      if (baseline > 0) {
+        await run('UPDATE users SET level_points = ? WHERE id = ? AND COALESCE(level_points, 0) = 0', [baseline, r.id]);
+      }
+    }
+  } catch (e) { console.error('backfillLevelPointsBaseline error:', e.message); }
+}
+setTimeout(async () => { await backfillGeneratedCredentials(); await backfillLevelPointsBaseline(); }, 1500);
 
 // 18. Get SMTP Settings
 app.get('/api/admin/smtp', async (req, res) => {
@@ -7188,6 +7352,9 @@ io.on('connection', (socket) => {
         VALUES (?, ?, ?, 'text', ?)
       `, [msgId, userId, roomId, content]);
 
+      // نقاط المستوى: التفاعل في الدردشة (مقيَّد زمنياً ضد السبام)
+      addChatInteractionXp(userId, 5);
+
       const payload = {
         id: msgId,
         sender_id: user.id,
@@ -7335,6 +7502,9 @@ io.on('connection', (socket) => {
       await run('UPDATE room_seats SET user_id = ?, is_muted = ? WHERE room_id = ? AND seat_index = ?', [userId, seatMutePolicy, roomId, seatIndex]);
 
       const user = await get('SELECT id, name, avatar, avatar_frame, level, charm_level FROM users WHERE id = ?', [userId]);
+
+      // نقاط المستوى: الصعود على المايك
+      addLevelPoints(userId, 10);
 
       io.to(`room:${roomId}`).emit('seat_updated', {
         seatIndex,
