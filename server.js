@@ -295,9 +295,10 @@ async function issueSession(user, nickname) {
 }
 
 
-// بعد إثبات ملكية البريد (رمز Gmail أو حساب Google): يُمنح تذكرة لإكمال الاسم المستعار والعمر وكلمة المرور
+// بعد إثبات ملكية البريد (رمز Gmail أو حساب Google): يُمنح تذكرة لإكمال الاسم المستعار وكلمة المرور والجنس والعمر
 // opts.google = true: البريد موثّق عبر Google. تُمنح التذكرة بادئة g_ (لا يمكن تزويرها لأنها تُنشأ في السيرفر فقط)
-// وهي تسمح بالدخول المباشر للحساب المسجّل، وبإنشاء حساب جديد بدون كلمة مرور.
+// وهي تسمح بالدخول المباشر للحساب المسجّل، وبإكمال بيانات حساب جديد إلزامياً
+// (اسم مستعار + كلمة مرور + جنس + عمر) كي يستطيع صاحبه الدخول من أي جهاز لاحقاً.
 async function signupTicketFor(cleanEmail, opts = {}) {
   const existing = await get('SELECT id, name, is_banned FROM users WHERE email = ?', [cleanEmail]);
   if (existing && existing.is_banned) {
@@ -407,7 +408,7 @@ app.post('/api/auth/send-gmail-otp', async (req, res) => {
   }
 });
 
-// 2) التحقق من الرمز → تذكرة لإكمال الاسم المستعار وكلمة المرور
+// 2) التحقق من الرمز → تذكرة لإكمال الاسم المستعار وكلمة المرور والجنس والعمر
 app.post('/api/auth/verify-gmail-otp', async (req, res) => {
   try {
     const cleanEmail = String((req.body && req.body.email) || '').trim().toLowerCase();
@@ -442,7 +443,7 @@ app.post('/api/auth/verify-gmail-otp', async (req, res) => {
   }
 });
 
-// 3) إنشاء الاسم المستعار وكلمة المرور (أو تعيين كلمة مرور جديدة) ثم الدخول
+// 3) إنشاء الاسم المستعار وكلمة المرور (والجنس والعمر — إلزاميين لكل حساب جديد) ثم الدخول
 app.post('/api/auth/complete-signup', async (req, res) => {
   try {
     const { ticket } = req.body || {};
@@ -474,19 +475,24 @@ app.post('/api/auth/complete-signup', async (req, res) => {
       return res.status(409).json({ code: 'email_registered', error: 'هذا البريد مسجّل مسبقاً. ادخل بالاسم المستعار وكلمة المرور' });
     }
 
-    // حساب جديد أو قديم بلا كلمة مرور: الاسم وكلمة المرور إلزاميان
+    // حساب جديد أو قديم بلا كلمة مرور: الاسم المستعار وكلمة المرور والجنس والعمر إلزاميين
+    // (حتى التسجيل عبر Google: تُضبط كلمة المرور هنا كي يدخل صاحب الحساب من أي جهاز
+    //  بالاسم المستعار وكلمة المرور، وليس عبر Google فقط)
     const nickname = cleanNickname(req.body.nickname);
     if (!isValidNickname(nickname)) {
       return res.status(400).json({ error: 'الاسم المستعار من 2 إلى 30 حرفاً، بدون الرموز < > & "' });
     }
-    // حساب Google جديد: لا كلمة مرور (يدخل دائماً بـ Google)؛ نخزّن كلمة عشوائية غير معروفة لأحد
-    const effectivePassword = password || (viaGoogle ? crypto.randomBytes(24).toString('hex') : '');
+    const effectivePassword = password;
     if (!effectivePassword) {
       return res.status(400).json({ error: 'كلمة المرور مطلوبة (6 أحرف على الأقل)' });
     }
     const age = parseSignupAge(req.body.age);
     if (age === null) {
       return res.status(400).json({ error: `اختر عمرك (من ${MIN_SIGNUP_AGE} إلى ${MAX_SIGNUP_AGE} سنة)` });
+    }
+    const gender = String((req.body && req.body.gender) || '').toLowerCase().trim();
+    if (gender !== 'male' && gender !== 'female' && gender !== 'other') {
+      return res.status(400).json({ error: 'اختر نوع الجنس (ذكر / أنثى / أخرى)' });
     }
     const selfId = existing ? existing.id : '';
     const taken = await get(
@@ -504,12 +510,13 @@ app.post('/api/auth/complete-signup', async (req, res) => {
       const newId = await generateUserId();
       const planets = ['كوكب الرومانسي الحالم 🌌', 'كوكب المغامر الشغوف 🚀', 'كوكب الفنان الملهم 🎨', 'كوكب الفيلسوف الحكيم 🔮', 'كوكب النسمة الهادئة 🍃'];
       await run(`
-        INSERT INTO users (id, google_id, email, name, avatar, bio, age, soul_planet, soul_score, soul_tags, coins, diamonds, level, wealth_level, charm_level)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (id, google_id, email, name, avatar, bio, gender, age, soul_planet, soul_score, soul_tags, coins, diamonds, level, wealth_level, charm_level)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         newId, `google-${email}`, email, nickname,
         `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(nickname)}`,
         'عضو موثق عبر Gmail في SoulChill 🪐✨',
+        gender,
         age,
         planets[crypto.randomInt(0, planets.length)],
         88 + crypto.randomInt(0, 11),
@@ -518,7 +525,7 @@ app.post('/api/auth/complete-signup', async (req, res) => {
       ]);
       user = await get('SELECT * FROM users WHERE id = ?', [newId]);
     } else {
-      await run('UPDATE users SET name = ?, age = ? WHERE id = ?', [nickname, age, existing.id]);
+      await run('UPDATE users SET name = ?, gender = ?, age = ? WHERE id = ?', [nickname, gender, age, existing.id]);
     }
 
     try {
@@ -581,7 +588,7 @@ app.post('/api/auth/login-nickname', async (req, res) => {
 });
 
 // 5) التسجيل عبر حساب Google: نتحقق من توقيع الـID Token لدى Google (وأنه صادر لتطبيقنا والبريد موثّق)
-//    ثم نمنح التذكرة نفسها لإكمال الاسم المستعار والعمر وكلمة المرور.
+//    ثم نمنح التذكرة نفسها لإكمال الاسم المستعار وكلمة المرور والجنس والعمر.
 // إعدادات Google OAuth: الأولوية لما تحفظه الإدارة من لوحة التحكم (app_settings)، ثم ملف .env كاحتياط
 async function getGoogleConfig() {
   let rows = [];

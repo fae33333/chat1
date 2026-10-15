@@ -13957,6 +13957,15 @@
               ${Array.from({ length: 87 }, (_, i) => 13 + i).map(a => `<option value="${a}">${a}</option>`).join('')}
             </select>
           </div>
+          <div class="form-group-soul" id="auth-setup-gender-row" style="margin-bottom: 10px;">
+            <label>الجنس:</label>
+            <select id="auth-setup-gender" class="form-input-soul">
+              <option value="">اختر نوع الجنس</option>
+              <option value="male">ذكر ♂</option>
+              <option value="female">أنثى ♀</option>
+              <option value="other">أخرى ⚧</option>
+            </select>
+          </div>
           <div class="form-group-soul" style="margin-bottom: 14px;">
             <label id="auth-setup-pass-label">كلمة المرور (6 أحرف على الأقل):</label>
             <input type="password" id="auth-setup-pass" class="form-input-soul" maxlength="64" autocomplete="new-password" dir="ltr" />
@@ -13995,7 +14004,7 @@
     let email = '';
     let ticket = '';
     let accountStatus = 'new';
-    let viaGoogle = false; // التذكرة صادرة بعد التحقق عبر Google (لا كلمة مرور للحساب الجديد)
+    let viaGoogle = false; // التذكرة صادرة بعد التحقق عبر Google (الاسم وكلمة المرور والجنس والعمر إلزامية للحساب الجديد)
     let resendTimer = null;
 
     const emailInput = $('auth-email-input');
@@ -14091,13 +14100,16 @@
       viaGoogle = String(ticket || '').startsWith('g_');
       if (viaGoogle && data.account_status === 'existing') { googleDirectLogin(ticket); return; }
       accountStatus = data.account_status;
+      // كلمة المرور إلزامية دائماً (Google وغير Google) كي يدخل المستخدم من أي جهاز
       const passRow = $('auth-setup-pass').closest('.form-group-soul');
-      if (passRow) passRow.style.display = viaGoogle ? 'none' : 'block';
+      if (passRow) passRow.style.display = 'block';
       const nickInput = $('auth-setup-nick');
       const passInput = $('auth-setup-pass');
       passInput.value = '';
       $('auth-setup-age').value = '';
+      $('auth-setup-gender').value = '';
       $('auth-setup-age-row').style.display = accountStatus === 'existing' ? 'none' : 'block';
+      $('auth-setup-gender-row').style.display = accountStatus === 'existing' ? 'none' : 'block';
       if (accountStatus === 'existing') {
         $('auth-setup-title').textContent = 'أهلاً بعودتك 👋';
         $('auth-setup-sub').textContent = 'هذا البريد مسجّل باسم مستعار بالفعل. يمكنك الدخول مباشرة أو تعيين كلمة مرور جديدة';
@@ -14108,8 +14120,8 @@
       } else {
         $('auth-setup-title').textContent = accountStatus === 'legacy' ? 'أكمل حسابك' : 'أنشئ حسابك';
         $('auth-setup-sub').textContent = viaGoogle
-          ? 'تم التحقق من حساب Google. اختر اسماً مستعاراً وعمرك لإكمال حسابك'
-          : 'تم التحقق من بريدك. اختر اسماً مستعاراً وكلمة مرور لتدخل بهما من أي جهاز';
+          ? 'تم التحقق من حساب Google. حدّد اسمك المستعار وكلمة المرور والجنس والعمر — إلزامية لدخولك من أي جهاز'
+          : 'تم التحقق من بريدك. حدّد اسمك المستعار وكلمة المرور والجنس والعمر — إلزامية لدخولك من أي جهاز';
         nickInput.value = data.nickname || '';
         nickInput.readOnly = false;
         $('auth-setup-pass-label').textContent = 'كلمة المرور (6 أحرف على الأقل):';
@@ -14248,22 +14260,27 @@
     codeInput.onkeydown = (e) => { if (e.key === 'Enter') btnVerify.click(); };
     codeInput.oninput = () => { codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6); };
 
-    // إنشاء الاسم المستعار وكلمة المرور
+    // إنشاء الاسم المستعار وكلمة المرور (والجنس والعمر — إلزاميين لجميع الحسابات الجديدة)
     btnComplete.onclick = async () => {
       const nickname = $('auth-setup-nick').value.replace(/\s+/g, ' ').trim();
       const password = $('auth-setup-pass').value;
       const age = parseInt($('auth-setup-age').value, 10) || 0;
+      const gender = ($('auth-setup-gender').value || '').trim();
       if (accountStatus !== 'existing') {
         if (nickname.length < 2) { showToast('اكتب اسماً مستعاراً (حرفان على الأقل)'); $('auth-setup-nick').focus(); return; }
-        if (!age) { showToast('اختر عمرك'); $('auth-setup-age').focus(); return; }
-        if (!viaGoogle && password.length < 6) { showToast('كلمة المرور يجب ألا تقل عن 6 أحرف'); $('auth-setup-pass').focus(); return; }
+        if (!age) { showToast('اختر عمرك — إلزامي'); $('auth-setup-age').focus(); return; }
+        if (!gender) { showToast('اختر نوع الجنس — إلزامي'); $('auth-setup-gender').focus(); return; }
+        if (password.length < 6) { showToast('كلمة المرور يجب ألا تقل عن 6 أحرف — إلزامية'); $('auth-setup-pass').focus(); return; }
       } else if (password && password.length < 6) {
         showToast('كلمة المرور يجب ألا تقل عن 6 أحرف');
         return;
       }
       setBtn(btnComplete, true, 'جارِ الدخول... ⏳');
       try {
-        const { ok, data } = await postJSON('/api/auth/complete-signup', { ticket, nickname, age, password: viaGoogle ? '' : password });
+        const { ok, data } = await postJSON('/api/auth/complete-signup', {
+          ticket, nickname, age, password,
+          gender: accountStatus !== 'existing' ? gender : ''
+        });
         if (ok && data.success && data.user) {
           persistLogin(data);
           if (window.soundManager) window.soundManager.playCheer();
