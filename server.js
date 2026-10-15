@@ -14,6 +14,10 @@ const { v4: uuidv4 } = require('uuid');
 const nodemailer = require('nodemailer');
 const { OAuth2Client } = require('google-auth-library');
 const { db, run, get, all, initDB } = require('./database');
+// محرك عناوين العودة (redirect_uri) — يعالج خطأ Google الشائع: 400 redirect_uri_mismatch
+const {
+  CALLBACK_PATH, normalizeRedirectUri, parseRedirectList, requestOrigin, derivedRedirectUri, pickRedirectUri
+} = require('./google-redirect');
 
 const app = express();
 const server = http.createServer(app);
@@ -588,9 +592,13 @@ async function getGoogleConfig() {
   rows.forEach(r => { m[r.key] = String(r.value || '').trim(); });
   const clientId = m.google_client_id || String(process.env.GOOGLE_CLIENT_ID || '').trim();
   const clientSecret = m.google_client_id ? (m.google_client_secret || '') : String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
-  const redirectUri = m.google_redirect_uri || String(process.env.GOOGLE_REDIRECT_URI || '').trim();
+  // قد يحتوي الإعداد على عنوان واحد أو عدة عناوين (سطر لكل عنوان أو مفصولة بفاصلة)
+  const rawRedirect = m.google_redirect_uri || String(process.env.GOOGLE_REDIRECT_URI || '');
+  const redirectUris = parseRedirectList(rawRedirect);
   return {
-    clientId, clientSecret, redirectUri,
+    clientId, clientSecret,
+    redirectUris,
+    redirectUri: redirectUris[0] || '', // للتوافق مع الاستدعاءات القديمة
     enabled: !!(clientId && clientSecret),
     source: m.google_client_id ? 'admin' : (process.env.GOOGLE_CLIENT_ID ? 'env' : 'none')
   };
@@ -602,14 +610,15 @@ app.get('/api/auth/google-config', async (req, res) => {
 });
 
 // ---- تدفق «اختيار حساب» الكامل من Google (إعادة توجيه OAuth) ----
-const googleOAuthStates = new Map(); // state -> انتهاء الصلاحية (يكفي لعملية قصيرة العمر)
+// ملاحظة: يجب أن يطابق redirect_uri أحد العناوين المسجّلة في
+// Google Console ← Credentials ← Authorized redirect URIs حرفياً،
+// وإلا ظهر الخطأ: 400 redirect_uri_mismatch.
+const googleOAuthStates = new Map(); // state -> { exp, redirectUri } — نحفظ العنوان المستخدم فعلياً لنتابع به عند تبادل الرمز
 function googleRedirectUri(req, cfg) {
-  if (cfg && cfg.redirectUri) return cfg.redirectUri;
-  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
-  return `${proto}://${req.get('host')}/api/auth/google/callback`;
+  return pickRedirectUri(req, { redirectUris: (cfg && cfg.redirectUris) || [] });
 }
-function googleOAuthClient(req, cfg) {
-  return new OAuth2Client(cfg.clientId, cfg.clientSecret, googleRedirectUri(req, cfg));
+function googleOAuthClient(redirectUri, cfg) {
+  return new OAuth2Client(cfg.clientId, cfg.clientSecret, redirectUri);
 }
 
 app.get('/api/auth/google/start', async (req, res) => {
@@ -617,16 +626,23 @@ app.get('/api/auth/google/start', async (req, res) => {
   if (!cfg.enabled) {
     return res.redirect('/#google_error=not_configured');
   }
+  const redirectUri = googleRedirectUri(req, cfg);
+  if (!redirectUri) {
+    console.warn('[Google OAuth] تعذّر تحديد redirect_uri من الطلب (لا يوجد Host صالح)');
+    return res.redirect('/#google_error=not_configured');
+  }
   const now = Date.now();
-  for (const [k, exp] of googleOAuthStates) if (exp < now) googleOAuthStates.delete(k);
+  for (const [k, rec] of googleOAuthStates) if (!rec || rec.exp < now) googleOAuthStates.delete(k);
   const state = crypto.randomBytes(24).toString('hex');
-  googleOAuthStates.set(state, now + 10 * 60 * 1000);
-  const url = googleOAuthClient(req, cfg).generateAuthUrl({
+  googleOAuthStates.set(state, { exp: now + 10 * 60 * 1000, redirectUri });
+  const url = googleOAuthClient(redirectUri, cfg).generateAuthUrl({
     scope: ['openid', 'email', 'profile'],
     state,
     prompt: 'select_account', // يعرض دائماً شاشة «اختيار حساب»
     access_type: 'online'
   });
+  console.log(`[Google OAuth] بدء التسجيل → redirect_uri=${redirectUri}` +
+    (cfg.redirectUris.length ? '' : ' (محسوب تلقائياً — تأكد من تسجيله في Google Console)'));
   res.redirect(url);
 });
 
@@ -636,12 +652,14 @@ app.get('/api/auth/google/callback', async (req, res) => {
     const cfg = await getGoogleConfig();
     if (!cfg.enabled) return back('google_error=not_configured');
     const { code, state, error } = req.query || {};
-    const exp = state ? googleOAuthStates.get(String(state)) : null;
+    const rec = state ? googleOAuthStates.get(String(state)) : null;
     if (state) googleOAuthStates.delete(String(state)); // استخدام واحد فقط
     if (error) return back('google_error=cancelled');
-    if (!exp || exp < Date.now() || !code) return back('google_error=expired');
+    if (!rec || rec.exp < Date.now() || !code) return back('google_error=expired');
 
-    const client = googleOAuthClient(req, cfg);
+    // نستخدم العنوان نفسه الذي بدأنا به الرحلة حرفياً (مطابقة تامة عند تبادل الرمز مع Google)
+    const redirectUri = rec.redirectUri || googleRedirectUri(req, cfg);
+    const client = googleOAuthClient(redirectUri, cfg);
     const { tokens } = await client.getToken(String(code));
     const loginTicket = await client.verifyIdToken({ idToken: tokens.id_token, audience: cfg.clientId });
     const payload = loginTicket.getPayload() || {};
@@ -670,7 +688,6 @@ app.get('/api/admin/settings/google', async (req, res) => {
   if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
   try {
     const cfg = await getGoogleConfig();
-    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
     res.json({
       success: true,
       enabled: cfg.enabled,
@@ -678,8 +695,15 @@ app.get('/api/admin/settings/google', async (req, res) => {
       client_id: cfg.clientId,
       has_secret: !!cfg.clientSecret,
       secret_preview: maskSecret(cfg.clientSecret),
-      redirect_uri: cfg.redirectUri,
-      suggested_redirect_uri: `${proto}://${req.get('host')}/api/auth/google/callback`
+      // النص الخام المحفوظ (سطر لكل عنوان إن كان متعدداً) لتعبئة الحقل في اللوحة
+      redirect_uri: cfg.redirectUris.join('\n'),
+      redirect_uris: cfg.redirectUris,
+      // العنوان الذي يشتقه الخادم من طلب الإدارة الحالي (المرجع لإضافته في Google Console)
+      suggested_redirect_uri: derivedRedirectUri(req),
+      // العنوان الذي سيُرسل فعلياً إلى Google الآن لو بدأ الدخول من هذه الصفحة
+      active_redirect_uri: googleRedirectUri(req, cfg),
+      // أصل الموقع الحالي — يُسجَّل في Google Console ← Authorized JavaScript origins (لزر Google المنبثق)
+      javascript_origin: requestOrigin(req)
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -691,19 +715,27 @@ app.post('/api/admin/settings/google', async (req, res) => {
     const b = req.body || {};
     const clientId = String(b.client_id || '').trim();
     const secret = String(b.client_secret || '').trim();   // فارغ = إبقاء السر المحفوظ كما هو
-    const redirect = String(b.redirect_uri || '').trim();
+    const rawRedirect = String(b.redirect_uri || '').trim(); // عنوان واحد أو عدة عناوين (سطر لكل عنوان)
     if (clientId && !/^[0-9A-Za-z\-_.]+\.apps\.googleusercontent\.com$/.test(clientId)) {
       return res.status(400).json({ error: 'Client ID غير صالح (يجب أن ينتهي بـ .apps.googleusercontent.com)' });
     }
     if (secret && secret.length < 10) return res.status(400).json({ error: 'Client Secret غير صالح' });
-    if (redirect && !/^https?:\/\/[^\s]+\/api\/auth\/google\/callback$/.test(redirect)) {
-      return res.status(400).json({ error: 'عنوان العودة يجب أن ينتهي بـ /api/auth/google/callback' });
+    let redirectList = [];
+    if (rawRedirect) {
+      const parts = rawRedirect.split(/[\r\n,;]+/).map(p => p.trim()).filter(Boolean);
+      const bad = parts.filter(p => !normalizeRedirectUri(p));
+      if (bad.length) {
+        return res.status(400).json({
+          error: `عنوان العودة غير صالح: «${bad[0]}» — يجب أن يبدأ بـ http(s):// وينتهي بـ ${CALLBACK_PATH} تماماً (بدون أسئلة أو فواصل)`
+        });
+      }
+      redirectList = parseRedirectList(rawRedirect);
     }
     const upsert = (k, v) => run(`INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [k, v]);
     const del = (k) => run(`DELETE FROM app_settings WHERE key = ?`, [k]);
     if (clientId) await upsert('google_client_id', clientId); else { await del('google_client_id'); await del('google_client_secret'); }
     if (clientId && secret) await upsert('google_client_secret', secret);
-    if (redirect) await upsert('google_redirect_uri', redirect); else await del('google_redirect_uri');
+    if (redirectList.length) await upsert('google_redirect_uri', redirectList.join('\n')); else await del('google_redirect_uri');
     const cfg = await getGoogleConfig();
     if (clientId && !cfg.clientSecret) {
       return res.json({ success: true, enabled: false, warning: 'تم حفظ Client ID لكن Client Secret ما زال فارغاً' });

@@ -14160,17 +14160,27 @@
       }
     }
 
-    // زر Google: يفتح صفحة «اختيار حساب» الكاملة من Google (قائمة الحسابات)،
-    // وعند اختيار حساب يعود المستخدم ويدخل مباشرة (أو يكمل الاسم والعمر إن كان جديداً)
+    // انتظار تحميل سكربت Google الرسمي (accounts.google.com) لو لم يكتمل بعد
+    async function waitForGsi(timeoutMs) {
+      const deadline = Date.now() + (timeoutMs || 2500);
+      while (Date.now() < deadline) {
+        const g = getGsi();
+        if (g) return g;
+        await new Promise(r => setTimeout(r, 150));
+      }
+      return getGsi();
+    }
+
+    // زر Google: يفضّل الزر الرسمي المنبثق (لا يستخدم redirect_uri إطلاقاً فيتجاوز
+    // أخطاء redirect_uri_mismatch)، وإلا يعود لإعادة التوجيه الكاملة المُصلَحة
     async function initGoogleButton() {
       hideOtpForGoogleOnly();
-      let enabled = false;
-      try {
-        const cfg = await (await fetch('/api/auth/google-config')).json();
-        enabled = !!(cfg && cfg.enabled);
-      } catch (e) {}
-      renderGoogleRedirectFallback();
+      let cfg = null;
+      try { cfg = await (await fetch('/api/auth/google-config')).json(); } catch (e) {}
+      const enabled = !!(cfg && cfg.enabled);
+
       if (!enabled) {
+        renderGoogleRedirectFallback();
         const holder = $('google-btn-render');
         const note = document.createElement('div');
         note.style.cssText = 'margin-top:10px;font-size:12px;color:#fbbf24;text-align:center;line-height:1.6;';
@@ -14178,7 +14188,37 @@
         holder.parentNode.insertBefore(note, holder.nextSibling);
         const btn = holder.querySelector('button');
         if (btn) btn.onclick = () => showToast('الدخول عبر Google غير مفعّل بعد على الخادم');
+        return;
       }
+
+      const gsi = await waitForGsi(2500);
+      if (gsi && cfg.clientId) {
+        try {
+          gsi.initialize({ client_id: cfg.clientId, callback: onGoogleCredential });
+          const holder = $('google-btn-render');
+          holder.innerHTML = '';
+          gsi.renderButton(holder, {
+            theme: 'outline',
+            size: 'large',
+            width: 330,
+            text: 'continue_with',
+            shape: 'rectangular',
+            type: 'standard'
+          });
+          // بديل أسفله: الطريقة الكاملة (إعادة توجيه بقائمة اختيار الحساب)
+          const alt = document.createElement('div');
+          alt.style.cssText = 'text-align:center;margin-top:8px;';
+          alt.innerHTML = '<button type="button" id="btn-google-redirect-alt" style="background:none;border:none;color:#94a3b8;font-size:12px;cursor:pointer;text-decoration:underline;">أو الدخول بالطريقة الكاملة (اختيار حساب)</button>';
+          holder.parentNode.insertBefore(alt, holder.nextSibling);
+          alt.querySelector('#btn-google-redirect-alt').onclick = () => { window.location.href = '/api/auth/google/start'; };
+          $('google-btn-slot').style.display = 'block';
+          return;
+        } catch (e) {
+          console.warn('تعذّر عرض زر Google المنبثق، الرجوع لإعادة التوجيه:', e);
+        }
+      }
+      // فشل تحميل سكربت Google الرسمي → إعادة التوجيه الكاملة (مُصلَحة الآن)
+      renderGoogleRedirectFallback();
     }
 
     // التحقق من الرمز

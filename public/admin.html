@@ -1851,12 +1851,25 @@
               <div id="g-secret-hint" style="font-size:11.5px;color:var(--text-muted);margin-top:6px;"></div>
             </div>
             <div class="form-group" style="grid-column:1/-1;">
-              <label class="form-label">Redirect URI (اختياري — اتركه فارغاً ليُحسب تلقائياً):</label>
-              <input type="text" class="form-input" id="g-redirect" placeholder="https://yourdomain.com/api/auth/google/callback" autocomplete="off" dir="ltr" />
-              <div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;">
-                العنوان الذي يجب إضافته في Google Console ← Authorized redirect URIs:
-                <code id="g-suggested" style="user-select:all;color:#60a5fa;"></code>
-                <button type="button" class="btn-action" onclick="copyGoogleRedirect()" style="padding:2px 10px;margin-inline-start:6px;font-size:11px;">نسخ</button>
+              <label class="form-label">Redirect URI (اختياري — اتركه فارغاً ليُحسب تلقائياً، أو اكتب سطراً لكل عنوان لدعم عدة نطاقات/منافذ):</label>
+              <textarea class="form-input" id="g-redirect" rows="2" placeholder="https://yourdomain.com/api/auth/google/callback" autocomplete="off" dir="ltr" style="resize:vertical;min-height:56px;"></textarea>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;line-height:1.9;">
+                <div>① أضف هذا العنوان في Google Console ← <b>Authorized redirect URIs</b> (العنوان الذي يشتقه الخادم من موقعك الحالي):</div>
+                <div>
+                  <code id="g-suggested" style="user-select:all;color:#60a5fa;word-break:break-all;"></code>
+                  <button type="button" class="btn-action" onclick="copyGoogleRedirect()" style="padding:2px 10px;margin-inline-start:6px;font-size:11px;">نسخ</button>
+                </div>
+                <div style="margin-top:4px;">② العنوان الذي سيُرسَل فعلياً إلى Google <b>الآن</b> لو بدأت الدخول من هذه الصفحة:</div>
+                <div>
+                  <code id="g-active" style="user-select:all;color:#4ade80;word-break:break-all;"></code>
+                  <button type="button" class="btn-action" onclick="copyGoogleActive()" style="padding:2px 10px;margin-inline-start:6px;font-size:11px;">نسخ</button>
+                </div>
+                <div style="margin-top:4px;">③ لزر Google المنبثق: أضف <b>أصل الموقع</b> (بدون أي مسار) في Google Console ← <b>Authorized JavaScript origins</b>:</div>
+                <div>
+                  <code id="g-js-origin" style="user-select:all;color:#fbbf24;word-break:break-all;"></code>
+                  <button type="button" class="btn-action" onclick="copyGoogleJsOrigin()" style="padding:2px 10px;margin-inline-start:6px;font-size:11px;">نسخ</button>
+                </div>
+                <div style="margin-top:6px;color:#f87171;">⚠️ أخطاء شائعة تسبب <b>redirect_uri_mismatch</b>: فرق http/https، وجود <b>www.</b> أو عدمه، فارق المنفذ (<b>:3000</b> / <b>:2083</b>)، أو شرطة مائلة <b>/</b> نهائية — أضف كل العناوين التي تدخل منها (Google يسمح بعدة عناوين في نفس الوقت).</div>
               </div>
             </div>
             <div style="grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;">
@@ -1866,12 +1879,14 @@
           </form>
           <div id="g-status" style="margin-top:12px;font-size:12px;min-height:18px;"></div>
           <details style="margin-top:12px;font-size:12px;color:var(--text-secondary);">
-            <summary style="cursor:pointer;font-weight:700;color:#fff;">📖 كيف تحصل على Client ID و Secret؟</summary>
+            <summary style="cursor:pointer;font-weight:700;color:#fff;">📖 كيف تحصل على Client ID و Secret؟ (وخريجة إصلاح redirect_uri_mismatch)</summary>
             <ol style="margin:10px 0 0 18px;line-height:1.8;">
               <li>ادخل <a href="https://console.cloud.google.com/" target="_blank" style="color:#60a5fa;">console.cloud.google.com</a> ← APIs &amp; Services ← OAuth consent screen واكتب اسم التطبيق.</li>
               <li>Credentials ← Create Credentials ← OAuth client ID ← نوع <b>Web application</b>.</li>
-              <li>في <b>Authorized redirect URIs</b> أضف العنوان الظاهر أعلاه بالضبط (وإن كان موقعك على المنفذ 2083 فهو يظهر تلقائياً ضمن العنوان).</li>
-              <li>انسخ Client ID و Client secret والصقهما هنا ثم احفظ.</li>
+              <li>في <b>Authorized redirect URIs</b> أضف العناوين الظاهرة أعلاه (① و ②) <b>حرفياً</b>، وأضف معها كل عنوان تدخل منه فعلاً مثل <code>http://localhost:3000/api/auth/google/callback</code> أو <code>https://yourdomain:2083/api/auth/google/callback</code> — Google يسمح بعدة عناوين.</li>
+              <li>في <b>Authorized JavaScript origins</b> أضف أصل الموقع ③ (مثلاً <code>https://yourdomain.com</code> بدون مسار).</li>
+              <li>انسخ Client ID و Client secret والصقهما هنا ثم احفظ — يُفعَّل فوراً بدون إعادة تشغيل.</li>
+              <li>لو ظهر خطأ <b>400 redirect_uri_mismatch</b> مرة أخرى: افتح عناوين Google Console وقارنها بالعنوان ② بالضبط (نفس البروتوكول www والمنفذ وبدون شرطة مائلة نهائية).</li>
             </ol>
           </details>
         </div>
@@ -2283,6 +2298,10 @@
         document.getElementById('g-client-secret').value = '';
         document.getElementById('g-redirect').value = d.redirect_uri || '';
         document.getElementById('g-suggested').textContent = d.suggested_redirect_uri || '';
+        const gActive = document.getElementById('g-active');
+        if (gActive) gActive.textContent = d.active_redirect_uri || d.suggested_redirect_uri || '';
+        const gJsOrigin = document.getElementById('g-js-origin');
+        if (gJsOrigin) gJsOrigin.textContent = d.javascript_origin || '';
         document.getElementById('g-secret-hint').textContent = d.has_secret
           ? ('السر محفوظ (' + d.secret_preview + ') — اتركه فارغاً للإبقاء عليه، أو اكتب سراً جديداً للاستبدال.')
           : 'لا يوجد Client Secret محفوظ.';
@@ -2300,10 +2319,13 @@
       const i = document.getElementById('g-client-secret');
       i.type = i.type === 'password' ? 'text' : 'password';
     }
-    function copyGoogleRedirect() {
-      const t = document.getElementById('g-suggested').textContent;
-      if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => showToast('تم نسخ عنوان العودة', 'success'));
+    function copyTextFromId(id, msg) {
+      const t = document.getElementById(id).textContent;
+      if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => showToast(msg, 'success'));
     }
+    function copyGoogleRedirect() { copyTextFromId('g-suggested', 'تم نسخ عنوان العودة'); }
+    function copyGoogleActive() { copyTextFromId('g-active', 'تم نسخ العنوان الفعلي'); }
+    function copyGoogleJsOrigin() { copyTextFromId('g-js-origin', 'تم نسخ أصل الموقع (JavaScript origin)'); }
     async function saveGoogleSettings(e) {
       e.preventDefault();
       const status = document.getElementById('g-status');
