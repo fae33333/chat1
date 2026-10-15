@@ -11616,8 +11616,11 @@
 
   const PF_AC_TABS = [
     ['frames', 'إطارات'], ['entry', 'مؤثرات الدخول'], ['mic', 'مقاعد المايك'], ['bubble', 'فقاعة الدردشة'],
-    ['rooms', 'بطاقات الغرف']
+    ['rooms', 'بطاقات الغرف'], ['idcard', 'بطاقة التعريف'], ['badges', 'شارات'],
+    ['relation', 'إكسسوار العلاقة'], ['family', 'محكمة الأسرة']
   ];
+  // أقسام عناصر المتجر التي تُعرض في الاكسسوارات بمجرد امتلاكها (ما تملكه فقط)
+  const PF_AC_STORE_TABS = ['mic', 'idcard', 'badges', 'relation', 'family'];
   const PF_AC_CLOCK = '<i class="f7-icons f7-ui" style="font-size:13px">clock_fill</i>';
   const PF_AC_CHECK = '<i class="f7-icons f7-ui" style="font-size:18px;color:#fff">checkmark_circle_fill</i>';
   const PF_AC_EMPTY = '<svg viewBox="0 0 200 130" width="200" height="130" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="60" cy="34" r="12"/><path d="M60 8v8M60 52v8M34 34h8M78 34h8M42 16l6 6M72 46l6 6M78 16l-6 6M42 52l6-6"/><path d="M10 112h180"/><path d="M40 112c14-18 30-30 52-30 10 0 14-8 14-16 0-8 4-12 10-12 4 0 6 4 6 8l-4 10c-2 6 0 10 8 14l22 26"/><path d="M92 82c6 10 6 20 0 30M128 84v28M146 100v12"/></svg>';
@@ -11644,7 +11647,7 @@
     });
     if (opts && opts.fromRoom) { el.classList.add('pf-ac-room'); document.body.appendChild(el); }
     pfBindAdminLive(el, ['avatar-frames', 'room-cards', 'entry-templates'], pfLiveReset);
-    el.querySelector('.pf-ac-help').onclick = () => showNiceNotice({ type: 'info', icon: '👕', title: 'الاكسسوارات', message: 'هنا كل ما تملكه من اكسسوارات. اضغط على أي عنصر لتفعيله، واضغط عليه مرة أخرى لإلغاء تفعيله.' });
+    el.querySelector('.pf-ac-help').onclick = () => showNiceNotice({ type: 'info', icon: '👕', title: 'الاكسسوارات', message: 'هنا كل ما تملكه من اكسسوارات (المشترى والمجاني فقط). اضغط على أي عنصر لتفعيله، واضغط مرة أخرى لإلغاء التفعيل — وما لم تشتريه بعد تجده في المتجر.' });
     const tabsEl = el.querySelector('.pf-ac-tabs');
     const grid = el.querySelector('.pf-ac-grid');
     const day = (s) => String(s || '').slice(0, 10);
@@ -11725,6 +11728,44 @@
       } catch (e) { showToast('حدث خطأ، حاول مرة أخرى'); return false; }
     };
     const empty = () => `<div class="pf-ac-empty">${PF_AC_EMPTY}<span>لا يوجد بيانات حالياً</span></div>`;
+    // عناصر المتجر المُدارة من الإدارة (بطاقة التعريف · الشارات · فقاعة الدردشة · مقاعد المايك · إكسسوار العلاقة · محكمة الأسرة)
+    async function loadStoreCat(cat) {
+      try {
+        const r = await fetch('/api/store-items?category=' + encodeURIComponent(cat), { headers: { 'x-user-id': state.currentUser.id }, cache: 'no-store' });
+        const d = await r.json();
+        return { items: d.items || [], equipped: d.equipped || {} };
+      } catch (e) { return { items: [], equipped: {} }; }
+    }
+    const storeCard = (t, cat, equipped) => card({
+      media: `<img src="${fEsc(encodeURI(t.image_url))}" alt="" style="max-width:100%;max-height:100%;object-fit:contain" onerror="this.style.visibility='hidden'" />`,
+      name: t.name, date: t.owned ? expTxt(t) : 'مجاني',
+      on: !!t.owned && equipped[cat] === t.id,
+      attr: `data-sitem="${fEsc(t.id)}" data-cat="${fEsc(cat)}"`
+    });
+    // نقرة عنصر متجر: غير المملوك = شراء (المجاني بلا تأكيد) · المملوك = تفعيل/إلغاء
+    const bindStoreCards = () => {
+      grid.querySelectorAll('[data-sitem]').forEach(c => {
+        c.onclick = async () => {
+          const cat = c.dataset.cat;
+          const si = await loadStoreCat(cat);
+          const t = si.items.find(x => x.id === c.dataset.sitem);
+          if (!t) return;
+          if (!t.owned) {
+            if (!(await buyItem(`/api/store-items/${encodeURIComponent(t.id)}/buy`, t.name, t))) return;
+          } else {
+            const id = si.equipped[cat] === t.id ? '' : t.id;
+            try {
+              const r = await fetch('/api/store-items/equip', { method: 'POST', headers: pfHdr(), body: JSON.stringify({ itemId: id, category: cat }) });
+              const d = await r.json();
+              if (!r.ok || !d.success) { showToast(d.error || 'تعذّر التفعيل'); return; }
+              saveUser(d.user);
+              showToast(id ? 'تم التفعيل ✨' : 'تم إلغاء التفعيل');
+            } catch (e) { showToast('حدث خطأ، حاول مرة أخرى'); return; }
+          }
+          if (el.isConnected) paint();
+        };
+      });
+    };
 
     async function loadEntry() {
       if (entry) return entry;
@@ -11754,14 +11795,14 @@
         const cf = framesCache;
         if (!el.isConnected || active !== 'frames') return;
         const avail = cf.frames.filter(f => f.owned || (f.is_active && isFree(f)));
-        const locked = cf.frames.filter(f => !f.owned && f.is_active && !isFree(f));
+        // غير المشترى يُعرض في المتجر فقط — الاكسسوارات لما تملكه
         const mk = (f, isCustom, lock) => card({
           media: `<img class="avatar-frame-${fEsc(f.id)} pf-ac-av" src="${pfAvatarSrc(state.currentUser)}" onerror="this.src='/avatars/avatar-1.png'" alt="" />`,
           name: f.name, date: isCustom ? (f.owned ? expTxt(f) : 'مجاني') : 'دائم', on: !lock && cur === f.id,
           price: lock ? priceTxt(f) : '', attr: isCustom ? `data-cframe="${fEsc(f.id)}"` : `data-frame="${fEsc(f.id)}"`
         }).replace('class="pf-ac-media"', 'class="pf-ac-media has-frame"');
         const mineHtml = avail.map(f => mk(f, true, false)).join('') + PF_FRAME_LIST.map(f => mk(f, false, false)).join('');
-        setGrid((locked.length ? sec('ما تملكه والمجاني') : '') + mineHtml + (locked.length ? sec('لم تشتريها بعد') + locked.map(f => mk(f, true, true)).join('') : ''));
+        setGrid(mineHtml);
         grid.querySelectorAll('[data-frame]').forEach(c => {
           c.onclick = async () => { const nx = await toggleAvatarFrame(c.dataset.frame); if (nx !== undefined) setOn(['data-frame', 'data-cframe'], nx); };
         });
@@ -11784,16 +11825,15 @@
         const e = await loadEntry();
         if (!el.isConnected || active !== 'entry') return;
         const avail = e.templates.filter(t => t.owned || isFree(t));
-        const locked = e.templates.filter(t => !t.owned && !isFree(t));
-        if (!avail.length && !locked.length) { setGrid(empty()); return; }
+        // غير المشترى يُعرض في المتجر فقط — الاكسسوارات لما تملكه
+        if (!avail.length) { setGrid(empty()); return; }
         const mk = (t, lock) => card({
           media: scMediaTag(t.image_url, '', `onerror="this.style.visibility='hidden'"`),
           name: t.name, date: t.owned ? expTxt(t) : 'مجاني', on: !lock && t.owned && e.equipped === t.id,
           price: lock ? priceTxt(t) : '', attr: `data-tpl="${fEsc(t.id)}"`,
           extra: '<button type="button" class="pf-ac-play" data-prev="1" aria-label="معاينة"><i class="f7-icons f7-ui" style="font-size:13px">play_fill</i></button>'
         });
-        setGrid((locked.length && avail.length ? sec('ما تملكه والمجاني') : '') + avail.map(t => mk(t, false)).join('')
-          + (locked.length ? sec('لم تشتريها بعد') + locked.map(t => mk(t, true)).join('') : ''));
+        setGrid(avail.map(t => mk(t, false)).join(''));
         scKeepLooping(grid);
         grid.querySelectorAll('[data-tpl]').forEach(c => {
           c.onclick = async (ev) => {
@@ -11821,10 +11861,14 @@
         });
       } else if (active === 'bubble') {
         const curFrame = state.currentUser.chat_frame || '';
+        const sb = await loadStoreCat('bubble');
+        if (!el.isConnected || active !== 'bubble') return;
+        const ownBubbles = sb.items.filter(t => t.owned || isFree(t));
         setGrid(ROOM_CHAT_BUBBLE_FRAMES.map(f => card({
           media: `<div class="acc-preview-bubble ${f.previewClass}"><span>${f.icon}</span><span style="font-size:10px;font-weight:700;color:#fff;">أهلاً ✨</span></div>`,
           name: f.name, date: 'دائم', on: curFrame === f.id, attr: `data-bframe="${fEsc(f.id)}"`
-        })).join(''));
+        })).join('') + ownBubbles.map(t => storeCard(t, 'bubble', sb.equipped)).join(''));
+        bindStoreCards();
         grid.querySelectorAll('[data-bframe]').forEach(c => {
           c.onclick = async () => {
             const id = (state.currentUser.chat_frame || '') === c.dataset.bframe ? '' : c.dataset.bframe;
@@ -11853,15 +11897,14 @@
         const rc = roomsCache;
         if (!el.isConnected || active !== 'rooms') return;
         const avail = rc.cards.filter(c => c.owned || isFree(c));
-        const locked = rc.cards.filter(c => !c.owned && !isFree(c));
-        if (!avail.length && !locked.length) { setGrid(empty()); return; }
+        // غير المشترى يُعرض في المتجر فقط — الاكسسوارات لما تملكه
+        if (!avail.length) { setGrid(empty()); return; }
         const mk = (c, lock) => card({
           media: `<div class="pf-ac-roomcard" style="background-image:url('${fEsc(encodeURI(c.image_url))}')"></div>`,
           name: c.name, date: c.owned ? expTxt(c) : 'مجاني', on: !lock && c.owned && rc.equipped === c.id,
           price: lock ? priceTxt(c) : '', attr: `data-rcard="${fEsc(c.id)}"`
         });
-        setGrid((locked.length && avail.length ? sec('ما تملكه والمجاني') : '') + avail.map(c => mk(c, false)).join('')
-          + (locked.length ? sec('لم تشتريها بعد') + locked.map(c => mk(c, true)).join('') : ''));
+        setGrid(avail.map(c => mk(c, false)).join(''));
         grid.querySelectorAll('[data-rcard]').forEach(c => {
           c.onclick = async () => {
             const card0 = rc.cards.find(x => x.id === c.dataset.rcard);
@@ -11886,6 +11929,15 @@
             } catch (err) { showToast('حدث خطأ، حاول مرة أخرى'); }
           };
         });
+      } else if (PF_AC_STORE_TABS.includes(active)) {
+        // مقاعد المايك · بطاقة التعريف · الشارات · إكسسوار العلاقة · محكمة الأسرة — ما تملكه فقط
+        const cat = active;
+        const si = await loadStoreCat(cat);
+        if (!el.isConnected || active !== cat) return;
+        const list = si.items.filter(t => t.owned || isFree(t));
+        if (!list.length) { setGrid(empty()); return; }
+        setGrid(list.map(t => storeCard(t, cat, si.equipped)).join(''));
+        bindStoreCards();
       } else {
         setGrid(empty());
       }
@@ -11970,6 +12022,7 @@
     const tabsEl = el.querySelector('.pf-st-tabs');
     const grid = el.querySelector('.pf-st-grid');
     const skeleton = n => Array.from({ length: n }, () => '<div class="pf-st-card skel"></div>').join('');
+    const emptyMsg = '<div class="pf-st-empty" style="grid-column:1/-1;text-align:center;padding:40px 12px;opacity:.7">لا توجد عناصر في هذا القسم حالياً</div>';
     const refreshBal = () => { const b = el.querySelector('#pf-st-bal-val'); if (b) b.textContent = pfBalance(); };
     const saveUser = (u) => {
       if (!u) return;
@@ -12057,7 +12110,8 @@
         grid.innerHTML = skeleton(4);
         const cf = await pfLoadCustomFrames();
         if (!el.isConnected || active !== 'frames') return;
-        const customCards = cf.frames.filter(f => f.is_active || f.owned).map((f, i) => {
+        // المتجر: ما لم تشتريه فقط
+        const customCards = cf.frames.filter(f => f.is_active && !f.owned && Number(f.price) > 0).map((f, i) => {
           const on = u.avatar_frame === f.id;
           return pfStCard({
             badge: i < 2 && !f.owned ? 'جديدة' : '', name: fEsc(f.name), cls: 'frame', attr: `data-cframe="${fEsc(f.id)}"`,
@@ -12067,18 +12121,7 @@
               : `<div class="pf-st-price">${pfGem(14)}<b>${pfFmt(Number(f.price) || 0)}</b><small>· ${Number(f.duration_days) > 0 ? f.duration_days + ' يوم' : 'دائم'}</small></div>`
           });
         }).join('');
-        const builtinCards = PF_FRAME_LIST.map(f => {
-          const on = u.avatar_frame === f.id;
-          return pfStCard({
-            name: f.name, cls: 'frame', attr: `data-frame="${f.id}"`,
-            media: `<div class="pf-st-av"><img class="avatar-frame-${f.id}" src="${myAv}" onerror="this.src='/avatars/avatar-1.png'" alt="" /></div>`,
-            sub: `<div class="pf-st-state ${on ? 'on' : ''}">${on ? 'مفعّل الآن' : 'تفعيل'}</div>`
-          });
-        }).join('');
-        grid.innerHTML = customCards + builtinCards;
-        grid.querySelectorAll('[data-frame]').forEach(c => {
-          c.onclick = async () => { await equipAvatarFrame(c.dataset.frame); if (el.isConnected) paint(); };
-        });
+        grid.innerHTML = customCards || emptyMsg;
         grid.querySelectorAll('[data-cframe]').forEach(c => {
           c.onclick = async () => {
             const f = cf.frames.find(x => x.id === c.dataset.cframe);
@@ -12114,7 +12157,9 @@
           grid.querySelectorAll('[data-soon]').forEach(c => c.onclick = pfSoon);
           return;
         }
-        grid.innerHTML = e.templates.map((t, i) => {
+        const notOwnedT = e.templates.filter(t => !t.owned && Number(t.price) > 0); // المتجر: غير المشترى فقط
+        if (!notOwnedT.length) { grid.innerHTML = emptyMsg; return; }
+        grid.innerHTML = notOwnedT.map((t, i) => {
           const eq = e.equipped === t.id;
           return pfStCard({
             badge: i < 2 && !t.owned ? 'جديدة' : '', name: fEsc(t.name), attr: `data-tpl="${fEsc(t.id)}"`,
@@ -12139,7 +12184,9 @@
         } catch (e) {}
         if (!el.isConnected || active !== 'rooms') return;
         if (rc.cards.length) {
-          grid.innerHTML = rc.cards.map((c, i) => {
+          const notOwnedC = rc.cards.filter(c => !c.owned && Number(c.price) > 0); // المتجر: غير المشترى فقط
+          if (!notOwnedC.length) { grid.innerHTML = emptyMsg; return; }
+          grid.innerHTML = notOwnedC.map((c, i) => {
             const eq = rc.equipped === c.id;
             return pfStCard({
               badge: i < 2 && !c.owned ? 'NEW' : '', name: fEsc(c.name), attr: `data-rcard="${fEsc(c.id)}"`,
@@ -12184,7 +12231,9 @@
         const si = await loadStoreItems(tab);
         if (!el.isConnected || active !== tab) return;
         if (si.items.length) {
-          grid.innerHTML = si.items.map((t, i) => {
+          const notOwnedS = si.items.filter(t => !t.owned && Number(t.price) > 0); // المتجر: غير المشترى فقط
+          if (!notOwnedS.length) { grid.innerHTML = emptyMsg; return; }
+          grid.innerHTML = notOwnedS.map((t, i) => {
             const eq = si.equipped[tab] === t.id;
             return pfStCard({
               badge: t.badge || (i < 2 && !t.owned ? 'NEW' : ''), name: fEsc(t.name), attr: `data-sitem="${fEsc(t.id)}"`,
@@ -12217,7 +12266,7 @@
           sub: `<div class="pf-st-love">خاص بعصافير الحب ${PF_CHEV_L}</div>`, attr: 'data-soon'
         })).join('');
       } else {
-        grid.innerHTML = '<div class="pf-st-empty" style="grid-column:1/-1;text-align:center;padding:40px 12px;opacity:.7">لا توجد عناصر في هذا القسم حالياً</div>'; // family / relation / bubble: تُضاف من لوحة الإدارة
+        grid.innerHTML = emptyMsg; // family / relation / bubble: تُضاف من لوحة الإدارة
       }
       grid.querySelectorAll('[data-soon]').forEach(c => c.onclick = pfSoon);
     }
