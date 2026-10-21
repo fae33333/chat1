@@ -280,6 +280,8 @@ async function initDB() {
   try { await run(`ALTER TABLE user_music_tracks ADD COLUMN thumbnail TEXT DEFAULT ''`); } catch (e) {}
   try { await run(`ALTER TABLE user_music_tracks ADD COLUMN yt_id TEXT DEFAULT ''`); } catch (e) {}
   try { await run(`ALTER TABLE user_music_tracks ADD COLUMN audio_status TEXT DEFAULT ''`); } catch (e) {}
+  try { await run(`ALTER TABLE user_music_tracks ADD COLUMN audio_error TEXT DEFAULT ''`); } catch (e) {}
+  try { await run(`ALTER TABLE user_music_tracks ADD COLUMN audio_attempts INTEGER DEFAULT 0`); } catch (e) {}
 
   await run(`
     CREATE TABLE IF NOT EXISTS messages (

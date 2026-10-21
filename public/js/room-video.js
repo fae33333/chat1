@@ -449,7 +449,8 @@
     musicPollCount = 0;
     musicPollTimer = setInterval(async () => {
       musicPollCount++;
-      if (!hasProcessingTracks() || musicPollCount > 180) { clearInterval(musicPollTimer); musicPollTimer = null; return; }
+      // الخادم يعيد المحاولة تلقائياً لعدة دقائق، لذا نتابع حتى ساعة كاملة قبل التوقف
+      if (!hasProcessingTracks() || musicPollCount > 1200) { clearInterval(musicPollTimer); musicPollTimer = null; return; }
       const ownerId = me()?.id;
       if (!ownerId) return;
       try {
@@ -461,6 +462,8 @@
           if (old && old.audio_status === 'processing' && nt.audio_status !== 'processing') {
             // لا نغيّر المقطع الذي يعمل الآن (يبقى على مشغّله الحالي)؛ التغيير يسري عند التشغيل التالي
             Object.assign(old, normalizeMusicTrack(nt)); changed = true;
+            if (nt.audio_status === 'ready') toast('✅ أصبحت جاهزة كـ MP3: ' + (nt.title || 'أغنيتك'));
+            else if (nt.audio_status === 'failed') toast('تعذر تجهيز MP3 — ' + (nt.audio_error || 'اضغط «إعادة»'));
           }
         });
         if (changed && ctx) paintMusicSheet();
@@ -622,11 +625,27 @@
     const cur = m.selectedId === track.id && m.playing && m.current && m.current.id === track.id;
     return `<div class="rv-ms-row ${cur ? 'on' : ''}" data-track-id="${esc(track.id)}">
       ${safeThumb(track.thumbnail) ? `<img class="rv-yt-thumb" src="${esc(safeThumb(track.thumbnail))}" alt="" loading="lazy">` : `<span class="rv-ms-idx">${idx + 1}</span>`}
-      <span class="rv-ms-copy"><b>${esc(track.title)}</b><small>${esc(track.artist || UNKNOWN)}${track.audio_status === 'processing' ? ' · <em class="rv-ms-proc">جارٍ تجهيز MP3…</em>' : track.audio_status === 'failed' ? ' · <em class="rv-ms-failed">تعذر تجهيز MP3</em>' : ''}</small></span>
+      <span class="rv-ms-copy"><b>${esc(track.title)}</b><small>${esc(track.artist || UNKNOWN)}${track.audio_status === 'processing' ? ` · <em class="rv-ms-proc">جارٍ تجهيز MP3${Number(track.audio_attempts) > 1 ? ' (محاولة ' + Number(track.audio_attempts) + ')' : ''}…</em>` : track.audio_status === 'failed' ? ` · <em class="rv-ms-failed" title="${esc(track.audio_error || '')}">تعذر تجهيز MP3</em>` : ''}</small></span>
       <span class="rv-ms-state">${cur ? `<span class="rv-eq ${m.paused ? '' : 'live'}"><i></i><i></i><i></i></span>` : mIcon('play')}</span>
       ${track.audio_status === 'failed' && track.yt_id ? `<button type="button" class="rv-ms-retry" data-retry="${esc(track.id)}" aria-label="إعادة تجهيز MP3">إعادة</button>` : ''}
       <button type="button" class="rv-ms-del" data-del="${esc(track.id)}" aria-label="حذف">${mIcon('trash')}</button>
     </div>`;
+  }
+
+  // حالة محرك MP3 على الخادم: نُظهر تحذيراً إن كان ffmpeg ناقصاً (لن يعمل التحويل حينها)
+  let ytHealthInfo = null, ytHealthAt = 0;
+  async function loadYtHealth(force) {
+    if (!force && ytHealthInfo && Date.now() - ytHealthAt < 60000) return ytHealthInfo;
+    try { ytHealthInfo = await api('GET', '/api/youtube/health'); ytHealthAt = Date.now(); }
+    catch (e) { ytHealthInfo = null; }
+    return ytHealthInfo;
+  }
+  function ytHealthWarningHTML() {
+    if (!ytHealthInfo) return '';
+    if (!ytHealthInfo.ffmpeg) return '<div class="rv-ms-warn">⚠️ تحويل MP3 غير مفعّل على الخادم — يحتاج المدير تثبيت ffmpeg</div>';
+    if (!ytHealthInfo.ytdlp) return '<div class="rv-ms-warn">⚠️ yt-dlp غير جاهز على الخادم بعد — سيُحمَّل تلقائياً، جرّب بعد قليل</div>';
+    if (!ytHealthInfo.cookies) return '<div class="rv-ms-warn">ℹ️ لا توجد كوكيز يوتيوب — قد يفشل بعض المقاطع بسبب حجب الخادم</div>';
+    return '';
   }
 
   function paintMusicBody() {
@@ -667,6 +686,7 @@
         html = `<div class="rv-ms-empty">${NOTES_ART}<span>ابحث عن أغنية في يوتيوب ثم اضغط + لحفظها<br><small style="font-size:11px;color:var(--text-secondary);">أو الصق رابط يوتيوب مباشرة في الحقل أدناه</small></span></div>`;
       }
     }
+    if (m.view === 'add') html = ytHealthWarningHTML() + html;
     body.innerHTML = html;
     foot.innerHTML = cta;
     foot.hidden = !cta;
@@ -701,6 +721,7 @@
         paintMusicBody();
       } else if (a === 'add') {
         m.view = 'add'; m.query = ''; m.searchOpen = false; paintMusicSheet();
+        loadYtHealth(false).then(() => { if (ctx && ctx.music.view === 'add') paintMusicBody(); });
         const q = ctx.layer.querySelector('#rv-yt-q'); if (q) q.focus();
       } else if (a === 'back') {
         m.view = 'list'; m.query = ''; m.searchOpen = false; paintMusicSheet();

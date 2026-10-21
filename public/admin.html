@@ -2005,6 +2005,56 @@
           </div>
           <div id="yt-test-result" style="margin-top:10px;font-size:12px;"></div>
         </div>
+
+        <!-- كوكيز يوتيوب: الحل الجذري لحجب يوتيوب عند تحويل الأغاني إلى MP3 -->
+        <div class="content-box" style="border-color: rgba(251,191,36,.35); background: rgba(251,191,36,.04);">
+          <div class="content-box-title">
+            <span>🍪 كوكيز يوتيوب — لتجاوز حجب التحويل إلى MP3</span>
+            <span class="nav-brand-badge" id="yt-ck-badge" style="background: rgba(251,191,36,.15); color:#fbbf24;">جارٍ الفحص…</span>
+          </div>
+          <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:12px;line-height:1.7;">
+            عندما يرفض يوتيوب تنزيل الصوت من عنوان IP الخاص بالخادم تظهر رسالة
+            <code style="direction:ltr;display:inline-block;">Sign in to confirm you're not a bot</code>.
+            الحل: صدّر كوكيز جلسة يوتيوب من متصفحك بصيغة <b>Netscape</b> والصقها هنا.
+            تُحفظ في مجلد <code>data/</code> (خارج Git) وتُستخدم <b>فوراً</b> بدون إعادة تشغيل.
+            يمكنك إضافة عدة ملفات (حسابات مختلفة) ليتنقّل بينها النظام تلقائياً عند انتهاء حد أحدها.
+          </p>
+          <div style="background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.28);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:11.5px;color:#fca5a5;line-height:1.6;">
+            ⚠️ ملف الكوكيز = مفتاح الدخول لحسابك. لا ترسله في محادثة أو بريد ولا ترفعه إلى مستودع عام.
+            يُفضّل حساب يوتيوب ثانوي مخصّص لهذا الغرض.
+          </div>
+          <textarea id="yt-ck-input" class="form-input" rows="7"
+            placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	1800000000	SID	..."
+            style="width:100%;font-family:ui-monospace,monospace;font-size:11px;direction:ltr;text-align:left;margin-bottom:10px;resize:vertical;"></textarea>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+            <input type="text" id="yt-ck-name" class="form-input" placeholder="اسم اختياري للملف (account1)" style="max-width:240px;" />
+            <button type="button" class="btn-submit" onclick="saveYtCookies()" style="width:auto;padding:10px 22px;margin:0;">💾 حفظ الكوكيز</button>
+            <button type="button" class="btn-action" onclick="fetchYtCookieStatus(true)" style="padding:10px 16px;">🔄 تحديث الحالة</button>
+            <button type="button" class="btn-action blue" id="yt-ck-test-btn" onclick="testYtDownload()" style="padding:10px 16px;">🧪 اختبار تنزيل الآن</button>
+          </div>
+          <div id="yt-ck-status" style="font-size:12px;min-height:18px;margin-bottom:8px;"></div>
+          <div id="yt-ck-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+          <details style="margin-top:14px;font-size:12px;color:var(--text-secondary);">
+            <summary style="cursor:pointer;font-weight:700;color:#fff;">📥 كيف أُصدّر ملف الكوكيز من متصفحي؟</summary>
+            <ol style="margin:10px 0 0 18px;line-height:1.9;">
+              <li>ثبّت إضافة <b>Get cookies.txt LOCALLY</b> على Chrome/Edge/Firefox (أو <b>Cookie-Editor</b> وتصدير JSON).</li>
+              <li>سجّل الدخول إلى <b>youtube.com</b> في تبويب عادي (ليس وضع التخفي).</li>
+              <li>افتح الإضافة → <b>Export</b> / <b>Copy</b> لكوكيز النطاق <code>youtube.com</code>.</li>
+              <li>الصق المحتوى في المربع أعلاه ← اكتب اسماً ← اضغط <b>حفظ الكوكيز</b>.</li>
+              <li>اضغط <b>🧪 اختبار تنزيل الآن</b> لتتأكد أن يوتيوب لم يعد يحجب الخادم.</li>
+            </ol>
+            <p style="margin-top:8px;color:#fbbf24;">الكوكيز تنتهي صلاحيتها بعد أشهر أو عند تغيير كلمة المرور. عند تغيير كلمة المرور (يُنصح به بعد تسريب أي ملف) أضف ملفاً جديداً واحذف القديم.</p>
+          </details>
+        </div>
+
+        <!-- تشخيص محرك التحويل -->
+        <div class="content-box">
+          <div class="content-box-title">
+            <span>🩺 تشخيص محرك التحويل (yt-dlp / ffmpeg / الطابور)</span>
+            <button type="button" class="btn-action" onclick="fetchYtDiagnose()" style="padding:6px 14px;font-size:12px;">فحص الآن</button>
+          </div>
+          <div id="yt-diag-out" style="font-size:12px;line-height:1.9;color:var(--text-secondary);">اضغط «فحص الآن» لعرض حالة الخادم.</div>
+        </div>
       </div>
 
       <!-- TAB 5: Security & Credentials -->
@@ -2625,6 +2675,120 @@
         }
       } catch(e){ console.error(e); }
     }
+    // ── كوكيز يوتيوب (لتحويل MP3) وتشخيص المحرك ──
+    function ytCkEsc(v){ return String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    async function ytCkApi(path, opts) {
+      const o = Object.assign({}, opts || {});
+      o.headers = Object.assign({ 'x-admin-token': getAdminToken() }, o.body ? { 'Content-Type': 'application/json' } : {});
+      const res = await fetch(path, o);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+      return d;
+    }
+    function ytRenderCookieList(d) {
+      const badge = document.getElementById('yt-ck-badge');
+      const list = document.getElementById('yt-ck-list');
+      if (!badge || !list) return;
+      const files = (d && d.files) || [];
+      if (!files.length) {
+        badge.textContent = 'لا توجد كوكيز';
+        badge.style.background = 'rgba(248,113,113,.15)'; badge.style.color = '#f87171';
+      } else {
+        const anyLogin = files.some(f => f.loggedIn && !f.expired);
+        badge.textContent = files.length + ' ملف' + (anyLogin ? ' · جلسة مسجلة ✅' : ' · بلا جلسة ⚠️');
+        badge.style.background = anyLogin ? 'rgba(34,197,94,.15)' : 'rgba(251,191,36,.15)';
+        badge.style.color = anyLogin ? '#4ade80' : '#fbbf24';
+      }
+      list.innerHTML = files.map(f => `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:8px 12px;flex-wrap:wrap;">
+        <span style="font-family:ui-monospace,monospace;direction:ltr;">${ytCkEsc(f.name)}</span>
+        <span style="font-size:11px;color:var(--text-secondary);">${Number(f.youtubeCookies)||0} كوكي يوتيوب · ${f.loggedIn ? 'جلسة مسجلة' : 'بلا SID'}${f.expired ? ' · منتهية ⚠️' : ''}${f.expiresAt ? ' · تنتهي ' + ytCkEsc(String(f.expiresAt).slice(0,10)) : ''}</span>
+        <button type="button" class="btn-action" style="padding:5px 12px;background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.3);color:#f87171;" onclick="deleteYtCookie('${ytCkEsc(f.name)}')">حذف</button>
+      </div>`).join('');
+    }
+    async function fetchYtCookieStatus(showMsg) {
+      const status = document.getElementById('yt-ck-status');
+      try {
+        const d = await ytCkApi('/api/admin/youtube-cookies');
+        ytRenderCookieList(d);
+        if (showMsg && status) status.innerHTML = '<span style="color:#4ade80;">✅ تم تحديث الحالة</span>';
+      } catch (e) {
+        if (status) status.innerHTML = '<span style="color:#f87171;">❌ ' + ytCkEsc(e.message) + '</span>';
+      }
+    }
+    async function saveYtCookies() {
+      const ta = document.getElementById('yt-ck-input');
+      const nameEl = document.getElementById('yt-ck-name');
+      const status = document.getElementById('yt-ck-status');
+      const text = ta ? ta.value.trim() : '';
+      if (!text) { status.innerHTML = '<span style="color:#f87171;">الصق محتوى ملف الكوكيز أولاً</span>'; return; }
+      status.textContent = 'جارٍ الحفظ…';
+      try {
+        const d = await ytCkApi('/api/admin/youtube-cookies', { method: 'POST', body: JSON.stringify({ cookies: text, name: nameEl ? nameEl.value.trim() : '' }) });
+        if (ta) ta.value = '';
+        if (nameEl) nameEl.value = '';
+        ytRenderCookieList(d);
+        status.innerHTML = '<span style="color:#4ade80;">✅ حُفظ ' + ytCkEsc(d.file && d.file.name || 'الملف') + ' — يعمل فوراً بدون إعادة تشغيل</span>'
+          + (d.warning ? '<div style="color:#fbbf24;margin-top:6px;">⚠️ ' + ytCkEsc(d.warning) + '</div>' : '');
+        if (typeof showToast === 'function') showToast('🍪 حُفظت كوكيز يوتيوب — جرّب تحويل أغنية الآن');
+      } catch (e) {
+        status.innerHTML = '<span style="color:#f87171;">❌ ' + ytCkEsc(e.message) + '</span>';
+      }
+    }
+    async function deleteYtCookie(name) {
+      if (!confirm('حذف ملف الكوكيز ' + name + '؟')) return;
+      const status = document.getElementById('yt-ck-status');
+      try {
+        const d = await ytCkApi('/api/admin/youtube-cookies/' + encodeURIComponent(name), { method: 'DELETE' });
+        ytRenderCookieList(d);
+        if (status) status.innerHTML = '<span style="color:#4ade80;">✅ حُذف ' + ytCkEsc(name) + '</span>';
+      } catch (e) {
+        if (status) status.innerHTML = '<span style="color:#f87171;">❌ ' + ytCkEsc(e.message) + '</span>';
+      }
+    }
+    async function testYtDownload() {
+      const btn = document.getElementById('yt-ck-test-btn');
+      const status = document.getElementById('yt-ck-status');
+      const old = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الاختبار…'; }
+      status.innerHTML = '<span style="color:var(--text-secondary);">يجرّب تنزيل الصوت فعلياً من يوتيوب…</span>';
+      try {
+        const d = await ytCkApi('/api/admin/youtube-cookies/test', { method: 'POST', body: JSON.stringify({}) });
+        if (d.success) {
+          status.innerHTML = '<span style="color:#4ade80;">✅ ' + ytCkEsc(d.message || 'يعمل') + '</span>'
+            + '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">العنوان: ' + ytCkEsc(d.title) + ' · الملف: ' + ytCkEsc(d.cookie) + ' · العميل: ' + ytCkEsc(d.client) + '</div>';
+        } else {
+          status.innerHTML = '<span style="color:#f87171;">❌ ' + ytCkEsc(d.error || 'فشل الاختبار') + '</span>'
+            + (d.details ? '<details style="margin-top:6px;font-size:11px;color:var(--text-secondary);"><summary>تفاصيل الخطأ</summary><div style="direction:ltr;text-align:left;word-break:break-all;max-height:160px;overflow:auto;">' + ytCkEsc(d.details) + '</div></details>' : '');
+        }
+      } catch (e) {
+        status.innerHTML = '<span style="color:#f87171;">❌ ' + ytCkEsc(e.message) + '</span>';
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = old || '🧪 اختبار تنزيل الآن'; }
+      }
+    }
+    async function fetchYtDiagnose() {
+      const out = document.getElementById('yt-diag-out');
+      if (!out) return;
+      out.innerHTML = '<span style="color:var(--text-secondary);">جارٍ فحص الخادم…</span>';
+      try {
+        const d = await ytCkApi('/api/admin/youtube-diagnose');
+        const ok = (b) => b ? '<span style="color:#4ade80;">✅</span>' : '<span style="color:#f87171;">❌</span>';
+        const lim = d.limits || {};
+        const jobs = (d.queue && d.queue.jobs) || [];
+        out.innerHTML =
+          '<div>' + ok(d.ytdlp && d.ytdlp.installed) + ' yt-dlp: <span style="direction:ltr;display:inline-block;">' + ytCkEsc((d.ytdlp && d.ytdlp.version) || 'غير مثبت') + '</span></div>' +
+          '<div>' + ok(d.ffmpeg && d.ffmpeg.installed) + ' ffmpeg: <span style="direction:ltr;display:inline-block;">' + ytCkEsc(String((d.ffmpeg && d.ffmpeg.version) || 'غير مثبت').slice(0, 90)) + '</span></div>' +
+          '<div>' + ok((d.cookies && d.cookies.count) > 0) + ' ملفات الكوكيز: ' + ((d.cookies && d.cookies.count) || 0) + '</div>' +
+          '<div>الحدود: المدة ' + (lim.maxSeconds ? lim.maxSeconds + ' ثانية' : 'بلا حد') + ' · الحجم ' + ytCkEsc(lim.maxFilesize || 'بلا حد') + ' · الجودة ' + ytCkEsc(lim.bitrate || '') + ' · التزامن ' + ytCkEsc(lim.concurrency || '') + '</div>' +
+          '<div>الطابور: ' + ((d.queue && d.queue.running) || 0) + ' قيد التنفيذ · ' + ((d.queue && d.queue.waiting) || 0) + ' في الانتظار</div>' +
+          (jobs.length ? '<details style="margin-top:6px;"><summary>آخر المهام (' + jobs.length + ')</summary><div style="max-height:180px;overflow:auto;direction:ltr;text-align:left;font-size:11px;">' +
+            jobs.map(j => ytCkEsc(j.id) + ' — ' + ytCkEsc(j.status) + (j.error ? ' — ' + ytCkEsc(String(j.error).slice(0, 120)) : '')).join('<br>') + '</div></details>' : '') +
+          (!(d.ffmpeg && d.ffmpeg.installed) ? '<div style="margin-top:8px;color:#f87171;">ثبّت ffmpeg على الخادم: <code>sudo apt install ffmpeg</code></div>' : '');
+      } catch (e) {
+        out.innerHTML = '<span style="color:#f87171;">❌ ' + ytCkEsc(e.message) + '</span>';
+      }
+    }
+
     function toggleYtKeyVisibility(){
       const inp = document.getElementById('yt-key-input');
       inp.type = inp.type === 'password' ? 'text' : 'password';
@@ -2841,7 +3005,7 @@
       if (tabId === 'users') fetchUsersList();
       if (tabId === 'rooms') fetchRoomsList();
       if (tabId === 'smtp') fetchSmtpSettings();
-      if (tabId === 'youtube') fetchYtKeyStatus();
+      if (tabId === 'youtube') { fetchYtKeyStatus(); fetchYtCookieStatus(false); fetchYtDiagnose(); }
       if (tabId === 'google') fetchGoogleSettings();
       if (tabId === 'livekit') fetchLiveKitSettings();
       if (tabId === 'room-message') fetchRoomSystemMessage();

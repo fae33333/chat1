@@ -3821,7 +3821,7 @@ app.get('/api/music-library', async (req, res) => {
   try {
     const userId = await requireMusicUser(req, res); if (!userId) return;
     const tracks = await all(`
-      SELECT id, title, source, url, file_name, artist, thumbnail, yt_id, audio_status, created_at
+      SELECT id, title, source, url, file_name, artist, thumbnail, yt_id, audio_status, audio_error, audio_attempts, created_at
       FROM user_music_tracks WHERE user_id = ? ORDER BY created_at DESC
     `, [userId]);
     res.json({ success: true, tracks });
@@ -3839,10 +3839,24 @@ app.post('/api/music-library', async (req, res) => {
     if (!/^[A-Za-z0-9_-]{11}$/.test(ytId)) {
       return res.status(400).json({ error: 'أضف الأغاني عن طريق البحث في يوتيوب' });
     }
-    const dup = await get('SELECT id, title, source, url, file_name, artist, thumbnail, yt_id, audio_status FROM user_music_tracks WHERE user_id = ? AND yt_id = ?', [userId, ytId]);
-    if (dup) return res.json({ success: true, track: dup, duplicate: true });
-    const count = await get('SELECT COUNT(*) AS n FROM user_music_tracks WHERE user_id = ?', [userId]);
-    if (count && count.n >= 300) return res.status(400).json({ error: 'وصلت للحد الأقصى من الأغاني (300)، احذف بعضها أولاً' });
+    const dup = await get('SELECT id, title, source, url, file_name, artist, thumbnail, yt_id, audio_status, audio_error, audio_attempts FROM user_music_tracks WHERE user_id = ? AND yt_id = ?', [userId, ytId]);
+    if (dup) {
+      // إن كان الحفظ السابق فاشلاً نعيد تشغيل المعالجة تلقائياً بدل إرجاع سجل ميت
+      if (dup.audio_status === 'failed' && dup.yt_id) {
+        cancelYtAudioRetry(dup.yt_id);
+        ytMp3.reset(dup.yt_id);
+        await run(`UPDATE user_music_tracks SET audio_status = 'processing', audio_error = '', audio_attempts = 0 WHERE id = ?`, [dup.id]);
+        dup.audio_status = 'processing'; dup.audio_error = ''; dup.audio_attempts = 0;
+        startYtAudioJob(dup.yt_id);
+      }
+      return res.json({ success: true, track: dup, duplicate: true });
+    }
+    // الحد قابل للضبط عبر MUSIC_MAX_TRACKS — 0 أو غير محدد = بلا حد
+    const musicMaxTracks = Math.max(0, Number(process.env.MUSIC_MAX_TRACKS || 0));
+    if (musicMaxTracks > 0) {
+      const count = await get('SELECT COUNT(*) AS n FROM user_music_tracks WHERE user_id = ?', [userId]);
+      if (count && count.n >= musicMaxTracks) return res.status(400).json({ error: 'وصلت للحد الأقصى من الأغاني (' + musicMaxTracks + ')، احذف بعضها أولاً أو ارفع MUSIC_MAX_TRACKS' });
+    }
 
     const title = String(body.title || 'موسيقى').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 100) || 'موسيقى';
     const artist = String(body.artist || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 80);
@@ -3872,6 +3886,8 @@ app.post('/api/music-library/:id/retry', async (req, res) => {
     if (!track) return res.status(404).json({ error: 'الأغنية غير موجودة' });
     if (!track.yt_id || track.source !== 'youtube') return res.status(400).json({ error: 'إعادة المحاولة متاحة لأغاني يوتيوب التي لم تكتمل معالجتها فقط' });
     if (track.audio_status === 'processing') return res.json({ success: true, track });
+    cancelYtAudioRetry(track.yt_id);
+    ytMp3.reset(track.yt_id);
 
     const ready = ytMp3.existing(track.yt_id);
     if (ready) {
@@ -3882,7 +3898,8 @@ app.post('/api/music-library/:id/retry', async (req, res) => {
     }
 
     track.source = 'youtube'; track.url = `https://www.youtube.com/watch?v=${track.yt_id}`; track.file_name = null; track.audio_status = 'processing';
-    await run(`UPDATE user_music_tracks SET source = 'youtube', url = ?, file_name = NULL, audio_status = 'processing' WHERE id = ? AND user_id = ?`,
+    track.audio_error = ''; track.audio_attempts = 0;
+    await run(`UPDATE user_music_tracks SET source = 'youtube', url = ?, file_name = NULL, audio_status = 'processing', audio_error = '', audio_attempts = 0 WHERE id = ? AND user_id = ?`,
       [track.url, track.id, userId]);
     res.json({ success: true, track });
     startYtAudioJob(track.yt_id);
@@ -3892,11 +3909,29 @@ app.post('/api/music-library/:id/retry', async (req, res) => {
   }
 });
 
+// إعادة محاولة كل الأغاني الفاشلة دفعة واحدة
+app.post('/api/music-library/retry-failed', async (req, res) => {
+  try {
+    const userId = await requireMusicUser(req, res); if (!userId) return;
+    const rows = await all(`SELECT DISTINCT yt_id FROM user_music_tracks
+      WHERE user_id = ? AND audio_status = 'failed' AND source = 'youtube' AND yt_id != ''`, [userId]);
+    if (!rows.length) return res.json({ success: true, retried: 0, message: 'لا توجد أغانٍ فاشلة' });
+    await run(`UPDATE user_music_tracks SET audio_status = 'processing', audio_error = '', audio_attempts = 0
+      WHERE user_id = ? AND audio_status = 'failed' AND source = 'youtube'`, [userId]);
+    rows.forEach(r => { cancelYtAudioRetry(r.yt_id); ytMp3.reset(r.yt_id); startYtAudioJob(r.yt_id); });
+    res.json({ success: true, retried: rows.length });
+  } catch (e) {
+    console.error('music-library retry-failed error:', e);
+    res.status(500).json({ error: 'تعذر إعادة المحاولة' });
+  }
+});
+
 app.delete('/api/music-library/:id', async (req, res) => {
   try {
     const userId = await requireMusicUser(req, res); if (!userId) return;
-    const track = await get('SELECT id, url FROM user_music_tracks WHERE id = ? AND user_id = ?', [req.params.id, userId]);
+    const track = await get('SELECT id, url, yt_id FROM user_music_tracks WHERE id = ? AND user_id = ?', [req.params.id, userId]);
     if (!track) return res.status(404).json({ error: 'النغمة غير موجودة' });
+    if (track.yt_id) cancelYtAudioRetry(track.yt_id);
     await run('DELETE FROM user_music_tracks WHERE id = ? AND user_id = ?', [req.params.id, userId]);
     const filePath = musicFilePath(track.url);
     if (filePath && fs.existsSync(filePath)) {
@@ -4198,12 +4233,15 @@ app.get('/api/youtube/search', async (req, res) => {
 // استخراج رابط الصوت: 1) yt-dlp إن كان مثبتاً (الأكثر موثوقية)  2) عدة عملاء Innertube بترويسات مطابقة
 let _ytdlpBin; // undefined=لم يُفحص، null=غير موجود
 const YTDLP_LOCAL = path.join(__dirname, 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
-// كوكيز يوتيوب تلقائياً: ضع ملف cookies.txt (صيغة Netscape) في مجلد المشروع فيُستعمل دون أي إعداد آخر
-if (!process.env.YTDLP_COOKIES) {
-  for (const c of [path.join(__dirname, 'cookies.txt'), path.join(__dirname, 'bin', 'cookies.txt')]) {
-    if (fs.existsSync(c)) { process.env.YTDLP_COOKIES = c; console.log('🍪 yt-dlp cookies:', c); break; }
-  }
-}
+// كوكيز يوتيوب: تُقرأ ديناميكياً من data/yt-cookies*.txt (التي ترفعها لوحة الإدارة) أو cookies.txt
+// أو bin/cookies.txt أو YTDLP_COOKIES — بدون إعادة تشغيل، ويمكن تدوير عدة حسابات.
+const YT_COOKIES_STORE = require('./yt-cookies');
+function listYtCookieFiles() { return YT_COOKIES_STORE.listCookieFiles(__dirname); }
+(function announceYtCookies() {
+  const files = listYtCookieFiles();
+  if (files.length) console.log('🍪 yt-dlp cookies:', files.map(f => path.relative(__dirname, f)).join(' | '));
+  else console.log('🍪 yt-dlp cookies: لا يوجد — أضفها من لوحة الإدارة ← إعدادات يوتيوب ← كوكيز يوتيوب');
+})();
 function findYtDlp() {
   if (_ytdlpBin !== undefined) return _ytdlpBin;
   const { spawnSync } = require('child_process');
@@ -4213,12 +4251,50 @@ function findYtDlp() {
   _ytdlpBin = null; return null;
 }
 // تحميل yt-dlp تلقائياً (مرة واحدة) إلى ./bin إذا لم يكن مثبتاً — يعمل على Windows/Linux/macOS
+// يحاول ثلاث طرق بالترتيب: ملف GitHub التنفيذي ← وحدة بايثون موجودة ← pip install (PyPI)
 let _ytdlpInstalling = null;
+let _ytdlpFailAt = 0; // لا نعيد محاولة تثبيت yt-dlp قبل مرور 10 دقائق بعد فشل
+function pythonCmd() {
+  for (const py of [process.env.PYTHON_PATH, 'python3', 'python'].filter(Boolean)) {
+    try {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(py, ['--version'], { timeout: 8000 });
+      if (r.status === 0) return py;
+    } catch (e) { /* جرّب التالي */ }
+  }
+  return null;
+}
+function pythonHasYtDlp(py) {
+  if (!py) return false;
+  try {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(py, ['-m', 'yt_dlp', '--version'], { timeout: 20000 });
+    return r.status === 0;
+  } catch (e) { return false; }
+}
+function writeYtDlpPythonWrapper(py) {
+  fs.mkdirSync(path.dirname(YTDLP_LOCAL), { recursive: true });
+  fs.writeFileSync(YTDLP_LOCAL, '#!/bin/sh\nexec ' + py + ' -m yt_dlp "$@"\n', { mode: 0o755 });
+  try { fs.chmodSync(YTDLP_LOCAL, 0o755); } catch (e) { /* Windows */ }
+  _ytdlpBin = undefined;
+}
+function runSilently(bin, args, timeout) {
+  return new Promise((resolve) => {
+    try {
+      const { execFile } = require('child_process');
+      execFile(bin, args, { timeout, maxBuffer: 4 * 1024 * 1024 }, (err, so, se) => resolve({ err, out: String(so || ''), se: String(se || '') }));
+    } catch (e) { resolve({ err: e }); }
+  });
+}
 function ensureYtDlp() {
   if (findYtDlp()) return Promise.resolve(true);
   if (_ytdlpInstalling) return _ytdlpInstalling;
+  // فشل قريب؟ لا نكرر محاولة تثبيت طويلة مع كل أغنية — ننتظر 10 دقائق
+  if (_ytdlpFailAt && Date.now() - _ytdlpFailAt < 10 * 60 * 1000) return Promise.resolve(false);
   const file = process.platform === 'win32' ? 'yt-dlp.exe' : process.platform === 'darwin' ? 'yt-dlp_macos' : (process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux');
   _ytdlpInstalling = (async () => {
+    let ok = false;
+    // 1) الملف التنفيذي من GitHub
     try {
       console.log('yt-dlp غير موجود — جارٍ تحميله تلقائياً…');
       const r = await fetch('https://github.com/yt-dlp/yt-dlp/releases/latest/download/' + file, { redirect: 'follow', signal: AbortSignal.timeout(120000) });
@@ -4228,22 +4304,83 @@ function ensureYtDlp() {
       fs.mkdirSync(path.dirname(YTDLP_LOCAL), { recursive: true });
       fs.writeFileSync(YTDLP_LOCAL, buf, { mode: 0o755 });
       _ytdlpBin = undefined;
-      const ok = !!findYtDlp();
+      ok = !!findYtDlp();
       console.log(ok ? 'yt-dlp جاهز: ' + YTDLP_LOCAL : 'yt-dlp: فشل التشغيل بعد التحميل');
-      return ok;
     } catch (e) {
-      console.error('yt-dlp auto-install failed:', e.message, '— حمّله يدوياً من github.com/yt-dlp/yt-dlp/releases وضعه في مجلد bin');
-      return false;
-    } finally { _ytdlpInstalling = null; }
-  })();
+      console.error('yt-dlp GitHub download failed:', e.message);
+    }
+
+    if (!ok && process.platform !== 'win32') {
+      // 2) وحدة yt_dlp مثبتة مسبقاً عبر pip على الخادم
+      const py = pythonCmd();
+      if (py && pythonHasYtDlp(py)) {
+        console.log('yt-dlp: استخدام وحدة بايثون الموجودة (' + py + ' -m yt_dlp)');
+        writeYtDlpPythonWrapper(py);
+        ok = !!findYtDlp();
+      }
+      if (!ok && py) {
+        // 3) pip --user (قد ترفضه بعض التوزيعات بسبب externally-managed-environment)
+        console.log('yt-dlp: محاولة التثبيت عبر pip…');
+        const r = await runSilently(py, ['-m', 'pip', 'install', '--user', '--upgrade', '--quiet', 'yt-dlp'], 300000);
+        if (!r.err && pythonHasYtDlp(py)) {
+          console.log('yt-dlp: تم التثبيت عبر pip بنجاح');
+          writeYtDlpPythonWrapper(py);
+          ok = !!findYtDlp();
+        }
+      }
+      if (!ok && py) {
+        // 4) بيئة بايثون معزولة داخل bin/ (تتجاوز قيد externally-managed دون لمس حزم النظام)
+        console.log('yt-dlp: محاولة التثبيت داخل بيئة معزولة (venv)…');
+        try {
+          const venvDir = path.join(__dirname, 'bin', 'ytdlp-venv');
+          const vpy = path.join(venvDir, 'bin', 'python');
+          if (!fs.existsSync(vpy)) await runSilently(py, ['-m', 'venv', venvDir], 180000);
+          if (fs.existsSync(vpy)) {
+            const rv = await runSilently(vpy, ['-m', 'pip', 'install', '--quiet', '--upgrade', 'yt-dlp'], 300000);
+            if (!rv.err && pythonHasYtDlp(vpy)) {
+              console.log('yt-dlp: تم التثبيت في بيئة معزولة: ' + venvDir);
+              writeYtDlpPythonWrapper(vpy);
+              ok = !!findYtDlp();
+            } else {
+              const detail = String(rv.se || (rv.err && rv.err.message) || '').trim().split('\n').slice(-3).join(' ').slice(0, 200);
+              console.error('yt-dlp venv install failed:', detail || 'غير متاح');
+            }
+          } else {
+            console.error('yt-dlp venv: python3-venv غير متاح (apt install python3-venv)');
+          }
+        } catch (e) { console.error('yt-dlp venv error:', e.message); }
+      }
+      if (!ok && py) {
+        // 5) الملاذ الأخير: تثبيت على مستوى النظام مع --break-system-packages
+        console.log('yt-dlp: محاولة أخيرة عبر pip --break-system-packages…');
+        const rb = await runSilently(py, ['-m', 'pip', 'install', '--user', '--upgrade', '--quiet', '--break-system-packages', 'yt-dlp'], 300000);
+        if (!rb.err && pythonHasYtDlp(py)) {
+          console.log('yt-dlp: تم التثبيت عبر pip (--break-system-packages)');
+          writeYtDlpPythonWrapper(py);
+          ok = !!findYtDlp();
+        } else {
+          const detail = String(rb.se || (rb.err && rb.err.message) || '').trim().slice(0, 200);
+          if (detail) console.error('yt-dlp pip آخر محاولة:', detail);
+        }
+      }
+    }
+    if (!ok) console.error('yt-dlp غير متاح — حمّله يدوياً من github.com/yt-dlp/yt-dlp/releases وضعه في مجلد bin، أو ثبّته بالأمر: python3 -m pip install yt-dlp');
+    return ok;
+  })().then((ok) => { _ytdlpFailAt = ok ? 0 : Date.now(); return ok; })
+    .finally(() => { _ytdlpInstalling = null; });
   return _ytdlpInstalling;
 }
 setTimeout(() => { ensureYtDlp(); }, 1500);
 
-function ytDlpAuthArgs() {
+function ytDlpAuthArgs(cookieFile) {
   const args = [];
   if (process.env.YTDLP_PROXY) args.push('--proxy', process.env.YTDLP_PROXY);
-  if (process.env.YTDLP_COOKIES) args.push('--cookies', process.env.YTDLP_COOKIES);
+  let ck = cookieFile;
+  if (!ck) {
+    const files = listYtCookieFiles();
+    ck = files[0] || '';
+  }
+  if (ck) args.push('--cookies', ck);
   else if (process.env.YTDLP_COOKIES_FROM_BROWSER) args.push('--cookies-from-browser', process.env.YTDLP_COOKIES_FROM_BROWSER);
   return args;
 }
@@ -4403,19 +4540,24 @@ async function ytDlpDownloadFile(videoId, cacheDir) {
   const { execFile } = require('child_process');
   const base = path.join(cacheDir, videoId);
   const errs = [];
-  for (const ex of YTDLP_CLIENT_SETS) {
-    const args = ['-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio', '--no-playlist', '--no-warnings', '--no-part', '--js-runtimes', 'node',
-      ...ytDlpAuthArgs(), '-o', base + '.%(ext)s'];
-    if (ex) args.push('--extractor-args', ex);
-    args.push('https://www.youtube.com/watch?v=' + videoId);
-    const found = await new Promise((resolve) => {
-      execFile(bin, args, { timeout: 60000 }, (err, so, se) => {
-        for (const e2 of ['m4a', 'webm']) { const f = base + '.' + e2; try { if (fs.statSync(f).size > 0) return resolve(f); } catch (e) {} }
-        errs.push((ex || 'default') + ': ' + String(se || (err && err.message) || 'no file').trim().slice(-120));
-        resolve(null);
+  const cookiess = listYtCookieFiles();
+  const cookieOrder = cookiess.length ? cookiess : [''];
+  for (const ck of cookieOrder) {
+    for (const ex of YTDLP_CLIENT_SETS) {
+      const args = ['-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio', '--no-playlist', '--no-warnings', '--no-part',
+        '--retries', '4', '--socket-timeout', '20',
+        ...ytDlpAuthArgs(ck || undefined), '-o', base + '.%(ext)s'];
+      if (ex) args.push('--extractor-args', ex);
+      args.push('https://www.youtube.com/watch?v=' + videoId);
+      const found = await new Promise((resolve) => {
+        execFile(bin, args, { timeout: 90000 }, (err, so, se) => {
+          for (const e2 of ['m4a', 'webm']) { const f = base + '.' + e2; try { if (fs.statSync(f).size > 0) return resolve(f); } catch (e) {} }
+          errs.push((ck ? path.basename(ck) : 'no-cookie') + '/' + (ex || 'default') + ': ' + String(se || (err && err.message) || 'no file').trim().slice(-120));
+          resolve(null);
+        });
       });
-    });
-    if (found) return found;
+      if (found) return found;
+    }
   }
   throw new Error(errs.join(' | ').slice(0, 500));
 }
@@ -4453,17 +4595,57 @@ const ytMp3 = require('./yt-mp3-saver').createYtMp3Saver({
   ensureYtDlp, findYtDlp,
   outDir: path.join(__dirname, 'public', 'uploads'),
   clientSets: YTDLP_CLIENT_SETS,
+  cookieFiles: listYtCookieFiles,           // تدوير عدة حسابات/ملفات كوكيز تلقائياً
+  concurrency: Number(process.env.YT_MP3_CONCURRENCY || 3),
   // بديل عند فشل yt-dlp: عملاء Innertube (قد تعمل من خوادم لا تقبل yt-dlp)
   altSource: (id) => ytDiskStream.ensure(id, false, { skipFallback: true })
 });
-function startYtAudioJob(ytId) {
+// ── مهام تحويل يوتيوب إلى MP3: إعادة محاولة تلقائية متعددة المراحل بدل الفشل من أول مرة ──
+const YT_AUDIO_MAX_TRIES = Math.max(1, Number(process.env.YT_AUDIO_MAX_TRIES || 8));
+const YT_AUDIO_RETRY_BASE_MS = Math.max(5000, Number(process.env.YT_AUDIO_RETRY_MS || 60000));
+const ytAudioRetryTimers = new Map(); // ytId -> Timer
+
+function ytAudioErrorMessage(e) {
+  if (!e) return 'تعذر تجهيز MP3';
+  if (e.code === 'no-ffmpeg') return 'الخادم بحاجة إلى ffmpeg لتجهيز MP3 — ثبّته ثم اضغط إعادة';
+  if (e.code === 'too-long') return String(e.message || 'المقطع أطول من الحد المسموح').slice(0, 220);
+  if (e.code === 'unavailable') return 'المقطع غير متاح (خاص/محذوف/مقيّد) — جرّب مقطعاً آخر';
+  if (e.botBlock) return 'يوتيوب يطلب تحقق/تسجيل دخول للخادم — أضف كوكيز من لوحة الإدارة (إعدادات يوتيوب)';
+  return String(e.message || 'تعذر تجهيز MP3').slice(0, 220);
+}
+function cancelYtAudioRetry(ytId) {
+  const t = ytAudioRetryTimers.get(ytId);
+  if (t) { clearTimeout(t); ytAudioRetryTimers.delete(ytId); }
+}
+function scheduleYtAudioRetry(ytId, attempt) {
+  if (ytAudioRetryTimers.has(ytId) || !ytId) return;
+  const delay = Math.min(30 * 60 * 1000, YT_AUDIO_RETRY_BASE_MS * Math.pow(2, Math.max(0, attempt - 1)));
+  const timer = setTimeout(() => {
+    ytAudioRetryTimers.delete(ytId);
+    startYtAudioJob(ytId, attempt + 1);
+  }, delay);
+  if (timer.unref) timer.unref();
+  ytAudioRetryTimers.set(ytId, timer);
+  console.log('🔁 إعادة محاولة تجهيز MP3 بعد', Math.round(delay / 1000), 'ثانية —', ytId, 'محاولة', attempt + 1);
+}
+
+function startYtAudioJob(ytId, attempt = 1) {
+  if (!ytId) return;
   ytMp3.queue(ytId).then(async (r) => {
-    await run(`UPDATE user_music_tracks SET source = 'device', url = ?, file_name = ?, audio_status = 'ready' WHERE yt_id = ? AND audio_status = 'processing'`,
-      [r.url, path.basename(r.file), ytId]);
+    cancelYtAudioRetry(ytId);
+    await run(`UPDATE user_music_tracks SET source = 'device', url = ?, file_name = ?, audio_status = 'ready', audio_error = '', audio_attempts = ? WHERE yt_id = ? AND audio_status != 'ready'`,
+      [r.url, path.basename(r.file), attempt, ytId]);
     console.log('🎵 yt audio ready:', ytId, r.format);
   }).catch(async (e) => {
-    console.error('yt audio job failed:', ytId, e.message);
-    try { await run(`UPDATE user_music_tracks SET audio_status = 'failed' WHERE yt_id = ? AND audio_status = 'processing'`, [ytId]); } catch (x) {}
+    const msg = ytAudioErrorMessage(e);
+    console.error('yt audio job failed:', ytId, 'attempt', attempt, e.message);
+    try { await run(`UPDATE user_music_tracks SET audio_error = ?, audio_attempts = ? WHERE yt_id = ?`, [msg, attempt, ytId]); } catch (x) {}
+    if (!e.permanent && attempt < YT_AUDIO_MAX_TRIES) {
+      // نُبقي الحالة processing ونعيد المحاولة تلقائياً بتأخير متزايد (غالباً الحجب مؤقت أو الكوكيز تحتاج تحديثاً)
+      scheduleYtAudioRetry(ytId, attempt);
+    } else {
+      try { await run(`UPDATE user_music_tracks SET audio_status = 'failed' WHERE yt_id = ? AND audio_status = 'processing'`, [ytId]); } catch (x) {}
+    }
   });
 }
 app.get('/api/youtube/stream/:videoId', async (req, res) => {
@@ -4503,6 +4685,171 @@ app.post('/api/admin/youtube-key', async (req, res) => {
     }
     res.json({ success: true, has_key: !!key });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// إدارة كوكيز يوتيوب وتشخيص محرك تحويل MP3 (بدون إعادة تشغيل الخادم)
+// الكوكيز تُكتب في data/ (مستثناة من git) بصلاحيات 600 ولا تُعاد أبداً للواجهة.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ytCookieStatusPayload() {
+  const files = YT_COOKIES_STORE.describeAll(__dirname);
+  return { files, active: files.length ? files[0].name : '', count: files.length, dir: 'data/' };
+}
+
+app.get('/api/admin/youtube-cookies', async (req, res) => {
+  const session = await verifyAdminToken(req);
+  if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+  try { res.json({ success: true, ...ytCookieStatusPayload() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/youtube-cookies', async (req, res) => {
+  const session = await verifyAdminToken(req);
+  if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+  try {
+    const body = req.body || {};
+    const text = String(body.cookies || body.text || '');
+    if (text.length > 512 * 1024) return res.status(413).json({ error: 'الملف كبير جداً (الحد 512KB)' });
+    const saved = YT_COOKIES_STORE.saveCookieFile(__dirname, text, body.name);
+    console.log('🍪 تم حفظ كوكيز يوتيوب من لوحة الإدارة:', saved.name, '— يوتيوب:', saved.info.youtube, 'جلسة:', saved.info.login);
+    res.json({
+      success: true,
+      file: saved.description,
+      warning: saved.info.login ? '' : 'الكوكيز لا تحتوي SID/LOGIN_INFO — يبدو أنها ليست من جلسة مسجّلة، وقد لا تكفي لتجاوز حجب يوتيوب.',
+      ...ytCookieStatusPayload()
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'تعذر حفظ الكوكيز' });
+  }
+});
+
+app.delete('/api/admin/youtube-cookies/:name', async (req, res) => {
+  const session = await verifyAdminToken(req);
+  if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+  try {
+    YT_COOKIES_STORE.deleteCookieFile(__dirname, req.params.name);
+    console.log('🍪 تم حذف كوكيز يوتيوب:', req.params.name);
+    res.json({ success: true, ...ytCookieStatusPayload() });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'تعذر حذف الملف' });
+  }
+});
+
+// اختبار حقيقي: يشغّل yt-dlp بوضع --simulate على مقطع قصير مع كل ملف كوكيز
+function ytDlpProbeOnce(bin, videoId, cookieFile, extractor) {
+  const { execFile } = require('child_process');
+  return new Promise((resolve) => {
+    const args = ['--simulate', '--no-playlist', '--no-warnings', '--no-progress', '--skip-download',
+      '--print', '%(title)s|%(duration)s|%(uploader)s', '-f', 'worstaudio/bestaudio',
+      ...ytDlpAuthArgs(cookieFile || undefined)];
+    if (extractor) args.push('--extractor-args', extractor);
+    args.push('https://www.youtube.com/watch?v=' + videoId);
+    execFile(bin, args, { timeout: 30000, maxBuffer: 2 * 1024 * 1024 }, (err, so, se) => {
+      resolve({ err, out: String(so || '').trim(), se: String(se || '').trim() });
+    });
+  });
+}
+
+async function ytDlpProbe(videoId) {
+  await ensureYtDlp();
+  const bin = findYtDlp();
+  if (!bin) return { success: false, error: 'yt-dlp غير مثبت على الخادم ولا يمكن تحميله تلقائياً' };
+  const cookieFiles = listYtCookieFiles();
+  const cookieOrder = cookieFiles.length ? cookieFiles.slice(0, 3) : [''];
+  const clients = [...YTDLP_CLIENT_SETS].slice(0, 3);
+  const errs = [];
+  for (const ck of cookieOrder) {
+    for (const ex of clients) {
+      const r = await ytDlpProbeOnce(bin, videoId, ck, ex);
+      if (!r.err && r.out) {
+        const [title, duration, uploader] = r.out.split('|');
+        return {
+          success: true, title: title || '', duration: Number(duration) || 0, uploader: uploader || '',
+          cookie: ck ? path.basename(ck) : 'بدون كوكيز', client: ex || 'default',
+          message: 'يعمل ✅ — هذا يعني أن الخادم يستطيع تنزيل الصوت من يوتيوب الآن'
+        };
+      }
+      errs.push((ck ? path.basename(ck) : 'بدون كوكيز') + '/' + (ex || 'default') + ': ' +
+        (r.se || (r.err && r.err.message) || 'فشل').replace(/\s+/g, ' ').slice(0, 240));
+    }
+  }
+  const joined = errs.join(' | ');
+  let reason = 'فشل اختبار التنزيل';
+  if (/not a bot|sign in|login/i.test(joined)) reason = 'يوتيوب يحجب الخادم (Sign in to confirm you\'re not a bot) — الكوكيز غير صالحة أو انتهت صلاحيتها';
+  else if (/getaddrinfo|name or service|name resolution|connection refused|timed out|timeout|unreachable|econnrefused|etimedout|enetunreach|proxy|tls|ssl|unable to download/i.test(joined)) reason = 'الخادم لا يستطيع الوصول إلى يوتيوب (شبكة/DNS/بروكسي) — تحقق من اتصال الخادم أو اضبط YTDLP_PROXY';
+  else if (/ffmpeg|js runtime|javascript/i.test(joined)) reason = 'الخادم يحتاج مكوّناً ناقصاً (ffmpeg/JS runtime) — راجع قسم التشخيص';
+  return { success: false, error: reason, details: joined.slice(0, 1600) };
+}
+
+app.post('/api/admin/youtube-cookies/test', async (req, res) => {
+  const session = await verifyAdminToken(req);
+  if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+  try {
+    const body = req.body || {};
+    const videoId = /^[A-Za-z0-9_-]{11}$/.test(String(body.videoId || '')) ? String(body.videoId) : 'dQw4w9WgXcQ';
+    const result = await ytDlpProbe(videoId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+function ytBinVersion(bin, args) {
+  const { execFile } = require('child_process');
+  return new Promise((resolve) => {
+    if (!bin) return resolve({ installed: false, version: '' });
+    execFile(bin, args, { timeout: 10000, maxBuffer: 2 * 1024 * 1024 }, (err, so, se) => {
+      if (err) return resolve({ installed: true, version: String(se || err.message || '').split('\n')[0].slice(0, 160) });
+      resolve({ installed: true, version: String(so || '').trim().split('\n')[0].slice(0, 160) });
+    });
+  });
+}
+
+app.get('/api/admin/youtube-diagnose', async (req, res) => {
+  const session = await verifyAdminToken(req);
+  if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
+  try {
+    const ytdlpBin = findYtDlp();
+    const ffmpegBin = ytMp3.findFfmpeg();
+    const [ytdlp, ffmpeg] = await Promise.all([
+      ytBinVersion(ytdlpBin, ['--version']),
+      ytBinVersion(ffmpegBin, ['-version'])
+    ]);
+    const queue = ytMp3.stats();
+    res.json({
+      success: true,
+      ytdlp: { ...ytdlp, path: ytdlpBin ? path.relative(__dirname, ytdlpBin) : '' },
+      ffmpeg: { ...ffmpeg, path: ffmpegBin ? path.relative(__dirname, ffmpegBin) : '' },
+      cookies: ytCookieStatusPayload(),
+      limits: ytMp3.limits,
+      queue: { running: queue.running, waiting: queue.waiting, concurrency: queue.concurrency, jobs: queue.jobs },
+      platform: process.platform,
+      node: process.version
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/youtube/health', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId || !(await get('SELECT id FROM users WHERE id = ?', [userId]))) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+    const q = ytMp3.stats();
+    res.json({
+      success: true,
+      ffmpeg: !!ytMp3.findFfmpeg(),
+      ytdlp: !!findYtDlp(),
+      cookies: listYtCookieFiles().length,
+      limits: ytMp3.limits,
+      queue: { running: q.running, waiting: q.waiting }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
 });
 
 
@@ -9519,8 +9866,11 @@ server.listen(PORT, '0.0.0.0', async () => {
   try { await run('UPDATE room_seats SET user_id = NULL WHERE user_id IS NOT NULL'); } catch (e) { console.error('stale seats cleanup error:', e); }
   // أغانٍ يوتيوب كانت قيد التحميل عند إيقاف الخادم: نعيد تشغيل مهامها
   try {
-    // المحاولات الفاشلة سابقاً تُعاد (مثلاً بعد إضافة cookies.txt)
-    await run(`UPDATE user_music_tracks SET audio_status = 'processing' WHERE audio_status = 'failed' AND source = 'youtube' AND yt_id != ''`);
+    // الفاشلة تُعاد عند الإقلاع (مثلاً بعد إضافة كوكيز أو تثبيت ffmpeg) ما عدا الأخطاء الدائمة
+    await run(`UPDATE user_music_tracks SET audio_status = 'processing', audio_attempts = 0
+      WHERE audio_status = 'failed' AND source = 'youtube' AND yt_id != ''
+        AND COALESCE(audio_error, '') NOT LIKE '%غير متاح%'
+        AND COALESCE(audio_error, '') NOT LIKE '%ffmpeg%'`);
     const pend = await all(`SELECT DISTINCT yt_id FROM user_music_tracks WHERE audio_status = 'processing' AND yt_id != ''`);
     pend.forEach(r => startYtAudioJob(r.yt_id));
   } catch (e) { console.error('yt audio resume error:', e); }

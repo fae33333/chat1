@@ -2680,6 +2680,19 @@ body > .rv-yt-box.rv-yt-hidden {
     z-index: -1 !important;
 }
 
+/* تحذير حالة محرك التحويل (ffmpeg / yt-dlp / كوكيز) داخل شاشة الإضافة */
+.rv-ms-warn {
+    margin: 6px 10px 10px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(251,191,36,.35);
+    background: rgba(251,191,36,.1);
+    color: #fcd34d;
+    font-size: 11px;
+    line-height: 1.5;
+    text-align: center;
+}
+
 /* حالة تجهيز صوت يوتيوب (تحويل mp3 في الخلفية) */
 .rv-ms-proc {
     font-style: normal;
