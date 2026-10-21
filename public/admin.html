@@ -2417,8 +2417,9 @@
 
   <script src="js/dialogs.js"></script>
   <script>
-    // تنظيف أي بيانات قديمة من التخزين الدائم — نستخدم sessionStorage فقط
-    // (الجلسة الحالية فقط، تُمحى بإغلاق المتصفح)
+    // تنظيف أي بيانات قديمة من التخزين الدائم (localStorage) — الحفظ الدائم للجلسة
+    // يتم على الخادم في ملف JSON (data/sessions.json) مع كوكيز httpOnly،
+    // وsessionStorage يُستخدم للجلسة الحالية فقط (يُمحى بإغلاق المتصفح)
     try {
       for (var pi = localStorage.length - 1; pi >= 0; pi--) {
         var pk = localStorage.key(pi);
@@ -2893,24 +2894,24 @@
     });
 
     async function checkExistingSession() {
-      if (!state.token) {
-        showLoginView();
-        return;
-      }
+      // الجلسة محفوظة على الخادم في ملف JSON (data/sessions.json) مع كوكيز httpOnly —
+      // نستعيدها حتى بعد إغلاق المتصفح، دون localStorage. الرأس x-admin-token اختياري هنا.
       try {
         const res = await fetch('/api/admin/check-session', {
-          headers: { 'x-admin-token': state.token }
+          headers: state.token ? { 'x-admin-token': state.token } : {}
         });
         const data = await res.json();
         if (data.success) {
           state.admin = data.admin;
+          if (data.token) {
+            state.token = data.token;
+            sessionStorage.setItem('soulchill_admin_token', data.token);
+          }
           showDashboardView();
-        } else {
-          showLoginView();
+          return;
         }
-      } catch (e) {
-        showLoginView();
-      }
+      } catch (e) {}
+      showLoginView();
     }
 
     function showLoginView() {

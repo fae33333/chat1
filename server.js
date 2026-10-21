@@ -14,6 +14,9 @@ const { v4: uuidv4 } = require('uuid');
 const nodemailer = require('nodemailer');
 const { OAuth2Client } = require('google-auth-library');
 const { db, run, get, all, initDB } = require('./database');
+// جلسات الدخول (مستخدمين وإدارة) تُحفظ في ملف JSON على الخادم: data/sessions.json
+// المتصفح يحمل كوكيز httpOnly فقط — لا localStorage ولا أي تخزين دائم في المتصفح
+const sessionStore = require('./session-store');
 // محرك عناوين العودة (redirect_uri) — يعالج خطأ Google الشائع: 400 redirect_uri_mismatch
 const {
   CALLBACK_PATH, normalizeRedirectUri, parseRedirectList, requestOrigin, derivedRedirectUri, pickRedirectUri
@@ -144,25 +147,72 @@ const roomMusicState = new Map(); // roomId -> Map(userId -> آخر room_music_s
 const pkIntervals = new Map(); // roomId -> intervalId
 const recentRoomWelcomes = new Map(); // `${roomId}:${userId}` -> آخر وقت ترحيب
 setInterval(() => { const cutoff = Date.now() - 10 * 60 * 1000; for (const [k, t] of recentRoomWelcomes) if (t < cutoff) recentRoomWelcomes.delete(k); }, 5 * 60 * 1000);
-const adminSessions = new Map(); // token -> { username, role, loginTime }
+// ====================== الجلسات (تُحفظ في ملف JSON على الخادم) ======================
+// كل جلسات الدخول — المستخدمين والإدارة — تُسجَّل في data/sessions.json عبر session-store
+// والمتصفح يحمل كوكيز httpOnly فقط. هكذا يبقى الدخول محفوظاً بعد إغلاق المتصفح
+// وتصمد جلسات الإدارة بعد إعادة تشغيل الخادم، دون أي localStorage في المتصفح.
+const USER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // جلسة المستخدم: 30 يوماً (تجديد منزلق)
+const ADMIN_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // جلسة الإدارة: 7 أيام (تجديد منزلق)
+const SESSION_COOKIE = 'sc_session';                 // كوكيز جلسة المستخدم (httpOnly)
+const ADMIN_SESSION_COOKIE = 'sc_admin_session';     // كوكيز جلسة الإدارة (httpOnly)
+
+function parseCookies(req) {
+  const out = {};
+  const raw = req.headers && req.headers.cookie;
+  if (!raw) return out;
+  for (const part of String(raw).split(';')) {
+    const i = part.indexOf('=');
+    if (i < 0) continue;
+    try { out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim()); } catch (e) {}
+  }
+  return out;
+}
+
+function reqIsSecure(req) {
+  return !!(req.secure || String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https');
+}
+
+function setSessionCookie(res, req, name, value, maxAgeMs) {
+  res.cookie(name, value, {
+    httpOnly: true,          // لا يصل إليه JavaScript في المتصفح إطلاقاً
+    sameSite: 'lax',
+    secure: reqIsSecure(req),
+    path: '/',
+    maxAge: maxAgeMs
+  });
+}
+
+function clearSessionCookie(res, name) {
+  res.clearCookie(name, { httpOnly: true, sameSite: 'lax', path: '/' });
+}
 
 async function verifyAdminToken(req) {
-  const token = req.headers['x-admin-token'] || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
-  if (!token) return null;
-  if (adminSessions.has(token)) {
-    const s = adminSessions.get(token);
-    // Only owner, super_master, and super_admin are allowed in Admin Control Panel
-    if (['owner', 'super_master', 'super_admin'].includes(s.role) || !s.role || s.role === 'admin_master') {
-      return s;
+  const headerToken = req.headers['x-admin-token'] || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+  const cookieToken = parseCookies(req)[ADMIN_SESSION_COOKIE];
+  for (const token of [headerToken, cookieToken]) {
+    if (!token) continue;
+    // الجلسة من ملف JSON على الخادم
+    const s = sessionStore.getSession('admin', token);
+    if (s && (['owner', 'super_master', 'super_admin'].includes(s.role) || !s.role || s.role === 'admin_master')) {
+      return { username: s.username, role: s.role, userId: s.userId, loginTime: s.loginTime, token };
+    }
+    // توافق قديم: رمز المستخدم على الشكل token-{userId}-{timestamp}
+    if (String(token).startsWith('token-')) {
+      const parts = String(token).split('-');
+      const userId = parts.slice(1, parts.length - 1).join('-');
+      const user = await get('SELECT id, name, role FROM users WHERE id = ?', [userId]);
+      if (user && ['owner', 'super_master', 'super_admin'].includes(user.role)) {
+        return { username: user.name, role: user.role, userId: user.id, token };
+      }
     }
   }
-  // Check if token belongs to an authorized user (owner, super_master, or super_admin ONLY)
-  if (token.startsWith('token-')) {
-    const parts = token.split('-');
-    const userId = parts.slice(1, parts.length - 1).join('-');
-    const user = await get('SELECT id, name, role FROM users WHERE id = ?', [userId]);
+  // جلسة مستخدم عادية (كوكيز) لصاحب رتبة سوبر: يفتح لوحة الإدارة بحسابه مباشرة
+  const userTok = parseCookies(req)[SESSION_COOKIE];
+  const us = userTok ? sessionStore.getSession('user', userTok) : null;
+  if (us && us.userId) {
+    const user = await get('SELECT id, name, role FROM users WHERE id = ?', [us.userId]);
     if (user && ['owner', 'super_master', 'super_admin'].includes(user.role)) {
-      return { username: user.name, role: user.role, userId: user.id };
+      return { username: user.name, role: user.role, userId: user.id, token: userTok };
     }
   }
   return null;
@@ -299,8 +349,12 @@ async function generateUserId() {
   return `sc-user-${Date.now()}`;
 }
 
-async function issueSession(user, nickname) {
-  return { success: true, user, nickname: nickname || user.name, token: `token-${user.id}-${Date.now()}` };
+// إصدار جلسة دخول حقيقية: تُحفظ في ملف JSON على الخادم (data/sessions.json)
+// ويمنح المتصفح كوكيز httpOnly فقط — لا localStorage في المتصفح إطلاقاً
+async function issueSession(req, res, user, nickname) {
+  const token = sessionStore.createSession('user', { userId: user.id, nickname: nickname || user.name }, USER_SESSION_TTL_MS);
+  if (res && req) setSessionCookie(res, req, SESSION_COOKIE, token, USER_SESSION_TTL_MS);
+  return { success: true, user, nickname: nickname || user.name, token };
 }
 
 
@@ -497,7 +551,7 @@ app.post('/api/auth/complete-signup', async (req, res) => {
       await run('DELETE FROM auth_tickets WHERE id = ?', [t.id]);
       // حساب مسجّل + بريد موثّق عبر Google: دخول مباشر بدون اسم مستعار أو كلمة مرور
       // (البريد موثّق دائماً هنا: عبر Google أو عبر رمز Gmail) — دخول مباشر بالحساب المسجّل مسبقاً
-      return res.json(await issueSession(existing, cred.nickname));
+      return res.json(await issueSession(req, res, existing, cred.nickname));
     }
 
     // حساب جديد أو قديم بلا كلمة مرور: الاسم المستعار وكلمة المرور والجنس والعمر إلزاميين
@@ -582,7 +636,7 @@ app.post('/api/auth/complete-signup', async (req, res) => {
     // لا تُنشأ غرفة تلقائياً: الفتاة تنشئ غرفتها بنفسها (وهي إحدى مهامها اليومية)
     await run('DELETE FROM auth_tickets WHERE id = ?', [t.id]);
     user = await get('SELECT * FROM users WHERE id = ?', [user.id]);
-    res.json({ ...(await issueSession(user, username)), is_new: isNew });
+    res.json({ ...(await issueSession(req, res, user, username)), is_new: isNew });
   } catch (err) {
     if (String(err.message || '').includes('UNIQUE')) {
       return res.status(409).json({ error: 'اسم الحساب مستخدم، اختر اسماً آخر' });
@@ -630,7 +684,7 @@ app.post('/api/auth/login-nickname', async (req, res) => {
     const user = await get('SELECT * FROM users WHERE id = ?', [cred.user_id]);
     if (!user) return res.status(401).json({ error: 'الاسم المستعار أو كلمة المرور غير صحيحة' });
     if (user.is_banned) return res.status(403).json({ error: 'هذا الحساب محظور من قبل الإدارة 🚫' });
-    res.json(await issueSession(user, cred.nickname));
+    res.json(await issueSession(req, res, user, cred.nickname));
   } catch (err) {
     console.error('Nickname login error:', err);
     res.status(500).json({ error: 'فشل تسجيل الدخول' });
@@ -838,10 +892,51 @@ app.post(['/api/auth/google', '/api/auth/google-token'], async (req, res) => {
   }
 });
 
+// 3) استرجاع الجلسة من ملف JSON على الخادم (data/sessions.json) عبر كوكيز httpOnly
+//    هو ما يجعل تسجيل الدخول يبقى محفوظاً بعد إغلاق المتصفح — بدون localStorage
+app.get('/api/auth/session', async (req, res) => {
+  try {
+    const token = parseCookies(req)[SESSION_COOKIE] || String(req.headers['x-session-token'] || '');
+    const s = token ? sessionStore.getSession('user', token) : null;
+    if (!s || !s.userId) {
+      return res.status(401).json({ error: 'لا توجد جلسة دخول محفوظة', clearAuth: true });
+    }
+    const user = await get('SELECT * FROM users WHERE id = ?', [s.userId]);
+    if (!user) {
+      sessionStore.deleteSession('user', token);
+      clearSessionCookie(res, SESSION_COOKIE);
+      return res.status(401).json({ error: 'الحساب غير مسجّل. سجّل حساباً جديداً أو ادخل بحسابك', clearAuth: true });
+    }
+    if (user.is_banned) {
+      sessionStore.deleteSession('user', token);
+      clearSessionCookie(res, SESSION_COOKIE);
+      return res.status(403).json({ error: 'هذا الحساب محظور من قبل الإدارة 🚫', clearAuth: true });
+    }
+    res.json({ success: true, user, nickname: s.nickname || user.name, token });
+  } catch (err) {
+    console.error('Session restore error:', err);
+    res.status(500).json({ error: 'فشل استرجاع الجلسة' });
+  }
+});
+
+// تسجيل الخروج: حذف الجلسة من ملف JSON ومسح الكوكيز
+app.post('/api/auth/logout', (req, res) => {
+  try {
+    const token = parseCookies(req)[SESSION_COOKIE]
+      || String((req.headers['x-session-token'] || '') || ((req.body && req.body.token) || ''));
+    if (token) sessionStore.deleteSession('user', token);
+  } catch (e) {}
+  clearSessionCookie(res, SESSION_COOKIE);
+  res.json({ success: true });
+});
+
 // 2. Get Current User Profile
 app.get('/api/users/me', async (req, res) => {
   try {
-    const userId = req.headers['x-user-id'] || req.query.userId || req.query.id;
+    // الأولوية لجلسة JSON المحفوظة على الخادم (كوكيز httpOnly)، ثم التوافق القديم مع x-user-id
+    const sessTok = parseCookies(req)[SESSION_COOKIE];
+    const sess = sessTok ? sessionStore.getSession('user', sessTok) : null;
+    const userId = (sess && sess.userId) || req.headers['x-user-id'] || req.query.userId || req.query.id;
     if (!userId || userId === 'null' || userId === 'undefined') {
       return res.status(401).json({ error: 'User ID missing', clearAuth: true });
     }
@@ -6387,9 +6482,10 @@ app.post('/api/admin/login', async (req, res) => {
           error: 'صلاحية دخول لوحة الإدارة مخصصة فقط للسوبر ادمن والسوبر ماستر والمالك! رتبة الأدمن تمتلك صلاحيات الإشراف داخل الغرف الصوتية فقط.'
         });
       }
-      const token = `adm_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
       const role = cred.role || 'owner';
-      adminSessions.set(token, { username: cred.username, role, loginTime: Date.now() });
+      // جلسة حقيقية في ملف JSON + كوكيز httpOnly — تصمد بعد إعادة تشغيل الخادم
+      const token = sessionStore.createSession('admin', { username: cred.username, role, loginTime: Date.now() }, ADMIN_SESSION_TTL_MS);
+      setSessionCookie(res, req, ADMIN_SESSION_COOKIE, token, ADMIN_SESSION_TTL_MS);
       return res.json({
         success: true,
         token,
@@ -6408,8 +6504,9 @@ app.post('/api/admin/login', async (req, res) => {
     // B. Check in users table for owner, super_master, or super_admin accounts ONLY
     const user = await get("SELECT * FROM users WHERE (email = ? OR name = ? OR id = ? OR (role = 'owner' AND ? IN ('owner', 'owner@gmail.com'))) AND (role IN ('owner', 'super_master', 'super_admin'))", [username, username, username, username]);
     if (user && (password === 'admin123456' || password === 'admin' || password === 'owner123' || password === 'owner123456' || password === 'owner')) {
-      const token = `adm_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
-      adminSessions.set(token, { username: user.name, role: user.role, userId: user.id, loginTime: Date.now() });
+      // جلسة حقيقية في ملف JSON + كوكيز httpOnly — تصمد بعد إعادة تشغيل الخادم
+      const token = sessionStore.createSession('admin', { username: user.name, role: user.role, userId: user.id, loginTime: Date.now() }, ADMIN_SESSION_TTL_MS);
+      setSessionCookie(res, req, ADMIN_SESSION_COOKIE, token, ADMIN_SESSION_TTL_MS);
       return res.json({
         success: true,
         token,
@@ -6451,27 +6548,32 @@ app.post('/api/admin/enter-as-user', async (req, res) => {
       }
     }
     if (!user) return res.status(404).json({ error: 'لا يوجد حساب سوبر مرتبط بحساب الإدارة' });
-    res.json({ success: true, user });
+    // جلسة دخول حقيقية تُحفظ في ملف JSON + كوكيز httpOnly (مثل تسجيل الدخول العادي)
+    res.json({ ...(await issueSession(req, res, user, user.name)), user });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 2. Check Admin Session
+// 2. Check Admin Session (من ملف JSON على الخادم — عبر رمز الرأس أو كوكيز httpOnly)
 app.get('/api/admin/check-session', async (req, res) => {
   const session = await verifyAdminToken(req);
   if (!session) {
     return res.status(401).json({ error: 'جلسة الإدارة غير صالحة أو انتهت مدتها' });
   }
-  res.json({ success: true, admin: session });
+  const { token, ...adminInfo } = session;
+  res.json({ success: true, admin: adminInfo, token: token || '' });
 });
 
-// 3. Admin Logout
+// 3. Admin Logout (حذف الجلسة من ملف JSON ومسح الكوكيز)
 app.post('/api/admin/logout', (req, res) => {
-  const token = req.headers['x-admin-token'] || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
-  if (token && adminSessions.has(token)) {
-    adminSessions.delete(token);
+  const token = req.headers['x-admin-token']
+    || (req.headers.authorization && req.headers.authorization.split(' ')[1])
+    || parseCookies(req)[ADMIN_SESSION_COOKIE];
+  if (token) {
+    sessionStore.deleteSession('admin', token);
   }
+  clearSessionCookie(res, ADMIN_SESSION_COOKIE);
   res.json({ success: true });
 });
 

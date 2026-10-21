@@ -2,8 +2,9 @@
 (function() {
   'use strict';
   // لا نستخدم التخزين الدائم في المتصفح إطلاقاً: نحذف فوراً أي بيانات قديمة
-  // كانت محفوظة في localStorage — الجلسة الحالية فقط عبر sessionStorage
-  // وتُمحى تلقائياً بمجرد إغلاق المتصفح
+  // كانت محفوظة في localStorage — الجلسة الحالية فقط عبر sessionStorage وتُمحى
+  // بمجرد إغلاق المتصفح. الحفظ الدائم لتسجيل الدخول يتم على الخادم في ملف JSON
+  // (data/sessions.json) مع كوكيز httpOnly — استرجاع الجلسة عبر /api/auth/session
 
   // Global State
   const state = {
@@ -324,7 +325,7 @@
       const d = await res.json();
       if (!d.success || !d.user) return false;
       state.currentUser = d.user;
-      state.token = sessionStorage.getItem('soulchill_token') || 'device-persistent-token';
+      state.token = d.token || sessionStorage.getItem('soulchill_token') || 'device-persistent-token';
       sessionStorage.setItem('soulchill_user', JSON.stringify(d.user));
       sessionStorage.setItem('soulchill_user_id', d.user.id);
       sessionStorage.setItem('soulchill_token', state.token);
@@ -1391,42 +1392,54 @@
   }
 
   async function checkStoredAuth() {
-    const savedUser = sessionStorage.getItem('soulchill_user');
-    const savedToken = sessionStorage.getItem('soulchill_token') || sessionStorage.getItem('soulchill_auth_token') || 'device-persistent-token';
-    const savedUserId = sessionStorage.getItem('soulchill_user_id');
-
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        if (parsed && parsed.id && parsed.id !== 'undefined' && parsed.id !== 'null') {
-          state.currentUser = parsed;
-          state.token = savedToken;
-          sessionStorage.setItem('soulchill_user_id', parsed.id);
-          sessionStorage.setItem('soulchill_token', savedToken);
+    // الجلسة تُحفظ على الخادم في ملف JSON (data/sessions.json) عبر كوكيز httpOnly —
+    // لا localStorage ولا أي تخزين دائم في المتصفح. عند فتح الصفحة نستعيدها من الخادم.
+    let serverAnswered = false;
+    try {
+      const res = await fetch('/api/auth/session', { credentials: 'same-origin' });
+      if (res.ok) {
+        serverAnswered = true;
+        const d = await res.json();
+        if (d && d.success && d.user && d.user.id) {
+          state.currentUser = d.user;
+          state.token = d.token || 'device-persistent-token';
+          sessionStorage.setItem('soulchill_user', JSON.stringify(d.user));
+          sessionStorage.setItem('soulchill_user_id', d.user.id);
+          sessionStorage.setItem('soulchill_token', state.token);
           onUserAuthenticated();
           return;
         }
-      } catch (e) {
-        console.warn('Could not parse cached user:', e);
+      } else if (res.status === 401 || res.status === 403) {
+        serverAnswered = true;
+        // لا جلسة صالحة على الخادم: نمسح أي أثر قديم ونطلب تسجيل الدخول
+        try {
+          sessionStorage.removeItem('soulchill_user');
+          sessionStorage.removeItem('soulchill_token');
+          sessionStorage.removeItem('soulchill_user_id');
+        } catch (e) {}
       }
-    } else if (savedUserId && savedUserId !== 'undefined' && savedUserId !== 'null') {
-      try {
-        const res = await fetch('/api/users/me', {
-          headers: { 'x-user-id': savedUserId }
-        });
-        if (res.ok) {
-          const u = await res.json();
-          if (u && u.id) {
-            state.currentUser = u;
+    } catch (e) {
+      console.warn('Session restore failed (network):', e);
+    }
+
+    // الشبكة غير متاحة: نستخدم نسخة الجلسة الحالية (sessionStorage للجلسة المفتوحة فقط)
+    if (!serverAnswered) {
+      const savedUser = sessionStorage.getItem('soulchill_user');
+      const savedToken = sessionStorage.getItem('soulchill_token') || 'device-persistent-token';
+      if (savedUser) {
+        try {
+          const parsed = JSON.parse(savedUser);
+          if (parsed && parsed.id && parsed.id !== 'undefined' && parsed.id !== 'null') {
+            state.currentUser = parsed;
             state.token = savedToken;
-            sessionStorage.setItem('soulchill_user', JSON.stringify(u));
+            sessionStorage.setItem('soulchill_user_id', parsed.id);
             sessionStorage.setItem('soulchill_token', savedToken);
             onUserAuthenticated();
             return;
           }
+        } catch (e) {
+          console.warn('Could not parse cached user:', e);
         }
-      } catch (e) {
-        console.warn('Could not fetch user by ID:', e);
       }
     }
 
@@ -14152,6 +14165,11 @@
 
   // Sign out & Account Switching
   function handleSignOut() {
+    // حذف الجلسة من ملف JSON على الخادم ومسح الكوكيز (httpOnly)
+    try {
+      fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+    } catch (e) {}
+
     // Clear stored active session credentials
     sessionStorage.removeItem('soulchill_user');
     sessionStorage.removeItem('soulchill_token');
