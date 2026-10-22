@@ -615,6 +615,15 @@ async function initDB() {
   try { await run(`ALTER TABLE gifts_catalog ADD COLUMN burst_count INTEGER DEFAULT 20`); } catch (e) {}
   try { await run(`ALTER TABLE gifts_catalog ADD COLUMN burst_image_url TEXT DEFAULT ''`); } catch (e) {}
   try { await run(`ALTER TABLE gifts_catalog ADD COLUMN banner_enabled INTEGER DEFAULT 0`); } catch (e) {}
+  // إطار مخصص لإشعار الهدية العام (صورة شفافة تُرفع من الإدارة لكل هدية)
+  try { await run(`ALTER TABLE gifts_catalog ADD COLUMN banner_frame_url TEXT DEFAULT ''`); } catch (e) {}
+  // مؤثر الهدية الفاخرة (GIF/WEBP/MP4/HTML) يُعرض كمؤثرات الدخول: طبقة شفافة فوق الغرفة
+  try { await run(`ALTER TABLE gifts_catalog ADD COLUMN effect_url TEXT DEFAULT ''`); } catch (e) {}
+  // الهدايا قسمان فقط: normal (عادية) و luxury (فاخرة) — ترحيل الأقسام القديمة
+  try {
+    await run(`UPDATE gifts_catalog SET luxury = 1 WHERE tab = 'luxury'`);
+    await run(`UPDATE gifts_catalog SET tab = CASE WHEN luxury = 1 THEN 'luxury' ELSE 'normal' END WHERE tab NOT IN ('normal', 'luxury')`);
+  } catch (e) { console.error('gift tabs migration error:', e.message); }
   // إيموجي الغرفة: تُرفع صورها من لوحة الإدارة وتظهر في قائمة زر الإيموجي داخل الغرفة
   await run(`
     CREATE TABLE IF NOT EXISTS room_emojis (

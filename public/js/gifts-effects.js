@@ -40,18 +40,7 @@ class GiftEffectsEngine {
     // 2. لا يوجد أي إشعار هنا: الهدية تُعرض كفرقعة/تأثير فقط.
     //    الإشعار الوحيد هو الإشعار العام (gift-banner.js) للهدايا التي فعّلته الإدارة.
 
-    // 3. Trigger specific visual animation
-    if (gift.id === 'sports_car') {
-      this.animateSportsCar(sender);
-    } else if (gift.id === 'rocket') {
-      this.animateRocket(sender);
-    } else if (gift.id === 'crown') {
-      this.animateCrown(receiver || sender);
-    } else if (gift.id === 'castle') {
-      this.animateCastle(sender, receiver);
-    } else {
-      this.animateSparkles(gift.image_url || gift.icon);
-    }
+    // التأثيرات البصرية: هدية عادية ← showSmallGiftAtSeat ، هدية فاخرة ← showLuxuryFullscreen
   }
 
   showGiftBanner(gift, sender, receiver) {
@@ -169,6 +158,119 @@ class GiftEffectsEngine {
     this.container.appendChild(burst);
     setTimeout(() => burst.remove(), 3000);
   }
+
+  // ===== هدية عادية: أيقونة الهدية تنزل من مقعد المستلم إلى بطاقة الهدية في شات الغرفة =====
+  // from: {x, y} نقطة البداية (مركز مقعد المستلم) ؛ targetEl: عنصر الأيقونة داخل بطاقة الشات
+  flyGiftToChat(gift, from, targetEl, onDone) {
+    if (!this.container) this.init();
+    const done = () => { try { onDone && onDone(); } catch (e) {} };
+    if (!targetEl || !targetEl.getBoundingClientRect) { done(); return; }
+    const t = targetEl.getBoundingClientRect();
+    if (!t.width) { done(); return; }
+    const sx = (from && from.x) || window.innerWidth / 2;
+    const sy = (from && from.y) || window.innerHeight * 0.3;
+    const ex = t.left + t.width / 2;
+    const ey = t.top + t.height / 2;
+    const midX = sx + (ex - sx) * 0.35;
+    const midY = sy + Math.min(120, Math.max(60, (ey - sy) * 0.25));
+    const el = document.createElement('div');
+    el.className = 'gift-fly-icon';
+    giftFillIcon(el, gift.image_url || gift.icon);
+    el.style.left = '0px';
+    el.style.top = '0px';
+    this.container.appendChild(el);
+    const tr = (x, y, sc) => `translate(${x - 24}px, ${y - 24}px) scale(${sc})`;
+    const anim = el.animate([
+      { transform: tr(sx, sy, 0.4), opacity: 0 },
+      { transform: tr(sx, sy, 1.25), opacity: 1, offset: 0.2 },
+      { transform: tr(midX, midY, 1.3), opacity: 1, offset: 0.5 },
+      { transform: tr(ex, ey, 0.5), opacity: 1 }
+    ], { duration: 1500, easing: 'ease-in-out', fill: 'forwards' });
+    anim.onfinish = () => { el.remove(); done(); };
+  }
+
+  // ===== هدية عادية: أيقونة صغيرة فوق مقعد المستلم + عدد (X1) لمدة ~2.5 ثانية =====
+  showSmallGiftAtSeat(gift, sender, receiver, seatEl, count) {
+    if (!this.container) this.init();
+    if (window.soundManager) { try { window.soundManager.playGiftSound(false); } catch (e) {} }
+    const r = seatEl ? seatEl.getBoundingClientRect() : null;
+    const has = !!(r && r.width);
+    const x = has ? r.left + r.width / 2 : window.innerWidth / 2;
+    const top = has ? r.top : window.innerHeight * 0.3;
+    const el = document.createElement('div');
+    el.className = 'gift-seat-small';
+    const ic = document.createElement('span');
+    ic.className = 'gss-icon';
+    giftFillIcon(ic, gift.image_url || gift.icon);
+    const n = document.createElement('span');
+    n.className = 'gss-count';
+    n.textContent = `${Math.max(1, parseInt(count, 10) || 1)}X`;
+    el.appendChild(ic); el.appendChild(n);
+    el.style.left = `${x}px`;
+    el.style.top = `${top}px`;
+    this.container.appendChild(el);
+    if (has) this.glowSeat(seatEl);
+    const anim = el.animate([
+      { transform: 'translate(-50%, 0) scale(.3)', opacity: 0 },
+      { transform: 'translate(-50%, -100%) scale(1.25)', opacity: 1, offset: 0.18 },
+      { transform: 'translate(-50%, -106%) scale(1)', opacity: 1, offset: 0.8 },
+      { transform: 'translate(-50%, -130%) scale(.9)', opacity: 0 }
+    ], { duration: 2600, easing: 'ease-out', fill: 'forwards' });
+    anim.onfinish = () => el.remove();
+  }
+
+  // ===== هدية فاخرة: أنيميشن بملء الشاشة 5–8 ثوانٍ، يحجب الغرفة والكتابة حتى ينتهي =====
+  // الهدايا الفاخرة المتتالية تُعرض بالدور حتى لا تتراكم فوق بعضها
+  showLuxuryFullscreen(gift, sender, receiver) {
+    this._luxQueue = this._luxQueue || [];
+    if (this._luxQueue.length >= 4) this._luxQueue.shift();
+    this._luxQueue.push({ gift, sender, receiver });
+    if (!this._luxBusy) this._playNextLux();
+  }
+
+  _playNextLux() {
+    const item = this._luxQueue && this._luxQueue.shift();
+    if (!item) { this._luxBusy = false; return; }
+    this._luxBusy = true;
+    const { gift, sender, receiver } = item;
+    if (!this.container) this.init();
+    if (window.soundManager) { try { window.soundManager.playGiftSound(true); } catch (e) {} }
+
+    const DURATION = 6500; // ضمن 5–8 ثوانٍ
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const recvName = receiver && receiver.name ? receiver.name : 'الجميع';
+    const src = gift.image_url || gift.icon;
+    const isVid = typeof src === 'string' && /\.(mp4|webm)(\?|$)/i.test(src);
+    const media = isVid
+      ? `<video class="lux-fs-media" src="${esc(src)}" autoplay muted playsinline></video>`
+      : (giftIsImg(src) ? `<img class="lux-fs-media" src="${esc(src)}" alt="">` : `<div class="lux-fs-media lux-fs-emoji">${esc(src || '🎁')}</div>`);
+
+    const ov = document.createElement('div');
+    ov.className = 'lux-fs-overlay';
+    ov.innerHTML = `
+      <div class="lux-fs-rays"></div>
+      <div class="lux-fs-trail"></div>
+      <div class="lux-fs-stage">${media}</div>
+      <div class="lux-fs-caption">
+        <div class="lux-fs-crown">👑</div>
+        <div class="lux-fs-line">الملك ${esc(sender && sender.name)} يغمر ${esc(recvName)} بـ ${esc(gift.name)}!</div>
+      </div>`;
+    document.body.appendChild(ov);
+    document.body.classList.add('lux-gift-active');
+    requestAnimationFrame(() => ov.classList.add('on'));
+
+    setTimeout(() => {
+      ov.classList.remove('on');
+      ov.classList.add('off');
+      setTimeout(() => {
+        ov.remove();
+        document.body.classList.remove('lux-gift-active');
+        this._luxBusy = false;
+        this._playNextLux();
+      }, 450);
+    }, DURATION);
+  }
+
   // إرسال الهدية إلى مقعد المستلم: أيقونات تطير نحو المقعد ثم فرقعة وتوهّج ورسالة فوق المقعد
   sendGiftToSeat(gift, sender, receiver, seatEl, senderSeatEl) {
     if (!this.container) this.init();

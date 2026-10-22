@@ -1,7 +1,8 @@
 // إشعار الهدايا القيّمة (يظهر لكل المتصلين في أي صفحة/غرفة، والنقر عليه يدخل إلى غرفة المرسل)
 // يستقبل حدث 'global_gift_banner' من السيرفر، ويعرض الإشعارات في طابور واحداً تلو الآخر.
 (function () {
-  const SHOW_MS = 5000;     // مدة بقاء الإشعار
+  const SHOW_MS = 5000;     // مدة بقاء الإشعار العادي
+  const LUX_SHOW_MS = 7100; // مدة بقاء إشعار الهدية الفاخرة
   const GAP_MS = 350;       // فاصل بين إشعارين
   const MAX_QUEUE = 8;      // حد أقصى للطابور حتى لا يتراكم عند كثرة الهدايا
 
@@ -57,6 +58,15 @@
     const lux = !!g.luxury;
     el.className = 'ggb-banner' + (lux ? ' ggb-lux' : '');
     el.dataset.lux = lux ? '1' : '0';
+    // إطار مخصص لكل هدية (يُرفع من الإدارة)؛ الفاخرة بلا إطار مخصص تستعمل الإطار الافتراضي من CSS
+    if (g.banner_frame_url && /^\/uploads\/[\w.\-]+$/.test(g.banner_frame_url)) {
+      el.classList.add('ggb-framed');
+      el.style.setProperty('--ggb-frame', `url('${g.banner_frame_url}')`);
+    }
+    const titleHtml = lux ? `👑 الملك ${senderName}` : senderName;
+    const descHtml = lux
+      ? `يغمر ${recvName} بـ ${esc(g.name)}! <b>${fmt(g.cost)} ${cur}</b>`
+      : `أرسل ${esc(g.name)} إلى ${recvName} <b>${fmt(g.cost)} ${cur}</b>`;
     const bolt = (cls, pts) => `<svg class="ggb-bolt ${cls}" viewBox="0 0 40 100" preserveAspectRatio="none"><polyline points="${pts}"/></svg>`;
     const bolts = lux ? `<div class="ggb-bolts">
         ${bolt('b1', '22,0 10,38 24,42 8,100')}
@@ -70,8 +80,8 @@
       <button type="button" class="ggb-go">GO</button>
       <div class="ggb-icon">${giftIcon}</div>
       <div class="ggb-text">
-        <div class="ggb-title">${senderName}</div>
-        <div class="ggb-desc">أرسل ${esc(g.name)} إلى ${recvName} <b>${fmt(g.cost)} ${cur}</b></div>
+        <div class="ggb-title">${titleHtml}</div>
+        <div class="ggb-desc">${descHtml}</div>
       </div>
       <img class="ggb-avatar" src="${esc((p.sender && p.sender.avatar) || '/avatars/avatar-1.png')}" alt="">
     `;
@@ -96,7 +106,7 @@
     placeHost(el.dataset.lux === '1');
     getHost().appendChild(el);
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
-    setTimeout(() => hide(el, false), SHOW_MS);
+    setTimeout(() => hide(el, false), el.dataset.lux === '1' ? LUX_SHOW_MS : SHOW_MS);
   }
 
   window.giftGlobalBanner = {
@@ -107,4 +117,87 @@
       next();
     }
   };
+})();
+
+// ===== شريط الهدية العادية داخل الغرفة (كما في الفيديو) =====
+// شريط داكن شبه شفاف بجانب مقعد المستلم: صورة المرسل + اسمه + «إرسال إلى ...»، يظهر ~3 ثوانٍ ثم يختفي
+(function () {
+  const SHOW_MS = 3200;
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let current = null;
+  let timer = null;
+
+  function remove(el) {
+    if (!el) return;
+    el.classList.remove('show');
+    el.classList.add('hide');
+    setTimeout(() => { el.remove(); if (current === el) current = null; }, 320);
+  }
+
+  function place(el, seatEl) {
+    const vw = window.innerWidth;
+    const w = Math.min(270, Math.round(vw * 0.66));
+    el.style.width = w + 'px';
+    const sr = seatEl && seatEl.getBoundingClientRect ? seatEl.getBoundingClientRect() : null;
+    if (sr && sr.width) {
+      // حافة الشريط اليسرى عند مركز المقعد تقريباً، ومحاذاة رأسية مع مركز المقعد
+      const left = Math.max(8, Math.min(vw - w - 8, sr.left + sr.width / 2 - 28));
+      el.style.left = left + 'px';
+      el.style.top = Math.max(4, sr.top + sr.height / 2 - 24) + 'px';
+      return;
+    }
+    const header = document.querySelector('#live-voice-room-modal .live-room-header, #live-video-broadcast-modal .live-room-header');
+    const hr = header && header.getBoundingClientRect();
+    el.style.left = Math.round((vw - w) / 2) + 'px';
+    el.style.top = ((hr && hr.height > 0 ? hr.bottom : 60) + 56) + 'px';
+  }
+
+  window.giftRoomBanner = {
+    push(p) {
+      if (!p || !p.gift) return;
+      if (current) { clearTimeout(timer); current.remove(); current = null; }
+      const recvName = p.receiver && p.receiver.name ? esc(p.receiver.name) : 'الجميع';
+      const el = document.createElement('div');
+      el.className = 'grb-banner';
+      el.innerHTML = `
+        <img class="grb-avatar" src="${esc((p.sender && p.sender.avatar) || '/avatars/avatar-1.png')}" alt="" onerror="this.onerror=null;this.src='/avatars/avatar-1.png'">
+        <div class="grb-text">
+          <div class="grb-name">${esc(p.sender && p.sender.name)}</div>
+          <div class="grb-desc">إرسال إلى ${recvName} ...</div>
+        </div>`;
+      document.body.appendChild(el);
+      place(el, p.seatEl);
+      current = el;
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+      timer = setTimeout(() => remove(el), SHOW_MS);
+    }
+  };
+})();
+
+// ===== إشعار للمستلم: «فلان أرسل لك هدية» =====
+(function () {
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const isImg = (v) => typeof v === 'string' && (/^\/uploads\//.test(v) || /^https?:\/\//.test(v));
+  const queue = []; let busy = false;
+  function next() {
+    if (busy || !queue.length) return;
+    busy = true;
+    const p = queue.shift(); const g = p.gift || {};
+    const src = g.image_url || g.icon;
+    const icon = isImg(src) ? `<img src="${esc(src)}" alt="">` : `<span>${esc(src || '🎁')}</span>`;
+    const el = document.createElement('div');
+    el.className = 'grn-notice';
+    el.innerHTML = `<div class="grn-icon">${icon}</div>
+      <div class="grn-text"><div class="grn-title">🎁 وصلتك هدية</div>
+      <div class="grn-desc">${esc(p.sender && p.sender.name)} أرسل لك ${esc(g.name)} x ${Math.max(1, parseInt(p.count, 10) || 1)}</div></div>
+      <img class="grn-avatar" src="${esc((p.sender && p.sender.avatar) || '/avatars/avatar-1.png')}" alt="" onerror="this.onerror=null;this.src='/avatars/avatar-1.png'">`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+    if (window.soundManager) { try { window.soundManager.playGiftSound(false); } catch (e) {} }
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => { el.remove(); busy = false; next(); }, 350);
+    }, 4000);
+  }
+  window.giftReceivedNotice = { show(p) { if (!p || !p.gift) return; if (queue.length >= 5) queue.shift(); queue.push(p); next(); } };
 })();

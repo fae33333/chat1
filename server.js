@@ -110,6 +110,8 @@ app.use('/uploads', (req, res, next) => {
   }
   next();
 });
+// تخزين الجلسة/الجهاز في ملف JSON على الخادم (بدل localStorage)
+require('./device-store').mount(app, express);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // تحديد دولة المستخدم تلقائياً (مرة واحدة) من الـ IP عند أول طلب له، إن لم تكن محددة
@@ -210,15 +212,17 @@ const GIFTS = [
 ];
 
 // ---- كتالوج الهدايا في قاعدة البيانات (يُزرع مرة واحدة من القائمة أعلاه ثم تُدار من الإدارة) ----
-const GIFT_TAB_IDS = ['popular', 'luck', 'events', 'empire', 'celebs'];
+const GIFT_TAB_IDS = ['normal', 'luxury']; // قسمان فقط: هدية عادية / هدية فاخرة
 
 function giftRowToObj(r) {
   return {
     id: r.id, name: r.name, name_en: r.name_en || '', icon: r.icon || '🎁', image_url: r.image_url || '',
-    cost: r.cost, currency: r.currency, charm: r.charm || r.cost, luxury: !!r.luxury, tab: r.tab || 'popular',
+    cost: r.cost, currency: r.currency, charm: r.charm || r.cost, luxury: !!(r.luxury || r.tab === 'luxury'), tab: (r.luxury || r.tab === 'luxury') ? 'luxury' : 'normal',
     burst_enabled: !!r.burst_enabled,
     burst_count: Math.min(60, Math.max(1, parseInt(r.burst_count, 10) || 20)),
-    banner_enabled: !!r.banner_enabled
+    banner_enabled: !!r.banner_enabled,
+    banner_frame_url: r.banner_frame_url || '',
+    effect_url: r.effect_url || ''
   };
 }
 
@@ -230,7 +234,7 @@ async function seedGiftsCatalog() {
     for (const g of GIFTS) {
       await run(`INSERT OR IGNORE INTO gifts_catalog (id, name, name_en, icon, image_url, cost, currency, charm, luxury, tab, sort_order, is_active)
                  VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, 1)`,
-        [g.id, g.name, g.name_en || '', g.icon, g.cost, g.currency, g.charm || g.cost, g.luxury ? 1 : 0, g.tab || 'popular', i++]);
+        [g.id, g.name, g.name_en || '', g.icon, g.cost, g.currency, g.charm || g.cost, g.luxury ? 1 : 0, g.luxury ? 'luxury' : 'normal', i++]);
     }
     console.log('Seeded gifts catalog:', GIFTS.length);
   } catch (e) { console.error('seed gifts error:', e.message); }
@@ -2276,20 +2280,25 @@ const giftImageUpload = multer({
       if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
       cb(null, uploadDir);
     },
-    filename: (req, file, cb) => cb(null, `gift-${Date.now()}-${uuidv4().slice(0, 8)}${ENTRY_IMAGE_EXT[file.mimetype] || '.png'}`)
+    filename: (req, file, cb) => cb(null, `gift-${Date.now()}-${uuidv4().slice(0, 8)}${file.fieldname === 'effect' ? (isEntryHtmlFile(file) ? '.html' : (ENTRY_MEDIA_EXT[file.mimetype] || '.png')) : (ENTRY_IMAGE_EXT[file.mimetype] || '.png')}`)
   }),
   limits: { fileSize: ADMIN_IMAGE_MAX_BYTES },
   fileFilter: (req, file, cb) => {
+    // مؤثر الهدية يقبل أيضاً MP4/WEBM/MOV وHTML (مثل قوالب الدخول)
+    if (file.fieldname === 'effect' && (ENTRY_MEDIA_EXT[file.mimetype] || isEntryHtmlFile(file))) return cb(null, true);
     if (ENTRY_IMAGE_EXT[file.mimetype]) cb(null, true);
-    else cb(new Error('يُسمح فقط بصور PNG أو JPG أو GIF أو WEBP'));
+    else cb(new Error('يُسمح فقط بصور PNG أو JPG أو GIF أو WEBP (ومؤثر الهدية يقبل MP4 وHTML أيضاً)'));
   }
 });
 
 async function adminGiftImageUpload(req, res, next) {
   const session = await verifyAdminToken(req);
   if (!session) return res.status(401).json({ error: 'غير مصرح بالدخول' });
-  giftImageUpload.single('image')(req, res, (err) => {
+  giftImageUpload.fields([{ name: 'image', maxCount: 1 }, { name: 'frame', maxCount: 1 }, { name: 'effect', maxCount: 1 }])(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? `حجم الصورة أكبر من ${ADMIN_IMAGE_MAX_MB}MB` : err.message });
+    req.file = (req.files && req.files.image && req.files.image[0]) || undefined;
+    req.frameFile = (req.files && req.files.frame && req.files.frame[0]) || undefined;
+    req.effectFile = (req.files && req.files.effect && req.files.effect[0]) || undefined;
     next();
   });
 }
@@ -2318,13 +2327,15 @@ app.post('/api/admin/gifts', adminGiftImageUpload, async (req, res) => {
   try {
     const drop = () => {
       if (req.file) safeDeleteGiftImage(`/uploads/${req.file.filename}`);
+      if (req.frameFile) safeDeleteGiftImage(`/uploads/${req.frameFile.filename}`);
+      if (req.effectFile) safeDeleteGiftImage(`/uploads/${req.effectFile.filename}`);
     };
     const name = String(req.body.name || '').trim();
     const cost = parseInt(req.body.cost, 10);
     const currency = req.body.currency === 'diamonds' ? 'diamonds' : 'coins';
-    const tab = GIFT_TAB_IDS.includes(req.body.tab) ? req.body.tab : 'popular';
+    const tab = GIFT_TAB_IDS.includes(req.body.tab) ? req.body.tab : 'normal';
     const icon = String(req.body.icon || '').trim().slice(0, 8) || '🎁';
-    const luxury = String(req.body.luxury) === '1' || req.body.luxury === 'true' ? 1 : 0;
+    const luxury = tab === 'luxury' ? 1 : 0;
     if (!name) { drop(); return res.status(400).json({ error: 'يرجى كتابة اسم الهدية' }); }
     if (!Number.isFinite(cost) || cost < 0) { drop(); return res.status(400).json({ error: 'يرجى إدخال سعر صحيح' }); }
     if (!req.file && !String(req.body.icon || '').trim()) { drop(); return res.status(400).json({ error: 'ارفع صورة للهدية أو اكتب إيموجي' }); }
@@ -2332,11 +2343,11 @@ app.post('/api/admin/gifts', adminGiftImageUpload, async (req, res) => {
     const maxRow = await get('SELECT COALESCE(MAX(sort_order), 0) AS m FROM gifts_catalog');
     const id = `cg-${uuidv4().slice(0, 8)}`;
     await run(`INSERT INTO gifts_catalog (id, name, name_en, icon, image_url, cost, currency, charm, luxury, tab, sort_order, is_active,
-                                          burst_enabled, burst_count, burst_image_url, banner_enabled)
-               VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+                                          burst_enabled, burst_count, burst_image_url, banner_enabled, banner_frame_url, effect_url)
+               VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
       [id, name, icon, req.file ? `/uploads/${req.file.filename}` : '', cost, currency, cost, luxury, tab, (maxRow ? maxRow.m : 0) + 1,
        adminFlag(req.body.burst_enabled), adminBurstCount(req.body.burst_count, 20),
-       '', adminFlag(req.body.banner_enabled)]);
+       '', adminFlag(req.body.banner_enabled), req.frameFile ? `/uploads/${req.frameFile.filename}` : '', req.effectFile ? `/uploads/${req.effectFile.filename}` : '']);
     io.emit('gifts_catalog_updated', { at: Date.now() });
     res.json({ success: true, id });
   } catch (err) {
@@ -2349,15 +2360,17 @@ app.put('/api/admin/gifts/:id', adminGiftImageUpload, async (req, res) => {
     const g = await get('SELECT * FROM gifts_catalog WHERE id = ?', [req.params.id]);
     const drop = () => {
       if (req.file) safeDeleteGiftImage(`/uploads/${req.file.filename}`);
+      if (req.frameFile) safeDeleteGiftImage(`/uploads/${req.frameFile.filename}`);
+      if (req.effectFile) safeDeleteGiftImage(`/uploads/${req.effectFile.filename}`);
     };
     if (!g) { drop(); return res.status(404).json({ error: 'الهدية غير موجودة' }); }
 
     const name = req.body.name !== undefined ? String(req.body.name).trim() : g.name;
     const cost = req.body.cost !== undefined ? parseInt(req.body.cost, 10) : g.cost;
     const currency = req.body.currency !== undefined ? (req.body.currency === 'diamonds' ? 'diamonds' : 'coins') : g.currency;
-    const tab = req.body.tab !== undefined ? (GIFT_TAB_IDS.includes(req.body.tab) ? req.body.tab : g.tab) : g.tab;
+    const tab = req.body.tab !== undefined ? (GIFT_TAB_IDS.includes(req.body.tab) ? req.body.tab : (g.luxury ? 'luxury' : 'normal')) : (g.luxury ? 'luxury' : 'normal');
     const icon = req.body.icon !== undefined ? (String(req.body.icon).trim().slice(0, 8) || '🎁') : g.icon;
-    const luxury = req.body.luxury !== undefined ? (String(req.body.luxury) === '1' || req.body.luxury === 'true' ? 1 : 0) : g.luxury;
+    const luxury = tab === 'luxury' ? 1 : 0;
     const isActive = req.body.is_active !== undefined ? (String(req.body.is_active) === '1' || req.body.is_active === 'true' ? 1 : 0) : g.is_active;
     if (!name || !Number.isFinite(cost) || cost < 0) { drop(); return res.status(400).json({ error: 'يرجى التأكد من الاسم والسعر' }); }
 
@@ -2372,9 +2385,15 @@ app.put('/api/admin/gifts/:id', adminGiftImageUpload, async (req, res) => {
     const burstCount = req.body.burst_count !== undefined ? adminBurstCount(req.body.burst_count, g.burst_count || 20) : (g.burst_count || 20);
     const bannerEnabled = req.body.banner_enabled !== undefined ? adminFlag(req.body.banner_enabled) : (g.banner_enabled ? 1 : 0);
     const burstImageUrl = '';
+    let frameUrl = g.banner_frame_url || '';
+    if (req.frameFile) { safeDeleteGiftImage(frameUrl); frameUrl = `/uploads/${req.frameFile.filename}`; }
+    else if (String(req.body.remove_frame) === '1') { safeDeleteGiftImage(frameUrl); frameUrl = ''; }
+    let effectUrl = g.effect_url || '';
+    if (req.effectFile) { safeDeleteGiftImage(effectUrl); effectUrl = `/uploads/${req.effectFile.filename}`; }
+    else if (String(req.body.remove_effect) === '1') { safeDeleteGiftImage(effectUrl); effectUrl = ''; }
     await run(`UPDATE gifts_catalog SET name = ?, icon = ?, image_url = ?, cost = ?, currency = ?, charm = ?, luxury = ?, tab = ?, is_active = ?,
-                      burst_enabled = ?, burst_count = ?, burst_image_url = ?, banner_enabled = ? WHERE id = ?`,
-      [name, icon, imageUrl, cost, currency, cost, luxury, tab, isActive, burstEnabled, burstCount, burstImageUrl, bannerEnabled, g.id]);
+                      burst_enabled = ?, burst_count = ?, burst_image_url = ?, banner_enabled = ?, banner_frame_url = ?, effect_url = ? WHERE id = ?`,
+      [name, icon, imageUrl, cost, currency, cost, luxury, tab, isActive, burstEnabled, burstCount, burstImageUrl, bannerEnabled, frameUrl, effectUrl, g.id]);
     io.emit('gifts_catalog_updated', { at: Date.now() });
     res.json({ success: true });
   } catch (err) {
@@ -2389,6 +2408,8 @@ app.delete('/api/admin/gifts/:id', async (req, res) => {
     const g = await get('SELECT * FROM gifts_catalog WHERE id = ?', [req.params.id]);
     if (!g) return res.status(404).json({ error: 'الهدية غير موجودة' });
     await run('DELETE FROM gifts_catalog WHERE id = ?', [g.id]);
+    safeDeleteGiftImage(g.banner_frame_url);
+    safeDeleteGiftImage(g.effect_url);
     if (g.image_url) {
       const used = await get('SELECT COUNT(*) AS n FROM gifts_history WHERE gift_icon = ?', [g.image_url]);
       if (!used || !used.n) safeDeleteGiftImage(g.image_url);
@@ -5465,6 +5486,7 @@ app.post('/api/gifts/send', async (req, res) => {
     const receiver = receiver_id ? await get('SELECT id, name, avatar, charm_level FROM users WHERE id = ?', [receiver_id]) : null;
 
     const giftEventPayload = {
+      count: 1,
       gift,
       sender: { id: sender.id, name: sender.name, avatar: sender.avatar },
       receiver,
@@ -5474,6 +5496,16 @@ app.post('/api/gifts/send', async (req, res) => {
 
     // Notify all clients so receiver's gifts wall updates in real time
     io.emit('user_gift_received', giftEventPayload);
+
+    // إشعار خاص للشخص المُرسَل إليه الهدية (داخل الغرفة أو من المحادثة الخاصة)
+    if (receiver_id) {
+      try {
+        const rs = userSockets.get(receiver_id);
+        if (rs) for (const sockId of rs) io.to(sockId).emit('gift_received_notice', {
+          gift, sender: { id: sender.id, name: sender.name, avatar: sender.avatar }, count: 1, room_id: room_id || null, timestamp: Date.now()
+        });
+      } catch (e) { console.error('gift notice error:', e.message); }
+    }
 
     // هدية من داخل المحادثة الخاصة (بدون غرفة): تُسجَّل كرسالة خاصة بين الطرفين فقط ولا تظهر في أي غرفة
     let dmMessage = null;
@@ -5502,7 +5534,7 @@ app.post('/api/gifts/send', async (req, res) => {
 
       // إشعار عام لكل المتصلين (في أي غرفة) للهدايا التي فعّلت لها الإدارة خيار «إشعار عام»
       // يُنشأ من السيرفر فقط بعد خصم الرصيد، والنقر عليه يُدخل المستخدم إلى هذه الغرفة
-      if (gift.banner_enabled) {
+      if (gift.banner_enabled || gift.luxury) {
         try {
           const roomRow = await get('SELECT id, title FROM rooms WHERE id = ?', [room_id]);
           io.emit('global_gift_banner', {
@@ -5542,7 +5574,12 @@ app.post('/api/gifts/send', async (req, res) => {
 
       // رسالة عامة في شات الغرفة لكل الهدايا: «أرسل X إلى فلان»
       const msgId = `msg-${Date.now()}`;
-      const giftNotice = `أرسل ${gift.name} ${gift.icon} إلى ${receiver ? receiver.name : 'الجميع'}`;
+      const giftQty = 1;
+      const recvName = receiver ? receiver.name : 'الجميع';
+      const giftIconTxt = (gift.icon && !/^(\/|https?:)/i.test(String(gift.icon))) ? ` ${gift.icon}` : '';
+      const giftNotice = gift.luxury
+        ? `👑 الملك ${sender.name} يغمر ${recvName} بـ ${gift.name}${giftIconTxt}!`
+        : `تم ارسال إلى ${recvName} ${gift.name} X${giftQty}`;
       await run(`
         INSERT INTO messages (id, sender_id, room_id, message_type, content, metadata)
         VALUES (?, ?, ?, 'gift', ?, ?)
@@ -5555,6 +5592,7 @@ app.post('/api/gifts/send', async (req, res) => {
         sender_avatar: sender.avatar,
         sender_frame: sender.avatar_frame,
         sender_level: sender.level,
+        sender_chat_bubble: await getEquippedBubbleUrl(sender.id),
         message_type: 'gift',
         content: giftNotice,
         metadata: gift,

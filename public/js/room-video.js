@@ -1771,6 +1771,7 @@
   // ====== التصغير: أيقونة عائمة قابلة للتحريك (الغرفة تبقى تعمل والصوت مستمر) ======
   let miniPos = null; // آخر موضع للأيقونة العائمة
   let backArmed = false;
+  let returnToParty = false; // صار الدخول عبر الأيقونة العائمة: الخروج أو التصغير التالي يذهب إلى «حفلة»
 
   function armBackToMinimize() {
     // زر الرجوع (أو إيماءة الرجوع) يصغّر الغرفة بدل إغلاقها
@@ -1790,6 +1791,7 @@
     try { closeLayer(); } catch (e) {}
     modal.classList.add('rv-minimized');
     document.querySelectorAll('.rv-mini').forEach(n => n.remove());
+    if (returnToParty) { returnToParty = false; try { App().goToPartyTab(); } catch (e) {} }
 
     const SIZE = 58, MARGIN = 8;
     const b = document.createElement('div'); b.className = 'rv-mini'; b.setAttribute('role', 'button'); b.tabIndex = 0;
@@ -1809,6 +1811,9 @@
     window.addEventListener('resize', onResize);
 
     const restore = () => {
+      // العودة المباشرة للغرفة: إغلاق كل الصفحات المفتوحة فوقها (ملف شخصي، متجر، رسائل…)
+      try { App().closeOverlaysAboveRoom(); } catch (e) {}
+      returnToParty = true; // عند الخروج/التصغير القادم نذهب مباشرة إلى تبويب «حفلة»
       modal.classList.remove('rv-minimized'); b.remove();
       window.removeEventListener('resize', onResize);
       try { if (!(history.state && history.state.rvRoom)) history.pushState({ rvRoom: 1 }, ''); } catch (e) {}
@@ -1843,13 +1848,15 @@
     b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); restore(); } });
     b.querySelector('.rv-mini-x').addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (await window.uiConfirm('هل تريد مغادرة الغرفة؟', { icon: '🚪', okText: 'خروج' })) App().leaveActiveVoiceRoom();
+      if (await window.uiConfirm('هل تريد مغادرة الغرفة؟', { icon: '🚪', okText: 'خروج' })) { returnToParty = false; App().leaveActiveVoiceRoom(); }
     });
   }
 
   // الخروج المخصص: يغلق كل شيء (المايك، الصوت، الاتصال)
   async function exitRoom() {
+    const toParty = returnToParty; returnToParty = false;
     App().leaveActiveVoiceRoom();
+    if (toParty) { try { App().goToPartyTab(); } catch (e) {} }
   }
 
   // ====== صورة الغرفة ======

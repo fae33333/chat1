@@ -533,7 +533,7 @@
     // Room events
     state.socket.on('room_message', (msg) => {
       if (!state.currentUser) return;
-      appendRoomChatMessage(msg);
+      appendRoomChatMessage(msg, true);
     });
 
     state.socket.on('seat_emoji_broadcast', ({ roomId, seatIndex, emojiId, emojiSvg, emojiName, user }) => {
@@ -881,13 +881,27 @@
     });
 
     state.socket.on('room_gift_sent', (payload) => {
-      if (window.giftEffectsEngine) {
-        window.giftEffectsEngine.showGiftAnimation(payload.gift, payload.sender, payload.receiver);
-        // فرقعة الهدية وإرسالها إلى المقعد الذي يجلس عليه المستلم
+      const eng = window.giftEffectsEngine;
+      if (eng && payload && payload.gift) {
+        const g = payload.gift;
         const seatEl = findGiftReceiverSeatEl(payload.receiver);
-        window.giftEffectsEngine.sendGiftToSeat(payload.gift, payload.sender, payload.receiver, seatEl, findGiftSenderSeatEl(payload.sender));
-        // تناثر صور الهدية لكل الهدايا
-        window.giftEffectsEngine.burstGiftImages(payload.gift, payload.sender, payload.receiver, seatEl, findGiftSenderSeatEl(payload.sender));
+        const senderSeatEl = findGiftSenderSeatEl(payload.sender);
+        if (g.luxury) {
+          // هدية فاخرة: مؤثر شفاف مثل مؤثرات الدخول (إن رُفع للهدية مؤثر)، وإلا أنيميشن شفاف بصورة الهدية
+          if (!(g.effect_url && window.playLuxuryGiftEffect && window.playLuxuryGiftEffect(g.effect_url))) {
+            eng.showLuxuryFullscreen(g, payload.sender, payload.receiver);
+          } else if (window.soundManager) { try { window.soundManager.playGiftSound(true); } catch (e) {} }
+        } else {
+          // هدية عادية: أيقونة صغيرة فوق مقعد المستلم مع عدد (X1) ثم تختفي بعد ~2.5 ثانية
+          eng.showSmallGiftAtSeat(g, payload.sender, payload.receiver, seatEl, payload.count || 1);
+          // الشريط العلوي (كما في الفيديو) ثم تنزل أيقونة الهدية إلى بطاقة الشات
+          try {
+            const sr = seatEl && seatEl.getBoundingClientRect ? seatEl.getBoundingClientRect() : null;
+            window.__giftFlyFrom = { x: sr && sr.width ? sr.left + sr.width / 2 : window.innerWidth / 2, y: sr && sr.width ? sr.top + sr.height / 2 : window.innerHeight * 0.3, t: Date.now() };
+            if (!g.banner_enabled && window.giftRoomBanner) window.giftRoomBanner.push({ gift: g, sender: payload.sender, receiver: payload.receiver, seatEl });
+          } catch (e) { console.error(e); }
+          if (g.burst_enabled) eng.burstGiftImages(g, payload.sender, payload.receiver, seatEl, senderSeatEl);
+        }
       }
       if (payload && payload.receiver && payload.receiver.id) {
         const openGiftsBoxes = document.querySelectorAll(`.user-received-gifts-box[data-user-id="${payload.receiver.id}"]`);
@@ -937,6 +951,11 @@
       openGiftsBoxes.forEach(box => {
         loadAndRenderUserGiftsSection(payload.receiver.id, box, state.currentUser && state.currentUser.id === payload.receiver.id);
       });
+    });
+
+    // إشعار للمستلم: «فلان أرسل لك هدية ...»
+    state.socket.on('gift_received_notice', (payload) => {
+      if (window.giftReceivedNotice) window.giftReceivedNotice.show(payload);
     });
 
     state.socket.on('room_entry_effect', ({ user, effectId, imageUrl }) => {
@@ -6286,6 +6305,7 @@
     // حتى يبقى مقعدي ومايكي وصوتي كما هم ولا يُنزلني الخادم عن المقعد.
     const liveModalNow = document.getElementById('live-voice-room-modal');
     if (state.activeRoom && String(state.activeRoom.id) === String(roomId) && liveModalNow && document.body.contains(liveModalNow)) {
+      closeOverlaysAboveRoom();
       liveModalNow.classList.remove('rv-minimized');
       document.querySelectorAll('.rv-mini').forEach(n => n.remove());
       try { if (!(history.state && history.state.rvRoom)) history.pushState({ rvRoom: 1 }, ''); } catch (e) {}
@@ -7911,6 +7931,37 @@
     }, { sound: true });
   }
 
+  // ===== مؤثر الهدية الفاخرة: نفس محرّك مؤثرات الدخول (طبقة شفافة فوق الغرفة، لا تحجب شيئاً) =====
+  const _giftFxQueue = [];
+  let _giftFxBusy = false;
+  function playLuxuryGiftEffect(url) {
+    if (!url) return false;
+    _giftFxQueue.push(url);
+    if (_giftFxQueue.length > 4) _giftFxQueue.shift();
+    if (!_giftFxBusy) _playNextGiftFx();
+    return true;
+  }
+  function _playNextGiftFx() {
+    const url = _giftFxQueue.shift();
+    if (!url) { _giftFxBusy = false; return; }
+    _giftFxBusy = true;
+    const slot = document.getElementById('room-entry-effect-slot');
+    const roomContainer = (slot && slot.closest('.live-room-container')) || document.body;
+    const old = document.getElementById('soulchill-gift-effect-layer');
+    if (old) old.remove();
+    const layer = document.createElement('div');
+    layer.id = 'soulchill-gift-effect-layer';
+    // entry-full ⇒ طبقة شفافة بملء الشاشة فوق المايكات، pointer-events: none (لا تمنع اللمس ولا الكتابة)
+    layer.className = 'soulchill-seamless-room-entry-layer entry-bottom entry-full';
+    roomContainer.appendChild(layer);
+    scPlayOnce(layer, url, 'seamless-room-entry-gif', () => {
+      if (!layer.parentElement) { _giftFxBusy = false; _playNextGiftFx(); return; }
+      layer.classList.add('fade-out');
+      setTimeout(() => { if (layer.parentElement) layer.remove(); _giftFxBusy = false; _playNextGiftFx(); }, 650);
+    }, { sound: true });
+  }
+  window.playLuxuryGiftEffect = playLuxuryGiftEffect;
+
   async function loadRoomChatMessages(roomId) {
     if (!state.currentUser) return;
     try {
@@ -7923,7 +7974,7 @@
     }
   }
 
-  function appendRoomChatMessage(msg) {
+  function appendRoomChatMessage(msg, live) {
     if (!state.currentUser) return;
     const stream = document.getElementById('room-chat-messages-container');
     if (!stream) return;
@@ -7937,8 +7988,12 @@
     }
     const frameClass = chatFrame ? `chat-frame-${chatFrame}` : '';
 
-    el.className = `room-chat-bubble ${msg.message_type === 'gift' ? 'gift-notice' : ''} ${frameClass}`.trim();
-    applyStoreBubble(el, msg.sender_chat_bubble);
+    let giftMeta = msg.metadata;
+    if (typeof giftMeta === 'string') { try { giftMeta = JSON.parse(giftMeta); } catch (e) { giftMeta = null; } }
+    const isLuxGiftMsg = msg.message_type === 'gift' && !!(giftMeta && (giftMeta.luxury || giftMeta.tab === 'luxury'));
+    const isRegGiftMsg = msg.message_type === 'gift' && !isLuxGiftMsg;
+    el.className = `room-chat-bubble ${msg.message_type === 'gift' ? 'gift-notice' : ''} ${isLuxGiftMsg ? 'gift-lux' : ''} ${isRegGiftMsg ? 'gift-reg' : ''} ${isRegGiftMsg ? '' : frameClass}`.trim();
+    if (!isRegGiftMsg) applyStoreBubble(el, msg.sender_chat_bubble);
 
     // Calculate Wealth Level (الثروة) and User Level (الليفيل) matching image-3.png
     const isSelf = state.currentUser && msg.sender_id === state.currentUser.id;
@@ -7968,6 +8023,47 @@
     if (msg.message_type === 'emoji') {
       const eu = String(msg.content || '');
       safeContent = /^\/uploads\//.test(eu) ? `<img class="room-chat-emoji-img" src="${fEsc(eu)}" alt="" draggable="false" onerror="this.replaceWith(document.createTextNode('😊'))" />` : '😊';
+    }
+
+    // هدية عادية: بطاقة بنفسجية «الاسم + Lv» ثم «تم ارسال إلى ... » مع x العدد وأيقونة الهدية (كما في الفيديو)
+    if (isRegGiftMsg) {
+      const rawTxt = String(msg.content || '');
+      const qm = rawTxt.match(/\s*[xX]\s*(\d+)\s*$/);
+      const qty = qm ? parseInt(qm[1], 10) : 1;
+      const txt = qm ? rawTxt.slice(0, qm.index).trim() : rawTxt.trim();
+      const gIcon = giftMeta && (giftMeta.image_url || giftMeta.icon);
+      const flyFrom = window.__giftFlyFrom;
+      const willFly = !!(live && flyFrom && (Date.now() - flyFrom.t) < 4000 && window.giftEffectsEngine && gIcon);
+      el.innerHTML = `
+        <div class="grc-head">
+          <span class="grc-name">${fEsc(msg.sender_name || 'عضو')}</span>
+          <span class="grc-lv"><i></i>Lv.${userLevel}</span>
+        </div>
+        <div class="grc-row">
+          <div class="grc-text">${fEsc(txt)}</div>
+          <div class="grc-end"><span class="grc-qty">x ${qty}</span><span class="grc-icon${willFly ? ' pending' : ''}"></span></div>
+        </div>`;
+      const iconEl = el.querySelector('.grc-icon');
+      if (iconEl) { if (typeof giftFillIcon === 'function') giftFillIcon(iconEl, gIcon || '🎁'); else iconEl.textContent = '🎁'; }
+      // فقاعة الدردشة المشتراة (إن وُجدت) تُطبَّق بعد innerHTML، وبدونها تبقى البطاقة البنفسجية
+      applyStoreBubble(el, msg.sender_chat_bubble);
+      if (frameClass) el.classList.add(frameClass);
+      const gName = el.querySelector('.grc-name');
+      if (gName && msg.sender_id) {
+        gName.onclick = (ev) => {
+          ev.stopPropagation();
+          openRoomUserSheet({ id: msg.sender_id, name: msg.sender_name, avatar: msg.sender_avatar, avatar_frame: msg.sender_frame, level: msg.sender_level, wealth_level: msg.sender_wealth_level, charm_level: msg.sender_charm_level, role: msg.sender_role });
+        };
+      }
+      stream.appendChild(el);
+      stream.scrollTop = stream.scrollHeight;
+      if (willFly && iconEl) {
+        window.__giftFlyFrom = null;
+        // انتظر لحظة حتى يستقر التمرير ثم أنزل الأيقونة إلى البطاقة
+        requestAnimationFrame(() => window.giftEffectsEngine.flyGiftToChat(giftMeta, flyFrom, iconEl, () => iconEl.classList.remove('pending')));
+        setTimeout(() => iconEl.classList.remove('pending'), 2500); // احتياط
+      }
+      return;
     }
 
     // مطابق لفيديو الغرفة: الصورة + الاسم + الليفل بجانب الاسم فقط، ثم نص الرسالة.
@@ -11865,7 +11961,7 @@
             <button type="button" class="pf-stat" data-rel="friends"><b data-n="friends">0</b><span>الأصدقاء</span></button>
             <button type="button" class="pf-stat" data-rel="following"><b data-n="following">0</b><span>يتابع</span></button>
             <button type="button" class="pf-stat" data-rel="followers"><b data-n="followers">0</b><span>المتابعين</span></button>
-            ${isSelf ? '<button type="button" class="pf-stat" data-vis-open><b data-n="visitors">0</b><span>الزوار</span></button>' : ''}
+            ${isSelf ? '<button type="button" class="pf-stat" data-vis-open><b data-n="visitors">0</b><span>الزوار</span></button>' : '<div class="pf-stat" style="cursor:default"><b data-n="visitors">0</b><span>الزوار</span></div>'}
           </div>
           <div class="pf-tabs"></div>
           <div class="pf-tab-content"></div>
@@ -11912,7 +12008,10 @@
     const nameEl = el.querySelector('.pf-prof-name');
     if (isSelf && nameEl) { nameEl.style.cursor = 'pointer'; nameEl.onclick = () => showEditProfileModal(); }
     const ownerIdForRel = u.id;
-    el.querySelectorAll('[data-rel]').forEach(b => b.onclick = (ev) => { ev.stopPropagation(); pfOpenRelations(b.dataset.rel, ownerIdForRel); });
+    el.querySelectorAll('[data-rel]').forEach(b => {
+      if (!isSelf) { b.style.cursor = 'default'; b.onclick = (ev) => ev.stopPropagation(); return; } // زائر: لا تُفتح القوائم
+      b.onclick = (ev) => { ev.stopPropagation(); pfOpenRelations(b.dataset.rel, ownerIdForRel); };
+    });
     const msgBtn = el.querySelector('[data-msg-main]');
     if (msgBtn) msgBtn.onclick = () => {
       if (!requireAuth()) return;
@@ -11985,7 +12084,10 @@
             <div class="pf-rel-row" data-rel2="following">متابعة<span>${toArabicNumerals(s.following_count || 0)} ${PF_CHEV_L}</span></div>
             <div class="pf-rel-row" data-rel2="followers">المتابعين<span>${toArabicNumerals(s.followers_count || 0)} ${PF_CHEV_L}</span></div>
           </div>`;
-        tabContent.querySelectorAll('[data-rel2]').forEach(b => b.onclick = () => pfOpenRelations(b.dataset.rel2, u.id));
+        tabContent.querySelectorAll('[data-rel2]').forEach(b => {
+          if (!isSelf) { b.style.cursor = 'default'; return; } // زائر: لا تُفتح القوائم
+          b.onclick = () => pfOpenRelations(b.dataset.rel2, u.id);
+        });
       } else {
         if (!st.posts) { tabContent.innerHTML = '<div class="pf-empty">جارٍ التحميل…</div>'; return; }
         tabContent.innerHTML = `<div class="pf-sect">${st.posts.length ? st.posts.map(m => `
@@ -14197,18 +14299,16 @@
   }
 
   const GIFT_TABS = [
-    { id: 'popular', label: 'المتداول' },
-    { id: 'luck', label: 'الحظ' },
-    { id: 'events', label: 'الأنشطة' },
-    { id: 'empire', label: 'الإمبراطورية' },
-    { id: 'celebs', label: 'المشاهير' }
+    { id: 'normal', label: 'هدايا عادية' },
+    { id: 'luxury', label: 'هدايا فاخرة 👑' }
   ];
+  const giftTabOf = (g) => (g && (g.luxury || g.tab === 'luxury')) ? 'luxury' : 'normal';
 
   // opts.lockRecipient: المستلم مثبّت مسبقاً (المحادثة الخاصة) — لا قائمة اختيار ولا ربط بالغرفة
   function openGiftStoreModal(receiverId = null, roomId = null, targetUser = null, opts = {}) {
     if (!requireAuth()) return;
     const lockRecipient = !!(opts && opts.lockRecipient && (receiverId || (targetUser && targetUser.id)));
-    let selectedGift = state.gifts.find(g => (g.tab || 'popular') === 'popular') || state.gifts[0] || null;
+    let selectedGift = state.gifts.find(g => giftTabOf(g) === 'normal') || state.gifts[0] || null;
     let currentReceiverId = receiverId || (targetUser && targetUser.id ? targetUser.id : null);
     let currentTargetUser = targetUser || null;
 
@@ -14456,7 +14556,7 @@
 
     const shelfEl = modal.querySelector('#gift-shelf-grid');
     const renderShelf = (tabId) => {
-      const list = state.gifts.filter(g => (g.tab || 'popular') === tabId);
+      const list = state.gifts.filter(g => giftTabOf(g) === tabId);
       if (!list.length) {
         shelfEl.innerHTML = '<div class="gift-shelf-empty">لا توجد هدايا في هذا القسم حالياً</div>';
         selectedGift = null;
@@ -14485,11 +14585,11 @@
         renderShelf(btn.dataset.giftTab);
       };
     });
-    renderShelf('popular');
+    renderShelf('normal');
     // تحديث الرف فوراً عند تغيّر كتالوج الهدايا من الإدارة (الهدية الجديدة تظهر مباشرة)
     modal.__refreshShelf = () => {
       const a = modal.querySelector('.gift-tab-btn.active');
-      renderShelf(a ? a.dataset.giftTab : 'popular');
+      renderShelf(a ? a.dataset.giftTab : 'normal');
     };
 
     modal.querySelector('#send-gift-action-btn').onclick = async () => {
@@ -15516,9 +15616,26 @@
   }
   setTimeout(handleGoogleRedirectResult, 400);
 
+  // يغلق كل الصفحات/النوافذ المفتوحة فوق الغرفة (الملفات الشخصية، المتجر، الرسائل الخاصة، قوائم المستخدم…)
+  function closeOverlaysAboveRoom() {
+    try {
+      document.querySelectorAll('.pf-page').forEach(n => n.remove());
+      const dm = document.getElementById('direct-chat-window-modal');
+      if (dm) { const cb = dm.querySelector('#close-chat-window-btn'); if (cb) cb.click(); if (dm.isConnected) dm.remove(); }
+      const sheet = document.getElementById('room-user-sheet'); if (sheet) sheet.remove();
+      const entry = document.getElementById('soulchill-profile-entry-layer'); if (entry) entry.remove();
+    } catch (e) { console.error(e); }
+  }
+  // الانتقال المباشر إلى تبويب «حفلة»
+  function goToPartyTab() {
+    try { closeOverlaysAboveRoom(); switchTab('rooms'); } catch (e) { console.error(e); }
+  }
+
   window.SoulChillApp = {
     state,
     switchTab,
+    closeOverlaysAboveRoom,
+    goToPartyTab,
     showToast,
     openVoiceRoom,
     // واجهات إضافية تستخدمها js/room-pro.js (مركز الترفيه، كيس الحظ، الشحن اليومي…)

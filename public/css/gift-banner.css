@@ -94,3 +94,205 @@
 
 /* عند فتح لوحة الغرفة (rv-top-panel / rv-exit-panel وبقية اللوحات) تكون فوق الإشعار */
 body:has(.rv-layer.on) #gift-global-banner-host { z-index: 50; }
+
+/* ===== إطار مخصص لإشعار الهدية (للفاخرة، أو أي هدية رُفع لها إطار من الإدارة) =====
+   الإطار صورة شفافة بنسبة 640×171 تُمرَّر عبر --ggb-frame؛ وإن لم توجد تُستعمل الصورة الافتراضية للفاخرة. */
+.ggb-banner.ggb-framed,
+.ggb-banner[data-lux="1"] {
+  --ggb-frame-img: var(--ggb-frame, url('/img/banner_gift_vip_6.webp'));
+  max-width: 440px; min-height: 0; height: auto; aspect-ratio: 640 / 171;
+  padding: 0; gap: 0; overflow: visible; border: 0; border-radius: 0;
+  background: transparent; box-shadow: none; animation: none;
+}
+.ggb-banner.ggb-framed::before,
+.ggb-banner[data-lux="1"]::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: var(--ggb-frame-img) center / 100% 100% no-repeat;
+  animation: ggbFrameGlow 1.6s ease-in-out infinite;
+}
+@keyframes ggbFrameGlow {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(255, 190, 60, .55)); }
+  50%      { filter: drop-shadow(0 0 14px rgba(255, 220, 120, .95)); }
+}
+.ggb-banner.ggb-framed::after, .ggb-banner[data-lux="1"]::after,
+.ggb-framed .ggb-shine, .ggb-framed .ggb-bolts,
+.ggb-banner[data-lux="1"] .ggb-shine, .ggb-banner[data-lux="1"] .ggb-bolts { display: none; }
+
+.ggb-framed > *:not(.ggb-shine):not(.ggb-bolts),
+.ggb-banner[data-lux="1"] > *:not(.ggb-shine):not(.ggb-bolts) { position: absolute; z-index: 1; }
+.ggb-framed .ggb-avatar, .ggb-banner[data-lux="1"] .ggb-avatar {
+  left: 8.1%; top: 50%; transform: translateY(-50%); width: 11.4%; height: auto; aspect-ratio: 1;
+  border: 0; box-shadow: none;
+}
+.ggb-framed .ggb-text, .ggb-banner[data-lux="1"] .ggb-text {
+  left: 22%; right: 38%; top: 33%; bottom: 30%;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.ggb-framed .ggb-icon, .ggb-banner[data-lux="1"] .ggb-icon {
+  right: 28%; top: 50%; transform: translateY(-50%); width: 9%; height: auto; aspect-ratio: 1;
+}
+.ggb-framed .ggb-emoji, .ggb-banner[data-lux="1"] .ggb-emoji { font-size: 24px; }
+.ggb-framed .ggb-go, .ggb-banner[data-lux="1"] .ggb-go {
+  right: 14%; top: 50%; transform: translateY(-50%); height: 26px; padding: 0 12px; font-size: 15px;
+}
+.ggb-framed .ggb-go:active, .ggb-banner[data-lux="1"] .ggb-go:active { transform: translateY(-50%) scale(.94); }
+.ggb-framed .ggb-title, .ggb-banner[data-lux="1"] .ggb-title { font-size: 12px; }
+.ggb-framed .ggb-desc,  .ggb-banner[data-lux="1"] .ggb-desc  { font-size: 10px; }
+
+/* ===== هدية عادية: أيقونة صغيرة فوق مقعد المستلم + العدد ===== */
+.gift-seat-small {
+  position: fixed; z-index: 313; pointer-events: none; display: flex; align-items: center; gap: 3px;
+  padding: 2px 8px 2px 6px; border-radius: 999px; line-height: 1; white-space: nowrap;
+  background: rgba(0, 0, 0, .45); box-shadow: 0 0 10px rgba(255, 200, 80, .55);
+}
+.gift-seat-small .gss-icon { font-size: 26px; display: inline-flex; align-items: center; }
+.gift-seat-small .gss-icon .gift-img { width: 28px; height: 28px; object-fit: contain; }
+.gift-seat-small .gss-count { font-size: 14px; font-weight: 900; color: #ffe14d; text-shadow: 0 1px 3px rgba(0,0,0,.7); direction: ltr; }
+
+/* ===== هدية فاخرة: أنيميشن بملء الشاشة (5–8 ثوانٍ) — يحجب الغرفة والكتابة حتى ينتهي ===== */
+.lux-fs-overlay {
+  position: fixed; inset: 0; z-index: 99999; pointer-events: none; overflow: hidden; direction: rtl;
+  background: transparent; /* شفاف تماماً مثل مؤثرات الدخول: لا يحجب الغرفة ولا الكتابة */
+  opacity: 0; transition: opacity .4s ease;
+}
+.lux-fs-overlay.on { opacity: 1; }
+.lux-fs-overlay.off { opacity: 0; }
+.lux-fs-rays {
+  position: absolute; left: 50%; top: 45%; width: 160vmax; height: 160vmax; margin: -80vmax 0 0 -80vmax;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 215, 120, .20) 0 6deg, transparent 6deg 18deg);
+  animation: luxRays 9s linear infinite; opacity: 0; display: none;
+}
+@keyframes luxRays { to { transform: rotate(360deg); } }
+.lux-fs-trail {
+  position: absolute; top: 45%; left: 0; right: 0; height: 90px; margin-top: -45px; opacity: 0;
+  background: linear-gradient(270deg, transparent, rgba(255, 230, 150, .85) 40%, rgba(255, 255, 255, .95) 50%, transparent);
+  filter: blur(8px); animation: luxTrail 6.5s ease-in-out forwards;
+}
+@keyframes luxTrail { 0%, 8% { opacity: 0; transform: translateX(60%); } 18% { opacity: 1; } 42% { opacity: .9; transform: translateX(-60%); } 55%, 100% { opacity: 0; transform: translateX(-100%); } }
+.lux-fs-stage {
+  position: absolute; left: 50%; top: 45%; width: min(70vw, 340px); height: min(70vw, 340px);
+  display: flex; align-items: center; justify-content: center;
+  animation: luxFly 6.5s cubic-bezier(.25, .8, .3, 1) forwards;
+}
+/* يسرع من يمين الشاشة إلى اليسار ثم يستقر في المنتصف ويتنفّس حتى النهاية */
+@keyframes luxFly {
+  0%   { transform: translate(120vw, -50%) scale(.6) rotate(8deg); opacity: 0; }
+  10%  { opacity: 1; }
+  38%  { transform: translate(-50%, -50%) scale(1.15) rotate(0deg); }
+  50%  { transform: translate(-50%, -50%) scale(1); }
+  80%  { transform: translate(-50%, -50%) scale(1.08); }
+  100% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; }
+}
+.lux-fs-media { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 26px rgba(255, 215, 110, .9)); }
+.lux-fs-emoji { font-size: min(52vw, 240px); line-height: 1; display: flex; align-items: center; justify-content: center; }
+.lux-fs-caption {
+  position: absolute; left: 0; right: 0; bottom: 14%; text-align: center; padding: 0 16px;
+  animation: luxCaption 6.5s ease forwards;
+}
+@keyframes luxCaption { 0%, 25% { opacity: 0; transform: translateY(24px); } 40%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+.lux-fs-crown { font-size: 44px; line-height: 1; animation: luxCrown 1.2s ease-in-out infinite; }
+@keyframes luxCrown { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-8px) rotate(6deg); } }
+.lux-fs-line {
+  margin-top: 8px; font-size: 22px; font-weight: 900; line-height: 1.5;
+  color: #ffd75e; text-shadow: 0 0 12px rgba(255, 150, 30, .9), 0 2px 4px rgba(0, 0, 0, .9), 0 0 18px rgba(0, 0, 0, .8);
+}
+
+/* ===== رسائل الهدايا في شات الغرفة ===== */
+/* هدية عادية: سطر ملوّن (أخضر) */
+.room-chat-bubble.gift-notice .room-chat-text { color: #7dff9a; font-weight: 800; }
+/* هدية فاخرة: لون ذهبي/أحمر مميّز وخط أكبر */
+.room-chat-bubble.gift-notice.gift-lux {
+  background: linear-gradient(90deg, rgba(160, 20, 30, .55), rgba(190, 130, 20, .45));
+  border: 1px solid rgba(255, 215, 110, .8); box-shadow: 0 0 12px rgba(255, 190, 60, .45);
+}
+.room-chat-bubble.gift-notice.gift-lux .room-chat-text {
+  color: #ffd75e; font-size: 16px; font-weight: 900; text-shadow: 0 1px 4px rgba(120, 0, 0, .8);
+}
+
+/* ===== بنر الهدية الفاخرة: عبور من اليسار إلى اليمين =====
+   ثانيتان: يدخل من اليسار إلى المنتصف | 3 ثوانٍ: يتوقف | ثانيتان: يكمل ويخرج من اليمين (المجموع 7 ثوانٍ) */
+#gift-global-banner-host { overflow-x: clip; }
+.ggb-banner.ggb-lux.show[data-lux="1"] {
+  opacity: 0;
+  animation: ggbLuxPass 7s linear forwards;
+}
+@keyframes ggbLuxPass {
+  0%      { transform: translateX(calc(-50vw - 100%)); opacity: 0; animation-timing-function: cubic-bezier(.2, .8, .3, 1); }
+  3%      { opacity: 1; }
+  28.57%  { transform: translateX(0); opacity: 1; }
+  71.43%  { transform: translateX(0); opacity: 1; animation-timing-function: cubic-bezier(.6, 0, .8, .4); }
+  97%     { opacity: 1; }
+  100%    { transform: translateX(calc(50vw + 100%)); opacity: 0; }
+}
+
+/* ===== هدية عادية داخل الغرفة: الشريط العلوي (كما في الفيديو) ===== */
+.grb-banner {
+  position: fixed; z-index: 99990; box-sizing: border-box; direction: rtl; pointer-events: none;
+  height: 48px; display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 14px;
+  border-radius: 999px;
+  background: rgba(34, 34, 40, .8);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .4);
+  transform: translateX(46px); opacity: 0;
+  transition: transform .4s cubic-bezier(.2, .9, .3, 1.15), opacity .3s ease;
+}
+.grb-banner.show { transform: translateX(0); opacity: 1; }
+.grb-banner.hide { transform: translateX(46px); opacity: 0; transition: transform .3s ease, opacity .25s ease; }
+.grb-avatar {
+  flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
+  border: 2px solid #e9d5b0; box-shadow: 0 0 6px rgba(233, 213, 176, .55);
+}
+.grb-text { flex: 1 1 auto; min-width: 0; text-align: right; line-height: 1.35; }
+.grb-name { color: #fff; font-weight: 800; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grb-desc { color: rgba(255, 255, 255, .88); font-size: 10.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* أيقونة الهدية وهي تنزل إلى الشات */
+.gift-fly-icon {
+  position: fixed; width: 48px; height: 48px; z-index: 99991; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; font-size: 36px; line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .45)); will-change: transform, opacity;
+}
+.gift-fly-icon .gift-img { width: 100%; height: 100%; object-fit: contain; }
+
+/* ===== هدية عادية في شات الغرفة: بطاقة بنفسجية (كما في الفيديو) ===== */
+.room-chat-bubble.gift-notice.gift-reg:not(.has-store-bubble):not(.has-store-bubble-html) {
+  background: linear-gradient(105deg, #4a2bd0 0%, #6d2bd6 55%, #8a2fd9 100%) !important;
+  border: 0 !important;
+}
+.room-chat-bubble.gift-notice.gift-reg {
+  border-radius: 10px; padding: 7px 12px 8px; min-width: 210px; max-width: 92%;
+  box-shadow: 0 3px 12px rgba(80, 30, 200, .45), inset 0 1px 0 rgba(255, 255, 255, .18);
+  backdrop-filter: none; direction: rtl; align-self: flex-start;
+}
+.gift-reg .grc-head { display: flex; align-items: center; gap: 6px; direction: rtl; }
+.gift-reg .grc-name { color: #ffe6c2; font-weight: 800; font-size: 13px; cursor: pointer; }
+.gift-reg .grc-lv {
+  display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px 1px 4px; border-radius: 999px;
+  background: linear-gradient(180deg, #34d058, #16a34a); color: #fff; font-size: 10px; font-weight: 800;
+  box-shadow: 0 0 5px rgba(52, 208, 88, .6);
+}
+.gift-reg .grc-lv i { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle, #fff 28%, #bbf7d0 30%, #22c55e 100%); display: inline-block; }
+.gift-reg .grc-row { display: flex; align-items: center; gap: 8px; margin-top: 3px; direction: rtl; }
+.gift-reg .grc-text { flex: 1 1 auto; min-width: 0; color: #fff; font-size: 12.5px; font-weight: 700; line-height: 1.5; text-align: right; }
+.gift-reg .grc-end { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; direction: ltr; }
+.gift-reg .grc-qty { color: #fff; font-weight: 900; font-size: 15px; letter-spacing: .3px; }
+.gift-reg .grc-icon { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; }
+.gift-reg .grc-icon .gift-img { width: 100%; height: 100%; object-fit: contain; }
+.gift-reg .grc-icon.pending { visibility: hidden; }
+
+/* إشعار المستلم */
+.grn-notice {
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 10px); z-index: 100001;
+  width: min(92vw, 360px); box-sizing: border-box; direction: rtl; display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 16px; pointer-events: none;
+  background: linear-gradient(105deg, #4a2bd0, #8a2fd9); color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+  transform: translate(-50%, -120%); opacity: 0; transition: transform .4s cubic-bezier(.2, .9, .3, 1.15), opacity .3s;
+}
+.grn-notice.show { transform: translate(-50%, 0); opacity: 1; }
+.grn-avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid #e9d5b0; flex: 0 0 auto; }
+.grn-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 30px; flex: 0 0 auto; order: 3; }
+.grn-icon img { width: 100%; height: 100%; object-fit: contain; }
+.grn-text { flex: 1 1 auto; min-width: 0; text-align: right; }
+.grn-title { font-weight: 900; font-size: 13px; }
+.grn-desc { font-size: 11.5px; font-weight: 700; opacity: .95; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
