@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = path.join(__dirname, 'soulchill.sqlite');
+const DB_PATH = process.env.SOULCHILL_DB_PATH || path.join(__dirname, 'soulchill.sqlite');
 
 let db;
 try {
@@ -619,6 +619,8 @@ async function initDB() {
   try { await run(`ALTER TABLE gifts_catalog ADD COLUMN banner_frame_url TEXT DEFAULT ''`); } catch (e) {}
   // مؤثر الهدية الفاخرة (GIF/WEBP/MP4/HTML) يُعرض كمؤثرات الدخول: طبقة شفافة فوق الغرفة
   try { await run(`ALTER TABLE gifts_catalog ADD COLUMN effect_url TEXT DEFAULT ''`); } catch (e) {}
+  // الحد الأدنى لمستوى الجاذبية (Charm Level) لدى المستلم لاستقبال هدايا VIP الحصرية
+  try { await run(`ALTER TABLE gifts_catalog ADD COLUMN min_charm_level INTEGER DEFAULT 0`); } catch (e) {}
   // الهدايا قسمان فقط: normal (عادية) و luxury (فاخرة) — ترحيل الأقسام القديمة
   try {
     await run(`UPDATE gifts_catalog SET luxury = 1 WHERE tab = 'luxury'`);
@@ -747,19 +749,86 @@ async function initDB() {
   // Ensure is_banned column exists on users
   try { await run(`ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0`); } catch (e) {}
 
-  // ───────── نظام نشاط الأعضاء: النقاط / المستويات / VIP ─────────
-  // نقاط الثروة (إنفاق) ونقاط الرواج (هدايا مستلمة) + اشتراك VIP ومدته
+  // ───────── نظام نشاط الأعضاء: النقاط / المستويات / النبلاء / الغرف / العائلات ─────────
+  // نقاط الثروة (إنفاق) ونقاط الرواج (هدايا مستلمة) + اشتراك النبلاء VIP ومدته وخصوصيته ومضاعف الخبرة
   try { await run(`ALTER TABLE users ADD COLUMN wealth_points INTEGER DEFAULT 0`); } catch (e) {}
   try { await run(`ALTER TABLE users ADD COLUMN popularity_points INTEGER DEFAULT 0`); } catch (e) {}
   try { await run(`ALTER TABLE users ADD COLUMN vip_level INTEGER DEFAULT 0`); } catch (e) {}
   try { await run(`ALTER TABLE users ADD COLUMN vip_until TEXT`); } catch (e) {}
+  try { await run(`ALTER TABLE users ADD COLUMN vip_stealth INTEGER DEFAULT 0`); } catch (e) {}
+  try { await run(`ALTER TABLE users ADD COLUMN vip_anti_track INTEGER DEFAULT 0`); } catch (e) {}
+  try { await run(`ALTER TABLE users ADD COLUMN xp_boost_until TEXT`); } catch (e) {}
+
+  // مستويات الغرف ومهامها اليومية (Room Levels & Daily Lucky Bag + 2x XP)
+  try { await run(`ALTER TABLE rooms ADD COLUMN room_xp INTEGER DEFAULT 0`); } catch (e) {}
+  try { await run(`ALTER TABLE rooms ADD COLUMN room_level INTEGER DEFAULT 1`); } catch (e) {}
+  try { await run(`ALTER TABLE rooms ADD COLUMN xp_boost_until TEXT`); } catch (e) {}
+  try { await run(`ALTER TABLE rooms ADD COLUMN daily_bag_day TEXT`); } catch (e) {}
+
+  // سجل مكافآت المراحل المستلمة (لمستويات الثراء والجاذبية)
+  await run(`
+    CREATE TABLE IF NOT EXISTS level_reward_claims (
+      user_id TEXT NOT NULL,
+      track TEXT NOT NULL,
+      milestone INTEGER NOT NULL,
+      claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, track, milestone)
+    )
+  `);
+
+  // حقيبة الهدايا المجانية (المكتسبة من المستويات أو تفعيل رتب النبلاء أو مهام العائلة)
+  await run(`
+    CREATE TABLE IF NOT EXISTS user_free_gifts (
+      user_id TEXT NOT NULL,
+      gift_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, gift_id)
+    )
+  `);
+
+  // نظام العائلات / الإمبراطوريات ومستوياتها (Family System)
+  await run(`
+    CREATE TABLE IF NOT EXISTS families (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      badge_emoji TEXT DEFAULT '🦅',
+      color TEXT DEFAULT '#7c3aed',
+      slogan TEXT DEFAULT '',
+      leader_id TEXT NOT NULL,
+      xp INTEGER NOT NULL DEFAULT 0,
+      level INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await run(`
+    CREATE TABLE IF NOT EXISTS family_members (
+      family_id TEXT NOT NULL,
+      user_id TEXT NOT NULL UNIQUE,
+      role TEXT NOT NULL DEFAULT 'member',
+      contribution_xp INTEGER NOT NULL DEFAULT 0,
+      joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (family_id, user_id)
+    )
+  `);
+  await run(`
+    CREATE TABLE IF NOT EXISTS family_daily_claims (
+      family_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      day TEXT NOT NULL,
+      xp_awarded INTEGER DEFAULT 0,
+      coins_awarded INTEGER DEFAULT 0,
+      diamonds_awarded INTEGER DEFAULT 0,
+      PRIMARY KEY (family_id, user_id, day)
+    )
+  `);
 
   // سجل نشاط الأعضاء: كل إرسال/استلام هدية وكل شراء VIP مع النقاط والعملات
   await run(`
     CREATE TABLE IF NOT EXISTS member_activity (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
-      type TEXT NOT NULL,            -- gift_sent | gift_received | vip_purchase | vip_grant
+      type TEXT NOT NULL,            -- gift_sent | gift_received | vip_purchase | vip_grant | level_reward
       other_user_id TEXT,            -- الطرف الآخر (المرسل/المستلم)
       ref_id TEXT,                   -- معرّف الهدية أو مستوى VIP
       ref_name TEXT,
@@ -775,7 +844,7 @@ async function initDB() {
   await run(`CREATE INDEX IF NOT EXISTS idx_member_activity_user ON member_activity (user_id, created_at)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_member_activity_type ON member_activity (type, created_at)`);
 
-  // باقات VIP (يعدّلها الأدمن من اللوحة)
+  // باقات النبلاء والأرستقراطية (Viscount الكونت ← Sultan السلطان، يعدّلها الأدمن من اللوحة)
   await run(`
     CREATE TABLE IF NOT EXISTS vip_plans (
       level INTEGER PRIMARY KEY,
@@ -785,9 +854,19 @@ async function initDB() {
       is_active INTEGER DEFAULT 1
     )
   `);
-  const vipSeed = [[1, 'VIP 1', 300], [2, 'VIP 2', 800], [3, 'VIP 3', 1500], [4, 'VIP 4', 3000], [5, 'VIP 5', 6000]];
+  const vipSeed = [
+    [1, 'الفيكونت (Viscount)', 300],
+    [2, 'الكونت (Count)', 800],
+    [3, 'الماركيز (Marquis)', 1500],
+    [4, 'الدوق (Duke)', 3000],
+    [5, 'الأمير (Prince)', 6000],
+    [6, 'الملك (King)', 12000],
+    [7, 'السلطان (Sultan)', 25000]
+  ];
   for (const [lvl, nm, price] of vipSeed) {
     await run(`INSERT OR IGNORE INTO vip_plans (level, name, price_diamonds, duration_days) VALUES (?, ?, ?, 30)`, [lvl, nm, price]);
+    // ترقية الاسم الافتراضي القديم "VIP X" إلى لقب النبالة العربي دون المساس بالسعر المخصّص من الإدارة
+    await run(`UPDATE vip_plans SET name = ? WHERE level = ? AND name = ?`, [nm, lvl, `VIP ${lvl}`]);
   }
 
   // سجل اشتراكات VIP: المستوى والمدة وتاريخ البداية والنهاية والمصدر (شراء/منحة)
@@ -842,6 +921,51 @@ async function initDB() {
   } else {
     console.log(`Database already has ${userCount.count} users.`);
   }
+
+  // زرع هدايا VIP الحصرية لمستويات السحر/الجاذبية (تتطلب charm_level لدى المستلم وتطلق مؤثرات ضخمة)
+  try {
+    const vipCharmGifts = [
+      ['charm_vip_chest', 'صندوق الجاذبية الماسي VIP', 'VIP Charm Chest', '💎', 800, 'diamonds', 2000, 10, '/img/pf/fx_princess.png'],
+      ['charm_vip_crown', 'تاج السحر البنفسجي VIP', 'VIP Charm Crown', '🔮', 2200, 'diamonds', 5500, 20, '/img/pf/fx_knight.png'],
+      ['charm_vip_galaxy', 'موكب المجرة الساحر VIP', 'VIP Galaxy Parade', '🌌', 6000, 'diamonds', 15000, 30, '/royal_eagle.gif']
+    ];
+    for (const [gid, nm, nmen, ico, cost, cur, chm, minChm, fx] of vipCharmGifts) {
+      await run(`
+        INSERT OR IGNORE INTO gifts_catalog
+          (id, name, name_en, icon, image_url, cost, currency, charm, luxury, tab, sort_order, is_active, burst_enabled, burst_count, banner_enabled, effect_url, min_charm_level)
+        VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, 'luxury', 90, 1, 1, 30, 1, ?, ?)
+      `, [gid, nm, nmen, ico, cost, cur, chm, fx, minChm]);
+    }
+  } catch (e) { console.error('vip charm gifts seed error:', e.message); }
+
+  // زرع العائلات الافتراضية في قاعدة البيانات إن كانت فارغة
+  try {
+    const famCount = await get('SELECT COUNT(*) AS c FROM families');
+    if (famCount && famCount.c === 0) {
+      const lvMod = require('./member-levels');
+      const seedFams = [
+        ['fam-1001', 'إمبراطورية النجوم', '🌟', '#6b2cd1', 'في زحام هذا العالم، الأصدقاء هم النجوم', 'sc-owner-001', 18500],
+        ['fam-1002', 'فرسان الليل', '🦅', '#b8860b', 'لا يغريني مدح ولا يسقطني النقد', 'sc-user-1004', 7200],
+        ['fam-1003', 'واحة الأرواح', '🌌', '#1f6f8b', 'أهلاً بالجميع في عائلتنا الراقية', 'sc-user-1001', 3100],
+        ['fam-1004', 'صقور المجد', '🔥', '#c2410c', 'هنا تجتمع الهمم والتحدي', 'sc-user-1002', 1200]
+      ];
+      for (const [id, name, em, col, sl, lid, xp] of seedFams) {
+        const flv = lvMod.familyLevelFromXp(xp).level;
+        await run(`INSERT OR IGNORE INTO families (id, name, badge_emoji, color, slogan, leader_id, xp, level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, name, em, col, sl, lid, xp, flv]);
+        const leaderExists = await get('SELECT id FROM users WHERE id = ?', [lid]);
+        if (leaderExists) {
+          await run(`INSERT OR IGNORE INTO family_members (family_id, user_id, role, contribution_xp) VALUES (?, ?, 'leader', ?)`, [id, lid, xp]);
+        }
+      }
+      // ضم بعض الأعضاء الافتراضيين للعائلات
+      for (const [fid, uid, cxp] of [['fam-1001', 'sc-user-1003', 2400], ['fam-1001', 'sc-user-1005', 3100], ['fam-1002', 'sc-user-1006', 900]]) {
+        if (await get('SELECT id FROM users WHERE id = ?', [uid])) {
+          await run(`INSERT OR IGNORE INTO family_members (family_id, user_id, role, contribution_xp) VALUES (?, ?, 'member', ?)`, [fid, uid, cxp]);
+        }
+      }
+    }
+  } catch (e) { console.error('families seed error:', e.message); }
 }
 
 async function seedInitialData() {

@@ -38,6 +38,16 @@
 
     // تم تبسيط شريط الغرفة: الإكسسوارات والموسيقى موجودتان داخل قائمة الأدوات.
 
+    // شارة مستوى الغرفة ومهامها اليومية في الشريط العلوي
+    const lvChip = document.createElement('button');
+    lvChip.type = 'button';
+    lvChip.className = 'room-lv-pill';
+    lvChip.style.cssText = 'position:absolute;top:52px;left:12px;z-index:24;cursor:pointer;padding:4px 9px;font-size:11px;border-radius:999px;';
+    lvChip.innerHTML = `🏠 Lv.${ctx.room.room_level || 1}`;
+    lvChip.title = 'مستوى الغرفة وسعة المقاعد ومكافآت اليوم';
+    lvChip.onclick = () => { if (window.SoulLevels) window.SoulLevels.openRoomLevelModal(ctx.room.id); };
+    container.appendChild(lvChip);
+
     // شريط الهدايا العلوي + طبقة اللوحات
     const banner = document.createElement('div');
     banner.className = 'rp-gift-banner';
@@ -78,14 +88,16 @@
     const items = [
       ['gifts', '🎁', 'مركز الهدايا'],
       ['bag', '💰', 'كيس الحظ'],
-      ['empire', '🏆', 'الإمبراطورية'],
+      ['roomlv', '🏠', 'مستوى الغرفة'],
+      ['empire', '🏰', 'العائلات'],
+      ['levels', '🏅', 'مستواي والرتب'],
       ['pk', '💗', 'مكان للتنافي'],
       ['store', '🏪', 'المتجر'],
       ['daily', '🚩', 'مركز النشاط'],
       ['acc', '🧰', 'الإكسسوارات']
     ];
     const body = openSheet('مركز الترفيه', `
-      <div class="rp-sub">مركز الألعاب</div>
+      <div class="rp-sub">مركز الألعاب والترقيات</div>
       <div class="rp-ent-grid">${items.map(i => `<button type="button" class="rp-ent-item" data-act="${i[0]}"><b>${i[1]}</b><span>${i[2]}</span></button>`).join('')}</div>`);
     body.querySelectorAll('.rp-ent-item').forEach(b => {
       b.onclick = () => {
@@ -93,7 +105,9 @@
         const room = ctx.room;
         if (act === 'gifts') { closeSheet(); App().openGiftStoreModal(null, room.id, null); }
         else if (act === 'bag') openLuckyBag();
-        else if (act === 'empire') openEmpires();
+        else if (act === 'roomlv') { closeSheet(); if (window.SoulLevels) window.SoulLevels.openRoomLevelModal(room.id); }
+        else if (act === 'empire') { closeSheet(); if (window.SoulLevels) window.SoulLevels.openFamilyPage(); else openEmpires(); }
+        else if (act === 'levels') { closeSheet(); if (window.SoulLevels) window.SoulLevels.openLevelCenter(null, 'wealth'); }
         else if (act === 'daily') openDaily();
         else if (act === 'acc') { closeSheet(); App().openRoomAccessoriesModal(room); }
         else if (act === 'store') { closeSheet(); App().openWalletModal(); }

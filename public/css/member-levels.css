@@ -1,18 +1,274 @@
-/* نافذة شراء VIP */
-.vip-backdrop { position: fixed; inset: 0; z-index: 10050; background: rgba(0,0,0,.6); display: flex; align-items: flex-end; justify-content: center; }
-.vip-sheet { width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; background: #17131f; color: #fff; border-radius: 20px 20px 0 0; padding: 14px 16px calc(18px + env(safe-area-inset-bottom, 0px)); direction: rtl; }
+/* ═══════════════════════════════════════════════════════════════════════════
+   SoulChill — النظام البصري الشامل للمستويات والرتب والهدايا والعائلات والغرف
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ───── 1. إطارات الأفاتار لمستويات الثراء ورتب النبلاء ───── */
+.avatar-frame-wealth_bronze {
+  border: 2.5px solid #cd7f32 !important;
+  box-shadow: 0 0 0 2px rgba(205, 127, 50, 0.35), 0 0 12px rgba(205, 127, 50, 0.65) !important;
+}
+.avatar-frame-wealth_silver {
+  border: 2.5px solid #e2e8f0 !important;
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.45), 0 0 15px rgba(226, 232, 240, 0.8) !important;
+}
+.avatar-frame-wealth_gold {
+  border: 3px solid #fbbf24 !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.5), 0 0 18px rgba(251, 191, 36, 0.85) !important;
+}
+@keyframes scGoldPulse {
+  0%, 100% { box-shadow: 0 0 0 2px #fde68a, 0 0 16px #f59e0b, 0 0 28px rgba(239, 68, 68, 0.55); transform: scale(1); }
+  50% { box-shadow: 0 0 0 3px #fffbeb, 0 0 24px #fbbf24, 0 0 38px rgba(249, 115, 22, 0.85); transform: scale(1.025); }
+}
+.avatar-frame-wealth_gold_anim {
+  border: 3px solid #fde047 !important;
+  animation: scGoldPulse 2.2s ease-in-out infinite !important;
+}
+@keyframes scRoyalCrownGlow {
+  0% { box-shadow: 0 0 0 2.5px #fef08a, 0 0 20px #fbbf24, 0 0 36px #ec4899; filter: drop-shadow(0 0 6px #fbbf24); }
+  50% { box-shadow: 0 0 0 3.5px #ffffff, 0 0 28px #f59e0b, 0 0 46px #a855f7; filter: drop-shadow(0 0 11px #f43f5e); }
+  100% { box-shadow: 0 0 0 2.5px #fef08a, 0 0 20px #fbbf24, 0 0 36px #ec4899; filter: drop-shadow(0 0 6px #fbbf24); }
+}
+.avatar-frame-wealth_royal_tycoon,
+.avatar-frame-noble_sultan,
+.avatar-frame-noble_king {
+  border: 3px solid #fef08a !important;
+  animation: scRoyalCrownGlow 2s ease-in-out infinite !important;
+}
+.avatar-frame-noble_viscount { border: 2.5px solid #38bdf8 !important; box-shadow: 0 0 14px rgba(56, 189, 248, 0.7) !important; }
+.avatar-frame-noble_count { border: 2.5px solid #60a5fa !important; box-shadow: 0 0 15px rgba(96, 165, 250, 0.75) !important; }
+.avatar-frame-noble_marquis { border: 2.5px solid #a855f7 !important; box-shadow: 0 0 16px rgba(168, 85, 247, 0.8) !important; }
+.avatar-frame-noble_duke { border: 3px solid #ec4899 !important; box-shadow: 0 0 18px rgba(236, 72, 153, 0.85) !important; }
+.avatar-frame-noble_prince { border: 3px solid #f59e0b !important; box-shadow: 0 0 20px rgba(245, 158, 11, 0.9) !important; }
+
+/* ───── 2. تلوين أسماء الثراء وشارات الثراء والجاذبية والنبلاء في الغرفة ───── */
+.wealth-name-beginner { color: #a7f3d0 !important; font-weight: 700; }
+.wealth-name-mid { color: #7dd3fc !important; font-weight: 700; }
+.wealth-name-silver { color: #f1f5f9 !important; text-shadow: 0 0 8px rgba(148, 163, 184, 0.65); font-weight: 800; }
+.wealth-name-gold {
+  background: linear-gradient(90deg, #fef08a, #f59e0b, #fde047);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  font-weight: 800;
+}
+.wealth-name-royal {
+  background: linear-gradient(90deg, #fffbeb, #fbbf24, #f472b6, #fde047);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  font-weight: 900;
+  filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.45));
+}
+
+.sc-inline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.35;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.sc-inline-badge.wealth-beginner { background: rgba(16, 185, 129, 0.22); border: 1px solid rgba(52, 211, 153, 0.45); color: #6ee7b7; }
+.sc-inline-badge.wealth-mid { background: rgba(14, 165, 233, 0.22); border: 1px solid rgba(56, 189, 248, 0.5); color: #bae6fd; }
+.sc-inline-badge.wealth-gold { background: linear-gradient(135deg, rgba(245, 158, 11, 0.32), rgba(180, 83, 9, 0.35)); border: 1px solid #fbbf24; color: #fef08a; }
+.sc-inline-badge.wealth-royal {
+  background: linear-gradient(135deg, #7c2d12, #b45309, #be185d);
+  border: 1px solid #fde047;
+  color: #fffbeb;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.55);
+}
+
+.sc-inline-badge.charm-tier-pink { background: rgba(244, 114, 182, 0.2); border: 1px solid rgba(244, 114, 182, 0.45); color: #fbcfe8; }
+.sc-inline-badge.charm-tier-purple { background: rgba(168, 85, 247, 0.24); border: 1px solid rgba(192, 132, 252, 0.55); color: #e9d5ff; }
+.sc-inline-badge.charm-tier-magenta { background: linear-gradient(135deg, rgba(236, 72, 153, 0.35), rgba(139, 92, 246, 0.35)); border: 1px solid #f472b6; color: #fdf2f8; }
+.sc-inline-badge.charm-tier-royal {
+  background: linear-gradient(135deg, #831843, #6d28d9, #db2777);
+  border: 1px solid #f9a8d4;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(236, 72, 153, 0.55);
+}
+
+.sc-inline-badge.noble-tag {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(124, 58, 237, 0.32));
+  border: 1px solid rgba(251, 191, 36, 0.65);
+  color: #fde68a;
+}
+
+/* ───── 3. ميزة «أضواء الذيل» (Tail Lights) لرسائل الملوك والـ Tycoons ───── */
+@keyframes scTailLightSweep {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.room-chat-bubble.msg-tail-lights {
+  position: relative;
+  border: 1px solid rgba(251, 191, 36, 0.68) !important;
+  background: linear-gradient(105deg, rgba(120, 53, 15, 0.52), rgba(88, 28, 135, 0.48), rgba(190, 24, 93, 0.42), rgba(120, 53, 15, 0.52)) !important;
+  background-size: 200% 200% !important;
+  animation: scTailLightSweep 3.4s linear infinite;
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.28), inset 0 0 12px rgba(253, 224, 71, 0.14);
+}
+.room-chat-bubble.msg-tail-lights::after {
+  content: '✦ ROYAL';
+  position: absolute;
+  top: -7px;
+  left: 10px;
+  font-size: 8.5px;
+  font-weight: 900;
+  letter-spacing: 0.8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fde047, #f59e0b);
+  color: #1c1004;
+  pointer-events: none;
+}
+
+/* ───── 4. اهتزاز وتوهج الشاشة الملحمي عند دخول الملوك والسلاطين ───── */
+@keyframes scRoyalRoomQuake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  12% { transform: translate3d(-4px, 2px, 0); }
+  25% { transform: translate3d(4px, -3px, 0); }
+  38% { transform: translate3d(-3px, -2px, 0); }
+  52% { transform: translate3d(3px, 2px, 0); }
+  70% { transform: translate3d(-2px, 1px, 0); }
+}
+.royal-screen-quake {
+  animation: scRoyalRoomQuake 0.75s ease-in-out 2;
+  box-shadow: inset 0 0 65px rgba(251, 191, 36, 0.42) !important;
+}
+
+/* ───── 5. شارات الظهور (Exposure) ومستوى الغرفة في الاستكشاف وداخل الغرفة ───── */
+.rc-exposure-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(245, 158, 11, 0.25));
+  border: 1px solid rgba(244, 114, 182, 0.45);
+  color: #fbcfe8;
+}
+.rc-roomlv-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  background: rgba(56, 189, 248, 0.18);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #bae6fd;
+}
+.rp-room-lv-chip {
+  position: absolute;
+  top: 52px;
+  left: 12px;
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  color: #fde68a;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.rp-room-lv-chip .xp2 {
+  background: linear-gradient(90deg, #10b981, #34d399);
+  color: #052e16;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 900;
+}
+
+/* زر إرسال هدية داخل البروفايل */
+.pf-btn.gift-pro {
+  background: linear-gradient(135deg, #f59e0b, #ec4899) !important;
+  color: #fff !important;
+  border: 0 !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 14px rgba(236, 72, 153, 0.35);
+}
+
+/* ───── 6. نافذة شراء رتب النبلاء السريعة (SoulVip) ───── */
+.vip-backdrop { position: fixed; inset: 0; z-index: 10050; background: rgba(0,0,0,.68); display: flex; align-items: flex-end; justify-content: center; }
+.vip-sheet { width: 100%; max-width: 480px; max-height: 88vh; overflow-y: auto; background: #141022; color: #fff; border-radius: 22px 22px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom, 0px)); direction: rtl; border-top: 1px solid rgba(251, 191, 36, 0.35); }
 .vip-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .vip-head h3 { margin: 0; font-size: 17px; }
 .vip-close { background: rgba(255,255,255,.1); border: 0; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
-.vip-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 12px; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); font-size: 13px; margin-bottom: 12px; }
+.vip-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 12px; background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.35); font-size: 13px; margin-bottom: 12px; flex-wrap: wrap; }
 .vip-status b { color: #fbbf24; }
 .vip-bal { font-weight: 800; white-space: nowrap; }
-.vip-plans { display: flex; flex-direction: column; gap: 8px; }
-.vip-plan { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
-.vip-plan.on { border-color: #fbbf24; }
+.vip-plans { display: flex; flex-direction: column; gap: 10px; }
+.vip-plan { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); }
+.vip-plan.on { border-color: #fbbf24; background: rgba(251, 191, 36, 0.09); }
+.vip-plan-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .vip-plan-info b { display: block; font-size: 15px; }
-.vip-plan-info small { color: rgba(255,255,255,.55); }
-.vip-buy { border: 0; border-radius: 22px; padding: 9px 16px; font-weight: 800; font-size: 13px; color: #1a1200; background: linear-gradient(135deg, #fde68a, #f59e0b); cursor: pointer; }
+.vip-plan-info small { color: rgba(255,255,255,.65); font-size: 11.5px; }
+.vip-plan-perks { display: flex; flex-wrap: wrap; gap: 5px; }
+.vip-plan-perks span { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.08); color: #e2e8f0; }
+.vip-buy { border: 0; border-radius: 22px; padding: 9px 15px; font-weight: 800; font-size: 12.5px; color: #1a1200; background: linear-gradient(135deg, #fde68a, #f59e0b); cursor: pointer; white-space: nowrap; }
 .vip-buy:disabled { opacity: .45; cursor: not-allowed; }
 .vip-empty { text-align: center; color: rgba(255,255,255,.55); }
 @media (min-width: 640px) { .vip-backdrop { align-items: center; } .vip-sheet { border-radius: 20px; } }
+
+/* ───── 7. مركز المستويات الشامل وصفحات النبلاء والعائلات والغرف ───── */
+.slv-wrap { padding: 12px 14px 32px; color: #fff; direction: rtl; }
+.slv-tabs { display: flex; gap: 6px; margin-bottom: 14px; background: rgba(255,255,255,0.06); padding: 4px; border-radius: 14px; overflow-x: auto; }
+.slv-tab { flex: 1; min-width: max-content; border: 0; background: transparent; color: rgba(255,255,255,0.72); font-weight: 800; font-size: 12px; padding: 8px 10px; border-radius: 10px; cursor: pointer; transition: 0.2s; }
+.slv-tab.active { background: linear-gradient(135deg, #f59e0b, #ec4899); color: #fff; box-shadow: 0 3px 12px rgba(236, 72, 153, 0.35); }
+
+.slv-hero { border-radius: 18px; padding: 16px; margin-bottom: 14px; background: linear-gradient(145deg, #271a0c, #140f24); border: 1px solid rgba(251, 191, 36, 0.35); position: relative; overflow: hidden; }
+.slv-hero.charm { background: linear-gradient(145deg, #2e1035, #140f24); border-color: rgba(244, 114, 182, 0.45); }
+.slv-hero.noble { background: linear-gradient(145deg, #2c1d07, #1a1033); border-color: rgba(253, 224, 71, 0.5); }
+.slv-hero.family { background: linear-gradient(145deg, #0f292e, #151029); border-color: rgba(56, 189, 248, 0.45); }
+
+.slv-hero-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.slv-hero-av { width: 58px; height: 58px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.slv-hero-title { font-size: 18px; font-weight: 900; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.slv-hero-sub { font-size: 12px; color: rgba(255,255,255,0.75); margin-top: 3px; }
+.slv-bar { height: 9px; border-radius: 999px; background: rgba(255,255,255,0.12); overflow: hidden; margin: 8px 0 6px; }
+.slv-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #fde047, #f59e0b, #ec4899); transition: width 0.35s ease; }
+.slv-meta-row { display: flex; justify-content: space-between; font-size: 11.5px; color: rgba(255,255,255,0.78); }
+
+.slv-sec-title { font-size: 14px; font-weight: 800; color: #fde68a; margin: 16px 0 9px; display: flex; align-items: center; justify-content: space-between; }
+.slv-card-list { display: flex; flex-direction: column; gap: 10px; }
+.slv-card { background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; padding: 12px 13px; }
+.slv-card.unlocked { border-color: rgba(251, 191, 36, 0.45); background: rgba(251, 191, 36, 0.06); }
+.slv-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.slv-card-head b { font-size: 13.5px; }
+.slv-tag { font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.1); color: #cbd5e1; }
+.slv-tag.ok { background: rgba(16, 185, 129, 0.25); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.4); }
+.slv-tag.gold { background: rgba(251, 191, 36, 0.22); color: #fde68a; border: 1px solid rgba(251, 191, 36, 0.45); }
+.slv-perks-ul { margin: 6px 0 0; padding: 0 16px 0 0; font-size: 12px; color: rgba(255,255,255,0.82); line-height: 1.65; }
+.slv-card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+
+.slv-btn { border: 0; border-radius: 999px; padding: 7px 14px; font-size: 12px; font-weight: 800; cursor: pointer; background: linear-gradient(135deg, #fde68a, #f59e0b); color: #1a1100; }
+.slv-btn.secondary { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+.slv-btn.pink { background: linear-gradient(135deg, #ec4899, #8b5cf6); color: #fff; }
+.slv-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.slv-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06); margin-bottom: 8px; }
+.slv-switch-row b { display: block; font-size: 13px; }
+.slv-switch-row small { color: rgba(255,255,255,0.65); font-size: 11px; }
+
+.slv-bag-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.slv-bag-item { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 10px 8px; text-align: center; }
+.slv-bag-item .ic { font-size: 26px; line-height: 1.2; }
+.slv-bag-item b { display: block; font-size: 11.5px; margin-top: 4px; }
+.slv-bag-item small { color: #fde68a; font-weight: 800; font-size: 11px; }
+
+.slv-form { display: flex; flex-direction: column; gap: 9px; margin-top: 8px; }
+.slv-form input { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 11px; padding: 9px 12px; color: #fff; font-size: 13px; outline: none; }

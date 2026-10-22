@@ -218,6 +218,7 @@ function giftRowToObj(r) {
   return {
     id: r.id, name: r.name, name_en: r.name_en || '', icon: r.icon || '🎁', image_url: r.image_url || '',
     cost: r.cost, currency: r.currency, charm: r.charm || r.cost, luxury: !!(r.luxury || r.tab === 'luxury'), tab: (r.luxury || r.tab === 'luxury') ? 'luxury' : 'normal',
+    min_charm_level: Math.max(0, parseInt(r.min_charm_level, 10) || 0),
     burst_enabled: !!r.burst_enabled,
     burst_count: Math.min(60, Math.max(1, parseInt(r.burst_count, 10) || 20)),
     banner_enabled: !!r.banner_enabled,
@@ -228,7 +229,7 @@ function giftRowToObj(r) {
 
 async function seedGiftsCatalog() {
   try {
-    const row = await get('SELECT COUNT(*) AS n FROM gifts_catalog');
+    const row = await get("SELECT COUNT(*) AS n FROM gifts_catalog WHERE id = 'rose'");
     if (row && row.n > 0) return;
     let i = 0;
     for (const g of GIFTS) {
@@ -3453,6 +3454,8 @@ app.get('/api/rooms', async (req, res) => {
     const countryFilter = req.query.country;
     let query = `
       SELECT r.*, u.name as host_name, u.avatar as host_avatar, u.avatar_frame as host_frame,
+             u.charm_level as host_charm_level, u.wealth_level as host_wealth_level,
+             u.vip_level as host_vip_level, u.vip_until as host_vip_until,
              rc.image_url as host_room_card
       FROM rooms r
       JOIN users u ON r.host_id = u.id
@@ -3469,7 +3472,7 @@ app.get('/api/rooms', async (req, res) => {
 
     const rooms = await all(query, params);
 
-    // Attach active occupants count & seat previews
+    // Attach active occupants count & seat previews + Charm Exposure Boost & Room Level
     for (const r of rooms) {
       const seats = await all(`
         SELECT s.seat_index, s.is_muted, s.is_locked, u.id as user_id, u.name, u.avatar
@@ -3482,18 +3485,23 @@ app.get('/api/rooms', async (req, res) => {
       r.seats = seats;
       r.active_speakers = seats.filter(s => s.user_id !== null).length;
       const roomState = activeRoomStates.get(r.id);
-      r.audience_count = roomState ? roomState.activeAudience.size : 0;
-      r.total_occupants = r.audience_count;
-      // أول 5 من المتواجدين الآن في الغرفة (مع إطاراتهم) لعرضهم في بطاقة الغرفة
-      r.audience_preview = roomState
-        ? Array.from(roomState.activeAudience.values()).slice(0, 5).map(u => ({
-            id: u.id, avatar: u.avatar || '', frame: u.avatar_frame || ''
-          }))
+      const visibleAudience = roomState
+        ? Array.from(roomState.activeAudience.values()).filter(u => !(u && u.vip_stealth && memberLevels.activeVipLevel(u) >= 4))
         : [];
+      r.audience_count = visibleAudience.length;
+      r.total_occupants = r.audience_count;
+      r.audience_preview = visibleAudience.slice(0, 5).map(u => ({
+        id: u.id, avatar: u.avatar || '', frame: u.avatar_frame || ''
+      }));
+      const rLvInfo = memberLevels.roomLevelFromXp(r.room_xp || 0);
+      r.room_level = Math.max(Number(r.room_level) || 1, rLvInfo.level);
+      r.max_mic_seats = rLvInfo.max_mic_seats;
+      r.exposure_boost_pct = memberLevels.charmExposureBoost(r.host_charm_level || 1);
+      r.xp_boost_active = !!(r.xp_boost_until && new Date(r.xp_boost_until).getTime() > Date.now());
     }
 
-    // الأكثر زواراً أولاً (sort ثابت: الأحدث أولاً عند التساوي)
-    rooms.sort((a, b) => (b.audience_count || 0) - (a.audience_count || 0));
+    // الترتيب في الاستكشاف: الحضور الحي + تعزيز الجاذبية (Exposure Boost) لمستويات السحر العالية + مستوى الغرفة
+    rooms.sort((a, b) => memberLevels.roomExposureScore(b) - memberLevels.roomExposureScore(a));
 
     res.json(rooms.map(stripRoomSecrets));
   } catch (err) {
@@ -5141,12 +5149,23 @@ async function addMemberPoints(userId, kind, points) {
 }
 
 // ===================== نقاط المستوى العام للمستخدم (pill «المستوى» في الملف الشخصي) =====================
-// المصادر كما طلب الإدارة: التفاعل في الدردشة، الصعود على المايك، إرسال الهدايا، والشراء/الشحن — تُضاف فقط ولا تنزل أبداً
-async function addLevelPoints(userId, points) {
+// يدعم مضاعف الخبرة (2x XP) النشط من مهام الغرفة اليومية أو مهام العائلة اليومية!
+async function addLevelPoints(userId, points, roomId) {
   points = Math.max(0, Math.floor(Number(points)) || 0);
   if (!userId || !points) return;
   try {
-    await run('UPDATE users SET level_points = COALESCE(level_points, 0) + ? WHERE id = ?', [points, userId]);
+    const nowMs = Date.now();
+    const u0 = await get('SELECT level, level_points, xp_boost_until FROM users WHERE id = ?', [userId]);
+    if (!u0) return;
+    let boost = u0.xp_boost_until && new Date(u0.xp_boost_until).getTime() > nowMs ? 2 : 1;
+    if (boost === 1 && roomId) {
+      const rm = await get('SELECT room_level, xp_boost_until FROM rooms WHERE id = ?', [roomId]);
+      if (rm && rm.xp_boost_until && new Date(rm.xp_boost_until).getTime() > nowMs) {
+        boost = (Number(rm.room_level) || 1) >= 10 ? 2.5 : 2;
+      }
+    }
+    const finalPts = Math.max(1, Math.round(points * boost));
+    await run('UPDATE users SET level_points = COALESCE(level_points, 0) + ? WHERE id = ?', [finalPts, userId]);
     const u = await get('SELECT level, level_points FROM users WHERE id = ?', [userId]);
     if (!u) return;
     const computed = memberLevels.levelFromPoints(u.level_points || 0).level;
@@ -5159,12 +5178,106 @@ async function addLevelPoints(userId, points) {
 
 // نقاط تفاعل الدردشة مقيدة زمنياً (ثانيتان كحد أدنى) حتى لا يرتفع المستوى بالسبام
 const _chatXpAt = new Map();
-function addChatInteractionXp(userId, xp) {
+function addChatInteractionXp(userId, xp, roomId) {
   const now = Date.now();
   if (now - (_chatXpAt.get(userId) || 0) < 2000) return;
   _chatXpAt.set(userId, now);
   if (_chatXpAt.size > 5000) _chatXpAt.clear();
-  addLevelPoints(userId, xp);
+  addLevelPoints(userId, xp, roomId);
+  if (roomId) addRoomXp(roomId, 3);
+}
+
+// منح حزم هدايا مجانية في حقيبة العضو (من المستويات أو رتب النبلاء أو مهام العائلة)
+async function grantFreeGifts(userId, items) {
+  if (!userId || !Array.isArray(items)) return;
+  for (const it of items) {
+    const qty = Math.max(0, Math.floor(Number(it && (it.qty || it.quantity)) || 0));
+    if (!it || !it.gift_id || !qty) continue;
+    await run(`
+      INSERT INTO user_free_gifts (user_id, gift_id, quantity, updated_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, gift_id) DO UPDATE SET quantity = quantity + excluded.quantity, updated_at = CURRENT_TIMESTAMP
+    `, [userId, String(it.gift_id), qty]);
+  }
+}
+
+async function getUserFreeGifts(userId) {
+  if (!userId) return [];
+  const rows = await all(`
+    SELECT fg.gift_id, fg.quantity, c.name, c.icon, c.image_url, c.cost, c.currency, c.luxury, c.charm
+    FROM user_free_gifts fg
+    LEFT JOIN gifts_catalog c ON c.id = fg.gift_id
+    WHERE fg.user_id = ? AND fg.quantity > 0
+    ORDER BY fg.updated_at DESC
+  `, [userId]);
+  return rows.map(r => {
+    const fallback = GIFTS.find(g => g.id === r.gift_id) || {};
+    return {
+      gift_id: r.gift_id,
+      quantity: r.quantity,
+      name: r.name || fallback.name || r.gift_id,
+      icon: r.icon || fallback.icon || '🎁',
+      image_url: r.image_url || '',
+      cost: r.cost != null ? r.cost : (fallback.cost || 10),
+      currency: r.currency || fallback.currency || 'coins',
+      luxury: !!(r.luxury || fallback.luxury)
+    };
+  });
+}
+
+// ترقية مستوى الغرفة تلقائياً مع فتح سعة المقاعد (9 / 12 / 15 مقعداً)
+async function addRoomXp(roomId, xpAmount) {
+  const add = Math.max(0, Math.floor(Number(xpAmount)) || 0);
+  if (!roomId || !add) return null;
+  try {
+    await run('UPDATE rooms SET room_xp = COALESCE(room_xp, 0) + ? WHERE id = ?', [add, roomId]);
+    const room = await get('SELECT id, room_xp, room_level, seat_unlocks FROM rooms WHERE id = ?', [roomId]);
+    if (!room) return null;
+    const info = memberLevels.roomLevelFromXp(room.room_xp || 0);
+    const prevLv = Math.max(1, Number(room.room_level) || 1);
+    if (info.level > prevLv) {
+      let unlocks = {};
+      try { unlocks = JSON.parse(room.seat_unlocks || '{}') || {}; } catch (e) { unlocks = {}; }
+      if (info.max_mic_seats >= 9) unlocks['9'] = true;
+      if (info.max_mic_seats >= 12) unlocks['12'] = true;
+      if (info.max_mic_seats >= 15) unlocks['15'] = true;
+      await run('UPDATE rooms SET room_level = ?, seat_unlocks = ? WHERE id = ?', [info.level, JSON.stringify(unlocks), roomId]);
+      io.to(`room:${roomId}`).emit('room_level_updated', { roomId, ...info });
+      io.to(`room:${roomId}`).emit('room_message', {
+        id: `rmlv-${Date.now()}`,
+        sender_id: 'system',
+        sender_name: '🏠 ترقية الغرفة',
+        sender_avatar: '/avatars/avatar-1.png',
+        sender_level: 99,
+        message_type: 'system',
+        content: `🎉 ارتقت الغرفة إلى المستوى Lv.${info.level}! السعة المتاحة الآن حتى ${info.max_mic_seats} ميكروفون و ${info.member_capacity} عضو 🌟`,
+        created_at: new Date().toISOString()
+      });
+    }
+    return info;
+  } catch (e) {
+    console.error('addRoomXp error:', e.message);
+    return null;
+  }
+}
+
+// ترقية مستوى العائلة تلقائياً عند نشاط أعضائها وإرسالهم الهدايا
+async function addFamilyXpForUser(userId, xpAmount) {
+  const add = Math.max(0, Math.floor(Number(xpAmount)) || 0);
+  if (!userId || !add) return;
+  try {
+    const mem = await get('SELECT family_id FROM family_members WHERE user_id = ?', [userId]);
+    if (!mem) return;
+    await run('UPDATE family_members SET contribution_xp = COALESCE(contribution_xp, 0) + ? WHERE family_id = ? AND user_id = ?', [add, mem.family_id, userId]);
+    await run('UPDATE families SET xp = COALESCE(xp, 0) + ? WHERE id = ?', [add, mem.family_id]);
+    const fam = await get('SELECT id, xp, level FROM families WHERE id = ?', [mem.family_id]);
+    if (fam) {
+      const info = memberLevels.familyLevelFromXp(fam.xp || 0);
+      if (info.level > (Number(fam.level) || 1)) {
+        await run('UPDATE families SET level = ? WHERE id = ?', [info.level, fam.id]);
+      }
+    }
+  } catch (e) { console.error('addFamilyXpForUser error:', e.message); }
 }
 
 async function logMemberActivity(a) {
@@ -5187,6 +5300,8 @@ async function notifyMemberStats(userId) {
       wealth_points: u.wealth_points || 0, popularity_points: u.popularity_points || 0,
       level: u.level || 1, level_points: u.level_points || 0,
       vip_level: memberLevels.activeVipLevel(u), vip_until: u.vip_until || null,
+      vip_stealth: !!u.vip_stealth, vip_anti_track: !!u.vip_anti_track,
+      xp_boost_until: u.xp_boost_until || null,
       coins: u.coins, diamonds: u.diamonds, cards: memberLevels.buildCards(u)
     };
     for (const sId of set) io.to(sId).emit('member_stats_updated', payload);
@@ -5198,7 +5313,7 @@ async function expireVipSubscriptions() {
   try {
     const expired = await all(`SELECT id FROM users WHERE COALESCE(vip_level, 0) > 0 AND (vip_until IS NULL OR vip_until <= ?)`, [new Date().toISOString()]);
     for (const u of expired) {
-      await run('UPDATE users SET vip_level = 0 WHERE id = ?', [u.id]);
+      await run('UPDATE users SET vip_level = 0, vip_stealth = 0, vip_anti_track = 0 WHERE id = ?', [u.id]);
       notifyMemberStats(u.id);
     }
   } catch (e) { console.error('expireVipSubscriptions error:', e.message); }
@@ -5217,57 +5332,95 @@ app.get('/api/users/:id/member-card', async (req, res) => {
   }
 });
 
-// باقات VIP المتاحة للشراء
+// باقات رتب النبلاء والأرستقراطية (Viscount الكونت ← Sultan السلطان)
 app.get('/api/vip/plans', async (req, res) => {
   try {
-    const plans = await all('SELECT level, name, price_diamonds, duration_days FROM vip_plans WHERE is_active = 1 ORDER BY level ASC');
+    const dbPlans = await all('SELECT level, name, price_diamonds, duration_days FROM vip_plans WHERE is_active = 1 ORDER BY level ASC');
+    const plans = dbPlans.map(p => {
+      const rank = memberLevels.nobilityRankInfo(p.level) || {};
+      return {
+        ...p,
+        title_ar: rank.title_ar || p.name,
+        title_en: rank.title_en || `VIP ${p.level}`,
+        icon: rank.icon || '👑',
+        color: rank.color || '#f59e0b',
+        bonus_coins: rank.bonus_coins || (p.level * 500),
+        free_gifts: rank.free_gifts || [],
+        mount_url: rank.mount_url || '',
+        mount_name: rank.mount_name || '',
+        frame_id: rank.frame_id || '',
+        anti_track: !!rank.anti_track,
+        stealth_entry: !!rank.stealth_entry,
+        immunity: !!rank.immunity,
+        tail_lights: !!rank.tail_lights,
+        perks: rank.perks || []
+      };
+    });
     const uid = req.headers['x-user-id'];
-    const u = uid ? await get('SELECT vip_level, vip_until, diamonds FROM users WHERE id = ?', [uid]) : null;
+    const u = uid ? await get('SELECT vip_level, vip_until, vip_stealth, vip_anti_track, diamonds, coins FROM users WHERE id = ?', [uid]) : null;
+    const activeLv = u ? memberLevels.activeVipLevel(u) : 0;
+    const activeRank = memberLevels.nobilityRankInfo(activeLv);
     res.json({
-      success: true, plans,
-      current: u ? { level: memberLevels.activeVipLevel(u), until: u.vip_until || null, days_left: memberLevels.vipDaysLeft(u) } : null,
-      diamonds: u ? u.diamonds : null
+      success: true,
+      plans,
+      current: u ? {
+        level: activeLv,
+        rank_title: activeRank ? activeRank.full_name : 'بدون رتبة نبلاء',
+        until: u.vip_until || null,
+        days_left: memberLevels.vipDaysLeft(u),
+        vip_stealth: !!(u.vip_stealth && activeRank && activeRank.stealth_entry),
+        vip_anti_track: !!(u.vip_anti_track && activeRank && activeRank.anti_track)
+      } : null,
+      diamonds: u ? u.diamonds : null,
+      coins: u ? u.coins : null
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// شراء VIP بالألماس
+// شراء / تفعيل رتبة أرستقراطية شهرية بالبلورات (الألماس) + منح الهدايا والعملات الفورية ومركبة الدخول
 app.post('/api/vip/buy', async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const level = Math.floor(Number(req.body && req.body.level));
     const plan = await get('SELECT * FROM vip_plans WHERE level = ? AND is_active = 1', [level]);
-    if (!plan) return res.status(400).json({ error: 'باقة VIP غير متاحة' });
+    if (!plan) return res.status(400).json({ error: 'رتبة النبلاء غير متاحة حالياً' });
 
     const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
     if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
 
     const active = memberLevels.activeVipLevel(user);
     if (active > plan.level) {
-      return res.status(400).json({ error: `لديك VIP${active} فعّال بالفعل، يمكنك تجديده أو الترقية لمستوى أعلى 👑` });
+      const curRank = memberLevels.nobilityRankInfo(active);
+      return res.status(400).json({ error: `لديك رتبة ${curRank ? curRank.title_ar : 'VIP' + active} فعّالة بالفعل، يمكنك تجديدها أو الترقية لرتبة أعلى 👑` });
     }
 
-    // خصم ذرّي: لا يمر إلا إذا الرصيد كافٍ
+    // خصم ذرّي من البلورات (الألماس)
     const paid = await run('UPDATE users SET diamonds = diamonds - ? WHERE id = ? AND diamonds >= ?', [plan.price_diamonds, userId, plan.price_diamonds]);
-    if (!paid.changes) return res.status(400).json({ error: 'عفواً، رصيد الألماس غير كافٍ! اشحن ألماساتك أولاً 💎' });
+    if (!paid.changes) return res.status(400).json({ error: 'عفواً، رصيد البلورات (الألماس) غير كافٍ! اشحن محفظتك أولاً 💎' });
 
+    const rank = memberLevels.nobilityRankInfo(plan.level) || {};
+    const bonusCoins = Number(rank.bonus_coins) || (plan.level * 500);
     const now = Date.now();
     const startedAt = active === plan.level ? user.vip_until : new Date(now).toISOString();
     const expiresAt = memberLevels.computeVipExpiry(user, plan.level, plan.duration_days, now);
-    await run('UPDATE users SET vip_level = ?, vip_until = ? WHERE id = ?', [plan.level, expiresAt, userId]);
+    await run('UPDATE users SET vip_level = ?, vip_until = ?, coins = COALESCE(coins, 0) + ? WHERE id = ?',
+      [plan.level, expiresAt, bonusCoins, userId]);
+    if (Array.isArray(rank.free_gifts) && rank.free_gifts.length) {
+      await grantFreeGifts(userId, rank.free_gifts);
+    }
     await run(`
       INSERT INTO vip_subscriptions (id, user_id, level, duration_days, price_diamonds, source, started_at, expires_at)
       VALUES (?, ?, ?, ?, ?, 'purchase', ?, ?)
     `, [`vip-${now}-${uuidv4().slice(0, 6)}`, userId, plan.level, plan.duration_days, plan.price_diamonds, startedAt, expiresAt]);
 
-    // الإنفاق على VIP يرفع نقاط الثروة
+    // الإنفاق على رتبة النبلاء يرفع نقاط الثروة والمستوى العام
     const settings = await getPointSettings();
     const pts = memberLevels.pointsForAmount(plan.price_diamonds, 'diamonds', settings);
     await addMemberPoints(userId, 'wealth', pts);
-    await addLevelPoints(userId, pts); // شراء VIP يرفع المستوى
+    await addLevelPoints(userId, pts);
     await logMemberActivity({
       user_id: userId, type: 'vip_purchase', ref_id: plan.level, ref_name: plan.name,
       amount: plan.price_diamonds, currency: 'diamonds', points: pts, points_kind: 'wealth'
@@ -5280,9 +5433,490 @@ app.post('/api/vip/buy', async (req, res) => {
 
     res.json({
       success: true,
-      vip: { level: plan.level, until: expiresAt, days_left: memberLevels.vipDaysLeft(fresh) },
+      vip: {
+        level: plan.level,
+        rank_title: rank.full_name || plan.name,
+        until: expiresAt,
+        days_left: memberLevels.vipDaysLeft(fresh),
+        bonus_coins: bonusCoins,
+        free_gifts: rank.free_gifts || [],
+        mount_name: rank.mount_name || ''
+      },
+      user: fresh,
       diamonds: fresh.diamonds,
+      coins: fresh.coins,
       cards: memberLevels.buildCards(fresh)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// إعدادات حماية الحساب والخصوصية للنبلاء (إخفاء التواجد في الغرف + منع التتبع)
+app.post('/api/vip/privacy', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+    const activeLv = memberLevels.activeVipLevel(user);
+    const rank = memberLevels.nobilityRankInfo(activeLv);
+    if (!rank) return res.status(403).json({ error: 'فعّل رتبة من رتب النبلاء أولاً للاستفادة من مزايا الحماية 👑' });
+
+    const b = req.body || {};
+    let stealth = user.vip_stealth ? 1 : 0;
+    let antiTrack = user.vip_anti_track ? 1 : 0;
+    if (b.vip_stealth !== undefined) {
+      if (b.vip_stealth && !rank.stealth_entry) {
+        return res.status(403).json({ error: 'ميزة إخفاء التواجد في الغرف تتطلب رتبة «الدوق (Duke)» أو أعلى ⚜️' });
+      }
+      stealth = b.vip_stealth ? 1 : 0;
+    }
+    if (b.vip_anti_track !== undefined) {
+      if (b.vip_anti_track && !rank.anti_track) {
+        return res.status(403).json({ error: 'ميزة منع تتبع المكان والزيارات تتطلب رتبة «الماركيز (Marquis)» أو أعلى ⚔️' });
+      }
+      antiTrack = b.vip_anti_track ? 1 : 0;
+    }
+    await run('UPDATE users SET vip_stealth = ?, vip_anti_track = ? WHERE id = ?', [stealth, antiTrack, userId]);
+    notifyMemberStats(userId);
+    res.json({ success: true, vip_stealth: !!stealth, vip_anti_track: !!antiTrack });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// مركز المستويات الشامل: الثراء · السحر/الجاذبية · النبلاء · الحقيبة المجانية
+// ═══════════════════════════════════════════════════════════════════════
+app.get('/api/levels/overview', async (req, res) => {
+  try {
+    const uid = req.headers['x-user-id'] || req.query.user_id || '';
+    const u = uid ? await get('SELECT * FROM users WHERE id = ?', [uid]) : null;
+    const claims = uid ? await all('SELECT track, milestone FROM level_reward_claims WHERE user_id = ?', [uid]) : [];
+    const claimedSet = new Set(claims.map(c => `${c.track}:${c.milestone}`));
+    const freeGifts = uid ? await getUserFreeGifts(uid) : [];
+    const cards = memberLevels.buildCards(u);
+    const activeVip = u ? memberLevels.activeVipLevel(u) : 0;
+    const rank = memberLevels.nobilityRankInfo(activeVip);
+    const myRoom = uid ? await get('SELECT id, title, room_xp, room_level, xp_boost_until, daily_bag_day FROM rooms WHERE host_id = ?', [uid]) : null;
+    const myFam = uid ? await get(`
+      SELECT f.* FROM families f
+      JOIN family_members fm ON fm.family_id = f.id
+      WHERE fm.user_id = ?
+    `, [uid]) : null;
+
+    res.json({
+      success: true,
+      cards,
+      user: u ? {
+        id: u.id, name: u.name, avatar: u.avatar, avatar_frame: u.avatar_frame, entry_effect: u.entry_effect,
+        coins: u.coins, diamonds: u.diamonds,
+        level: u.level || 1, level_points: u.level_points || 0,
+        wealth_level: cards.wealth.level, wealth_points: u.wealth_points || 0,
+        charm_level: cards.popularity.level, popularity_points: u.popularity_points || 0,
+        vip_level: activeVip, vip_until: u.vip_until || null,
+        vip_stealth: !!(u.vip_stealth && rank && rank.stealth_entry),
+        vip_anti_track: !!(u.vip_anti_track && rank && rank.anti_track),
+        xp_boost_active: !!(u.xp_boost_until && new Date(u.xp_boost_until).getTime() > Date.now()),
+        xp_boost_until: u.xp_boost_until || null,
+        has_tail_lights: memberLevels.hasMessageTailLights(u),
+        has_immunity: memberLevels.hasModerationImmunity(u)
+      } : null,
+      wealth: {
+        tiers: memberLevels.WEALTH_TIERS,
+        milestones: memberLevels.WEALTH_MILESTONES.map(m => ({
+          ...m,
+          unlocked: cards.wealth.level >= m.level,
+          claimed: claimedSet.has(`wealth:${m.level}`)
+        }))
+      },
+      charm: {
+        tiers: memberLevels.CHARM_TIERS,
+        milestones: memberLevels.CHARM_MILESTONES.map(m => ({
+          ...m,
+          unlocked: cards.popularity.level >= m.level,
+          claimed: claimedSet.has(`charm:${m.level}`)
+        }))
+      },
+      nobility: {
+        ranks: memberLevels.NOBILITY_RANKS,
+        active_level: activeVip,
+        active_rank: rank,
+        days_left: u ? memberLevels.vipDaysLeft(u) : 0
+      },
+      free_gifts: freeGifts,
+      my_room: myRoom ? { ...myRoom, level_info: memberLevels.roomLevelFromXp(myRoom.room_xp || 0) } : null,
+      my_family: myFam ? { ...myFam, level_info: memberLevels.familyLevelFromXp(myFam.xp || 0) } : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// حقيبة الهدايا المجانية المكتسبة من المستويات ورتب النبلاء والمهام اليومية
+app.get('/api/levels/free-gifts', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.json({ free_gifts: [] });
+    res.json({ free_gifts: await getUserFreeGifts(userId) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// استلام مكافأة وهدايا مستوى (الثراء أو السحر/الجاذبية)
+app.post('/api/levels/claim-reward', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'سجّل الدخول أولاً' });
+    const track = req.body && req.body.track === 'charm' ? 'charm' : 'wealth';
+    const milestoneLv = Math.floor(Number(req.body && req.body.milestone));
+    const list = track === 'charm' ? memberLevels.CHARM_MILESTONES : memberLevels.WEALTH_MILESTONES;
+    const ms = list.find(m => m.level === milestoneLv);
+    if (!ms) return res.status(400).json({ error: 'هذه المكافأة غير موجودة' });
+
+    const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+
+    const cards = memberLevels.buildCards(user);
+    const currentLv = track === 'charm' ? cards.popularity.level : cards.wealth.level;
+    if (currentLv < ms.level) {
+      return res.status(400).json({ error: `يجب الوصول إلى المستوى Lv.${ms.level} أولاً لاستلام هذه المكافأة` });
+    }
+
+    const ins = await run('INSERT OR IGNORE INTO level_reward_claims (user_id, track, milestone) VALUES (?, ?, ?)', [userId, track, ms.level]);
+    if (!ins.changes) {
+      return res.status(400).json({ error: 'لقد استلمت مكافأة هذا المستوى بالفعل ✅' });
+    }
+
+    await run('UPDATE users SET coins = COALESCE(coins, 0) + ?, diamonds = COALESCE(diamonds, 0) + ? WHERE id = ?',
+      [ms.coins || 0, ms.diamonds || 0, userId]);
+    if (ms.gift_id && ms.gift_qty) {
+      await grantFreeGifts(userId, [{ gift_id: ms.gift_id, qty: ms.gift_qty }]);
+    }
+    if (ms.frame_id) {
+      await run('UPDATE users SET avatar_frame = ? WHERE id = ?', [ms.frame_id, userId]);
+    }
+
+    await logMemberActivity({
+      user_id: userId,
+      type: 'level_reward',
+      ref_id: `${track}-${ms.level}`,
+      ref_name: `مكافأة ${track === 'charm' ? 'الجاذبية' : 'الثراء'} Lv.${ms.level} (${ms.title})`,
+      amount: ms.diamonds || ms.coins || 0,
+      currency: ms.diamonds ? 'diamonds' : 'coins'
+    });
+
+    const fresh = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    const set = userSockets.get(userId);
+    if (set) for (const sId of set) io.to(sId).emit('balance_updated', { coins: fresh.coins, diamonds: fresh.diamonds, level: fresh.level });
+    notifyMemberStats(userId);
+
+    res.json({
+      success: true,
+      milestone: ms,
+      user: fresh,
+      free_gifts: await getUserFreeGifts(userId)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// تفعيل إطار الثراء أو إطار النبلاء المفتوح للمستخدم
+app.post('/api/levels/equip-perk', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'سجّل الدخول أولاً' });
+    const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+    const cards = memberLevels.buildCards(user);
+    const frameId = String((req.body && req.body.frame_id) || '').trim();
+    const frameReq = { wealth_bronze: 11, wealth_silver: 21, wealth_gold: 31, wealth_gold_anim: 41, wealth_royal_tycoon: 51 };
+    if (frameId in frameReq) {
+      if (cards.wealth.level < frameReq[frameId]) {
+        return res.status(403).json({ error: `يتطلب هذا الإطار مستوى ثراء Lv.${frameReq[frameId]} على الأقل` });
+      }
+      await run('UPDATE users SET avatar_frame = ? WHERE id = ?', [frameId, userId]);
+    } else if (frameId.startsWith('noble_')) {
+      const rank = memberLevels.NOBILITY_RANKS.find(r => r.frame_id === frameId);
+      if (!rank || cards.vip.level < rank.level) {
+        return res.status(403).json({ error: 'فعّل رتبة النبلاء المقابلة أولاً لتجهيز إطارها الملكي' });
+      }
+      await run('UPDATE users SET avatar_frame = ? WHERE id = ?', [frameId, userId]);
+    } else if (frameId === 'cosmic_ring') {
+      await run('UPDATE users SET avatar_frame = ? WHERE id = ?', ['cosmic_ring', userId]);
+    } else {
+      return res.status(400).json({ error: 'إطار غير معروف' });
+    }
+    const fresh = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    res.json({ success: true, user: fresh });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// 4a) نظام مستويات الغرف ومهامها اليومية (Room Levels & Lucky Bag + 2x XP)
+// ═══════════════════════════════════════════════════════════════════════
+app.get('/api/rooms/:id/level', async (req, res) => {
+  try {
+    const room = await get('SELECT * FROM rooms WHERE id = ?', [req.params.id]);
+    if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+    const host = await get('SELECT id, name, charm_level, wealth_level FROM users WHERE id = ?', [room.host_id]);
+    const info = memberLevels.roomLevelFromXp(room.room_xp || 0);
+    const today = new Date().toISOString().slice(0, 10);
+    const boostUntilMs = room.xp_boost_until ? new Date(room.xp_boost_until).getTime() : 0;
+    const membersCount = (await get('SELECT COUNT(*) AS c FROM room_members WHERE room_id = ?', [room.id])).c;
+    res.json({
+      success: true,
+      room_id: room.id,
+      title: room.title,
+      level_info: info,
+      members_count: membersCount,
+      exposure_boost_pct: memberLevels.charmExposureBoost(host && host.charm_level),
+      xp_boost_active: boostUntilMs > Date.now(),
+      xp_boost_until: boostUntilMs > Date.now() ? room.xp_boost_until : null,
+      daily_reward_claimed: room.daily_bag_day === today
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// تفعيل مكافأة المهام اليومية للغرفة: توزيع كيس حظ مجاني في الغرفة + مضاعف خبرة 2x XP لأعضاء الغرفة المتفاعلين!
+app.post('/api/rooms/:id/claim-daily', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'سجّل الدخول أولاً' });
+    const room = await get('SELECT * FROM rooms WHERE id = ?', [req.params.id]);
+    if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+    const actor = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!actor || !(await canManageRoom(room, actor))) {
+      return res.status(403).json({ error: 'فقط مالك الغرفة أو مشرفوها يمكنهم إطلاق مكافأة المهام اليومية للغرفة 🏠' });
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (room.daily_bag_day === today) {
+      return res.status(400).json({ error: 'تم إطلاق كيس الحظ ومضاعف 2x XP اليومي لهذه الغرفة اليوم بالفعل ✅' });
+    }
+
+    const info = memberLevels.roomLevelFromXp(room.room_xp || 0);
+    const boostUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await run('UPDATE rooms SET daily_bag_day = ?, xp_boost_until = ? WHERE id = ?', [today, boostUntil, room.id]);
+    await addRoomXp(room.id, 120);
+
+    // إنشاء كيس حظ مجاني من خزينة الغرفة ليقتسمه جميع المتواجدين في الغرفة!
+    const now = Date.now();
+    const amount = info.daily_lucky_bag_crystals;
+    const bag = {
+      id: `bag-${now}-${uuidv4().slice(0, 5)}`,
+      roomId: room.id,
+      sender: { id: actor.id, name: `🎁 مكافأة الغرفة (${room.title})`, avatar: actor.avatar },
+      total: amount,
+      remaining: amount,
+      shares: 10,
+      sharesLeft: 10,
+      openAt: now,
+      expiresAt: now + LUCKY_BAG_LIFETIME_MS,
+      claimedBy: new Set()
+    };
+    luckyBags.set(bag.id, bag);
+    setTimeout(() => {
+      const b = luckyBags.get(bag.id);
+      if (!b) return;
+      luckyBags.delete(bag.id);
+      io.to(`room:${b.roomId}`).emit('lucky_bag_expired', { bagId: b.id, refunded: 0 });
+    }, LUCKY_BAG_LIFETIME_MS).unref();
+
+    io.to(`room:${room.id}`).emit('lucky_bag_created', publicLuckyBag(bag));
+    io.to(`room:${room.id}`).emit('room_message', {
+      id: `rmbag-${now}`,
+      sender_id: 'system',
+      sender_name: '🎁 مهام الغرفة اليومية',
+      sender_avatar: actor.avatar,
+      sender_level: 99,
+      message_type: 'system',
+      content: `🔥 تم تفعيل مضاعف الخبرة (${info.xp_multiplier}x XP) لمدة ساعة وتوزيع كيس حظ بقيمة ${amount} 💎 لأعضاء الغرفة المتفاعلين!`,
+      created_at: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      bag: publicLuckyBag(bag),
+      xp_boost_until: boostUntil,
+      xp_multiplier: info.xp_multiplier,
+      level_info: memberLevels.roomLevelFromXp((room.room_xp || 0) + 120)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// 4b) نظام العائلات / الإمبراطوريات ومستوياتها (Family System & Daily Rewards)
+// ═══════════════════════════════════════════════════════════════════════
+app.get('/api/families', async (req, res) => {
+  try {
+    const uid = req.headers['x-user-id'] || '';
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const rows = await all(`
+      SELECT f.*, u.name AS leader_name, u.avatar AS leader_avatar,
+             (SELECT COUNT(*) FROM family_members fm WHERE fm.family_id = f.id) AS member_count
+      FROM families f
+      LEFT JOIN users u ON u.id = f.leader_id
+      ORDER BY f.xp DESC, f.created_at ASC
+    `);
+    const myMem = uid ? await get('SELECT family_id, role, contribution_xp FROM family_members WHERE user_id = ?', [uid]) : null;
+    const today = new Date().toISOString().slice(0, 10);
+    const claimedToday = (uid && myMem)
+      ? !!(await get('SELECT 1 AS x FROM family_daily_claims WHERE family_id = ? AND user_id = ? AND day = ?', [myMem.family_id, uid, today]))
+      : false;
+
+    const families = rows
+      .filter(f => !q || String(f.name || '').toLowerCase().includes(q) || String(f.id || '').toLowerCase().includes(q))
+      .map((f, idx) => {
+        const info = memberLevels.familyLevelFromXp(f.xp || 0);
+        return {
+          ...f,
+          rank: idx + 1,
+          level: info.level,
+          capacity: info.member_capacity,
+          power_score: (f.xp || 0) + (f.member_count || 0) * 500,
+          level_info: info,
+          is_member: !!(myMem && myMem.family_id === f.id)
+        };
+      });
+
+    let myFamilyMembers = [];
+    if (myMem) {
+      myFamilyMembers = await all(`
+        SELECT fm.user_id, fm.role, fm.contribution_xp, u.name, u.avatar, u.avatar_frame, u.wealth_level, u.charm_level
+        FROM family_members fm
+        JOIN users u ON u.id = fm.user_id
+        WHERE fm.family_id = ?
+        ORDER BY fm.contribution_xp DESC
+        LIMIT 50
+      `, [myMem.family_id]);
+    }
+
+    res.json({
+      success: true,
+      families,
+      my_membership: myMem ? { ...myMem, daily_claimed: claimedToday, members: myFamilyMembers } : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/families', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'سجّل الدخول أولاً' });
+    const existing = await get('SELECT family_id FROM family_members WHERE user_id = ?', [userId]);
+    if (existing) return res.status(400).json({ error: 'أنت منضم لعائلة بالفعل؛ غادر عائلتك الحالية أولاً لإنشاء عائلة جديدة' });
+
+    const b = req.body || {};
+    const name = String(b.name || '').trim().slice(0, 32);
+    if (name.length < 2) return res.status(400).json({ error: 'يرجى إدخال اسم للعائلة لا يقل عن حرفين' });
+    const emoji = String(b.badge_emoji || '🦅').trim().slice(0, 8) || '🦅';
+    const color = /^#[0-9a-fA-F]{6}$/.test(String(b.color || '')) ? String(b.color) : '#7c3aed';
+    const slogan = String(b.slogan || 'يداً بيد نحو القمة').trim().slice(0, 80);
+    const id = `fam-${Date.now().toString().slice(-6)}`;
+
+    await run('INSERT INTO families (id, name, badge_emoji, color, slogan, leader_id, xp, level) VALUES (?, ?, ?, ?, ?, ?, 0, 1)',
+      [id, name, emoji, color, slogan, userId]);
+    await run('INSERT INTO family_members (family_id, user_id, role, contribution_xp) VALUES (?, ?, ?, 0)', [id, userId, 'leader']);
+
+    res.json({ success: true, family_id: id, family: { id, name, badge_emoji: emoji, color, slogan } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/families/:id/join', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'سجّل الدخول أولاً' });
+    const fam = await get('SELECT * FROM families WHERE id = ?', [req.params.id]);
+    if (!fam) return res.status(404).json({ error: 'العائلة غير موجودة' });
+    const existing = await get('SELECT family_id FROM family_members WHERE user_id = ?', [userId]);
+    if (existing) {
+      if (existing.family_id === fam.id) return res.json({ success: true, already: true });
+      return res.status(400).json({ error: 'أنت منضم لعائلة أخرى بالفعل؛ غادرها أولاً قبل الانضمام لعائلة جديدة' });
+    }
+    const info = memberLevels.familyLevelFromXp(fam.xp || 0);
+    const cnt = (await get('SELECT COUNT(*) AS c FROM family_members WHERE family_id = ?', [fam.id])).c;
+    if (cnt >= info.member_capacity) {
+      return res.status(400).json({ error: `وصلت العائلة لسعتها القصوى (${info.member_capacity} عضو)؛ ارفع مستوى العائلة لزيادة السعة!` });
+    }
+    await run('INSERT INTO family_members (family_id, user_id, role, contribution_xp) VALUES (?, ?, ?, 0)', [fam.id, userId, 'member']);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/families/leave', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'سجّل الدخول أولاً' });
+    const mem = await get('SELECT * FROM family_members WHERE user_id = ?', [userId]);
+    if (!mem) return res.status(400).json({ error: 'لست منضماً لأي عائلة' });
+    await run('DELETE FROM family_members WHERE user_id = ?', [userId]);
+    const rest = await get('SELECT user_id FROM family_members WHERE family_id = ? ORDER BY contribution_xp DESC LIMIT 1', [mem.family_id]);
+    if (!rest) {
+      await run('DELETE FROM families WHERE id = ?', [mem.family_id]);
+    } else if (mem.role === 'leader') {
+      await run('UPDATE families SET leader_id = ? WHERE id = ?', [rest.user_id, mem.family_id]);
+      await run('UPDATE family_members SET role = ? WHERE family_id = ? AND user_id = ?', ['leader', mem.family_id, rest.user_id]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// استلام مكافأة المهام اليومية لأعضاء العائلة المتفاعلين: كيس حظ العائلة (بلورات + عملات) + حزمة نقاط خبرة ومضاعف 2x XP!
+app.post('/api/families/:id/claim-daily', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'سجّل الدخول أولاً' });
+    const fam = await get('SELECT * FROM families WHERE id = ?', [req.params.id]);
+    if (!fam) return res.status(404).json({ error: 'العائلة غير موجودة' });
+    const mem = await get('SELECT * FROM family_members WHERE family_id = ? AND user_id = ?', [fam.id, userId]);
+    if (!mem) return res.status(403).json({ error: 'انضم للعائلة أولاً لاستلام مكافآتها اليومية' });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const info = memberLevels.familyLevelFromXp(fam.xp || 0);
+    const ins = await run(`
+      INSERT OR IGNORE INTO family_daily_claims (family_id, user_id, day, xp_awarded, coins_awarded, diamonds_awarded)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [fam.id, userId, today, info.daily_xp_pack, info.daily_coins, info.daily_diamonds]);
+    if (!ins.changes) {
+      return res.status(400).json({ error: 'لقد استلمت مكافأة مهام العائلة اليومية اليوم بالفعل ✅' });
+    }
+
+    const boostUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await run('UPDATE users SET coins = COALESCE(coins, 0) + ?, diamonds = COALESCE(diamonds, 0) + ?, xp_boost_until = ? WHERE id = ?',
+      [info.daily_coins, info.daily_diamonds, boostUntil, userId]);
+    await grantFreeGifts(userId, [{ gift_id: 'lucky_clover', qty: 2 }]);
+    await addLevelPoints(userId, info.daily_xp_pack);
+    await addFamilyXpForUser(userId, 80);
+
+    const fresh = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    const set = userSockets.get(userId);
+    if (set) for (const sId of set) io.to(sId).emit('balance_updated', { coins: fresh.coins, diamonds: fresh.diamonds, level: fresh.level });
+    notifyMemberStats(userId);
+
+    res.json({
+      success: true,
+      coins_awarded: info.daily_coins,
+      diamonds_awarded: info.daily_diamonds,
+      xp_awarded: info.daily_xp_pack,
+      xp_boost_until: boostUntil,
+      user: fresh
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -5423,13 +6057,13 @@ app.post('/api/admin/settings/points', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 21. Send Gift (in Room or Direct)
+// 21. Send Gift (in Room, Live Stream, or Direct Profile / DM)
 app.post('/api/gifts/send', async (req, res) => {
   try {
     const senderId = req.headers['x-user-id'];
     if (!senderId) return res.status(401).json({ error: 'Unauthorized' });
 
-    const { receiver_id, room_id, gift_id } = req.body;
+    const { receiver_id, room_id, gift_id, use_free_bag, pay_with_diamonds } = req.body || {};
     if (!receiver_id) {
       return res.status(400).json({ error: 'يرجى تحديد الشخص المستلم للهدية أولاً! 👤🎁' });
     }
@@ -5440,22 +6074,57 @@ app.post('/api/gifts/send', async (req, res) => {
     const sender = await get('SELECT * FROM users WHERE id = ?', [senderId]);
     if (!sender) return res.status(404).json({ error: 'Sender not found' });
 
-    // Check balance
-    if (gift.currency === 'coins') {
-      if (sender.coins < gift.cost) {
-        return res.status(400).json({ error: 'عفواً، رصيد العملات غير كافٍ! اشحن الآن أو احصل على مكافأتك اليومية 🪙' });
+    const receiverPre = await get('SELECT id, name, avatar, charm_level, popularity_points FROM users WHERE id = ?', [receiver_id]);
+    if (!receiverPre) return res.status(404).json({ error: 'المستلم غير موجود' });
+
+    // التحقق من هدايا VIP الحصرية لأصحاب مستويات السحر/الجاذبية العالية
+    if (gift.min_charm_level > 0) {
+      const recvCards = memberLevels.buildCards(receiverPre);
+      if (recvCards.popularity.level < gift.min_charm_level) {
+        return res.status(400).json({
+          error: `✨ هدية «${gift.name}» حصرية لأصحاب مستوى الجاذبية Lv.${gift.min_charm_level} فأعلى (مستوى المستلم حالياً Lv.${recvCards.popularity.level})`
+        });
       }
-      await run('UPDATE users SET coins = coins - ? WHERE id = ?', [gift.cost, senderId]);
+    }
+
+    // خيار 1: الإرسال المجاني من حقيبة مكافآت المستويات / رتب النبلاء
+    let usedFreeBag = false;
+    let paidCurrency = gift.currency;
+    let paidCost = gift.cost;
+    if (use_free_bag) {
+      const dec = await run('UPDATE user_free_gifts SET quantity = quantity - 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND gift_id = ? AND quantity >= 1',
+        [senderId, gift.id]);
+      if (!dec.changes) {
+        return res.status(400).json({ error: 'لا تملك هذه الهدية في حقيبتك المجانية حالياً 🎒' });
+      }
+      await run('DELETE FROM user_free_gifts WHERE user_id = ? AND quantity <= 0', [senderId]);
+      usedFreeBag = true;
+    } else if (gift.currency === 'coins') {
+      const crystalEquiv = Math.max(1, Math.ceil(gift.cost / 10));
+      if (pay_with_diamonds || (sender.coins < gift.cost && sender.diamonds >= crystalEquiv)) {
+        if (sender.diamonds < crystalEquiv) {
+          return res.status(400).json({ error: 'عفواً، رصيد البلورات غير كافٍ لإرسال هذه الهدية! اشحن رصيدك الآن 💎' });
+        }
+        await run('UPDATE users SET diamonds = diamonds - ? WHERE id = ?', [crystalEquiv, senderId]);
+        paidCurrency = 'diamonds';
+        paidCost = crystalEquiv;
+      } else {
+        if (sender.coins < gift.cost) {
+          return res.status(400).json({ error: 'عفواً، رصيد البلورات والعملات غير كافٍ! اشحن محفظتك أو احصل على مكافأتك اليومية 💎' });
+        }
+        await run('UPDATE users SET coins = coins - ? WHERE id = ?', [gift.cost, senderId]);
+      }
     } else {
       if (sender.diamonds < gift.cost) {
-        return res.status(400).json({ error: 'عفواً، رصيد الألماس غير كافٍ! اشحن ألماساتك لإرسال هدايا فاخرة 💎' });
+        return res.status(400).json({ error: 'عفواً، رصيد البلورات (الألماس) غير كافٍ! اشحن بلوراتك لإرسال هذه الهدية 💎' });
       }
       await run('UPDATE users SET diamonds = diamonds - ? WHERE id = ?', [gift.cost, senderId]);
     }
 
     // مكافأة المستلم بالعملات (الرواج يُحسب بالنقاط بعد تسجيل الهدية)
+    const coinEquivalent = gift.currency === 'diamonds' ? gift.cost * 10 : gift.cost;
     if (receiver_id) {
-      await creditGiftReward(receiver_id, Math.floor(gift.cost * 0.4)); // الأنثى: تُعلَّق الأرباح حتى تُكمل مهام اليوم
+      await creditGiftReward(receiver_id, Math.max(1, Math.floor(coinEquivalent * 0.4)));
     }
 
     // Record gift history (Saved in receiver's gifts wall)
@@ -5465,20 +6134,34 @@ app.post('/api/gifts/send', async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [historyId, senderId, receiver_id, room_id, gift.id, gift.name, gift.image_url || gift.icon, gift.cost, gift.currency]);
 
-    // تسجيل النشاط والنقاط: المُرسل ← ثروة، المستلم ← رواج (لا رواج عند إهداء النفس)
+    // تسجيل النشاط والنقاط: المُرسل ← ثروة، المستلم ← رواج/جاذبية + ترقية الغرفة والعائلة!
     try {
       const ptSettings = await getPointSettings();
-      const pts = memberLevels.pointsForAmount(gift.cost, gift.currency, ptSettings);
-      await addMemberPoints(senderId, 'wealth', pts);
-      await addLevelPoints(senderId, pts); // إرسال الهدايا يرفع المستوى أيضاً
-      await logMemberActivity({ user_id: senderId, type: 'gift_sent', other_user_id: receiver_id, ref_id: gift.id, ref_name: gift.name,
-        amount: gift.cost, currency: gift.currency, points: pts, points_kind: 'wealth', room_id });
-      if (receiver_id !== senderId) {
-        await addMemberPoints(receiver_id, 'popularity', pts);
-        await logMemberActivity({ user_id: receiver_id, type: 'gift_received', other_user_id: senderId, ref_id: gift.id, ref_name: gift.name,
-          amount: gift.cost, currency: gift.currency, points: pts, points_kind: 'popularity', room_id });
+      const senderPts = usedFreeBag ? 0 : memberLevels.pointsForAmount(paidCost, paidCurrency, ptSettings);
+      const recvPts = Math.max(
+        memberLevels.pointsForAmount(gift.cost, gift.currency, ptSettings),
+        Math.floor(Number(gift.charm || 0) / (gift.currency === 'coins' ? 10 : 1))
+      );
+      if (senderPts > 0) {
+        await addMemberPoints(senderId, 'wealth', senderPts);
+        await addLevelPoints(senderId, senderPts, room_id);
+      }
+      await logMemberActivity({
+        user_id: senderId, type: 'gift_sent', other_user_id: receiver_id, ref_id: gift.id, ref_name: usedFreeBag ? `${gift.name} (مجانية)` : gift.name,
+        amount: usedFreeBag ? 0 : paidCost, currency: paidCurrency, points: senderPts, points_kind: 'wealth', room_id
+      });
+      if (receiver_id !== senderId && recvPts > 0) {
+        await addMemberPoints(receiver_id, 'popularity', recvPts);
+        await logMemberActivity({
+          user_id: receiver_id, type: 'gift_received', other_user_id: senderId, ref_id: gift.id, ref_name: gift.name,
+          amount: gift.cost, currency: gift.currency, points: recvPts, points_kind: 'popularity', room_id
+        });
         notifyMemberStats(receiver_id);
       }
+      // ترقية مستوى الغرفة ومستوى العائلة تلقائياً
+      const groupXp = Math.max(10, recvPts || 10);
+      if (room_id) await addRoomXp(room_id, groupXp);
+      await addFamilyXpForUser(senderId, groupXp);
       notifyMemberStats(senderId);
     } catch (e) { console.error('member activity error:', e.message); }
 
@@ -5591,7 +6274,12 @@ app.post('/api/gifts/send', async (req, res) => {
         sender_name: sender.name,
         sender_avatar: sender.avatar,
         sender_frame: sender.avatar_frame,
-        sender_level: sender.level,
+        sender_level: updatedSender ? updatedSender.level : sender.level,
+        sender_wealth_level: updatedSender ? updatedSender.wealth_level : sender.wealth_level,
+        sender_charm_level: updatedSender ? updatedSender.charm_level : sender.charm_level,
+        sender_vip_level: memberLevels.activeVipLevel(updatedSender || sender),
+        sender_role: sender.role,
+        has_tail_lights: memberLevels.hasMessageTailLights(updatedSender || sender),
         sender_chat_bubble: await getEquippedBubbleUrl(sender.id),
         message_type: 'gift',
         content: giftNotice,
@@ -5603,6 +6291,8 @@ app.post('/api/gifts/send', async (req, res) => {
     res.json({
       success: true,
       gift,
+      used_free_bag: usedFreeBag,
+      free_gifts: await getUserFreeGifts(senderId),
       sender: updatedSender,
       receiver,
       message: dmMessage
@@ -6004,15 +6694,18 @@ app.get('/api/users/:id/friends', async (req, res) => {
   }
 });
 
-// تسجيل زيارة لملف شخصي (يتجاهل زيارة الشخص لصفحته)
+// تسجيل زيارة لملف شخصي (يتجاهل زيارة الشخص لصفحته + يحترم ميزة منع التتبع للنبلاء)
 app.post('/api/users/:id/visit', async (req, res) => {
   try {
     const visitorId = req.headers['x-user-id'];
     const ownerId = req.params.id;
     if (!visitorId || visitorId === ownerId) return res.json({ success: true, skipped: true });
     const owner = await get('SELECT id FROM users WHERE id = ?', [ownerId]);
-    const visitor = await get('SELECT id FROM users WHERE id = ?', [visitorId]);
+    const visitor = await get('SELECT id, vip_level, vip_until, vip_anti_track FROM users WHERE id = ?', [visitorId]);
     if (!owner || !visitor) return res.json({ success: true, skipped: true });
+    if (visitor.vip_anti_track && memberLevels.activeVipLevel(visitor) >= 3) {
+      return res.json({ success: true, skipped: true, stealth: true });
+    }
     await run(`INSERT INTO profile_visits (visitor_id, owner_id) VALUES (?, ?)
       ON CONFLICT(visitor_id, owner_id) DO UPDATE SET visits = visits + 1, last_visited = CURRENT_TIMESTAMP`, [visitorId, ownerId]);
     res.json({ success: true });
@@ -6260,7 +6953,8 @@ app.get('/api/rooms/:id/people', async (req, res) => {
     const total = await get('SELECT COUNT(*) AS c FROM room_members WHERE room_id = ?', [roomId]);
     const moderators = await all(`SELECT ${cols} FROM room_moderators d JOIN users u ON u.id = d.user_id WHERE d.room_id = ?`, [roomId]);
     const st = activeRoomStates.get(roomId);
-    const online = st ? Array.from(st.activeAudience.values()) : [];
+    const onlineRaw = st ? Array.from(st.activeAudience.values()) : [];
+    const online = onlineRaw.filter(o => o.id === uid || (viewer && viewer.role === 'owner') || !(o.vip_stealth && memberLevels.activeVipLevel(o) >= 4));
     const onlineIds = new Set(online.map(o => o.id));
     const left = members.filter(m => !onlineIds.has(m.id)); // دخلوا الغرفة ثم غادروها
     const out = { host_id: room.host_id, total_members: total.c, members, moderators, online, left, total_left: left.length, can_manage: manager, is_owner: ownerLevel };
@@ -6279,22 +6973,27 @@ app.get('/api/rooms/:id/people', async (req, res) => {
   }
 });
 
-// حالة شخص داخل الغرفة + صلاحية من يشاهده (لبطاقة المستخدم داخل الغرفة)
+// حالة شخص داخل الغرفة + صلاحية من يشاهده (بما فيها سلطة الثراء 31+ وحصانة الملوك 51+)
 app.get('/api/rooms/:id/relation/:userId', async (req, res) => {
   try {
     const roomId = req.params.id;
     const room = await get('SELECT * FROM rooms WHERE id = ?', [roomId]);
     if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
     const uid = req.headers['x-user-id'];
-    const viewer = uid ? await get('SELECT id, role FROM users WHERE id = ?', [uid]) : null;
+    const viewer = uid ? await get('SELECT id, role, wealth_level, vip_level, vip_until FROM users WHERE id = ?', [uid]) : null;
     const target = req.params.userId;
+    const targetUser = await get('SELECT id, role, wealth_level, vip_level, vip_until FROM users WHERE id = ?', [target]);
     const q = async (sql) => !!(await get(sql, [roomId, target]));
+    const isTargetMod = await q('SELECT 1 AS x FROM room_moderators WHERE room_id = ? AND user_id = ?');
+    const canWealthMod = !isTargetMod && memberLevels.canWealthModerateTarget(viewer, targetUser, room);
     res.json({
       viewer_can_manage: await canManageRoom(room, viewer),
       viewer_is_owner: isRoomOwnerLevel(room, viewer),
+      viewer_can_wealth_moderate: canWealthMod,
+      target_is_immune: memberLevels.hasModerationImmunity(targetUser),
       is_host: room.host_id === target,
       is_member: await q('SELECT 1 AS x FROM room_members WHERE room_id = ? AND user_id = ?'),
-      is_moderator: await q('SELECT 1 AS x FROM room_moderators WHERE room_id = ? AND user_id = ?'),
+      is_moderator: isTargetMod,
       is_banned: await q("SELECT 1 AS x FROM room_restrictions WHERE room_id = ? AND user_id = ? AND type = 'ban'"),
       is_muted: await q("SELECT 1 AS x FROM room_restrictions WHERE room_id = ? AND user_id = ? AND type = 'mute'")
     });
@@ -7145,44 +7844,53 @@ app.get('/api/female/tasks', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'تعذر جلب المهام' }); }
 });
 
-// حالة خيارات المقاعد (3 / 5 / 9 / 15) وما إذا كانت مفتوحة
+// حالة خيارات المقاعد (3 / 5 / 9 / 12 / 15) وما إذا كانت مفتوحة بمستوى الغرفة أو الأعضاء أو الكريستال
 app.get('/api/rooms/:id/seat-options', async (req, res) => {
   try {
     const room = await get('SELECT * FROM rooms WHERE id = ?', [req.params.id]);
     if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
     const members = (await get('SELECT COUNT(*) AS c FROM room_members WHERE room_id = ?', [room.id])).c;
+    const rLvInfo = memberLevels.roomLevelFromXp(room.room_xp || 0);
     const unlocks = jparse(room.seat_unlocks, {});
     res.json({
-      current: (room.seat_count || 8) + 1, members,   // الرقم الكلي يشمل مقعد المضيف
+      current: (room.seat_count || 8) + 1,
+      members,
+      room_level: rLvInfo.level,
       options: [
         { count: 3, locked: false },
         { count: 5, locked: false },
-        { count: 9, locked: !(unlocks['9'] || members >= SEAT_9_MEMBERS_NEEDED), need_members: SEAT_9_MEMBERS_NEEDED, members },
-        { count: 15, locked: !unlocks['15'], price: SEAT_15_PRICE }
+        { count: 9, locked: !(unlocks['9'] || members >= SEAT_9_MEMBERS_NEEDED || rLvInfo.max_mic_seats >= 9), need_members: SEAT_9_MEMBERS_NEEDED, need_room_level: 3, members },
+        { count: 12, locked: !(unlocks['12'] || rLvInfo.max_mic_seats >= 12), need_room_level: 6 },
+        { count: 15, locked: !(unlocks['15'] || rLvInfo.max_mic_seats >= 15), price: SEAT_15_PRICE, need_room_level: 10 }
       ]
     });
   } catch (err) { res.status(500).json({ error: 'تعذر تحميل خيارات المقاعد' }); }
 });
 
-// تحديد عدد المقاعد النشطة (صاحب الغرفة أو الإدارة)
+// تحديد عدد المقاعد النشطة (صاحب الغرفة أو الإدارة — تدعم الفتح التلقائي عبر مستوى الغرفة!)
 app.put('/api/rooms/:id/seat-count', async (req, res) => {
   try {
     const ctx = await requireRoomManager(req, res); if (!ctx) return;
     const { room, user } = ctx; const roomId = room.id;
     const count = parseInt(req.body.count, 10);
     const staff = ROOM_STAFF_ROLES.includes(user.role);
-    if (!ROOM_SEAT_OPTIONS.includes(count) && !(staff && count >= 2 && count <= 16)) {
-      return res.status(400).json({ error: 'اختر 3 أو 5 أو 9 أو 15 مقعداً' });
+    const validSeatChoices = [...ROOM_SEAT_OPTIONS, 12];
+    if (!validSeatChoices.includes(count) && !(staff && count >= 2 && count <= 16)) {
+      return res.status(400).json({ error: 'اختر 3 أو 5 أو 9 أو 12 أو 15 مقعداً' });
     }
+    const rLvInfo = memberLevels.roomLevelFromXp(room.room_xp || 0);
     const unlocks = jparse(room.seat_unlocks, {});
-    if (count === 9 && !staff && !unlocks['9']) {
+    if (count === 9 && !staff && !unlocks['9'] && rLvInfo.max_mic_seats < 9) {
       const members = (await get('SELECT COUNT(*) AS c FROM room_members WHERE room_id = ?', [roomId])).c;
-      if (members < SEAT_9_MEMBERS_NEEDED) return res.status(403).json({ error: `يلزم ${SEAT_9_MEMBERS_NEEDED} من أعضاء الغرفة لفتح 9 مقاعد` });
+      if (members < SEAT_9_MEMBERS_NEEDED) return res.status(403).json({ error: `يلزم وصول الغرفة للمستوى Lv.3 أو ${SEAT_9_MEMBERS_NEEDED} عضواً لفتح 9 مقاعد` });
       unlocks['9'] = true;
     }
-    if (count === 15 && !staff && !unlocks['15']) {
+    if (count === 12 && !staff && !unlocks['12'] && rLvInfo.max_mic_seats < 12) {
+      return res.status(403).json({ error: 'فتح 12 مقعداً يُمنح مجاناً عند وصول الغرفة للمستوى Lv.6 🏠' });
+    }
+    if (count === 15 && !staff && !unlocks['15'] && rLvInfo.max_mic_seats < 15) {
       const bal = user.diamonds || 0;
-      if (bal < SEAT_15_PRICE) return res.status(402).json({ error: `فتح 15 مقعداً يكلف ${SEAT_15_PRICE} كريستال` });
+      if (bal < SEAT_15_PRICE) return res.status(402).json({ error: `فتح 15 مقعداً مجاني عند مستوى غرفة Lv.10 أو يكلف ${SEAT_15_PRICE} كريستال الآن` });
       await run('UPDATE users SET diamonds = diamonds - ? WHERE id = ?', [SEAT_15_PRICE, user.id]);
       unlocks['15'] = true;
     }
@@ -8224,46 +8932,62 @@ io.on('connection', (socket) => {
 
     let joinedUserObj = user;
     if (user && user.id) {
-      const dbUser = await get('SELECT id, name, avatar, avatar_frame, chat_frame, entry_effect, level, wealth_level, charm_level, soul_planet, bio, role, gender, age, vip_level, vip_until FROM users WHERE id = ?', [user.id]) || user;
+      const dbUser = await get('SELECT id, name, avatar, avatar_frame, chat_frame, entry_effect, level, wealth_level, charm_level, soul_planet, bio, role, gender, age, vip_level, vip_until, vip_stealth, vip_anti_track FROM users WHERE id = ?', [user.id]) || user;
       joinedUserObj = dbUser;
       roomState.activeAudience.set(user.id, dbUser);
     }
 
-    const audienceList = Array.from(roomState.activeAudience.values());
+    const isStealthJoin = !!(joinedUserObj && joinedUserObj.vip_stealth && memberLevels.activeVipLevel(joinedUserObj) >= 4);
+    const audienceList = Array.from(roomState.activeAudience.values()).filter(u => !(u && u.vip_stealth && memberLevels.activeVipLevel(u) >= 4));
     const isChatMuted = user && user.id ? roomState.mutedChatUsers.has(user.id) : false;
 
     // فقاعة الدخول المفعّلة من المتجر (تظهر في إشعار الدخول في منتصف الشاشة وفي سطر الدخول فقط)
     const joinBubbleUrl = (joinedUserObj && joinedUserObj.id) ? await getEquippedJoinBubbleUrl(joinedUserObj.id) : '';
 
-    // Notify room occupants
-    io.to(`room:${roomId}`).emit('user_joined_room', {
-      user: joinedUserObj ? Object.assign({}, joinedUserObj, { chat_bubble: joinBubbleUrl }) : joinedUserObj,
-      audienceCount: audienceList.length,
-      audience: audienceList
-    });
+    // في وضع التخفّي للنبلاء (Stealth Mode): لا يظهر شريط دخول ولا مركبة ولا يُدرج في قائمة المتواجدين العامة
+    if (!isStealthJoin) {
+      io.to(`room:${roomId}`).emit('user_joined_room', {
+        user: joinedUserObj ? Object.assign({}, joinedUserObj, { chat_bubble: joinBubbleUrl }) : joinedUserObj,
+        audienceCount: audienceList.length,
+        audience: audienceList
+      });
 
-    const joinUserWithBubble = joinedUserObj ? Object.assign({}, joinedUserObj, { chat_bubble: joinBubbleUrl }) : joinedUserObj;
-    let entryEffectShown = false;
+      const joinUserWithBubble = joinedUserObj ? Object.assign({}, joinedUserObj, { chat_bubble: joinBubbleUrl }) : joinedUserObj;
+      let entryEffectShown = false;
 
-    // تأثير الدخول يظهر فقط لمن يملك قالب دخول مفعّلاً
-    if (joinedUserObj && joinedUserObj.id && joinedUserObj.entry_effect) {
-      try {
-        const tpl = await getOwnedEntryTemplate(joinedUserObj.id, joinedUserObj.entry_effect);
-        if (tpl) {
-          entryEffectShown = true;
+      // 1) مؤثر الدخول المخصّص المفعّل من المتجر إن وُجد
+      if (joinedUserObj && joinedUserObj.id && joinedUserObj.entry_effect) {
+        try {
+          const tpl = await getOwnedEntryTemplate(joinedUserObj.id, joinedUserObj.entry_effect);
+          if (tpl) {
+            entryEffectShown = true;
+            io.to(`room:${roomId}`).emit('room_entry_effect', {
+              user: joinUserWithBubble,
+              effectId: tpl.id,
+              imageUrl: tpl.image_url,
+              screenQuake: Number(joinedUserObj.wealth_level) >= 51 || memberLevels.activeVipLevel(joinedUserObj) >= 6
+            });
+          }
+        } catch (e) { console.error('entry effect error:', e); }
+      }
+
+      // 2) مركبة / مؤثر الدخول التلقائي حسب مستوى الثراء (11..60 الملكي) أو رتبة النبلاء (Viscount ← Sultan)
+      if (!entryEffectShown && joinedUserObj && joinedUserObj.id) {
+        const autoFx = memberLevels.resolveAutoEntranceEffect(joinedUserObj);
+        if (autoFx && autoFx.imageUrl) {
           io.to(`room:${roomId}`).emit('room_entry_effect', {
             user: joinUserWithBubble,
-            effectId: tpl.id,
-            imageUrl: tpl.image_url
+            effectId: autoFx.effectId,
+            imageUrl: autoFx.imageUrl,
+            label: autoFx.label,
+            screenQuake: !!autoFx.screenQuake
           });
         }
-      } catch (e) { console.error('entry effect error:', e); }
+      }
     }
-    // فقاعة الدخول تظهر في شريط join-banner-host فقط (عبر user_joined_room) ولا تُضاف إلى دردشة الغرفة
 
-
-    // ترحيب تلقائي باسم صاحب الغرفة: "أهلاً، @اسم_الداخل" (مرة كل دقيقة لكل شخص في كل غرفة لمنع التكرار عند إعادة الاتصال)
-    if (joinedUserObj && joinedUserObj.id) {
+    // ترحيب تلقائي باسم صاحب الغرفة: "أهلاً، @اسم_الداخل" (لا يُرسل في وضع التخفّي للنبلاء)
+    if (!isStealthJoin && joinedUserObj && joinedUserObj.id) {
       try {
         const welcomeKey = `${roomId}:${joinedUserObj.id}`;
         const lastWelcome = recentRoomWelcomes.get(welcomeKey) || 0;
@@ -8387,8 +9111,8 @@ io.on('connection', (socket) => {
         VALUES (?, ?, ?, 'text', ?)
       `, [msgId, userId, roomId, content]);
 
-      // نقاط المستوى: التفاعل في الدردشة (مقيَّد زمنياً ضد السبام)
-      addChatInteractionXp(userId, 5);
+      // نقاط المستوى: التفاعل في الدردشة (مع مضاعف خبرة الغرفة / العائلة + خبرة الغرفة)
+      addChatInteractionXp(userId, 5, roomId);
 
       const payload = {
         id: msgId,
@@ -8401,6 +9125,8 @@ io.on('connection', (socket) => {
         sender_level: user.level,
         sender_wealth_level: user.wealth_level || 3,
         sender_charm_level: user.charm_level || 4,
+        sender_vip_level: memberLevels.activeVipLevel(user),
+        has_tail_lights: memberLevels.hasMessageTailLights(user),
         sender_role: user.role,
         message_type: 'text',
         content,
@@ -8906,10 +9632,16 @@ io.on('connection', (socket) => {
     try {
       const room = await get('SELECT * FROM rooms WHERE id = ?', [roomId]);
       const admin = await get('SELECT * FROM users WHERE id = ?', [adminId]);
-      if (!room || !admin || !(await canManageRoom(room, admin))) return;
-
+      if (!room || !admin) return;
       const seat = await get('SELECT user_id FROM room_seats WHERE room_id = ? AND seat_index = ?', [roomId, seatIndex]);
       const targetUserId = seat ? seat.user_id : null;
+      const targetUser = targetUserId ? await get('SELECT * FROM users WHERE id = ?', [targetUserId]) : null;
+      const isTargetMod = targetUserId ? !!(await get('SELECT 1 AS x FROM room_moderators WHERE room_id = ? AND user_id = ?', [roomId, targetUserId])) : false;
+      const allowed = (await canManageRoom(room, admin)) || (!isTargetMod && memberLevels.canWealthModerateTarget(admin, targetUser, room));
+      if (!allowed) return;
+      if (isMuted && targetUser && admin.role !== 'owner' && memberLevels.hasModerationImmunity(targetUser)) {
+        return socket.emit('error_message', { message: `🛡️ العضو [${targetUser.name}] يتمتع بحصانة ملكية ضد الكتم!` });
+      }
 
       await run('UPDATE room_seats SET is_muted = ?, admin_muted = ? WHERE room_id = ? AND seat_index = ?', [isMuted ? 1 : 0, isMuted ? 1 : 0, roomId, seatIndex]);
       
@@ -8936,10 +9668,17 @@ io.on('connection', (socket) => {
     try {
       const room = await get('SELECT * FROM rooms WHERE id = ?', [roomId]);
       const admin = await get('SELECT * FROM users WHERE id = ?', [adminId]);
-      if (!room || !admin || !(await canManageRoom(room, admin))) return;
+      if (!room || !admin) return;
 
       const seat = await get('SELECT user_id, is_muted FROM room_seats WHERE room_id = ? AND seat_index = ?', [roomId, seatIndex]);
       const kickedUserId = seat ? seat.user_id : null;
+      const targetUser = kickedUserId ? await get('SELECT * FROM users WHERE id = ?', [kickedUserId]) : null;
+      const isTargetMod = kickedUserId ? !!(await get('SELECT 1 AS x FROM room_moderators WHERE room_id = ? AND user_id = ?', [roomId, kickedUserId])) : false;
+      const allowed = (await canManageRoom(room, admin)) || (!isTargetMod && memberLevels.canWealthModerateTarget(admin, targetUser, room));
+      if (!allowed) return;
+      if (targetUser && admin.role !== 'owner' && memberLevels.hasModerationImmunity(targetUser)) {
+        return socket.emit('error_message', { message: `🛡️ العضو [${targetUser.name}] يتمتع بحصانة ملكية ضد الإنزال من المقعد!` });
+      }
       const keepMuted = !!(seat && seat.is_muted);
 
       await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [keepMuted ? 1 : 0, roomId, seatIndex]);
@@ -9079,17 +9818,23 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Admin Kick User from Room
+  // Admin Kick User from Room (supports Room Managers + Wealth Level 31+ in Public Rooms + Royal 51+ Immunity)
   socket.on('admin_kick_user_from_room', async ({ roomId, targetUserId, adminId }) => {
     if (!roomId || !targetUserId || !adminId) return;
     try {
       const room = await get('SELECT * FROM rooms WHERE id = ?', [roomId]);
       const admin = await get('SELECT * FROM users WHERE id = ?', [adminId]);
-      if (!room || !admin || !(await canManageRoom(room, admin))) {
+      const targetUser = await get('SELECT * FROM users WHERE id = ?', [targetUserId]);
+      if (!room || !admin || !targetUser) return;
+      const isTargetMod = !!(await get('SELECT 1 AS x FROM room_moderators WHERE room_id = ? AND user_id = ?', [roomId, targetUserId]));
+      const allowed = (await canManageRoom(room, admin)) || (!isTargetMod && memberLevels.canWealthModerateTarget(admin, targetUser, room));
+      if (!allowed) {
         return socket.emit('error_message', { message: 'ليس لديك صلاحيات إدارة هذه الغرفة!' });
       }
+      if (admin.role !== 'owner' && memberLevels.hasModerationImmunity(targetUser)) {
+        return socket.emit('error_message', { message: `🛡️ العضو [${targetUser.name}] يتمتع بحصانة ملكية ضد الطرد من الغرف!` });
+      }
 
-      const targetUser = await get('SELECT * FROM users WHERE id = ?', [targetUserId]);
       await run("INSERT OR IGNORE INTO room_restrictions (room_id, user_id, type) VALUES (?, ?, 'ban')", [roomId, targetUserId]);
       const roomState = activeRoomStates.get(roomId);
       if (roomState) {
@@ -9153,14 +9898,21 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Admin Mute User from Writing in Public Chat
+  // Admin Mute User from Writing in Public Chat (supports Room Managers + Wealth Level 31+ in Public Rooms + Royal 51+ Immunity)
   socket.on('admin_mute_user_chat', async ({ roomId, targetUserId, adminId, isMuted }) => {
     if (!roomId || !targetUserId || !adminId) return;
     try {
       const room = await get('SELECT * FROM rooms WHERE id = ?', [roomId]);
       const admin = await get('SELECT * FROM users WHERE id = ?', [adminId]);
-      if (!room || !admin || !(await canManageRoom(room, admin))) {
+      const targetUser = await get('SELECT * FROM users WHERE id = ?', [targetUserId]);
+      if (!room || !admin || !targetUser) return;
+      const isTargetMod = !!(await get('SELECT 1 AS x FROM room_moderators WHERE room_id = ? AND user_id = ?', [roomId, targetUserId]));
+      const allowed = (await canManageRoom(room, admin)) || (!isTargetMod && memberLevels.canWealthModerateTarget(admin, targetUser, room));
+      if (!allowed) {
         return socket.emit('error_message', { message: 'ليس لديك صلاحيات إدارة هذه الغرفة!' });
+      }
+      if (isMuted && admin.role !== 'owner' && memberLevels.hasModerationImmunity(targetUser)) {
+        return socket.emit('error_message', { message: `🛡️ العضو [${targetUser.name}] يتمتع بحصانة ملكية ضد الكتم!` });
       }
 
       if (isMuted) {
@@ -9176,8 +9928,6 @@ io.on('connection', (socket) => {
           roomState.mutedChatUsers.delete(targetUserId);
         }
       }
-
-      const targetUser = await get('SELECT * FROM users WHERE id = ?', [targetUserId]);
 
       io.to(`room:${roomId}`).emit('user_chat_mute_changed', {
         roomId,

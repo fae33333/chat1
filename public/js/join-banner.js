@@ -35,7 +35,9 @@
     recent.set(key, now);
     if (recent.size > 200) { recent.forEach((t, k) => { if (now - t > DEDUPE_MS) recent.delete(k); }); }
 
-    const wealth = user.wealth_level || (user.role === 'owner' ? 99 : 1);
+    const wealth = user.wealth_level || 1;
+    const lvLabel = window.SoulLevels ? window.SoulLevels.wealthText(wealth) : ('Lv.' + wealth);
+    const nobleTxt = (window.SoulLevels && Number(user.vip_level) > 0) ? ('👑 ' + window.SoulLevels.nobleTitle(user.vip_level) + ' · ') : '';
     const el = document.createElement('div');
     el.className = 'jb-banner';
     el.style.top = pickLane() + 'px';
@@ -48,8 +50,8 @@
     el.innerHTML = `
       <span class="jb-shine"></span>
       <span class="jb-verb">دخل</span>
-      <span class="jb-name">${esc(user.name || 'ضيف')}</span>
-      <span class="jb-lv">Lv.${esc(wealth)}</span>
+      <span class="jb-name">${esc(nobleTxt)}${esc(user.name || 'ضيف')}</span>
+      <span class="jb-lv">${esc(lvLabel)}</span>
       <span class="jb-verb">الغرفة</span>
     `;
     // فقاعة HTML: طبقة iframe معزولة خلف نص الإشعار

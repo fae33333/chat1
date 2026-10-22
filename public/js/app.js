@@ -958,8 +958,9 @@
       if (window.giftReceivedNotice) window.giftReceivedNotice.show(payload);
     });
 
-    state.socket.on('room_entry_effect', ({ user, effectId, imageUrl }) => {
+    state.socket.on('room_entry_effect', ({ user, effectId, imageUrl, screenQuake }) => {
       showRoomEntryEffectBanner(user, effectId, imageUrl);
+      if (screenQuake && window.SoulLevels) window.SoulLevels.triggerScreenQuake();
     });
 
     // ملاحظة: سطر «دخل فلان الغرفة» لم يعد يُضاف داخل دردشة الغرفة؛ فقاعة الدخول تظهر في شريط join-banner-host فقط
@@ -3189,15 +3190,29 @@
     down: '<svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg>'
   };
 
-  // صف أوامر الإشراف (أسفل بطاقة المستخدم): شكل مختلف حسب الشخص على المقعد أو لا
+  // صف أوامر الإشراف (أسفل بطاقة المستخدم): يدعم المشرفين + صلاحية الثراء (Lv.31+) + الحصانة الملكية (Lv.51+)
   async function rusBuildAdminRow(wrap, user) {
     const room = state.activeRoom;
     const me = state.currentUser;
     if (!room || !me || !user || user.id === me.id || user.id === room.host_id) return;
-    if (!isRoomManagerNow(room)) { await refreshRoomManagerFlag(room); if (!isRoomManagerNow(room)) return; }
+    if (!isRoomManagerNow(room)) { await refreshRoomManagerFlag(room); }
     const rel = await fetch(`/api/rooms/${encodeURIComponent(room.id)}/relation/${encodeURIComponent(user.id)}`, { headers: { 'x-user-id': me.id } })
       .then(r => (r.ok ? r.json() : null)).catch(() => null) || {};
     if (!wrap.isConnected) return;
+    const isMgr = isRoomManagerNow(room);
+    const canWealthMod = !isMgr && !!rel.viewer_can_wealth_moderate;
+    const targetImmune = !!rel.target_is_immune;
+
+    if (targetImmune && (isMgr || Number(me.wealth_level || 1) >= 31)) {
+      const imNote = document.createElement('div');
+      imNote.style.cssText = 'text-align:center;margin:6px 14px 10px;';
+      imNote.innerHTML = '<span class="rus-immune-pill">🛡️ حصانة ملكية كاملة ضد الكتم والطرد</span>';
+      const sheet = wrap.querySelector('.rus-sheet');
+      sheet.insertBefore(imNote, sheet.querySelector('.rus-actions') || null);
+      if (!isMgr) return;
+    }
+
+    if (!isMgr && !canWealthMod) return;
     const isOwner = !!(room.host_id === me.id || isPlatformStaff(me) || (rel && rel.viewer_is_owner));
     const seat = (room.seats || []).find(s => s.user_id === user.id);
     const chatMuted = !!(rel.is_muted || (state.activeRoomMutedChatUsers && state.activeRoomMutedChatUsers.has(user.id)));
@@ -3206,21 +3221,26 @@
 
     const items = [];
     const add = (id, label, icon, danger) => items.push({ id, label, icon, danger });
-    if (seat) {
-      add('seat-remove', 'إزالة', RUSA.down);
-      add('seat-mute', seatMuted ? 'إلغاء الكتم' : 'كتم الصوت', seatMuted ? RUSA.micOn : RUSA.micOff);
+    if (canWealthMod) {
+      if (seat && !targetImmune) add('seat-mute', seatMuted ? 'إلغاء الكتم' : 'كتم الصوت', seatMuted ? RUSA.micOn : RUSA.micOff);
+      if (!targetImmune) add('chat', chatMuted ? 'السماح بالتعليق' : 'منع التعليق', chatMuted ? RUSA.chatOn : RUSA.chatOff);
+      if (!targetImmune) add('kick', 'طرد (ثراء)', RUSA.kick, true);
+    } else if (seat) {
+      if (!targetImmune) add('seat-remove', 'إزالة', RUSA.down);
+      if (!targetImmune) add('seat-mute', seatMuted ? 'إلغاء الكتم' : 'كتم الصوت', seatMuted ? RUSA.micOn : RUSA.micOff);
       add('seat-lock', seatLocked ? 'فتح المقعد' : 'غلق المقعد', seatLocked ? RUSA.unlock : RUSA.lock);
-      add('kick', 'طرد', RUSA.kick, true);
+      if (!targetImmune) add('kick', 'طرد', RUSA.kick, true);
       add('member', rel.is_member ? 'طرد عضو' : 'دعوة عضو', rel.is_member ? RUSA.delUser : RUSA.addUser);
       if (isOwner) add('mod', rel.is_moderator ? 'إلغاء الإشراف' : 'تعيين كمشرف', RUSA.mod);
-      add('chat', chatMuted ? 'السماح بالتعليق' : 'منع التعليق', chatMuted ? RUSA.chatOn : RUSA.chatOff);
+      if (!targetImmune) add('chat', chatMuted ? 'السماح بالتعليق' : 'منع التعليق', chatMuted ? RUSA.chatOn : RUSA.chatOff);
     } else {
       add('invite', 'ادعيه', RUSA.invite);
-      add('kick', 'طرد', RUSA.kick, true);
+      if (!targetImmune) add('kick', 'طرد', RUSA.kick, true);
       add('member', rel.is_member ? 'طرد عضو' : 'دعوة عضو', rel.is_member ? RUSA.delUser : RUSA.addUser);
       if (isOwner) add('mod', rel.is_moderator ? 'إلغاء الإشراف' : 'تعيين كمشرف', RUSA.mod);
-      add('chat', chatMuted ? 'السماح بالتعليق' : 'منع التعليق', chatMuted ? RUSA.chatOn : RUSA.chatOff);
+      if (!targetImmune) add('chat', chatMuted ? 'السماح بالتعليق' : 'منع التعليق', chatMuted ? RUSA.chatOn : RUSA.chatOff);
     }
+    if (!items.length) return;
 
     const bar = document.createElement('div');
     bar.className = 'rus-admin';
@@ -3332,9 +3352,9 @@
             ${onMic ? '<button type="button" class="rus-honor" data-act="honor">عرض الألقاب الشرفية</button>' : ''}
           </div>
           <div class="rus-cards">
-            <div class="rus-card c1"><span class="rus-card-ic">${RUS_ICONS.gem}</span><div><b data-f="wealth">Lv.${fEsc(user.wealth_level || 1)}</b><small>الثروة</small></div></div>
-            <div class="rus-card c2"><span class="rus-card-ic">${RUS_ICONS.tri}</span><div><b data-f="charm">Lv.${fEsc(user.charm_level || 1)}</b><small>الرواج</small></div></div>
-            <div class="rus-card c3" data-act="vip" style="cursor:pointer"><span class="rus-card-ic">${RUS_ICONS.shield}</span><div><b data-f="vip">VIP${rusVipTier(user)}</b><small>طبقة النبلاء</small></div></div>
+            <div class="rus-card c1" data-act="wealth-lv" style="cursor:pointer"><span class="rus-card-ic">${RUS_ICONS.gem}</span><div><b data-f="wealth">${window.SoulLevels ? window.SoulLevels.wealthText(user.wealth_level || 1) : ('Lv.' + fEsc(user.wealth_level || 1))}</b><small>الثروة</small></div></div>
+            <div class="rus-card c2" data-act="charm-lv" style="cursor:pointer"><span class="rus-card-ic">${RUS_ICONS.tri}</span><div><b data-f="charm">${window.SoulLevels ? window.SoulLevels.charmText(user.charm_level || 1) : ('Lv.' + fEsc(user.charm_level || 1))}</b><small>السحر</small></div></div>
+            <div class="rus-card c3" data-act="vip" style="cursor:pointer"><span class="rus-card-ic">${RUS_ICONS.shield}</span><div><b data-f="vip">${window.SoulLevels && rusVipTier(user) > 0 ? window.SoulLevels.nobleTitle(rusVipTier(user)) : ('VIP' + rusVipTier(user))}</b><small>طبقة النبلاء</small></div></div>
           </div>
           <button type="button" class="rus-row" data-act="medals"><span class="rus-chev">${RUS_ICONS.chev}</span><span class="rus-row-icons" data-f="medal-icons"></span><span class="rus-row-label" data-f="medal-label">حائط الميداليات · 0</span></button>
           <button type="button" class="rus-row" data-act="gifts"><span class="rus-chev">${RUS_ICONS.chev}</span><span class="rus-row-icons" data-f="gift-icons"></span><span class="rus-row-label" data-f="gift-label">معرض الهدايا · 0 إضاءة</span></button>
@@ -3463,8 +3483,23 @@
         if (me && me.id === user.id && window.SoulVip) { closeRoomUserSheet(); window.SoulVip.open(); }
         return;
       }
+      if (act === 'wealth-lv') {
+        closeRoomUserSheet();
+        if (window.SoulLevels) window.SoulLevels.openLevelCenter(sheetState.user, 'wealth');
+        return;
+      }
+      if (act === 'charm-lv') {
+        closeRoomUserSheet();
+        if (window.SoulLevels) window.SoulLevels.openLevelCenter(sheetState.user, 'charm');
+        return;
+      }
+      if (act === 'empire') {
+        closeRoomUserSheet();
+        if (window.SoulLevels) window.SoulLevels.openFamilyPage();
+        return;
+      }
       if (act === 'medals') { closeRoomUserSheet(); if (typeof pfOpenMedals === 'function') pfOpenMedals(); return; }
-      if (act === 'gifts' || act === 'empire') { showToast('ليس متاحاً بعد'); }
+      if (act === 'gifts') { closeRoomUserSheet(); pfOpenProfilePage(sheetState.user); return; }
     });
 
     // تعبئة البيانات الحية
@@ -3476,9 +3511,9 @@
       sheetState.user = full;
       const set = (sel, html) => { const n = $(sel); if (n) n.innerHTML = html; };
       set('[data-f="name"]', fEsc(full.name || 'عضو'));
-      set('[data-f="wealth"]', `Lv.${fEsc(full.wealth_level || 1)}`);
-      set('[data-f="charm"]', `Lv.${fEsc(full.charm_level || 1)}`);
-      set('[data-f="vip"]', `VIP${rusVipTier(full)}`);
+      set('[data-f="wealth"]', window.SoulLevels ? fEsc(window.SoulLevels.wealthText(full.wealth_level || 1)) : `Lv.${fEsc(full.wealth_level || 1)}`);
+      set('[data-f="charm"]', window.SoulLevels ? fEsc(window.SoulLevels.charmText(full.charm_level || 1)) : `Lv.${fEsc(full.charm_level || 1)}`);
+      set('[data-f="vip"]', window.SoulLevels && rusVipTier(full) > 0 ? fEsc(window.SoulLevels.nobleTitle(rusVipTier(full))) : `VIP${rusVipTier(full)}`);
       const av = $('.rus-avatar img');
       if (av && full.avatar_frame) av.className = 'avatar-frame-' + full.avatar_frame;
       const days = accountDayNumber(full.created_at);
@@ -4831,6 +4866,8 @@
             </div>
             <div class="room-card-chips">
               <span class="room-card-tag"><i>${cat.icon}</i>${getCategoryLabel(room.category).replace(/_/g, ' ')}</span>
+              <span class="room-lv-pill">🏠 Lv.${room.room_level || 1}</span>
+              ${room.exposure_boost_pct ? `<span class="room-exposure-pill" title="تعزيز ظهور الغرفة من مستوى جاذبية المضيف">🔥 +${room.exposure_boost_pct}%</span>` : ''}
               ${room.has_password ? '<span class="room-card-tag" title="غرفة بكلمة مرور">🔒</span>' : ''}
               ${countryBadgeHtml}
             </div>
@@ -7995,10 +8032,19 @@
     el.className = `room-chat-bubble ${msg.message_type === 'gift' ? 'gift-notice' : ''} ${isLuxGiftMsg ? 'gift-lux' : ''} ${isRegGiftMsg ? 'gift-reg' : ''} ${isRegGiftMsg ? '' : frameClass}`.trim();
     if (!isRegGiftMsg) applyStoreBubble(el, msg.sender_chat_bubble);
 
-    // Calculate Wealth Level (الثروة) and User Level (الليفيل) matching image-3.png
+    // Calculate Wealth, Charm, and Nobility badges + Tail Lights (أضواء الذيل)
     const isSelf = state.currentUser && msg.sender_id === state.currentUser.id;
-    const wealthLevel = msg.sender_wealth_level || (isSelf ? state.currentUser.wealth_level : null) || (msg.sender_role === 'owner' ? 99 : 11);
-    const userLevel = msg.sender_level || (isSelf ? state.currentUser.level : null) || 7;
+    const wealthLevel = msg.sender_wealth_level || (isSelf ? state.currentUser.wealth_level : null) || 1;
+    const charmLevel = msg.sender_charm_level || (isSelf ? state.currentUser.charm_level : null) || 1;
+    const vipLevel = msg.sender_vip_level || (isSelf ? rusVipTier(state.currentUser) : 0) || 0;
+    const userLevel = msg.sender_level || (isSelf ? state.currentUser.level : null) || 1;
+    const hasTailLights = !!(msg.has_tail_lights || wealthLevel >= 51 || vipLevel >= 5);
+    if (hasTailLights) el.classList.add('msg-tail-lights');
+
+    const nameColorCls = window.SoulLevels ? window.SoulLevels.wealthNameClass(wealthLevel) : 'wealth-name-beginner';
+    const wealthPillHtml = window.SoulLevels ? window.SoulLevels.wealthBadgeHtml(wealthLevel) : `<span class="room-chat-level-pill"><span>Lv.${wealthLevel}</span></span>`;
+    const charmPillHtml = (window.SoulLevels && charmLevel > 1) ? window.SoulLevels.charmBadgeHtml(charmLevel) : '';
+    const noblePillHtml = (window.SoulLevels && vipLevel > 0) ? window.SoulLevels.nobleBadgeHtml(vipLevel) : '';
 
     // Wealth badge color tier based on wealth_level
     let wealthTierClass = 'wealth-tier-green';
@@ -8066,16 +8112,13 @@
       return;
     }
 
-    // مطابق لفيديو الغرفة: الصورة + الاسم + الليفل بجانب الاسم فقط، ثم نص الرسالة.
+    // مطابق لفيديو الغرفة + شارات الثراء والسحر والنبلاء وتلوين الاسم وأضواء الذيل
     el.innerHTML = `
       <div class="room-chat-card-inner">
-        <div class="room-chat-header-row">
+        <div class="room-chat-header-row" style="flex-wrap:wrap;gap:5px;">
           <img src="${msg.sender_avatar}" class="room-chat-avatar ${msg.sender_frame ? 'avatar-frame-' + msg.sender_frame : ''}" onerror="this.src='/avatars/avatar-1.png'" />
-          <span class="room-chat-sender-name">${msg.sender_name || 'عضو'}</span>
-          <span class="room-chat-level-pill ${levelTierClass}">
-            <span class="level-emblem"></span>
-            <span>Lv.${userLevel}</span>
-          </span>
+          <span class="room-chat-sender-name ${nameColorCls}">${msg.sender_name || 'عضو'}</span>
+          ${wealthPillHtml}${charmPillHtml}${noblePillHtml}
         </div>
         <div class="room-chat-text">${safeContent}</div>
       </div>
@@ -11950,10 +11993,14 @@
         <div class="pf-prof-av"><img class="${pfFrameCls(u)}" src="${pfAvatarSrc(u)}" onerror="this.src='/avatars/avatar-1.png'" alt="" /></div>
         <div class="pf-prof-name">${isSelf ? '<i>✎</i>' : ''}${fEsc(u.name)}</div>
         <div class="pf-prof-meta"><span class="pf-flag">${flag}</span>${pfGenderPill(u)}<span>${days} يوم</span><span class="uid">UID · ${fEsc(u.id)}</span></div>
-        <div class="pf-pills"><span class="pf-pill lv">${PF_TRI} Lv.${fEsc(u.level || 1)}</span><span class="pf-pill wealth">Lv.${fEsc(u.wealth_level || 1)}</span></div>
-        <button type="button" class="pf-honor" data-soon>عرض الألقاب الشرفية</button>
+        <div class="pf-pills">
+          ${window.SoulLevels ? window.SoulLevels.wealthBadgeHtml(u.wealth_level || 1) : `<span class="pf-pill wealth">Lv.${fEsc(u.wealth_level || 1)}</span>`}
+          ${window.SoulLevels ? window.SoulLevels.charmBadgeHtml(u.charm_level || 1) : `<span class="pf-pill lv">${PF_TRI} Lv.${fEsc(u.charm_level || 1)}</span>`}
+          ${window.SoulLevels && rusVipTier(u) > 0 ? window.SoulLevels.nobleBadgeHtml(rusVipTier(u)) : ''}
+        </div>
+        <button type="button" class="pf-honor" data-open-lvl>🏅 عرض المستويات والامتيازات الملكية</button>
         <div class="pf-prof-actions">
-          ${isSelf ? '<button type="button" class="pf-sq" data-edit aria-label="تعديل">+</button>' : '<div class="pf-act-grp"><button type="button" class="pf-btn fill" data-follow-main>➕ متابعة</button><button type="button" class="pf-btn msg" data-msg-main>💬 رسالة</button></div>'}
+          ${isSelf ? '<button type="button" class="pf-sq" data-edit aria-label="تعديل">+</button>' : '<div class="pf-act-grp"><button type="button" class="pf-btn fill" data-follow-main>➕ متابعة</button><button type="button" class="pf-btn gift-pro" data-gift-main>🎁 إرسال هدية</button><button type="button" class="pf-btn msg" data-msg-main>💬 رسالة</button></div>'}
           <button type="button" class="pf-voice" data-soon>+ بطاقة الصوت</button>
         </div>
         <div class="pf-prof-body">
@@ -12012,6 +12059,24 @@
       if (!isSelf) { b.style.cursor = 'default'; b.onclick = (ev) => ev.stopPropagation(); return; } // زائر: لا تُفتح القوائم
       b.onclick = (ev) => { ev.stopPropagation(); pfOpenRelations(b.dataset.rel, ownerIdForRel); };
     });
+    const openProfileGiftSender = () => {
+      if (!requireAuth()) return;
+      openGiftStoreModal(u.id, null, { id: u.id, name: u.name, avatar: u.avatar }, {
+        lockRecipient: true,
+        fromProfile: true,
+        onGiftSent: () => {
+          fetch(`/api/users/${encodeURIComponent(u.id)}/gifts`).then(r => r.ok ? r.json() : null).then(gd => {
+            if (!gd || !el.isConnected) return;
+            st.gifts = gd;
+            renderTab();
+          }).catch(() => {});
+        }
+      });
+    };
+    const giftMainBtn = el.querySelector('[data-gift-main]');
+    if (giftMainBtn) giftMainBtn.onclick = openProfileGiftSender;
+    const openLvlBtn = el.querySelector('[data-open-lvl]');
+    if (openLvlBtn) openLvlBtn.onclick = () => { if (window.SoulLevels) window.SoulLevels.openLevelCenter(u, 'wealth'); };
     const msgBtn = el.querySelector('[data-msg-main]');
     if (msgBtn) msgBtn.onclick = () => {
       if (!requireAuth()) return;
@@ -12062,19 +12127,25 @@
             </div>
             <h5>مستواي</h5>
             <div class="pf-levels">
-              <div class="pf-lvcard g"><b>Lv.${fEsc(u.wealth_level || 1)}</b><small>الثروة</small></div>
-              <div class="pf-lvcard p"><b>Lv.${fEsc(u.charm_level || 1)}</b><small>الكاريزما</small></div>
-              <div class="pf-lvcard d"><b>Lv.${fEsc(u.level || 1)}</b><small>المستوى</small></div>
+              <div class="pf-lvcard g" data-lv-open="wealth" style="cursor:pointer"><b>${window.SoulLevels ? fEsc(window.SoulLevels.wealthText(u.wealth_level || 1)) : ('Lv.' + fEsc(u.wealth_level || 1))}</b><small>الثروة</small></div>
+              <div class="pf-lvcard p" data-lv-open="charm" style="cursor:pointer"><b>${window.SoulLevels ? fEsc(window.SoulLevels.charmText(u.charm_level || 1)) : ('Lv.' + fEsc(u.charm_level || 1))}</b><small>الجاذبية</small></div>
+              <div class="pf-lvcard d" data-lv-open="noble" style="cursor:pointer"><b>${window.SoulLevels && rusVipTier(u) > 0 ? fEsc(window.SoulLevels.nobleTitle(rusVipTier(u))) : ('Lv.' + fEsc(u.level || 1))}</b><small>${rusVipTier(u) > 0 ? 'رتبة النبلاء' : 'المستوى'}</small></div>
             </div>
             <div class="pf-sechead"><h5>معرض الهدايا</h5><div class="pf-subrow"><span>${isSelf ? 'ربحت' : 'ربح'} ${toArabicNumerals(totalGifts)}</span>${PF_CHEV_L}</div></div>
             ${gifts.length ? `<div class="pf-hscroll">${gifts.map(g => `<div class="pf-gift"><div class="gi">${giftIconHtml(g.gift_icon)}</div><div>${fEsc(g.gift_name)}</div><small>×${fEsc(g.count)}</small></div>`).join('')}</div>`
                            : '<p class="soft">لا توجد هدايا بعد</p>'}
+            ${!isSelf ? `<div style="margin:14px 0 8px"><button type="button" class="pf-btn gift-pro" data-gift-bottom style="width:100%;padding:11px 16px;font-size:13.5px;border-radius:14px;">🎁 إرسال هدية إلى ${fEsc(u.name)}</button></div>` : ''}
             ${st.entries ? `<h5>مؤثرات الدخول</h5>${st.entries.effects.length
               ? `<div class="pf-hscroll">${st.entries.effects.map(e => `<div class="pf-entry ${e.id === st.entries.equipped ? 'on' : ''}"><div class="em">${e.image_url ? scThumbTag(e) : '✨'}</div><div class="en">${fEsc(e.name)}</div>${e.id === st.entries.equipped ? '<small>مفعّل</small>' : ''}</div>`).join('')}</div>`
               : '<p class="soft">لا توجد مؤثرات دخول بعد</p>'}` : ''}
           </div>`;
         const crown = tabContent.querySelector('[data-crown]');
         if (crown) crown.onclick = () => pfOpenStore();
+        const giftBottom = tabContent.querySelector('[data-gift-bottom]');
+        if (giftBottom) giftBottom.onclick = openProfileGiftSender;
+        tabContent.querySelectorAll('[data-lv-open]').forEach(c => {
+          c.onclick = () => { if (window.SoulLevels) window.SoulLevels.openLevelCenter(u, c.dataset.lvOpen); };
+        });
         tabContent.querySelectorAll('[data-soon]').forEach(b => b.onclick = pfSoon);
       } else if (activeTab === 'rel') {
         const s = st.stats || {};
@@ -13222,72 +13293,7 @@
   // ---------- 1) المستوى ----------
   function pfOpenLevel(user) {
     if (!requireAuth()) return;
-    pfSprite(); pfSprite2();
-    user = user || state.currentUser;
-    let active = 'wealth';
-    const el = pfPage({ id: 'pf-level-page', cls: 'pf-lv', titleAlign: 'right', title: '<div class="pf-head-tabs"></div>', body: '<div class="pf-lv-body"></div>' });
-    const perks = [
-      ['🏅', 'شارة المستوى', 1], ['🎙️', 'الصدارة في طابور المايك', 1], ['📷', 'تثبيت صورة البروفايل', 1],
-      ['✨', 'إشعار دخول رائع', 11], ['💬', 'فقاعة دردشة مبهرة', 21], ['🪪', 'تصميم البطاقة', 31],
-      ['👥', 'زيادة عدد المتابعين', 35], ['🪑', 'تأثيرات المقعد', 40], ['🏠', 'بطاقة الغرفة', 50]
-    ];
-    const info = [
-      ['فوائد المستوى العالي', 'المستويات العالية تعطيك الجاذبية والاهتمام'],
-      ['طريقة تطوير المستوى', 'إذا استلمت هدية بقيمة 1 كريستالة، فستحصل على نقطة خبرة واحدة. كلما زاد تفاعلك، زادت سرعة رفع المستوى'],
-      ['شارة المستوى', 'سيتم عرض شارة المستوى على كل من غرفتك وبطاقة التعريف وقائمة الترحيب. فكلما ارتفع المستوى، حصلت على شارة أفخم']
-    ];
-    const tiers = [[1, 5], [6, 10], [11, 15], [16, 20], [21, 25], [26, 30]];
-    const paint = () => {
-      const wealth = active === 'wealth';
-      el.classList.toggle('pop', !wealth);
-      el.querySelector('.pf-head-tabs').innerHTML =
-        `<button type="button" class="pf-tab ${wealth ? 'active' : ''}" data-t="wealth">مستوى الثروة</button><button type="button" class="pf-tab ${!wealth ? 'active' : ''}" data-t="pop">مستوى الشعبية</button>`;
-      el.querySelectorAll('.pf-head-tabs .pf-tab').forEach(b => b.onclick = () => { active = b.dataset.t; paint(); });
-      const lv = Math.max(1, Math.min(30, Number(wealth ? user.wealth_level : user.charm_level) || 1));
-      const base = pfLvThr(lv), nxt = pfLvThr(lv + 1);
-      const exp = Number(wealth ? user.wealth_points : user.popularity_points) || base;
-      const need = lv >= 30 ? 0 : Math.max(0, nxt - exp);
-      const pct = lv >= 30 ? 100 : Math.max(4, Math.min(100, ((exp - base) / Math.max(1, nxt - base)) * 100));
-      const av = `<img class="pf-lv-av" src="${pfAvatarSrc(user)}" onerror="this.src='/avatars/avatar-1.png'" alt="" />`;
-      let html;
-      if (wealth) {
-        const open = perks.filter(p => lv >= p[2]).length;
-        html = `
-          <div class="pf-lv-hero">
-            <svg class="pf-lv-badge" viewBox="0 0 120 120"><use href="#pf-medal"/></svg>
-            <div class="pf-lv-info">
-              <div class="pf-lv-cur">${av}<div><small>المستوى الحالي</small><b>Lv.${lv}</b></div></div>
-              <div class="pf-lv-need">${lv >= 30 ? 'وصلت لأعلى مستوى' : `للمستوى التالي ينقصك <b>${pfFmt(need)}</b> خبرة`}</div>
-              <div class="pf-lv-bar gold"><i style="width:${pct}%"></i></div>
-              <button type="button" class="pf-lv-how" id="pf-lv-how">كيفية الترقية</button>
-            </div>
-          </div>
-          <div class="pf-lv-sec"><i></i><span>مميزات المستوى <b>${open}/30</b></span><i></i></div>
-          <div class="pf-perk-grid">${perks.map(p => {
-            const on = lv >= p[2];
-            return `<div class="pf-perk ${on ? '' : 'lock'}">${on ? '' : '<u>🔒</u>'}<span class="pf-gold-ic">${p[0]}</span><b>${p[1]}</b><small>${on ? 'لمدى الحياة' : `يُمنح عند Lv.${p[2]}`}</small></div>`;
-          }).join('')}</div>`;
-      } else {
-        html = `
-          <div class="pf-lv-hero pop">
-            ${pfTriSvg('pf-lv-badge tri', 150)}
-            <div class="pf-lv-info">
-              <div class="pf-lv-cur">${av}<div><small>المستوى الحالي</small><b>Lv.${lv}</b></div></div>
-              <div class="pf-lv-ends"><span>Lv.${lv}</span><span>Lv.${Math.min(30, lv + 1)}</span></div>
-              <div class="pf-lv-bar"><i style="width:${pct}%"></i></div>
-              <div class="pf-lv-exp"><b>Exp</b> ${pfFmt(exp)}</div>
-              <div class="pf-lv-nextexp">الخبرة للمستوى التالي: ${pfFmt(nxt)}</div>
-            </div>
-          </div>
-          <div class="pf-lv-text">${info.map(i => `<h4>${i[0]}</h4><p>${i[1]}</p>`).join('')}</div>
-          <div class="pf-lv-table">${tiers.map(([a, b], i) => `
-            <div class="r">${pfTriSvg('tri t' + i, 46)}<div><small>المستوى</small><b dir="ltr">LV.${a}-LV.${b}</b></div><div><small>الخبرة</small><b dir="ltr">${a === 1 ? '01' : pfFmt(pfLvThr(a)).replace(/,/g, '')}-${pfFmt(pfLvThr(b)).replace(/,/g, '')}</b></div></div>`).join('')}</div>`;
-      }
-      el.querySelector('.pf-lv-body').innerHTML = html;
-      const how = el.querySelector('#pf-lv-how');
-      if (how) how.onclick = () => showToast('ارفع مستواك بإرسال الهدايا في الغرف 🎁');
-    };
-    paint();
+    if (window.SoulLevels) return window.SoulLevels.openLevelCenter(user || state.currentUser, 'wealth');
   }
 
   // ---------- 2) SVIP ----------
@@ -13339,105 +13345,17 @@
     paint();
   }
 
-  // ---------- 3) طبقة النبلاء (VIP) ----------
+  // ---------- 3) طبقة النبلاء والأرستقراطية ----------
   function pfOpenVip() {
     if (!requireAuth()) return;
-    pfSprite(); pfSprite2();
-    let sel = 3;
-    const price = [9990, 39990, 99990, 199990, 399990, 699990, 999990];
-    const total = [9, 14, 23, 28, 33, 38, 43];
-    const feats = [
-      ['🖼️', 'إطار فاخر', 'إطار مميز على صورتك الشخصية', 1], ['👑', 'شعار النبلاء', 'ذكرهم بأنك من طبقة النبلاء', 1],
-      ['🪪', 'مؤثر بطاقة التعريف', 'سيعطي بطاقة تعريفك جاذبية أكثر', 4], ['♞', 'السر الملكي', 'ادخل الغرف بمركبتك الخاصة', 5],
-      ['💠', 'بطاقة تعريف خاصة', 'قم بتغيير خلفية بطاقة التعريف', 2], ['🎙️', 'الموجة الصوتية', 'موجة صوتية مميزة تظهر عند الكلام', 2],
-      ['💬', 'فقاعة الدردشة', 'لن يفهم أحد رسائلك', 3]
-    ];
-    const el = pfPage({
-      id: 'pf-vip-page', cls: 'pf-vip', titleAlign: 'center', title: '<div class="pf-vip-tabs"></div>',
-      actionHtml: `<button type="button" class="pf-ico-btn" data-soon>${PF_Q}</button>`,
-      body: '<div class="pf-vip-body"></div><div class="pf-vip-bar"></div>'
-    });
-    el.querySelector('[data-soon]').onclick = pfSoon;
-    const paint = () => {
-      const tabs = [sel - 1, sel, sel + 1].filter(n => n >= 1 && n <= 7);
-      el.querySelector('.pf-vip-tabs').innerHTML = tabs.map(n => `<button type="button" class="${n === sel ? 'on' : ''}" data-n="${n}">${n === sel ? '<i>✦</i>' : ''}VIP ${n}</button>`).join('');
-      el.querySelectorAll('.pf-vip-tabs button').forEach(b => b.onclick = () => { sel = +b.dataset.n; paint(); });
-      el.querySelector('.pf-vip-body').innerHTML = `
-        <div class="pf-vip-card t${sel}">
-          <div><div class="pf-vip-name">${pfIc('crown')}<b>VIP ${sel}</b></div><small>🔒 غير مفعّل</small></div>
-          <svg viewBox="0 0 120 130"><use href="#pf-crownshield"/></svg>
-        </div>
-        <div class="pf-vip-cnt"><i></i>امتيازات حصرية <b>${[5, 9, 13, 19, 25, 31, 38][sel - 1]}/${total[sel - 1]}</b></div>
-        <div class="pf-vip-list"><h4>اظهر حالتك</h4>${feats.map(f => {
-          const ok = sel >= f[3];
-          return `<div class="f ${ok ? '' : 'lock'}"><span class="ic">${f[0]}</span><div><b>${f[1]}</b><small>${f[2]}</small></div><em>${ok ? '✔' : '🔒'}</em></div>`;
-        }).join('')}</div>`;
-      el.querySelector('.pf-vip-bar').innerHTML = `<button type="button" class="pf-gold-btn" id="pf-vip-buy">شراء</button><div class="pf-vip-price"><span class="g">${pfIc('crystal')}</span>${price[sel - 1]} / 30 يوم</div>`;
-      el.querySelector('#pf-vip-buy').onclick = () => {
-        const d = Number((state.currentUser || {}).diamonds) || 0;
-        if (d < price[sel - 1]) { showToast('رصيد الكريستال غير كافٍ'); pfOpenWallet('crystal'); } else pfSoon();
-      };
-    };
-    paint();
+    if (window.SoulLevels) return window.SoulLevels.openAristocracyPage();
+    if (window.SoulVip) return window.SoulVip.open();
   }
 
-  // ---------- 4) الامبراطورية ----------
-  const PF_EMPIRES = [
-    { id: 'E1001', name: 'إمبراطورية النجوم', n: 149, cap: 150, p1: 52, p2: 50, d: 'في زحام هذا العالم، الأصدقاء هم النجوم', e: '🌟', c: '#6b2cd1' },
-    { id: 'E1002', name: 'فرسان الليل', n: 105, cap: 150, d: 'لا يغريني مدح ولا يسقطني النقد', e: '🦅', c: '#b8860b' },
-    { id: 'E1003', name: 'الجدعان', n: 5, cap: 100, d: 'عامل الناس كما تحب أن تعامل', e: '🛡️', c: '#1f6f8b' },
-    { id: 'E1004', name: 'واحة الأصدقاء', n: 139, cap: 150, d: 'أهلاً بالجميع في إمبراطوريتنا', e: '🌴', c: '#2e8b57' },
-    { id: 'E1005', name: 'نادين', n: 56, cap: 100, d: 'أهلاً بجميع', e: '💫', c: '#a23b72' },
-    { id: 'E1006', name: 'نسيم الروح', n: 54, cap: 150, p1: 69, p2: 44, d: 'سلام ومحبة', e: '🔥', c: '#c2410c' },
-    { id: 'E1007', name: 'الصقور', n: 28, cap: 100, d: 'هنا تجتمع الهمم', e: '🦅', c: '#4338ca' }
-  ];
+  // ---------- 4) العائلات والإمبراطوريات ----------
   function pfOpenEmpire() {
     if (!requireAuth()) return;
-    pfSprite(); pfSprite2();
-    let active = 'nom';
-    const joined = new Set(JSON.parse(sessionStorage.getItem('pf_empires') || '[]'));
-    const el = pfPage({
-      id: 'pf-empire-page', cls: 'pf-emp', titleAlign: 'right', title: '<div class="pf-head-tabs"></div>',
-      actionHtml: `<button type="button" class="pf-ico-btn" data-soon>${PF_Q}</button>`,
-      body: '<div class="pf-emp-body"></div><div class="pf-emp-bar"><button type="button" class="pf-emp-quick">انضم الآن بسرعة ⚡</button><button type="button" class="pf-emp-new">إنشاء 🏠</button></div>'
-    });
-    el.querySelector('[data-soon]').onclick = pfSoon;
-    const join = (e) => {
-      if (joined.has(e.id)) { showToast('أنت منضم لهذه الإمبراطورية'); return; }
-      if (e.n >= e.cap) { showToast('الإمبراطورية ممتلئة'); return; }
-      joined.add(e.id); e.n++; sessionStorage.setItem('pf_empires', JSON.stringify([...joined]));
-      showToast(`تم الانضمام إلى ${e.name} 🎉`); paint();
-    };
-    el.querySelector('.pf-emp-quick').onclick = () => { const e = PF_EMPIRES.find(x => x.n < x.cap && !joined.has(x.id)); e ? join(e) : showToast('لا توجد إمبراطورية متاحة الآن'); };
-    el.querySelector('.pf-emp-new').onclick = pfSoon;
-    const paint = () => {
-      el.querySelector('.pf-head-tabs').innerHTML = `<button type="button" class="pf-tab ${active === 'nom' ? 'active' : ''}" data-t="nom">ترشيحات</button><button type="button" class="pf-tab ${active === 'pow' ? 'active' : ''}" data-t="pow">جدول القوة</button>`;
-      el.querySelectorAll('.pf-head-tabs .pf-tab').forEach(b => b.onclick = () => { active = b.dataset.t; paint(); });
-      const body = el.querySelector('.pf-emp-body');
-      if (active === 'nom') {
-        body.innerHTML = `<div class="pf-search">${PF_SEARCH}<input type="text" placeholder="ابحث عن اسم العائلة أو الـID" /></div><div class="pf-emp-h">الامبراطوريات الاقوى</div><div class="pf-emp-list"></div>`;
-        const input = body.querySelector('input'), list = body.querySelector('.pf-emp-list');
-        const draw = () => {
-          const q = input.value.trim().toLowerCase();
-          const rows = PF_EMPIRES.filter(e => !q || e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q));
-          list.innerHTML = rows.length ? rows.map(e => `
-            <div class="pf-emp-card">
-              <button type="button" class="pf-emp-join ${joined.has(e.id) ? 'on' : ''}" data-id="${e.id}">${joined.has(e.id) ? 'منضم' : 'انضم'}</button>
-              <div class="tx"><div class="nm"><b>${fEsc(e.name)}</b><span class="bd">${pfTriSvg('', 18)}</span></div>
-                <div class="pills"><span class="pl">👤 ${e.n}/${e.cap}</span>${e.p2 ? `<span class="pl">${e.p2}%</span>` : ''}${e.p1 ? `<span class="pl dim">${e.p1}%</span>` : ''}</div>
-                <small>${fEsc(e.d)}</small></div>
-              <div class="av" style="background:linear-gradient(135deg,${e.c},#0b0b12)">${e.e}</div>
-            </div>`).join('') : '<div class="pf-empty">لا توجد نتائج</div>';
-          list.querySelectorAll('.pf-emp-join').forEach(b => b.onclick = () => join(PF_EMPIRES.find(x => x.id === b.dataset.id)));
-        };
-        input.oninput = draw; draw();
-      } else {
-        const ranked = [...PF_EMPIRES].sort((a, b) => (b.n * 1000 + b.cap) - (a.n * 1000 + a.cap));
-        body.innerHTML = `<div class="pf-emp-h">ترتيب القوة</div><div class="pf-emp-list">${ranked.map((e, k) => `
-          <div class="pf-emp-card"><span class="pf-rank r${k + 1}">${k + 1}</span><div class="tx"><div class="nm"><b>${fEsc(e.name)}</b></div><small>القوة ${pfFmt(e.n * 1250)} · الأعضاء ${e.n}/${e.cap}</small></div><div class="av" style="background:linear-gradient(135deg,${e.c},#0b0b12)">${e.e}</div></div>`).join('')}</div>`;
-      }
-    };
-    paint();
+    if (window.SoulLevels) return window.SoulLevels.openFamilyPage();
   }
 
   // ---------- المهام (مهام الحضور) — بنفس تصميم الفيديو ----------
@@ -14471,6 +14389,7 @@
 
         <div class="gift-tabs-bar" id="gift-tabs-bar">
           ${GIFT_TABS.map((t, i) => `<button type="button" class="gift-tab-btn ${i === 0 ? 'active' : ''}" data-gift-tab="${t.id}">${t.label}</button>`).join('')}
+          <button type="button" class="gift-tab-btn" data-gift-tab="free_bag">🎒 مجاني</button>
         </div>
         <div class="gift-shelf-grid" id="gift-shelf-grid"></div>
 
@@ -14554,17 +14473,48 @@
       };
     }
 
+    let freeBagItems = [];
+    let currentTabId = 'normal';
     const shelfEl = modal.querySelector('#gift-shelf-grid');
     const renderShelf = (tabId) => {
+      currentTabId = tabId;
+      if (tabId === 'free_bag') {
+        if (!freeBagItems.length) {
+          shelfEl.innerHTML = '<div class="gift-shelf-empty">لا توجد هدايا مجانية في حقيبتك حالياً — استلم مكافآت مستواك أو رتبتك أولاً! 🎁</div>';
+          selectedGift = null;
+          return;
+        }
+        selectedGift = Object.assign({}, freeBagItems[0], { __fromFreeBag: true });
+        shelfEl.innerHTML = freeBagItems.map((g, idx) => `
+          <div class="gift-shelf-item ${idx === 0 ? 'selected' : ''}" data-gift-id="${g.gift_id}" data-free-bag="1">
+            <span class="gift-bag-qty-badge">×${g.quantity}</span>
+            <div class="gift-shelf-icon">${giftIconHtml(g.icon, g.image_url)}</div>
+            <div class="gift-shelf-name">${g.name}</div>
+            <div class="gift-shelf-price" style="color:#4ade80;font-weight:900">مجاني 🎒</div>
+          </div>
+        `).join('');
+        shelfEl.querySelectorAll('.gift-shelf-item').forEach(item => {
+          item.onclick = () => {
+            shelfEl.querySelectorAll('.gift-shelf-item').forEach(i => i.classList.remove('selected'));
+            item.classList.add('selected');
+            const fg = freeBagItems.find(x => x.gift_id === item.dataset.giftId);
+            selectedGift = fg ? Object.assign({}, fg, { id: fg.gift_id, __fromFreeBag: true }) : null;
+          };
+        });
+        selectedGift.id = selectedGift.gift_id;
+        return;
+      }
+
       const list = state.gifts.filter(g => giftTabOf(g) === tabId);
       if (!list.length) {
         shelfEl.innerHTML = '<div class="gift-shelf-empty">لا توجد هدايا في هذا القسم حالياً</div>';
         selectedGift = null;
         return;
       }
-      if (!selectedGift || !list.some(g => g.id === selectedGift.id)) selectedGift = list[0];
+      if (!selectedGift || selectedGift.__fromFreeBag || !list.some(g => g.id === selectedGift.id)) selectedGift = list[0];
       shelfEl.innerHTML = list.map(g => `
         <div class="gift-shelf-item ${selectedGift && selectedGift.id === g.id ? 'selected' : ''}" data-gift-id="${g.id}">
+          ${g.min_charm_level > 0 ? `<span class="gift-vip-charm-badge">✨ سحر Lv.${g.min_charm_level}+</span>` : ''}
           <div class="gift-shelf-icon">${giftIconHtml(g.icon, g.image_url)}</div>
           <div class="gift-shelf-name">${g.name}</div>
           <div class="gift-shelf-price">${g.cost} ${g.currency === 'coins' ? '🪙' : '💎'}</div>
@@ -14578,6 +14528,16 @@
         };
       });
     };
+    fetch('/api/levels/free-gifts', { headers: { 'x-user-id': state.currentUser.id } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!d || !modal.isConnected) return;
+        freeBagItems = d.free_gifts || [];
+        const freeBtn = modal.querySelector('[data-gift-tab="free_bag"]');
+        const cnt = freeBagItems.reduce((s, x) => s + (Number(x.quantity) || 0), 0);
+        if (freeBtn && cnt > 0) freeBtn.textContent = `🎒 مجاني (${cnt})`;
+        if (currentTabId === 'free_bag') renderShelf('free_bag');
+      }).catch(() => {});
     modal.querySelectorAll('.gift-tab-btn').forEach(btn => {
       btn.onclick = () => {
         modal.querySelectorAll('.gift-tab-btn').forEach(b => b.classList.remove('active'));
@@ -14606,11 +14566,27 @@
         return;
       }
 
-      // الرصيد يجب أن يكفي لكل المستلمين (لكل شخص هدية)
-      const balance = selectedGift.currency === 'coins' ? state.currentUser.coins : state.currentUser.diamonds;
-      if (balance < selectedGift.cost * receiverIds.length) {
-        showToast(`رصيدك لا يكفي لإرسال الهدية إلى ${receiverIds.length} أشخاص`);
-        return;
+      const usingFreeBag = !!selectedGift.__fromFreeBag;
+      let payWithDiamonds = false;
+      if (usingFreeBag) {
+        if ((Number(selectedGift.quantity) || 0) < receiverIds.length) {
+          showToast(`لديك ${selectedGift.quantity} فقط من هذه الهدية المجانية`);
+          return;
+        }
+      } else {
+        const needed = selectedGift.cost * receiverIds.length;
+        const coinsBal = Number(state.currentUser.coins) || 0;
+        const diamondsBal = Number(state.currentUser.diamonds) || 0;
+        if (selectedGift.currency === 'coins') {
+          if (coinsBal < needed && diamondsBal >= needed) payWithDiamonds = true;
+          else if (coinsBal < needed) {
+            showToast(`رصيدك من العملات/البلورات لا يكفي (${needed})`);
+            return;
+          }
+        } else if (diamondsBal < needed) {
+          showToast(`رصيد البلورات لا يكفي (${needed} 💎)`);
+          return;
+        }
       }
 
       const sendBtn = modal.querySelector('#send-gift-action-btn');
@@ -14624,7 +14600,9 @@
             body: JSON.stringify({
               receiver_id: rid,
               room_id: lockRecipient ? null : (roomId || (state.activeRoom ? state.activeRoom.id : null)),
-              gift_id: selectedGift.id
+              gift_id: selectedGift.id,
+              use_free_bag: usingFreeBag,
+              pay_with_diamonds: payWithDiamonds
             })
           });
           const data = await res.json();
@@ -14640,14 +14618,19 @@
           lastName = (finalReceiver && finalReceiver.name) || lastName;
 
           if (lockRecipient) {
-            // هدية من المحادثة الخاصة: تظهر داخل الخاص فقط، بدون أي أنيميشن أو رسالة في الغرفة
-            if (data.message && state.currentChatPartner && state.currentChatPartner.id === rid) {
+            if (opts && opts.fromProfile) {
+              if (window.giftEffectsEngine) window.giftEffectsEngine.showGiftAnimation(selectedGift, state.currentUser, finalReceiver);
+              showToast(`🎁 أرسلت ${selectedGift.name} إلى ${finalReceiver ? finalReceiver.name : 'المستخدم'}!`);
+            } else if (data.message && state.currentChatPartner && state.currentChatPartner.id === rid) {
               appendDirectChatMessageUI(data.message);
             }
           } else if (window.giftEffectsEngine) {
             window.giftEffectsEngine.showGiftAnimation(selectedGift, state.currentUser, finalReceiver);
           }
 
+          if (opts && typeof opts.onGiftSent === 'function') {
+            try { opts.onGiftSent(data); } catch (cbErr) {}
+          }
           document.querySelectorAll(`.user-received-gifts-box[data-user-id="${rid}"]`).forEach(box => {
             loadAndRenderUserGiftsSection(rid, box, state.currentUser && state.currentUser.id === rid);
           });
@@ -14659,7 +14642,6 @@
 
       if (sent > 0) {
         modal.remove();
-        // لا إشعار نجاح: الهدية تظهر كتأثير فقط. نُظهر رسالة فقط إذا توقف الإرسال لمستلم ما.
         if (failMsg) showToast(`توقف الإرسال: ${failMsg}`);
       } else {
         sendBtn.disabled = false;
@@ -15675,7 +15657,8 @@
     followHeaders,
     sendPrivateMessage,
     toggleVoiceNoteRecording,
-    appendDirectChatMessageUI
+    appendDirectChatMessageUI,
+    openSubPage: pfPage
   };
 
 })();
