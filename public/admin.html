@@ -805,6 +805,301 @@
     }
   </style>
 
+  <style id="catalog-studio">
+    .tab-btn-label { min-width: 0; }
+    .cat-nav-count:empty { display: none; }
+    .cat-nav-count {
+      margin-inline-start: auto;
+      font-size: 11px;
+      font-weight: 800;
+      color: #fbbf24;
+      background: rgba(251, 191, 36, .14);
+      border: 1px solid rgba(251, 191, 36, .35);
+      border-radius: 999px;
+      padding: 1px 7px;
+      line-height: 1.6;
+    }
+    .cat-studio { min-width: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+    .cat-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .cat-title { font-size: 20px; font-weight: 900; color: #fff; line-height: 1.4; }
+    .cat-sub { margin-top: 4px; font-size: 12.5px; line-height: 1.8; color: var(--text-muted); max-width: 68ch; }
+    .cat-add.btn-submit { width: auto; margin: 0; padding: 0 20px; min-height: 44px; white-space: nowrap; }
+    .cat-toolbar { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+    .cat-chips-wrap { position: relative; min-width: 0; }
+    .cat-chips {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scroll-snap-type: x proximity;
+      padding: 2px 2px 6px;
+      scrollbar-width: none;
+    }
+    .cat-chips::-webkit-scrollbar { display: none; }
+    .cat-chip {
+      flex: 0 0 auto;
+      scroll-snap-align: start;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 40px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .04);
+      color: #cbd5e1;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .cat-chip b {
+      font-size: 11px;
+      color: #fbbf24;
+      background: rgba(0, 0, 0, .28);
+      border-radius: 999px;
+      padding: 1px 6px;
+    }
+    .cat-chip.is-on {
+      color: #fff;
+      border-color: rgba(251, 191, 36, .7);
+      background: linear-gradient(135deg, rgba(139, 92, 246, .5), rgba(217, 70, 239, .28));
+    }
+    .cat-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .cat-tools .form-input { width: auto; flex: 1 1 180px; min-width: 0; min-height: 42px; }
+    .cat-tools select.form-input { flex: 0 1 150px; }
+    .cat-tools .btn-action { min-height: 42px; padding: 0 14px; }
+    .cat-summary { font-size: 12px; color: var(--text-muted); margin: 2px 0 8px; min-height: 18px; }
+    .cat-layout { min-width: 0; }
+    .cat-main { min-width: 0; }
+    .cat-group-title {
+      margin: 18px 0 8px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #c4b5fd;
+    }
+    .cat-section { margin-bottom: 16px; }
+    .cat-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .cat-section-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      font-size: 15px;
+      font-weight: 900;
+      color: #fff;
+    }
+    .cat-section-title b { color: #fbbf24; font-size: 12px; }
+    .cat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+      gap: 12px;
+    }
+    .cat-card {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 16px;
+      border: 1px solid rgba(196, 181, 253, .16);
+      background: linear-gradient(160deg, rgba(32, 20, 58, .95), rgba(14, 9, 28, .92));
+    }
+    .cat-card.is-off { opacity: .72; }
+    .cat-card.is-current { border-color: #fbbf24; box-shadow: 0 0 0 1px rgba(251, 191, 36, .35); }
+    .cat-thumb {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        linear-gradient(45deg, rgba(255,255,255,.05) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(255,255,255,.05) 25%, transparent 25%),
+        rgba(0, 0, 0, .28);
+      background-size: 14px 14px;
+    }
+    .cat-thumb[data-act] { cursor: zoom-in; }
+    .cat-thumb img, .cat-thumb video { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .cat-card.cover .cat-thumb img, .cat-card.cover .cat-thumb video { object-fit: cover; }
+    .cat-fallback { font-size: 34px; line-height: 1; }
+    .cat-code { font: 800 22px/1 ui-monospace, monospace; direction: ltr; color: #e9d5ff; }
+    .cat-flag {
+      position: absolute;
+      top: 8px;
+      inset-inline-start: 8px;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(16, 185, 129, .92);
+      color: #fff;
+    }
+    .cat-flag.off { background: rgba(239, 68, 68, .92); }
+    .cat-name {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cat-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .cat-tags span {
+      font-size: 10px;
+      font-weight: 800;
+      color: #fde68a;
+      background: rgba(251, 191, 36, .12);
+      border-radius: 999px;
+      padding: 1px 6px;
+    }
+    .cat-meta { font-size: 11.5px; color: #fbbf24; font-weight: 700; line-height: 1.5; }
+    .cat-actions { display: flex; gap: 6px; margin-top: auto; }
+    .cat-actions .btn-action { flex: 1; justify-content: center; min-width: 0; min-height: 36px; padding: 0 4px; white-space: nowrap; }
+    .cat-act-ico { display: none; }
+    .cat-chip, .cat-actions .btn-action, .cat-add { touch-action: manipulation; }
+    .cat-empty, .cat-warn {
+      padding: 18px 12px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      border: 1px dashed rgba(255,255,255,.12);
+      border-radius: 14px;
+    }
+    .cat-warn { color: #fbbf24; border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.06); margin-bottom: 12px; }
+    .cat-skel {
+      min-height: 220px;
+      background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.1), rgba(255,255,255,.04));
+      background-size: 200% 100%;
+      animation: catShimmer 1.2s linear infinite;
+    }
+    @keyframes catShimmer { to { background-position: -200% 0; } }
+    .cat-editor-card {
+      background: linear-gradient(160deg, rgba(28, 16, 52, .98), rgba(12, 7, 24, .98));
+      border: 1px solid rgba(196, 181, 253, .2);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 18px 40px rgba(0,0,0,.35);
+    }
+    .cat-sheet-handle {
+      width: 42px; height: 4px; border-radius: 4px;
+      background: rgba(255,255,255,.28);
+      margin: 2px auto 12px;
+    }
+    .cat-editor-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .cat-editor-kicker { font-size: 11px; font-weight: 800; color: #fbbf24; }
+    .cat-editor-title { font-size: 16px; font-weight: 900; color: #fff; }
+    .cat-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+    .cat-field { min-width: 0; }
+    .cat-field[hidden], #catalog-editor[hidden] { display: none !important; }
+    .cat-hint { margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: var(--text-muted); }
+    .cat-note {
+      margin: 4px 0 12px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(16, 185, 129, .1);
+      color: #86efac;
+      font-size: 12px;
+    }
+    #cat-preview { display: none; max-width: 100%; max-height: 140px; margin-top: 10px; border-radius: 10px; background: rgba(255,255,255,.05); }
+    .cat-emoji-picks { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .cat-emoji-picks img { width: 52px; height: 52px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,.05); }
+    .cat-fx { border: 1px dashed rgba(251,191,36,.45); border-radius: 12px; padding: 12px; margin: 8px 0 12px; }
+    .cat-fx-title { color: #fbbf24; font-weight: 800; margin-bottom: 8px; }
+    .cat-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; font-weight: 700; margin: 8px 0; }
+    .cat-editor-actions {
+      position: sticky;
+      bottom: 0;
+      display: flex;
+      gap: 8px;
+      padding-top: 12px;
+      background: #120a22;
+      z-index: 2;
+    }
+    .cat-editor-actions .btn-submit, .cat-editor-actions .btn-nav { flex: 1; width: auto; margin: 0; min-height: 46px; justify-content: center; }
+    #catalog-editor {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      background: rgba(0, 0, 0, .72);
+    }
+    #catalog-editor .cat-editor-card { width: 100%; max-height: min(92vh, 860px); overflow: auto; border-radius: 20px 20px 0 0; }
+    body.cat-editor-lock { overflow: hidden; }
+    @media (hover: hover) {
+      .cat-card { transition: transform .16s ease, border-color .16s ease; }
+      .cat-card:hover { transform: translateY(-2px); border-color: rgba(251, 191, 36, .4); }
+    }
+    @media (min-width: 861px) {
+      .cat-chips { flex-wrap: wrap; overflow: visible; }
+      .cat-sheet-handle { display: none; }
+      #catalog-editor { align-items: center; padding: 20px; }
+      #catalog-editor .cat-editor-card { width: min(680px, 100%); max-height: 88vh; border-radius: 18px; }
+    }
+    @media (min-width: 1180px) {
+      .cat-studio.is-editing { padding-inline-end: min(400px, 34vw); }
+      #catalog-editor {
+        position: fixed;
+        inset: auto;
+        top: 84px;
+        bottom: 16px;
+        inset-inline-end: 16px;
+        width: min(380px, 32vw);
+        z-index: 80;
+        display: block;
+        align-items: stretch;
+        justify-content: stretch;
+        background: transparent;
+        padding: 0;
+      }
+      #catalog-editor .cat-editor-card {
+        width: 100%;
+        height: 100%;
+        max-height: none;
+        overflow: auto;
+        border-radius: 18px;
+      }
+      .cat-studio.is-editing .cat-form-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 860px) {
+      .cat-head { flex-direction: column; }
+      .cat-add.btn-submit { width: 100%; }
+      .cat-title { font-size: 18px; }
+      .cat-section-head { align-items: flex-start; }
+    }
+    @media (max-width: 520px) {
+      .cat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .cat-card { padding: 8px; border-radius: 14px; }
+      .cat-name { font-size: 12.5px; }
+      .cat-act-ico { display: inline; }
+      .cat-act-txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+      .cat-actions .btn-action { font-size: 16px; min-height: 38px; }
+      .cat-tools .form-input, .cat-tools select.form-input, .cat-tools .btn-action { flex: 1 1 100%; width: 100%; }
+      .cat-form-grid { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .cat-skel { animation: none; }
+      .cat-card { transition: none; }
+    }
+  </style>
+
 </head>
 <body>
 
@@ -935,26 +1230,8 @@
         <button class="tab-btn" onclick="switchAdminTab('smtp')">
           <span>📧</span> إعدادات البريد (SMTP) وقالب الجيميل
         </button>
-        <button class="tab-btn" onclick="switchAdminTab('entry-templates')">
-          <span>🦅</span> قوالب الدخول
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('avatar-frames')">
-          <span>🖼️</span> إطارات الأفاتار
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('room-cards')">
-          <span>🏠</span> بطاقات الغرف
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('store-items')">
-          <span>🛍️</span> عناصر المتجر
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('room-bgs')">
-          <span>🌄</span> خلفيات الغرف
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('gifts-catalog')">
-          <span>🎁</span> الهدايا
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('room-emojis')">
-          <span>😄</span> الإيموجي
+        <button class="tab-btn" onclick="switchAdminTab('catalog')">
+          <span>🛍️</span> <span class="tab-btn-label">كل الأصناف</span> <span class="cat-nav-count" id="cat-nav-count"></span>
         </button>
         <button class="tab-btn" onclick="switchAdminTab('broadcast')">
           <span>📢</span> إذاعة إعلان عام للجميع
@@ -1546,6 +1823,141 @@
               <thead><tr><th>الصورة</th><th>الاسم</th><th>السعر 💎</th><th>المالكون</th><th>الحالة</th><th>إجراءات</th></tr></thead>
               <tbody id="room-bgs-table-body"><tr><td colspan="6" style="text-align:center; color: var(--text-muted);">جارٍ التحميل...</td></tr></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: كل الأصناف — شاشة موحّدة للمتجر والغرف والهدايا والإيموجي -->
+      <div class="tab-pane" id="tab-catalog">
+        <div class="content-box cat-studio">
+          <div class="cat-head">
+            <div class="cat-head-copy">
+              <div class="cat-title">كل الأصناف</div>
+              <p class="cat-sub">مكان واحد لإضافة وتعديل مؤثرات الدخول، الإطارات، بطاقات الغرف، بطاقات الصوت، الفقاعات، مقاعد المايك، الخلفيات، الهدايا والإيموجي. نفس الحقول على الهاتف والكمبيوتر، والحفظ يظهر للمستخدمين فوراً.</p>
+            </div>
+            <button type="button" class="btn-submit cat-add" data-act="add">＋ إضافة عنصر</button>
+          </div>
+          <div class="cat-toolbar">
+            <div class="cat-chips-wrap">
+              <div class="cat-chips" id="cat-chips" role="tablist" aria-label="أقسام الأصناف"></div>
+            </div>
+            <div class="cat-tools">
+              <input type="search" class="form-input" id="cat-search" placeholder="بحث بالاسم…" autocomplete="off" enterkeyhint="search" aria-label="بحث في الأصناف" />
+              <select class="form-input" id="cat-status" aria-label="تصفية الحالة">
+                <option value="all">كل الحالات</option>
+                <option value="on">ظاهر</option>
+                <option value="off">مخفي</option>
+              </select>
+              <button type="button" class="btn-action" data-act="refresh">تحديث</button>
+            </div>
+          </div>
+          <div class="cat-summary" id="cat-summary" aria-live="polite"></div>
+          <div class="cat-layout" id="cat-layout">
+            <div class="cat-main">
+              <div id="cat-board"></div>
+            </div>
+            <aside id="catalog-editor" class="cat-editor" hidden>
+              <form id="cat-editor-form" class="cat-editor-card" novalidate onsubmit="submitCatalogEditor(event)">
+                <div class="cat-sheet-handle" aria-hidden="true"></div>
+                <div class="cat-editor-head">
+                  <div>
+                    <div class="cat-editor-kicker" id="cat-editor-kicker">عنصر جديد</div>
+                    <div class="cat-editor-title" id="cat-editor-title">إضافة إلى الأصناف</div>
+                  </div>
+                  <button type="button" class="admin-tabs-close" onclick="closeCatalogEditor()" aria-label="إغلاق">✕</button>
+                </div>
+                <div class="form-group cat-field" id="cat-field-kind">
+                  <label class="form-label" for="cat-kind">القسم</label>
+                  <select class="form-input" id="cat-kind"></select>
+                </div>
+                <div class="form-group cat-field" id="cat-field-name">
+                  <label class="form-label" for="cat-name">الاسم</label>
+                  <input type="text" class="form-input" id="cat-name" maxlength="60" autocomplete="off" />
+                </div>
+                <div class="cat-form-grid">
+                  <div class="form-group cat-field" id="cat-field-price">
+                    <label class="form-label" for="cat-price" id="cat-price-label">السعر بالكرستالات</label>
+                    <input type="number" class="form-input" id="cat-price" min="0" step="1" value="0" />
+                  </div>
+                  <div class="form-group cat-field" id="cat-field-currency">
+                    <label class="form-label" for="cat-currency">العملة</label>
+                    <select class="form-input" id="cat-currency">
+                      <option value="coins">عملات</option>
+                      <option value="diamonds">كرستالات</option>
+                    </select>
+                  </div>
+                  <div class="form-group cat-field" id="cat-field-duration">
+                    <label class="form-label" for="cat-duration">مدة الصلاحية بعد الشراء</label>
+                    <select class="form-input" id="cat-duration">
+                      <option value="7">7 أيام</option>
+                      <option value="14">14 يوماً</option>
+                      <option value="30">30 يوماً</option>
+                      <option value="0" selected>دائم (بلا انتهاء)</option>
+                    </select>
+                  </div>
+                  <div class="form-group cat-field" id="cat-field-gift-tab">
+                    <label class="form-label" for="cat-gift-tab">نوع الهدية</label>
+                    <select class="form-input" id="cat-gift-tab">
+                      <option value="normal">هدية عادية</option>
+                      <option value="luxury">هدية فاخرة</option>
+                    </select>
+                  </div>
+                  <div class="form-group cat-field" id="cat-field-scale">
+                    <label class="form-label" for="cat-scale">حجم الإطار (1 – 2)</label>
+                    <input type="number" class="form-input" id="cat-scale" min="1" max="2" step="0.05" value="1.3" />
+                  </div>
+                  <div class="form-group cat-field" id="cat-field-badge">
+                    <label class="form-label" for="cat-badge">شارة على البطاقة (اختياري)</label>
+                    <input type="text" class="form-input" id="cat-badge" maxlength="20" autocomplete="off" />
+                  </div>
+                  <div class="form-group cat-field" id="cat-field-sort">
+                    <label class="form-label" for="cat-sort">الترتيب (الأصغر أولاً)</label>
+                    <input type="number" class="form-input" id="cat-sort" step="1" value="0" />
+                  </div>
+                  <div class="form-group cat-field" id="cat-field-icon">
+                    <label class="form-label" for="cat-icon">إيموجي بديل</label>
+                    <input type="text" class="form-input" id="cat-icon" maxlength="8" placeholder="🎁" autocomplete="off" />
+                  </div>
+                </div>
+                <p class="cat-note" id="cat-permanent-note" hidden>هذا القسم دائم: لا تنتهي صلاحيته إلا إذا ألغاه المستخدم بنفسه.</p>
+                <div class="form-group cat-field" id="cat-field-image">
+                  <label class="form-label" for="cat-image" id="cat-image-label">الملف</label>
+                  <input type="file" class="form-input" id="cat-image" />
+                  <div class="cat-hint" id="cat-file-hint"></div>
+                  <img id="cat-preview" alt="" />
+                  <div class="cat-emoji-picks" id="cat-emoji-picks"></div>
+                </div>
+                <div class="form-group cat-field" id="cat-field-poster">
+                  <label class="form-label" for="cat-poster">صورة ثابتة (اختياري — للفيديو أو HTML)</label>
+                  <input type="file" class="form-input" id="cat-poster" accept="image/png,image/jpeg,image/webp" />
+                </div>
+                <div class="cat-fx cat-field" id="cat-field-gift-fx" hidden>
+                  <div class="cat-fx-title">تأثيرات الهدية</div>
+                  <label class="cat-check"><input type="checkbox" id="cat-burst" /> تطاير صورة الهدية نحو المستلم</label>
+                  <div class="form-group">
+                    <label class="form-label" for="cat-burst-count">عدد الصور المتطايرة (1–60)</label>
+                    <input type="number" class="form-input" id="cat-burst-count" min="1" max="60" step="1" value="20" />
+                  </div>
+                  <label class="cat-check"><input type="checkbox" id="cat-banner" /> إشعار عام لكل المتواجدين في الغرف</label>
+                  <div class="form-group">
+                    <label class="form-label" for="cat-frame">إطار الإشعار العلوي (PNG / WEBP / GIF)</label>
+                    <img id="cat-frame-current" alt="" hidden style="display:none; max-width:100%; max-height:70px; margin-bottom:6px; border-radius:8px; background:#222;" />
+                    <input type="file" class="form-input" id="cat-frame" accept="image/png,image/webp,image/gif" />
+                    <label class="cat-check" id="cat-remove-frame-wrap" hidden><input type="checkbox" id="cat-remove-frame" /> إزالة الإطار الحالي</label>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="cat-effect">مؤثر الهدية الفاخرة (صورة / فيديو / HTML)</label>
+                    <div class="cat-hint" id="cat-effect-current" hidden></div>
+                    <input type="file" class="form-input" id="cat-effect" accept="image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,text/html,.html,.htm" />
+                    <label class="cat-check" id="cat-remove-effect-wrap" hidden><input type="checkbox" id="cat-remove-effect" /> إزالة المؤثر الحالي</label>
+                  </div>
+                </div>
+                <div class="cat-editor-actions">
+                  <button type="submit" class="btn-submit" id="cat-save-btn">إضافة الآن</button>
+                  <button type="button" class="btn-nav" onclick="closeCatalogEditor()">إلغاء</button>
+                </div>
+              </form>
+            </aside>
           </div>
         </div>
       </div>
@@ -3236,6 +3648,19 @@
     window.addEventListener('resize', () => { if (window.innerWidth > 860) toggleAdminMenu(false); });
 
     function switchAdminTab(tabId) {
+      const catalogLegacy = {
+        'entry-templates': 'entry',
+        'avatar-frames': 'frames',
+        'room-cards': 'rooms',
+        'store-items': 'all',
+        'room-bgs': 'bgs',
+        'gifts-catalog': 'gifts',
+        'room-emojis': 'emojis'
+      };
+      if (catalogLegacy[tabId]) {
+        window.__catalogFilter = catalogLegacy[tabId];
+        tabId = 'catalog';
+      }
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
 
@@ -3260,6 +3685,8 @@
       if (tabId === 'room-message') fetchRoomSystemMessage();
       if (tabId === 'wallet') { fetchWalletSettings(); fetchPaypalSettings(); fetchPaypalOrders(); }
       if (tabId === 'charge-agents') loadChargeAgentsTab();
+      if (tabId !== 'catalog' && typeof closeCatalogEditor === 'function') closeCatalogEditor();
+      if (tabId === 'catalog' && typeof loadCatalog === 'function') loadCatalog();
       if (tabId === 'entry-templates') fetchEntryTemplates();
       if (tabId === 'avatar-frames') fetchAvatarFrames();
       if (tabId === 'room-cards') fetchRoomCards();
@@ -6129,5 +6556,6 @@
     }
   </script>
   <script src="js/f7-icons.js"></script>
+  <script src="js/admin-catalog.js"></script>
 </body>
 </html>
