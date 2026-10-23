@@ -1176,6 +1176,35 @@
     music.ytPlayer = null; music.ytBox = null;
   }
 
+  // تكامل مشغل الصوت مع أزرار الوسائط في النظام/سماعات الهاتف.
+  function setupMediaSession(track) {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      if (typeof MediaMetadata === 'function') {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: (track && track.title) || 'موسيقى',
+          artist: (ctx && ctx.room && ctx.room.title) || 'SoulChill',
+          artwork: track && track.thumbnail ? [{ src: track.thumbnail }] : []
+        });
+      }
+      navigator.mediaSession.playbackState = 'playing';
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (ctx && ctx.music.audio) {
+          ctx.music.userPaused = false;
+          ctx.music.audio.play().catch(() => {});
+        }
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (ctx && ctx.music.audio) {
+          ctx.music.userPaused = true;
+          ctx.music.audio.pause();
+        }
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => playAdjacent(1));
+      navigator.mediaSession.setActionHandler('previoustrack', () => playAdjacent(-1));
+    } catch (e) {}
+  }
+
   // — يوتيوب كمقطع صوتي مخفي: الصوت يمر عبر بروكسي الخادم (نفس النطاق) فيُلتقط بـ WebAudio
   // ويُدمج في ميكرفون المقعد، فيسمعه كل من في الغرفة عبر LiveKit دون ظهور يوتيوب لأحد.
   // لا نستخدم iframe كحل بديل، لأنه لا يمكن التقاط صوته ونشره جماعياً.
