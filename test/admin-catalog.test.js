@@ -24,6 +24,12 @@ test('لوحة الأصناف الموحّدة موجودة والقائمة ل�
   ['cat-kind', 'cat-name', 'cat-price', 'cat-image', 'cat-board', 'cat-chips', 'catalog-editor'].forEach(id => {
     assert.ok(html.includes(`id="${id}"`), id);
   });
+  assert.match(html, /css\/admin-look\.css/);
+  assert.match(html, /class="look-page cat-studio"/);
+  assert.match(html, /id="cat-legend-list"/);
+  assert.match(html, /class="side-group"/);
+  assert.match(html, /باقات الذهب والدفع/);
+  assert.match(html, /الهدايا والإيموجي/);
 });
 
 test('ملف الأصناف يمرّ فحص الصياغة ويغطي كل الأقسام', () => {

@@ -154,10 +154,18 @@
     const kind = item.image ? (isHtmlUrl(item.image) ? 'html' : (isVideoUrl(item.image) ? 'video' : '')) : '';
     const preview = item.image ? ` data-act="preview" data-url="${escHtml(item.image)}" data-kind="${kind}"` : '';
     return `<article class="cat-card${item.active ? '' : ' is-off'}${current ? ' is-current' : ''}${def && def.cover ? ' cover' : ''}" data-def="${escHtml(item.defId)}" data-id="${escHtml(item.id)}">
-      <div class="cat-thumb"${preview}>${thumbInner(item)}<span class="cat-flag${item.active ? '' : ' off'}">${item.active ? 'ظاهر' : 'مخفي'}</span></div>
-      <div class="cat-name" title="${escHtml(item.name)}">${escHtml(item.name)}</div>
-      ${tagsHtml(item)}
-      ${meta ? `<div class="cat-meta">${meta}</div>` : ''}
+      <div class="cat-row-main">
+        <span class="cat-row-mark" aria-hidden="true">${def ? def.icon : ''}</span>
+        <div class="cat-thumb"${preview}>${thumbInner(item)}</div>
+        <div class="cat-row-copy">
+          <div class="cat-name-row">
+            <div class="cat-name" title="${escHtml(item.name)}">${escHtml(item.name)}</div>
+            <span class="cat-flag${item.active ? '' : ' off'}">${item.active ? 'ظاهر' : 'مخفي'}</span>
+          </div>
+          ${tagsHtml(item)}
+          ${meta ? `<div class="cat-meta">${meta}</div>` : ''}
+        </div>
+      </div>
       <div class="cat-actions">
         <button type="button" class="btn-action gold" data-act="edit" aria-label="تعديل"><span class="cat-act-ico" aria-hidden="true">✏️</span><span class="cat-act-txt">تعديل</span></button>
         <button type="button" class="btn-action" data-act="toggle" aria-label="${item.active ? 'إخفاء' : 'إظهار'}"><span class="cat-act-ico" aria-hidden="true">${item.active ? '🙈' : '👁️'}</span><span class="cat-act-txt">${item.active ? 'إخفاء' : 'إظهار'}</span></button>
@@ -179,6 +187,9 @@
       return `<button type="button" class="cat-chip${on ? ' is-on' : ''}" role="tab" aria-selected="${on ? 'true' : 'false'}" data-act="filter" data-def="${c.id}"><span>${c.icon}</span>${escHtml(c.label)}<b>${n}</b></button>`;
     }).join('');
     el.scrollLeft = left;
+    document.querySelectorAll('#cat-legend-list [data-def]').forEach(b => {
+      b.classList.toggle('is-on', b.dataset.def === catalogState.filter);
+    });
     const badge = $('cat-nav-count');
     if (badge) badge.textContent = catalogState.items.length ? String(catalogState.items.length) : '';
   }
@@ -418,40 +429,18 @@
     if (typeof showAssetCurrent === 'function') showAssetCurrent('cat-preview', item.image);
   }
 
-  function editorIsSheet() { return window.innerWidth < 1180; }
   function syncEditorLock() {
     const editor = $('catalog-editor');
     const studio = document.querySelector('.cat-studio');
-    const open = !!(editor && !editor.hidden);
-    const sheet = editorIsSheet();
-    document.body.classList.toggle('cat-editor-lock', open && sheet);
-    if (studio) studio.classList.toggle('is-editing', open && !sheet);
+    document.body.classList.remove('cat-editor-lock');
+    document.body.classList.toggle('cat-editing', !!(editor && !editor.hidden));
+    if (studio) {
+      studio.classList.remove('is-editing');
+      studio.style.paddingInlineEnd = '';
+    }
     if (!editor) return;
-    if (!open || sheet || !studio) {
-      editor.style.left = editor.style.right = editor.style.width = editor.style.top = editor.style.bottom = '';
-      editor.style.insetInlineStart = editor.style.insetInlineEnd = '';
-      if (studio) studio.style.paddingInlineEnd = '';
-      return;
-    }
-    const extra = parseFloat(studio.style.paddingInlineEnd) || 0;
-    const base = Math.max(280, studio.clientWidth - extra);
-    const width = Math.round(Math.min(380, Math.max(300, base * 0.36)));
-    const rect = studio.getBoundingClientRect();
-    const rtl = document.documentElement.dir !== 'ltr';
-    editor.style.top = '84px';
-    editor.style.bottom = '16px';
-    editor.style.width = width + 'px';
-    editor.style.insetInlineStart = 'auto';
-    editor.style.insetInlineEnd = 'auto';
-    if (rtl) {
-      editor.style.left = Math.max(8, rect.left) + 'px';
-      editor.style.right = 'auto';
-    } else {
-      editor.style.right = Math.max(8, window.innerWidth - rect.right) + 'px';
-      editor.style.left = 'auto';
-    }
-    const pad = (width + 16) + 'px';
-    if (studio.style.paddingInlineEnd !== pad) studio.style.paddingInlineEnd = pad;
+    editor.style.left = editor.style.right = editor.style.width = editor.style.top = editor.style.bottom = '';
+    editor.style.insetInlineStart = editor.style.insetInlineEnd = '';
   }
 
   function openCatalogEditor(item, preset) {
@@ -477,8 +466,9 @@
     document.querySelectorAll('#cat-board .cat-card').forEach(el => {
       el.classList.toggle('is-current', !!(item && el.dataset.id === item.id && el.dataset.def === item.defId));
     });
+    try { editor.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
     const focusEl = $(item && item.kind === 'emoji' ? 'cat-image' : 'cat-name');
-    setTimeout(() => { try { focusEl.focus(); } catch (e) {} }, 40);
+    setTimeout(() => { try { focusEl.focus({ preventScroll: true }); } catch (e) { try { focusEl.focus(); } catch (err) {} } }, 60);
   }
 
   function closeCatalogEditor() {
@@ -488,6 +478,7 @@
     if (studio) studio.classList.remove('is-editing');
     catalogState.editing = null;
     document.body.classList.remove('cat-editor-lock');
+    document.body.classList.remove('cat-editing');
     document.querySelectorAll('.cat-card.is-current').forEach(el => el.classList.remove('is-current'));
   }
 
@@ -704,6 +695,8 @@
       renderChips();
       renderBoard();
       renderSummary();
+      const sec = catalogState.filter !== 'all' ? document.getElementById('cat-sec-' + catalogState.filter) : null;
+      if (sec) { try { sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) {} }
       return;
     }
     if (act === 'add') { openCatalogEditor(null, el.dataset.def || ''); return; }
@@ -748,11 +741,10 @@
     });
     $('cat-image').addEventListener('change', onCatalogFilePick);
     const editor = $('catalog-editor');
-    if (editor) {
-      if (editor.parentElement !== document.body) document.body.appendChild(editor);
-      editor.addEventListener('mousedown', (e) => {
-        if (e.target.id === 'catalog-editor' && editorIsSheet()) closeCatalogEditor();
-      });
+    if (editor && editor.parentElement === document.body) {
+      const host = document.querySelector('.cat-studio');
+      const board = $('cat-board');
+      if (host && board) host.insertBefore(editor, board);
     }
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {

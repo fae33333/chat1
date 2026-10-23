@@ -1100,6 +1100,7 @@
     }
   </style>
 
+  <link rel="stylesheet" href="css/admin-look.css">
 </head>
 <body>
 
@@ -1134,14 +1135,83 @@
 
   <!-- Screen 2: Admin Dashboard View -->
   <div id="admin-dashboard-view">
+    <div class="admin-tabs-backdrop" onclick="toggleAdminMenu(false)"></div>
+    <aside class="admin-tabs" id="admin-tabs">
+      <div class="side-head">
+        <div class="side-brand">
+          <span>لوحة التحكم</span>
+          <svg class="side-shield" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.2 19.5 5v6.2c0 4.7-3.1 8.9-7.5 10.6C7.6 20.1 4.5 15.9 4.5 11.2V5L12 2.2z"/></svg>
+        </div>
+        <button type="button" class="admin-tabs-close" onclick="toggleAdminMenu(false)" aria-label="إغلاق">✕</button>
+      </div>
+      <div class="side-locale" role="group" aria-label="اللغة">
+        <button type="button" class="side-locale-pill" onclick="showToast('الواجهة حالياً بالعربية فقط','info')">FR</button>
+        <button type="button" class="side-locale-pill" onclick="showToast('الواجهة حالياً بالعربية فقط','info')">TR</button>
+        <button type="button" class="side-locale-pill" onclick="showToast('الواجهة حالياً بالعربية فقط','info')">ES</button>
+        <button type="button" class="side-locale-pill" onclick="showToast('الواجهة حالياً بالعربية فقط','info')">EN</button>
+        <button type="button" class="side-locale-pill is-on" aria-current="true">SA AR</button>
+      </div>
+      <div class="side-user">
+        <div class="side-user-top">
+          <b id="admin-side-name">المدير</b>
+          <span class="side-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-4.1 0-7 2-7 4.5V20h14v-1.5c0-2.5-2.9-4.5-7-4.5z"/></svg></span>
+        </div>
+        <div class="side-role">الصلاحية: <strong id="admin-side-role">سوبر ادمين</strong><span class="side-star" aria-hidden="true">★</span></div>
+      </div>
+      <nav class="side-nav" aria-label="أقسام لوحة التحكم">
+        <details class="side-group" data-group="pay">
+          <summary><span class="side-chev" aria-hidden="true"></span><span class="side-label">باقات الذهب والدفع</span><span class="side-ic">💳</span></summary>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('wallet')"><span>💰</span> المحفظة والمكافآت</button>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('charge-agents')"><span>🧾</span> وكلاء الشحن</button>
+        </details>
+        <details class="side-group" data-group="basic">
+          <summary><span class="side-chev" aria-hidden="true"></span><span class="side-label">الاعدادات الاساسية</span><span class="side-ic">⚙️</span></summary>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('smtp')"><span>📧</span> البريد وقالب الجيميل</button>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('google')"><span>🔵</span> تسجيل الدخول عبر Google</button>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('youtube')"><span>🔴</span> إعدادات يوتيوب</button>
+        </details>
+        <details class="side-group" data-group="rooms">
+          <summary><span class="side-chev" aria-hidden="true"></span><span class="side-label">اعدادات الغرف</span><span class="side-ic">🏠</span></summary>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('create-room')"><span>🎙️</span> إنشاء غرفة صوتية</button>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('rooms')"><span>🎙️</span> الغرف الصوتية</button>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('room-message')"><span>🛡️</span> رسالة الغرف الثابتة</button>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('livekit')"><span>🎙️</span> البث الصوتي</button>
+        </details>
+        <details class="side-group" data-group="system">
+          <summary><span class="side-chev" aria-hidden="true"></span><span class="side-label">اعدادات النظام</span><span class="side-ic">🖥️</span></summary>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('security')"><span>🔐</span> كلمة المرور والأمان</button>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('broadcast')"><span>📢</span> إذاعة إعلان عام</button>
+        </details>
+        <details class="side-group" data-group="users">
+          <summary><span class="side-chev" aria-hidden="true"></span><span class="side-label">ادارة المستخدمين</span><span class="side-ic">👤</span></summary>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('users')"><span>👥</span> المستخدمون والأرصدة</button>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('member-levels')"><span>👑</span> المستويات وVIP</button>
+        </details>
+        <details class="side-group" open data-group="staff">
+          <summary><span class="side-chev" aria-hidden="true"></span><span class="side-label">نظام الادارة</span><span class="side-ic">⚙️</span></summary>
+          <button class="tab-btn active" type="button" onclick="switchAdminTab('moderators')"><span>🛡️</span> المشرفون العامون</button>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('gen-moderators')"><span>🔑</span> توليد حسابات المشرفين</button>
+        </details>
+        <details class="side-group" data-group="gifts">
+          <summary><span class="side-chev" aria-hidden="true"></span><span class="side-label">الهدايا والإيموجي</span><span class="side-ic">🎁</span></summary>
+          <button class="tab-btn" type="button" onclick="switchAdminTab('catalog')"><span>🛍️</span> <span class="tab-btn-label">كل الأصناف</span> <span class="cat-nav-count" id="cat-nav-count"></span></button>
+        </details>
+      </nav>
+      <div class="side-foot">
+        <button type="button" class="side-foot-btn" onclick="fetchDashboardStats()">تحديث</button>
+        <a class="side-foot-btn" href="/" target="_blank" rel="noopener">التطبيق</a>
+        <button type="button" class="side-foot-btn danger" onclick="handleAdminLogout()">خروج</button>
+      </div>
+    </aside>
+    <div class="admin-stage">
     <!-- Navbar -->
     <header class="admin-navbar">
       <div class="nav-brand">
         <button type="button" class="admin-menu-btn" id="admin-menu-btn" onclick="toggleAdminMenu()" aria-label="القائمة">☰</button>
         <span style="font-size: 24px;">🛡️</span>
         <div>
-          <span class="nav-brand-title">SoulChill Admin Control Suite</span>
-          <span class="nav-brand-badge">لوحة التحكم العليا</span>
+          <span class="nav-brand-title" id="admin-mobile-title">لوحة التحكم</span>
+          <span class="nav-brand-badge">الإدارة</span>
         </div>
       </div>
 
@@ -1157,6 +1227,9 @@
 
     <!-- Main Content -->
     <main class="admin-main">
+      <header class="look-title" id="admin-page-title">
+        <h1><span id="admin-page-heading">نظام الإدارة</span> <span class="look-title-ic" id="admin-page-icon" aria-hidden="true">🛡️</span></h1>
+      </header>
       <!-- Live Metrics Ribbon -->
       <div class="metrics-grid">
         <div class="metric-card">
@@ -1206,60 +1279,6 @@
             <div class="metric-title">إجمالي الألماس</div>
           </div>
         </div>
-      </div>
-
-      <!-- Navigation Tabs -->
-      <div class="admin-tabs-backdrop" onclick="toggleAdminMenu(false)"></div>
-      <div class="admin-tabs" id="admin-tabs">
-        <div class="admin-tabs-title"><span>🛡️ لوحة التحكم</span><button type="button" class="admin-tabs-close" onclick="toggleAdminMenu(false)" aria-label="إغلاق">✕</button></div>
-        <button class="tab-btn active" onclick="switchAdminTab('moderators')">
-          <span>🛡️</span> المشرفين العامين (تعيين مشرفين للدردشة)
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('gen-moderators')">
-          <span>🔑</span> توليد حسابات المشرفين (اسم وكلمة مرور)
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('create-room')">
-          <span>🎙️</span> إنشاء غرفة صوتية
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('users')">
-          <span>👥</span> إدارة المستخدمين والأرصدة
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('rooms')">
-          <span>🎙️</span> إدارة الغرف الصوتية (الأرقام الحية)
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('smtp')">
-          <span>📧</span> إعدادات البريد (SMTP) وقالب الجيميل
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('catalog')">
-          <span>🛍️</span> <span class="tab-btn-label">كل الأصناف</span> <span class="cat-nav-count" id="cat-nav-count"></span>
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('broadcast')">
-          <span>📢</span> إذاعة إعلان عام للجميع
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('livekit')">
-          <span>🎙️</span> LiveKit — البث الصوتي
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('room-message')">
-          <span>🛡️</span> رسالة الغرف الثابتة
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('member-levels')">
-          <span>👑</span> نشاط الأعضاء والمستويات وVIP
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('wallet')">
-          <span>💰</span> المحفظة والمكافآت
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('charge-agents')">
-          <span>🧾</span> وكلاء الشحن
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('google')">
-          <span>🔵</span> تسجيل الدخول عبر Google
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('youtube')">
-          <span>🔴</span> إعدادات يوتيوب
-        </button>
-        <button class="tab-btn" onclick="switchAdminTab('security')">
-          <span>🔐</span> كلمة مرور اللوحة والأمان
-        </button>
       </div>
 
       <!-- TAB 1: Global Moderators (تعيين مشرفين للدردشة كلها) -->
@@ -1829,13 +1848,28 @@
 
       <!-- TAB: كل الأصناف — شاشة موحّدة للمتجر والغرف والهدايا والإيموجي -->
       <div class="tab-pane" id="tab-catalog">
-        <div class="content-box cat-studio">
-          <div class="cat-head">
-            <div class="cat-head-copy">
-              <div class="cat-title">كل الأصناف</div>
-              <p class="cat-sub">مكان واحد لإضافة وتعديل مؤثرات الدخول، الإطارات، بطاقات الغرف، بطاقات الصوت، الفقاعات، مقاعد المايك، الخلفيات، الهدايا والإيموجي. نفس الحقول على الهاتف والكمبيوتر، والحفظ يظهر للمستخدمين فوراً.</p>
-            </div>
-            <button type="button" class="btn-submit cat-add" data-act="add">＋ إضافة عنصر</button>
+        <div class="look-page cat-studio">
+          <header class="look-title">
+            <h1>كل الأصناف <span class="look-title-ic" aria-hidden="true">🛍️</span></h1>
+          </header>
+          <details class="look-legend" open>
+            <summary>أقسام الأصناف والمحتوى</summary>
+            <ul class="look-legend-list" id="cat-legend-list">
+            <li><button type="button" data-act="filter" data-def="entry"><span class="lg-dot"></span><span class="lg-text">مؤثرات الدخول — حركة الظهور عند دخول الغرفة</span><span class="lg-ic">🦅</span></button></li>
+            <li><button type="button" data-act="filter" data-def="frames"><span class="lg-dot"></span><span class="lg-text">إطارات الأفاتار — إطار يُرسم حول صورة العضو</span><span class="lg-ic">🖼️</span></button></li>
+            <li><button type="button" data-act="filter" data-def="rooms"><span class="lg-dot"></span><span class="lg-text">بطاقات الغرف — بانر يظهر على بطاقة الغرفة</span><span class="lg-ic">🏠</span></button></li>
+            <li><button type="button" data-act="filter" data-def="idcard"><span class="lg-dot"></span><span class="lg-text">بطاقات الصوت — بطاقة التعريف داخل الغرفة</span><span class="lg-ic">🪪</span></button></li>
+            <li><button type="button" data-act="filter" data-def="bubble"><span class="lg-dot"></span><span class="lg-text">فقاعات الدخول — شكل رسالة الدخول</span><span class="lg-ic">💬</span></button></li>
+            <li><button type="button" data-act="filter" data-def="chatbubble"><span class="lg-dot"></span><span class="lg-text">فقاعات الدردشة — شكل رسائل الشات</span><span class="lg-ic">💭</span></button></li>
+            <li><button type="button" data-act="filter" data-def="mic"><span class="lg-dot"></span><span class="lg-text">مقاعد المايك — شكل مقعد الصوت</span><span class="lg-ic">🎙️</span></button></li>
+            <li><button type="button" data-act="filter" data-def="bgs"><span class="lg-dot"></span><span class="lg-text">خلفيات الغرف — خلفية جاهزة للغرفة</span><span class="lg-ic">🌄</span></button></li>
+            <li><button type="button" data-act="filter" data-def="gifts"><span class="lg-dot"></span><span class="lg-text">الهدايا — هدايا عادية وفاخرة داخل الغرفة</span><span class="lg-ic">🎁</span></button></li>
+            <li><button type="button" data-act="filter" data-def="emojis"><span class="lg-dot"></span><span class="lg-text">الإيموجي — صور زر الإيموجي داخل الغرفة</span><span class="lg-ic">😄</span></button></li>
+            </ul>
+          </details>
+          <div class="look-section-head">
+            <h2>إدارة الأصناف <span class="look-diamond" aria-hidden="true">◆</span></h2>
+            <button type="button" class="look-add" data-act="add">＋ إضافة عنصر</button>
           </div>
           <div class="cat-toolbar">
             <div class="cat-chips-wrap">
@@ -1852,12 +1886,8 @@
             </div>
           </div>
           <div class="cat-summary" id="cat-summary" aria-live="polite"></div>
-          <div class="cat-layout" id="cat-layout">
-            <div class="cat-main">
-              <div id="cat-board"></div>
-            </div>
-            <aside id="catalog-editor" class="cat-editor" hidden>
-              <form id="cat-editor-form" class="cat-editor-card" novalidate onsubmit="submitCatalogEditor(event)">
+          <aside id="catalog-editor" class="cat-editor" hidden>
+            <form id="cat-editor-form" class="cat-editor-card" novalidate onsubmit="submitCatalogEditor(event)">
                 <div class="cat-sheet-handle" aria-hidden="true"></div>
                 <div class="cat-editor-head">
                   <div>
@@ -1957,8 +1987,8 @@
                   <button type="button" class="btn-nav" onclick="closeCatalogEditor()">إلغاء</button>
                 </div>
               </form>
-            </aside>
-          </div>
+          </aside>
+          <div id="cat-board"></div>
         </div>
       </div>
 
@@ -2736,6 +2766,7 @@
         </div>
       </div>
     </main>
+    </div>
   </div>
 
   <!-- Modal: Assign User Role & Privileges -->
@@ -3574,18 +3605,40 @@
       }
     }
 
+    function adminRoleLabel(role) {
+      return ({
+        owner: 'مالك',
+        super_master: 'سوبر ماستر',
+        super_admin: 'سوبر ادمين',
+        admin: 'أدمن',
+        moderator: 'مشرف',
+        admin_master: 'سوبر ادمين'
+      })[role] || 'سوبر ادمين';
+    }
+
+    function paintAdminIdentity() {
+      const admin = (state && state.admin) || {};
+      const name = admin.username || admin.name || 'المدير';
+      const role = adminRoleLabel(admin.role);
+      const nameDisp = document.getElementById('admin-name-display');
+      if (nameDisp) nameDisp.textContent = name;
+      const sideName = document.getElementById('admin-side-name');
+      if (sideName) sideName.textContent = name;
+      const sideRole = document.getElementById('admin-side-role');
+      if (sideRole) sideRole.textContent = role;
+    }
+
     function showLoginView() {
+      document.body.classList.remove('admin-app');
       document.getElementById('admin-login-view').style.display = 'flex';
       document.getElementById('admin-dashboard-view').style.display = 'none';
     }
 
     function showDashboardView() {
+      document.body.classList.add('admin-app');
       document.getElementById('admin-login-view').style.display = 'none';
       document.getElementById('admin-dashboard-view').style.display = 'flex';
-      const nameDisp = document.getElementById('admin-name-display');
-      if (nameDisp && state.admin) {
-        nameDisp.innerText = `${state.admin.username} (${state.admin.role || 'مسؤول'})`;
-      }
+      paintAdminIdentity();
       fetchDashboardStats();
       fetchModeratorsList();
       fetchUsersList();
@@ -3645,7 +3698,7 @@
       document.body.classList.toggle('admin-menu-open', open);
     }
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape') toggleAdminMenu(false); });
-    window.addEventListener('resize', () => { if (window.innerWidth > 860) toggleAdminMenu(false); });
+    window.addEventListener('resize', () => { if (window.innerWidth > 900) toggleAdminMenu(false); });
 
     function switchAdminTab(tabId) {
       const catalogLegacy = {
@@ -3670,6 +3723,24 @@
       // Highlight active button (بالمعرّف، فيعمل أيضاً عند الاستدعاء من الكود)
       const activeBtn = document.querySelector(`.tab-btn[onclick*="'${tabId}'"]`);
       if (activeBtn) activeBtn.classList.add('active');
+      const group = activeBtn ? activeBtn.closest('details.side-group') : null;
+      document.querySelectorAll('details.side-group').forEach(d => { d.open = group ? d === group : d.open; });
+      document.body.classList.toggle('admin-on-catalog', tabId === 'catalog');
+      const PAGE_TITLES = {
+        moderators: ['نظام الإدارة', '🛡️'], 'gen-moderators': ['توليد المشرفين', '🔑'], broadcast: ['إذاعة إعلان', '📢'],
+        'create-room': ['إنشاء غرفة', '🎙️'], rooms: ['إعدادات الغرف', '🏠'], 'room-message': ['رسالة الغرف', '🛡️'], livekit: ['البث الصوتي', '🎙️'],
+        users: ['إدارة المستخدمين', '👤'], 'member-levels': ['المستويات وVIP', '👑'],
+        smtp: ['إعدادات البريد', '📧'], google: ['تسجيل Google', '🔵'], youtube: ['إعدادات يوتيوب', '🔴'],
+        security: ['إعدادات النظام', '🖥️'], wallet: ['باقات الذهب والدفع', '💳'], 'charge-agents': ['وكلاء الشحن', '🧾'],
+        catalog: ['كل الأصناف', '🛍️']
+      };
+      const pageMeta = PAGE_TITLES[tabId] || ['لوحة التحكم', '🛡️'];
+      const mobileTitle = document.getElementById('admin-mobile-title');
+      if (mobileTitle) mobileTitle.textContent = pageMeta[0];
+      const pageHeading = document.getElementById('admin-page-heading');
+      const pageIcon = document.getElementById('admin-page-icon');
+      if (pageHeading) pageHeading.textContent = pageMeta[0];
+      if (pageIcon) pageIcon.textContent = pageMeta[1];
       toggleAdminMenu(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       if (tabId === 'member-levels') loadMemberLevelsTab();
