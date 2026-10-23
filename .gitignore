@@ -1,0 +1,27 @@
+# Local secrets and environment configuration
+.env
+cookies.txt
+bin/cookies.txt
+# كوكيز يوتيوب المرفوعة من لوحة الإدارة (بيانات دخول — لا تُرفع للمستودع أبداً)
+/data/
+
+# Generated YouTube audio and download cache
+/cache/yt/
+/public/uploads/.ytm-tmp-*/
+/public/uploads/ytm-*.mp3
+/public/uploads/ytm-*.m4a
+/public/uploads/ytm-*.webm
+/public/uploads/ytm-*.opus
+/public/uploads/ytm-*.mp4
+
+# Dependencies (kept out of the repo)
+node_modules/
+
+# yt-dlp binaries downloaded automatically at runtime
+/bin/yt-dlp
+/bin/yt-dlp_linux
+/bin/yt-dlp_linux_aarch64
+/bin/yt-dlp_macos
+
+# yt-dlp python venv (created automatically when GitHub is blocked)
+/bin/ytdlp-venv/
