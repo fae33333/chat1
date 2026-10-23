@@ -134,6 +134,7 @@
             mutedSeats: new Set(), remoteMusic: new Map(), allMuted: false, allLocked: false, audioMuted: false, bgPicked: loadMyBgs(),
             music: { selectedId: null, current: null, audio: null, audioContext: null, mediaSource: null, destination: null, playing: false, minimized: false, ownerId: null, remote: null, seatIndex: null,
                      view: 'list', yt: { q: '', lastQ: '', items: [], next: null, busy: false, err: '' }, ytPlayer: null, ytBox: null, ytToken: null, ytHb: null, ytTick: null, ytRemote: null, ytRemotes: {}, ytRemoteMuted: false, sort: 'added', query: '', searchOpen: false, repeat: 'all', volume: 1, paused: false, gain: null, volTimer: null } };
+    if (window.soulRtc && typeof window.soulRtc.setRemoteAudioMuted === 'function') window.soulRtc.setRemoteAudioMuted(false);
     if (musicLibraryOwnerId !== me()?.id) musicLibrary.splice(0, musicLibrary.length);
     loadMusicLibrary();
     (room.seats || []).forEach(s => { if (s.seat_index > 0 && s.is_muted && !s.user_id) ctx.mutedSeats.add(s.seat_index); });
@@ -230,10 +231,13 @@
   const audioIsLive = (audio) => (keptAudio ? keptAudio.audio === audio : !!(ctx && ctx.music && ctx.music.audio === audio));
   function stashAudioPlayer() {
     const m = ctx && ctx.music, u = me();
-    if (!m || !u || !m.audio || m.ytPlayer || m.ytToken || !m.current || !m.playing || m.ownerId !== u.id) return false;
+    // A server-backed YouTube player is an ordinary captured <audio> stream
+    // and must survive minimizing/reopening the room.  Only the iframe
+    // fallback has to stay attached to its own player box.
+    if (!m || !u || !m.audio || m.ytPlayer || !m.current || !m.playing || m.ownerId !== u.id) return false;
     if (!activeRoomIs(ctx.room.id)) return false; // خروج فعلي ← يُوقف عبر المسار العادي
     keptAudio = { roomId: ctx.room.id, audio: m.audio, audioContext: m.audioContext, mediaSource: m.mediaSource, destination: m.destination,
-                  gain: m.gain, analyser: m.analyser, track: m.current, volume: m.volume, userPaused: !!m.userPaused, seatIndex: m.seatIndex, repeat: m.repeat };
+                  gain: m.gain, analyser: m.analyser, ytToken: m.ytToken, track: m.current, volume: m.volume, userPaused: !!m.userPaused, seatIndex: m.seatIndex, repeat: m.repeat };
     m.audio = null; m.audioContext = null; m.mediaSource = null; m.destination = null; m.gain = null; m.analyser = null;
     if (ctx.layer) { try { ctx.layer.classList.remove('on'); } catch (e) {} }
     return true;
@@ -256,7 +260,7 @@
     if (!activeRoomIs(ctx.room.id) || String(ctx.room.id) !== String(k.roomId) || !onSeat()) { destroyKeptAudio(true); return; }
     keptAudio = null;
     const m = ctx.music;
-    m.audio = k.audio; m.audioContext = k.audioContext; m.mediaSource = k.mediaSource; m.destination = k.destination; m.gain = k.gain; m.analyser = k.analyser;
+    m.audio = k.audio; m.audioContext = k.audioContext; m.mediaSource = k.mediaSource; m.destination = k.destination; m.gain = k.gain; m.analyser = k.analyser; m.ytToken = k.ytToken || null;
     m.current = k.track; m.selectedId = k.track.id; m.volume = k.volume == null ? 1 : k.volume; m.repeat = k.repeat || m.repeat;
     m.ownerId = me().id; m.seatIndex = st().userSeatIndex; m.userPaused = k.userPaused; m.minimized = true;
     m.playing = true; m.paused = !!k.audio.paused;
@@ -292,6 +296,7 @@
     if (audioObs) { audioObs.disconnect(); audioObs = null; }
     document.querySelectorAll('.rv-mini').forEach(n => n.remove());
     if (ctx && ctx.audioMuted) document.querySelectorAll('audio').forEach(a => { a.muted = false; });
+    if (window.soulRtc && typeof window.soulRtc.setRemoteAudioMuted === 'function') window.soulRtc.setRemoteAudioMuted(false);
     // مشغّل يوتيوب مستقل: إعادة رسم نافذة الغرفة/الانتقال بين الصفحات لا توقفه، يتوقف فقط بالخروج الفعلي من الغرفة
     if (ctx) ytRemoteStop();
     if (ctx && !stashYtPlayer() && !stashAudioPlayer()) stopRoomMusic(false, true);
@@ -1048,13 +1053,30 @@
     });
   }
 
-  function attachMusicToVoice(attempt = 0) {
-    if (!ctx?.music?.playing || !ctx.music.destination || !window.soulRtc || !onSeat()) return;
-    if (typeof window.soulRtc.setVoiceMusicStream === 'function') {
-      const attached = window.soulRtc.setVoiceMusicStream(ctx.music.destination.stream);
-      // طلب الميكروفون/WebRTC غير متزامن؛ نعيد المحاولة بعد منحه الإذن.
-      if (!attached && attempt < 40) setTimeout(() => attachMusicToVoice(attempt + 1), 250);
+  async function attachMusicToVoice(attempt = 0) {
+    const m = ctx && ctx.music;
+    if (!m?.playing || !m.destination || !window.soulRtc || !onSeat()) return false;
+    const rtc = window.soulRtc;
+    try {
+      // قد يضغط المستخدم تشغيل فور الصعود وقبل اكتمال إذن المايك/اتصال
+      // LiveKit. ننتظر النشر الحقيقي قبل السماح للأغنية بالخروج محلياً فقط.
+      if (!rtc.isBroadcastingVoice && st().activeRoom) await rtc.startBroadcastingVoice(st().activeRoom.id);
+      if (!ctx || ctx.music !== m || !m.playing || !onSeat()) return false;
+      const attached = typeof rtc.setVoiceMusicStream === 'function' && rtc.setVoiceMusicStream(m.destination.stream);
+      if (attached) {
+        const published = typeof rtc.waitForVoiceAudioPublished === 'function'
+          ? await rtc.waitForVoiceAudioPublished(rtc.localAudioStream)
+          : !!(rtc.lkRoom && rtc.isBroadcastingVoice);
+        if (published) return true;
+      }
+    } catch (e) { console.warn('music voice attach failed:', e); }
+    // طلب الميكروفون/النشر غير متزامن؛ نعيد المحاولة لفترة قصيرة فقط، ثم
+    // نوقف المشغّل بدلاً من ترك أغنية لا يسمعها إلا صاحبها.
+    if (attempt < 40) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      return attachMusicToVoice(attempt + 1);
     }
+    return false;
   }
 
   // حارس الموسيقى: يمنع انقطاع صوت الأغاني عن المتواجدين في الغرفة
@@ -1155,25 +1177,19 @@
   }
 
   // — يوتيوب كمقطع صوتي مخفي: الصوت يمر عبر بروكسي الخادم (نفس النطاق) فيُلتقط بـ WebAudio
-  // ويُدمج في ميكرفون المقعد، فيسمعه كل من في الغرفة عبر WebRTC دون ظهور يوتيوب لأحد.
-  // false = تشغيل مشغّل يوتيوب مباشرة (سريع، بلا خادم). true = جلب الصوت عبر الخادم/yt-dlp (بطيء ويحتاج كوكيز)
-  const YT_VIA_SERVER = false;
+  // ويُدمج في ميكرفون المقعد، فيسمعه كل من في الغرفة عبر LiveKit دون ظهور يوتيوب لأحد.
+  // لا نستخدم iframe كحل بديل، لأنه لا يمكن التقاط صوته ونشره جماعياً.
   async function playYoutubeTrack(track) {
     const m = ctx.music;
     const token = {};
     m.ytToken = token; m.current = track; m.selectedId = track.id; m.minimized = false;
     m.paused = true; m.playing = true; m.ownerId = me().id; m.seatIndex = st().userSeatIndex; m.userPaused = false;
-    m.ytRetried = false; m.startedAt = Date.now();
+    m.ytRetried = false; m.ytServerRetried = false; m.startedAt = Date.now();
     renderMusicNowPlaying(); paintMusicSheet();
     const alive = () => ctx && ctx.music.ytToken === token;
-    // الوضع السريع (الافتراضي): مشغّل يوتيوب نفسه مخفي عند صاحب المقعد، يُتحكم به من واجهة الصوت،
-    // ويُبثّ للغرفة فيشغّل الجميع نفس المقطع بتزامن، ويظهر عند الجميع كأنه صادر من المقعد.
-    if (!YT_VIA_SERVER) {
-      m.paused = false;
-      const ok = await ytFallbackToIframe(track, token);
-      if (!ok && alive()) { toast('تعذر تشغيل المقطع، تحقق من الاتصال أو جرّب مقطعاً آخر'); stopRoomMusic(true); }
-      return;
-    }
+    // لا ننتقل إلى iframe عند فشل البروكسي: لا يمكن التقاط صوته ودمجه
+    // في LiveKit، وبالتالي سيؤدي ذلك إلى أغنية محلية فقط. نعيد المحاولة
+    // بعنوان جديد ثم نوقف التشغيل برسالة واضحة إن تعذر بثها جماعياً.
     const audio = new Audio();
     audio.src = '/api/youtube/stream/' + encodeURIComponent(track.yt_id) + '?uid=' + encodeURIComponent((st().currentUser && st().currentUser.id) || '');
     audio.preload = 'auto';
@@ -1212,7 +1228,12 @@
     audio.onplay = () => {
       if (!ctx || ctx.music.audio !== audio) return;
       ctx.music.playing = true; ctx.music.paused = false; ctx.music.userPaused = false;
-      attachMusicToVoice();
+      attachMusicToVoice().then(ok => {
+        if (!ok && ctx && ctx.music.audio === audio) {
+          toast('تعذر ربط الأغنية بصوت الغرفة؛ لم يتم تشغيلها محلياً فقط');
+          stopRoomMusic(false, true);
+        }
+      });
       setMusicRings(me().id, true, ctx.music.seatIndex);
       publishRoomMusic('room_music_started', track);
       renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
@@ -1239,9 +1260,10 @@
           audio.load(); audio.play().catch(() => {});
           return;
         }
-        ytFallbackToIframe(track, token).then(ok => {
-          if (!ok && ctx && ctx.music.ytToken === token) { toast('ملف الصوت ناقص أو تالف، جرّب أغنية أخرى'); stopRoomMusic(true); }
-        });
+        if (ctx && ctx.music.ytToken === token) {
+          toast('ملف الصوت ناقص أو تالف، جرّب أغنية أخرى');
+          stopRoomMusic(true);
+        }
         return;
       }
       autoNext();
@@ -1254,213 +1276,54 @@
       let why = '';
       try { const r = await fetch(audio.src); if (!r.ok) { const j = await r.json().catch(() => null); why = (j && j.error) || ('HTTP ' + r.status); } } catch (e) { why = e.message; }
       console.error('YT stream failed:', why);
-      // بدل إغلاق المشغّل: نجرّب المشغّل المخفي كبديل
-      const ok = await ytFallbackToIframe(track, token);
-      if (!ok && ctx && ctx.music.ytToken === token) { toast('تعذر تشغيل المقطع: ' + (why || 'خطأ غير معروف')); stopRoomMusic(true); }
+      // A transient/expired signed URL is repaired in-place first.  This keeps
+      // the WebAudio destination (and LiveKit publication) alive instead of
+      // silently switching to an uncaptured iframe.
+      if (!ctx.music.ytServerRetried) {
+        ctx.music.ytServerRetried = true;
+        audio.src = '/api/youtube/stream/' + encodeURIComponent(track.yt_id) + '?fresh=1&uid=' + encodeURIComponent((st().currentUser && st().currentUser.id) || '');
+        ctx.music.startedAt = Date.now();
+        try { audio.load(); await audio.play(); return; } catch (e) { why = e.message || why; }
+      }
+      if (ctx && ctx.music.ytToken === token) {
+        toast('تعذر تشغيل المقطع: ' + (why || 'خطأ غير معروف'));
+        stopRoomMusic(true);
+      }
     };
     m.ytTick = setInterval(updateMusicProgress, 500);
+    const outboundReady = await attachMusicToVoice();
+    if (!outboundReady) {
+      if (alive()) {
+        toast('تعذر تجهيز بث الأغنية إلى الغرفة؛ لم يتم تشغيلها محلياً فقط');
+        stopRoomMusic(false, true);
+      }
+      return;
+    }
     try { await audio.play(); } catch (e) { toast('اضغط تشغيل مرة أخرى للسماح بتشغيل الصوت'); }
     renderMusicNowPlaying();
   }
 
   // — احتياطي: إذا فشل جلب الصوت عبر الخادم (حجب يوتيوب للخوادم مثلاً) لا نُغلق المشغّل،
   // بل نشغّل مشغّل يوتيوب المخفي عند صاحب المقعد ونبثّ حالته ليسمعه الجميع.
-  async function ytFallbackToIframe(track, token) {
-    const m = ctx && ctx.music;
-    if (!m || m.ytToken !== token) return false;
-    // إنهاء مسار الصوت القديم دون إغلاق الجلسة
-    try { if (m.audio && m.audio.pause) { const a = m.audio; m.audio = null; a.onerror = a.onended = a.onpause = a.onplay = null; a.pause(); a.removeAttribute('src'); a.load(); } } catch (e) {}
-    if (m.audioContext) { try { m.audioContext.close(); } catch (e) {} }
-    m.audioContext = null; m.mediaSource = null; m.destination = null; m.gain = null; m.analyser = null;
-    if (window.voiceRings) window.voiceRings.unwatchKind('music');
-    if (window.soulRtc && typeof window.soulRtc.clearVoiceMusicStream === 'function') window.soulRtc.clearVoiceMusicStream();
-    clearInterval(m.ytTick);
-    let box;
-    try {
-      box = ytMakeBox('host', track.title);
-      const S = (window.YT && window.YT.PlayerState) || { PLAYING: 1 };
-      const player = await ytCreatePlayer(box, track.yt_id, 0, true, {
-        onStateChange: (e) => {
-          if (!ctx || ctx.music.ytToken !== token) return;
-          const Y = window.YT.PlayerState;
-          if (e.data === Y.PLAYING) {
-            ctx.music.playing = true; ctx.music.paused = false;
-            setMusicRings(me().id, true, ctx.music.seatIndex);
-            publishRoomMusic('room_music_started', track);
-            ytPublish('play', track);
-            renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
-          } else if (e.data === Y.PAUSED && !ctx.music.userPaused) {
-            // إيقاف غير مقصود (انتقال صفحة/تصغير/المتصفح) ← نستأنف فوراً
-            setTimeout(() => { try { if (ctx && ctx.music.ytToken === token && !ctx.music.userPaused) ctx.music.ytPlayer.playVideo(); } catch (e2) {} }, 250);
-          } else if (e.data === Y.PAUSED && ctx.music.userPaused) {
-            ctx.music.paused = true; setMusicRings(me().id, false);
-            ytPublish('pause', track);
-            renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
-          } else if (e.data === Y.ENDED) { autoNext(); }
-        },
-        onError: () => { if (ctx && ctx.music.ytToken === token) { toast('هذا المقطع غير متاح للتشغيل، جرّب مقطعاً آخر'); stopRoomMusic(true); } }
-      });
-      if (!ctx || ctx.music.ytToken !== token) { try { player.destroy(); } catch (e) {} try { box.remove(); } catch (e) {} return false; }
-      m.ytPlayer = player; m.ytBox = box;
-      try { player.setVolume(Math.round((m.volume == null ? 1 : m.volume) * 100)); } catch (e) {}
-      m.audio = makeYtAdapter(player, m);
-      m.paused = false; m.playing = true; m.userPaused = false;
-      try { player.playVideo(); } catch (e) {}
-      m.ytHb = setInterval(() => { if (ctx && ctx.music.ytToken === token && ctx.music.audio && !ctx.music.audio.paused) ytPublish('play', track); }, 4000);
-      m.ytTick = setInterval(updateMusicProgress, 500);
-      renderMusicNowPlaying(); paintMusicSheet();
-      return true;
-    } catch (err) {
-      console.warn('yt iframe fallback failed:', err);
-      try { if (box) box.remove(); } catch (e) {}
-      return false;
-    }
-  }
-
-  // إبقاء الموسيقى تعمل عند الانتقال لصفحة/تبويب آخر أو قفل الشاشة
-  function keepMusicAlive() {
-    if (!ctx || !ctx.music || !ctx.music.playing || ctx.music.ownerId !== (me() && me().id)) return;
-    const m = ctx.music;
-    try { if (m.audioContext && m.audioContext.state !== 'running') m.audioContext.resume().catch(() => {}); } catch (e) {}
-    try {
-      const mix = window.soulRtc && window.soulRtc.voiceMixerContext;
-      if (mix && mix.state !== 'running') mix.resume().catch(() => {});
-    } catch (e) {}
-    try { if (m.audio && m.audio.paused && !m.userPaused && !m.audio.ended) m.audio.play().catch(() => {}); } catch (e) {}
-  }
-  function setupMediaSession(track) {
-    if (!('mediaSession' in navigator)) return;
-    try {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: (track && track.title) || 'موسيقى', artist: (ctx && ctx.room && ctx.room.title) || 'SoulChill', artwork: track && track.thumbnail ? [{ src: track.thumbnail }] : [] });
-      navigator.mediaSession.playbackState = 'playing';
-      navigator.mediaSession.setActionHandler('play', () => { if (ctx && ctx.music.audio) { ctx.music.userPaused = false; ctx.music.audio.play().catch(() => {}); } });
-      navigator.mediaSession.setActionHandler('pause', () => { if (ctx && ctx.music.audio) { ctx.music.userPaused = true; ctx.music.audio.pause(); } });
-      navigator.mediaSession.setActionHandler('nexttrack', () => playAdjacent(1));
-      navigator.mediaSession.setActionHandler('previoustrack', () => playAdjacent(-1));
-    } catch (e) {}
-  }
-  // عند مغادرة التبويب/العودة: محاولات استئناف متتالية لمشغّل يوتيوب (إن لم يوقفه المستخدم بنفسه)
-  const resumeBurst = () => {
-    keepMusicAlive();
-    [200, 600, 1500, 3500].forEach(ms => setTimeout(keepMusicAlive, ms));
-  };
-  const onVisibility = () => resumeBurst();
-  document.addEventListener('visibilitychange', onVisibility);
-  window.addEventListener('pageshow', onVisibility);
-  window.addEventListener('focus', onVisibility);
-  window.addEventListener('blur', () => setTimeout(keepMusicAlive, 300));
-  setInterval(keepMusicAlive, 3000);
-
-  // ----- المستمعون: تشغيل نفس المقطع عندهم ومتابعة صاحب المقعد -----
-  // يوقف مشغّل (احتياطي) لشخص محدد فقط، أو كل المشغّلات البعيدة إن لم يُحدَّد أحد. لا يمس موسيقاي.
+  // لا يوجد fallback محلي ليوتيوب: أي تشغيل يجب أن يمر عبر مسار الخادم
+  // حتى يظل الصوت قابلاً للدمج والنشر إلى جميع أعضاء الغرفة.
   function ytRemoteStop(uid) {
     if (!ctx) return;
-    const all = ctx.music.ytRemotes;
+    const all = ctx.music.ytRemotes || {};
     const ids = uid === undefined || uid === null ? Object.keys(all) : [String(uid)];
     ids.forEach(id => {
       const r = all[id];
       if (!r) return;
       clearInterval(r.watch);
-      r.token = null;
-      if (r.audio) { try { r.audio.pause(); r.audio.removeAttribute('src'); r.audio.load(); } catch(e){} }
-      if (r.player) { try { r.player.destroy(); } catch (e) {} }
-      if (r.box) { try { r.box.remove(); } catch (e) {} }
+      try { r.audio?.pause(); r.audio?.removeAttribute('src'); r.audio?.load(); } catch (e) {}
+      try { r.player?.destroy(); } catch (e) {}
+      try { r.box?.remove(); } catch (e) {}
       delete all[id];
     });
   }
-
-  function ytRemoteSync(r, d) {
-    const p = r.player; if (!p) return;
-    const S = window.YT.PlayerState;
-    const target = (Number(d.time) || 0) + (d.state === 'play' ? 0.4 : 0);
-    let cur = 0, ps = -1;
-    try { cur = p.getCurrentTime() || 0; ps = p.getPlayerState(); } catch (e) {}
-    if (Math.abs(cur - target) > 2.5) { try { p.seekTo(target, true); } catch (e) {} }
-    if (d.state === 'play') {
-      if (ps !== S.PLAYING && ps !== S.BUFFERING) {
-        try { p.playVideo(); } catch (e) {}
-        setTimeout(() => {
-          if (!r.token) return;
-          let s2 = -1; try { s2 = p.getPlayerState(); } catch (e) {}
-          if (s2 !== S.PLAYING && s2 !== S.BUFFERING) { r.box.querySelector('.rv-yt-tap').hidden = false; r.box.classList.remove('rv-yt-hidden'); }
-        }, 2500);
-      } else { r.box.querySelector('.rv-yt-tap').hidden = true; r.box.classList.add('rv-yt-hidden'); }
-    } else if (d.state === 'pause') {
-      try { p.pauseVideo(); } catch (e) {}
-    }
-  }
-
-  async function ytRemoteApply(d) {
-    // المستمعون يسمعون عبر ميكرفون المقعد، إلا في الوضع الاحتياطي (فشل بروكسي الصوت عند صاحب المقعد)
-    if (!d || !d.fallback) return;
-    if (!ctx) return;
-    const m = ctx.music;
-    // كل شخص مستقل: أسمع الآخرين حتى وأنا أشغّل أغنيتي
-    const uidKey = String(d.userId);
-    if (d.state === 'stop') { ytRemoteStop(uidKey); return; }
-    // المستخدمون في الغرفة يسمعون فقط عبر ميكرفون المقعد — لا حاجة لإظهار يوتيوب للمستمعين.
-    // إذا كان المضيف يستخدم وضع الصوت المخفي (يبث عبر WebRTC) فإنه لا يرسل room_yt_state أصلاً،
-    // ولن نصل هنا. هذا الفرع للاحتياطي فقط (عند فشل جلب الصوت عند المضيف).
-    // نجعل الاستماع مخفياً أيضاً (صوت فقط بدون قالب) حتى لا يظهر يوتيوب للآخرين.
-    // نحاول أولاً تشغيل صوت مخفي عبر /api/youtube/audio، ثم كاحتياطي YT مخفي 1×1.
-    let r = m.ytRemotes[uidKey];
-    if (r && r.videoId !== d.videoId) { ytRemoteStop(uidKey); r = null; }
-    if (r) { r.last = d; r.lastRecv = Date.now(); if (r.player) ytRemoteSync(r, d); if (r.audio) { try { if (d.state === 'play' && r.audio.paused) r.audio.play().catch(()=>{}); else if (d.state === 'pause') r.audio.pause(); } catch(e){} } return; }
-
-    const token = {};
-    // محاولة صوت مخفي للمستمع (بدون إظهار قالب)
-    try {
-      const rr = await fetch('/api/youtube/audio/' + encodeURIComponent(d.videoId), { headers: { 'x-user-id': (st().currentUser && st().currentUser.id) || '' } });
-      const jj = await rr.json().catch(()=>null);
-      if (rr.ok && jj && jj.success && jj.url) {
-        const audio = new Audio();
-        audio.crossOrigin = 'anonymous';
-        audio.src = jj.url;
-        audio.currentTime = Math.max(0, (Number(d.time)||0));
-        if (m.ytRemoteMuted) audio.muted = true;
-        r = { userId: d.userId, videoId: d.videoId, token, last: d, lastRecv: Date.now(), audio, box: null, player: null };
-        m.ytRemotes[uidKey] = r;
-        audio.onended = () => ytRemoteStop(uidKey);
-        audio.onerror = () => ytRemoteStop(uidKey);
-        r.watch = setInterval(() => {
-          if (!ctx || r.token !== token) return clearInterval(r.watch);
-          if (Date.now() - r.lastRecv > 20000) ytRemoteStop(uidKey);
-        }, 5000);
-        if (d.state === 'play') { try { await audio.play(); } catch(e) { /* يحتاج تفاعل */ } }
-        return;
-      }
-    } catch (e) {}
-
-    r = { userId: d.userId, videoId: d.videoId, token, last: d, lastRecv: Date.now(), player: null, box: ytMakeBox('remote', d.title) };
-    m.ytRemotes[uidKey] = r;
-    const muteBtn = r.box.querySelector('.rv-yt-mute');
-    muteBtn.onclick = () => {
-      m.ytRemoteMuted = !m.ytRemoteMuted;
-      try { if (r.audio) r.audio.muted = m.ytRemoteMuted; } catch(e){}
-      try { if (m.ytRemoteMuted) r.player.mute(); else r.player.unMute(); } catch (e) {}
-      muteBtn.textContent = m.ytRemoteMuted ? '🔇' : '🔊';
-    };
-    muteBtn.textContent = m.ytRemoteMuted ? '🔇' : '🔊';
-    r.box.querySelector('.rv-yt-tap').onclick = () => {
-      try { r.player.playVideo(); if (m.ytRemoteMuted) r.player.mute(); else r.player.unMute(); } catch (e) {}
-      r.box.querySelector('.rv-yt-tap').hidden = true; r.box.classList.add('rv-yt-hidden');
-    };
-    try {
-      const player = await ytCreatePlayer(r.box, d.videoId, (Number(d.time) || 0) + 0.4, d.state === 'play', {
-        onError: () => { if (ctx && r.token === token) { ytRemoteStop(uidKey); } }
-      });
-      if (!ctx || r.token !== token) { try { player.destroy(); } catch (e) {} return; }
-      r.player = player;
-      if (m.ytRemoteMuted) { try { player.mute(); } catch (e) {} }
-      ytRemoteSync(r, r.last);
-      r.watch = setInterval(() => {
-        if (!ctx || r.token !== token) return clearInterval(r.watch);
-        if (r.last.state === 'play' && Date.now() - r.lastRecv > 20000) ytRemoteStop(uidKey);
-      }, 5000);
-    } catch (err) {
-      if (ctx && r.token === token) { ytRemoteStop(uidKey); }
-    }
-  }
+  // الأحداث القديمة الخاصة بتشغيل iframe لا تُشغّل شيئاً: تشغيل محلي فقط
+  // يناقض ضمان وصول الأغنية عبر LiveKit.
+  function ytRemoteApply() {}
 
   function playRoomMusic(trackId) {
     if (!ctx) return;
@@ -1471,7 +1334,11 @@
       paintMusicSheet();
       return toast('يجب الجلوس على مقعد المايك أولاً لتشغيل الموسيقى 🎙️');
     }
-    if (st().isMuted) {
+    // كتم المستخدم لنفسه يخص الميكروفون فقط؛ الموسيقى يجب أن تستمر
+    // بالوصول إلى الغرفة.  نمنع التشغيل فقط عندما يكون الكتم مفروضاً من
+    // الإدارة (admin_muted).
+    const currentSeat = (st().activeRoom?.seats || []).find(s => s.seat_index === st().userSeatIndex);
+    if (currentSeat && currentSeat.admin_muted) {
       paintMusicSheet();
       return toast('هذا المقعد مكتوم من الإدارة، لا يمكن تشغيل الموسيقى حتى يفك الأدمن الكتم 🔇');
     }
@@ -1480,7 +1347,7 @@
     const m = ctx.music;
     const audio = new Audio();
     audio.crossOrigin = 'anonymous'; audio.src = track.url; audio.preload = 'auto'; audio.loop = m.repeat === 'one';
-    m.audio = audio; m.current = track; m.minimized = false; m.paused = false; m.ownerId = me().id; m.seatIndex = st().userSeatIndex;
+    m.audio = audio; m.current = track; m.minimized = false; m.paused = false; m.playing = true; m.ownerId = me().id; m.seatIndex = st().userSeatIndex;
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) {
       try {
@@ -1515,7 +1382,12 @@
     audio.onplay = () => {
       if (!ctx || ctx.music.audio !== audio) return;
       ctx.music.playing = true; ctx.music.paused = false; ctx.music.userPaused = false;
-      attachMusicToVoice();
+      attachMusicToVoice().then(ok => {
+        if (!ok && ctx && ctx.music.audio === audio) {
+          toast('تعذر ربط الأغنية بصوت الغرفة؛ لم يتم تشغيلها محلياً فقط');
+          stopRoomMusic(false, true);
+        }
+      });
       setMusicRings(me().id, true, ctx.music.seatIndex);
       publishRoomMusic('room_music_started', track);
       renderMusicNowPlaying(); renderMusicSeatIndicator(); paintMusicSheet();
@@ -1533,8 +1405,22 @@
     audio.ontimeupdate = updateMusicProgress;
     audio.onloadedmetadata = updateMusicProgress;
     audio.ondurationchange = updateMusicProgress;
-    audio.onerror = () => { if (ctx && ctx.music.audio === audio) toast('تعذر تشغيل هذه النغمة، تحقق من الملف أو الرابط'); };
-    audio.play().catch(() => toast('اضغط تشغيل مرة أخرى للسماح بتشغيل الصوت'));
+    audio.onerror = () => {
+      if (ctx && ctx.music.audio === audio) {
+        toast('تعذر تشغيل هذه النغمة، تحقق من الملف أو الرابط');
+        stopRoomMusic(false, true);
+      }
+    };
+    attachMusicToVoice().then(ok => {
+      if (!ok || !ctx || ctx.music.audio !== audio) {
+        if (ctx && ctx.music.audio === audio) {
+          toast('تعذر تجهيز بث الأغنية إلى الغرفة؛ لم يتم تشغيلها محلياً فقط');
+          stopRoomMusic(false, true);
+        }
+        return;
+      }
+      audio.play().catch(() => toast('اضغط تشغيل مرة أخرى للسماح بتشغيل الصوت'));
+    });
   }
 
   function stopRoomMusic(notify = true, silent = false) {
@@ -1557,7 +1443,7 @@
     if (window.soulRtc && typeof window.soulRtc.clearVoiceMusicStream === 'function') window.soulRtc.clearVoiceMusicStream();
     if (notify && wasPlaying && !silent) publishRoomMusic('room_music_stopped', music.current);
     closeMusicVolume();
-    music.audio = null; music.audioContext = null; music.mediaSource = null; music.destination = null; music.gain = null; music.current = null; music.playing = false; music.paused = false; music.minimized = false; music.ownerId = null; music.seatIndex = null;
+    music.audio = null; music.audioContext = null; music.mediaSource = null; music.destination = null; music.gain = null; music.ytToken = null; music.ytServerRetried = false; music.current = null; music.playing = false; music.paused = false; music.minimized = false; music.ownerId = null; music.seatIndex = null;
     renderMusicNowPlaying(); renderMusicSeatIndicator();
     if (ctx.layer?.classList.contains('on')) paintMusicSheet();
   }
@@ -1754,6 +1640,9 @@
 
   function toggleSilence() {
     ctx.audioMuted = !ctx.audioMuted;
+    if (window.soulRtc && typeof window.soulRtc.setRemoteAudioMuted === 'function') {
+      window.soulRtc.setRemoteAudioMuted(ctx.audioMuted);
+    }
     const apply = () => document.querySelectorAll('audio').forEach(a => { a.muted = ctx.audioMuted; });
     apply();
     if (audioObs) { audioObs.disconnect(); audioObs = null; }
@@ -2231,8 +2120,9 @@
     on('seat_mute_changed', (d) => {
       if (!ctx || d.roomId !== roomId()) return;
       if (d.isMuted) ctx.mutedSeats.add(d.seatIndex); else ctx.mutedSeats.delete(d.seatIndex);
-      // الكتم من الإدارة يوقف موسيقى صاحب ذلك المقعد فقط
-      if (d.isMuted) {
+      // كتم المستخدم لنفسه لا يوقف الموسيقى؛ الكتم الإداري فقط يوقف
+      // الأغنية ويزيل حالتها من الغرفة.
+      if (d.adminMuted && d.isMuted) {
         if (d.seatIndex === ctx.music.seatIndex && ctx.music.playing && ctx.music.ownerId === me().id) stopRoomMusic(true);
         ctx.remoteMusic.forEach((r, uid) => {
           if (r.seatIndex === d.seatIndex) { ctx.remoteMusic.delete(uid); setMusicRings(uid, false); ytRemoteStop(uid); }
