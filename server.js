@@ -143,6 +143,20 @@ function buildAudiencePreview(roomId) {
   }));
 }
 const roomMusicState = new Map(); // roomId -> Map(userId -> آخر room_music_started نشط) — كل شخص مستقل
+// إزالة حالة الموسيقى من الخادم عند النزول/الخروج (بدلاً من انتظار أن يرسل
+// العميل إشعار الإيقاف؛ هذا يمنع ظهور مؤشر أغنية قديمة للداخلين الجدد).
+function clearRoomMusicState(roomId, userId, seatIndex) {
+  if (!roomId || !userId) return false;
+  const states = roomMusicState.get(roomId);
+  if (!states || !states.has(String(userId))) return false;
+  const old = states.get(String(userId));
+  states.delete(String(userId));
+  if (!states.size) roomMusicState.delete(roomId);
+  io.to(`room:${roomId}`).emit('room_music_stopped', {
+    roomId, userId: String(userId), seatIndex: seatIndex ?? old.seatIndex
+  });
+  return true;
+}
 const pkIntervals = new Map(); // roomId -> intervalId
 const recentRoomWelcomes = new Map(); // `${roomId}:${userId}` -> آخر وقت ترحيب
 setInterval(() => { const cutoff = Date.now() - 10 * 60 * 1000; for (const [k, t] of recentRoomWelcomes) if (t < cutoff) recentRoomWelcomes.delete(k); }, 5 * 60 * 1000);
@@ -8701,6 +8715,7 @@ async function releaseUserFromAllRooms(uid) {
     const heldSeats = await all('SELECT room_id, seat_index, is_muted FROM room_seats WHERE user_id = ?', [uid]);
     if (heldSeats && heldSeats.length > 0) {
       for (const s of heldSeats) {
+        clearRoomMusicState(s.room_id, uid, s.seat_index);
         await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [s.is_muted ? 1 : 0, s.room_id, s.seat_index]);
         io.to(`room:${s.room_id}`).emit('seat_updated', { seatIndex: s.seat_index, user: null, isMuted: !!s.is_muted });
         io.to(`room:${s.room_id}`).emit('webrtc_stream_ended', { senderSocketId: null, streamType: 'voice_seat', userId: uid });
@@ -8874,6 +8889,7 @@ io.on('connection', (socket) => {
       try {
         const staleSeats = await all('SELECT seat_index, is_muted FROM room_seats WHERE room_id = ? AND user_id = ?', [roomId, user.id]);
         for (const st of staleSeats) {
+          clearRoomMusicState(roomId, user.id, st.seat_index);
           await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [st.is_muted ? 1 : 0, roomId, st.seat_index]);
           io.to(`room:${roomId}`).emit('seat_updated', { seatIndex: st.seat_index, user: null, isMuted: !!st.is_muted });
         }
@@ -8999,16 +9015,20 @@ io.on('connection', (socket) => {
   // 3. Leaving Voice Room
   socket.on('leave_room', async ({ roomId, userId }) => {
     if (!roomId) return;
+    const socketUserId = onlineUsers.get(socket.id) || currentUserId;
+    if (socketUserId && userId && String(socketUserId) !== String(userId)) return;
+    const leavingUserId = socketUserId || userId;
+    clearRoomMusicState(roomId, leavingUserId);
     socket.leave(`room:${roomId}`);
     if (activeRoomStates.has(roomId)) {
       const roomState = activeRoomStates.get(roomId);
-      if (userId) {
-        roomState.activeAudience.delete(userId);
-        roomState.speakers.delete(userId);
+      if (leavingUserId) {
+        roomState.activeAudience.delete(leavingUserId);
+        roomState.speakers.delete(leavingUserId);
       }
       const audienceList = visibleAudienceList(roomState);
       socket.to(`room:${roomId}`).emit('user_left_room', {
-        userId,
+        userId: leavingUserId,
         audienceCount: audienceList.length,
         audience: audienceList
       });
@@ -9021,11 +9041,12 @@ io.on('connection', (socket) => {
       });
     }
 
-    if (userId) {
+    if (leavingUserId) {
       try {
-        const seats = await all('SELECT seat_index, is_muted FROM room_seats WHERE room_id = ? AND user_id = ?', [roomId, userId]);
+        const seats = await all('SELECT seat_index, is_muted FROM room_seats WHERE room_id = ? AND user_id = ?', [roomId, leavingUserId]);
         if (seats && seats.length > 0) {
           for (const s of seats) {
+            clearRoomMusicState(roomId, leavingUserId, s.seat_index);
             await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [s.is_muted ? 1 : 0, roomId, s.seat_index]);
             io.to(`room:${roomId}`).emit('seat_updated', {
               seatIndex: s.seat_index,
@@ -9219,6 +9240,14 @@ io.on('connection', (socket) => {
       const seatMutePolicy = targetSeat && targetSeat.admin_muted ? 1 : 0;
       await run('UPDATE room_seats SET user_id = ?, is_muted = ? WHERE room_id = ? AND seat_index = ?', [userId, seatMutePolicy, roomId, seatIndex]);
 
+      // انتقال المقعد لا يوقف أغنية المستخدم؛ حدّث الحالة المحفوظة فوراً حتى
+      // لا يرى الداخلون الجدد رقم المقعد القديم أثناء نافذة الانتقال.
+      const movingMusic = roomMusicState.get(roomId)?.get(String(userId));
+      if (movingMusic) {
+        movingMusic.seatIndex = seatIndex;
+        io.to(`room:${roomId}`).emit('room_music_started', movingMusic);
+      }
+
       const user = await get('SELECT id, name, avatar, avatar_frame, level, charm_level FROM users WHERE id = ?', [userId]);
 
       // نقاط المستوى: الصعود على المايك
@@ -9238,16 +9267,22 @@ io.on('connection', (socket) => {
   // 6. Leave Seat (Down from stage)
   socket.on('leave_seat', async ({ roomId, seatIndex, userId }) => {
     if (!roomId) return;
+    const socketUserId = onlineUsers.get(socket.id) || currentUserId;
+    if (socketUserId && userId && String(socketUserId) !== String(userId)) return;
+    const leavingUserId = socketUserId || userId;
     try {
       let seatsToLeave = [];
-      if (userId) {
-        seatsToLeave = await all('SELECT seat_index, is_muted FROM room_seats WHERE room_id = ? AND user_id = ?', [roomId, userId]);
+      if (leavingUserId) {
+        seatsToLeave = await all('SELECT seat_index, is_muted FROM room_seats WHERE room_id = ? AND user_id = ?', [roomId, leavingUserId]);
       }
       if ((!seatsToLeave || seatsToLeave.length === 0) && seatIndex !== undefined) {
         const existingSeat = await get('SELECT is_muted FROM room_seats WHERE room_id = ? AND seat_index = ?', [roomId, seatIndex]);
         seatsToLeave = [{ seat_index: seatIndex, is_muted: existingSeat && existingSeat.is_muted ? 1 : 0 }];
       }
 
+      // The server is authoritative: clear the song before broadcasting the
+      // empty seat, even if the browser was closed before its stop event.
+      if (leavingUserId) clearRoomMusicState(roomId, leavingUserId, seatsToLeave[0] && seatsToLeave[0].seat_index);
       for (const s of (seatsToLeave || [])) {
         await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [s.is_muted ? 1 : 0, roomId, s.seat_index]);
         io.to(`room:${roomId}`).emit('seat_updated', {
@@ -9256,11 +9291,11 @@ io.on('connection', (socket) => {
           isMuted: !!s.is_muted
         });
       }
-      if (userId) {
+      if (leavingUserId) {
         io.to(`room:${roomId}`).emit('webrtc_stream_ended', {
           roomId,
           streamType: 'voice_seat',
-          userId
+          userId: leavingUserId
         });
       }
     } catch (err) {
@@ -9331,20 +9366,27 @@ io.on('connection', (socket) => {
   // 9b. Music played from a microphone seat. The audio itself is sent through
   // the existing WebRTC voice stream; this event only synchronizes the small
   // now-playing indicator for the other participants.
-  socket.on('room_music_started', ({ roomId, userId, seatIndex, title, trackId, cover }) => {
-    if (!roomId || !userId || seatIndex === undefined || seatIndex === null) return;
-    if (currentRoomId !== roomId) return;
-    const payload = { roomId, userId, seatIndex, title: title || 'موسيقى', trackId: trackId || '', cover: cover || '' };
-    if (!roomMusicState.has(roomId)) roomMusicState.set(roomId, new Map());
-    roomMusicState.get(roomId).set(String(userId), payload);   // نحفظ حالة كل شخص ليعرفها كل من يدخل الغرفة لاحقاً
-    io.to(`room:${roomId}`).emit('room_music_started', payload);
+  socket.on('room_music_started', async ({ roomId, userId, seatIndex, title, trackId, cover }) => {
+    try {
+      if (!roomId || !userId || seatIndex === undefined || seatIndex === null) return;
+      const uid = onlineUsers.get(socket.id) || currentUserId;
+      // لا نسمح لعميل أن يعلن موسيقى باسم مستخدم آخر، ولا لمقعد مكتوم
+      // إدارياً. الكتم الذاتي لا يوقف الأغنية.
+      if (!uid || String(uid) !== String(userId) || currentRoomId !== roomId) return;
+      const seat = await get('SELECT seat_index, admin_muted FROM room_seats WHERE room_id = ? AND user_id = ?', [roomId, uid]);
+      if (!seat || seat.admin_muted || Number(seat.seat_index) !== Number(seatIndex)) return;
+      const payload = { roomId, userId: uid, seatIndex: seat.seat_index, title: title || 'موسيقى', trackId: trackId || '', cover: cover || '' };
+      if (!roomMusicState.has(roomId)) roomMusicState.set(roomId, new Map());
+      roomMusicState.get(roomId).set(String(uid), payload);   // حالة كل شخص مستقلة
+      io.to(`room:${roomId}`).emit('room_music_started', payload);
+    } catch (e) { /* حالة المؤشر اختيارية ولا تعطل الصوت */ }
   });
 
   socket.on('room_music_stopped', ({ roomId, userId, seatIndex }) => {
     if (!roomId || !userId || currentRoomId !== roomId) return;
-    const mm = roomMusicState.get(roomId);
-    if (mm) { mm.delete(String(userId)); if (!mm.size) roomMusicState.delete(roomId); }
-    io.to(`room:${roomId}`).emit('room_music_stopped', { roomId, userId, seatIndex });
+    const uid = onlineUsers.get(socket.id) || currentUserId;
+    if (!uid || String(uid) !== String(userId)) return;
+    clearRoomMusicState(roomId, uid, seatIndex);
   });
 
   // زائر جديد يسأل: هل هناك موسيقى تعمل الآن؟ — نرسل الحالة له وحده (إن كان صاحبها ما زال على المقعد)
@@ -9370,8 +9412,10 @@ io.on('connection', (socket) => {
       if (!uid) return;
       const state = ['play', 'pause', 'stop'].includes(d.state) ? d.state : null;
       if (!state) return;
-      const seat = await get('SELECT seat_index, is_muted FROM room_seats WHERE room_id = ? AND user_id = ?', [d.roomId, uid]);
-      if (!seat || seat.is_muted) return;
+      const seat = await get('SELECT seat_index, is_muted, admin_muted FROM room_seats WHERE room_id = ? AND user_id = ?', [d.roomId, uid]);
+      // self-mute affects the microphone only; an admin mute blocks all
+      // outbound room audio, including the YouTube fallback.
+      if (!seat || seat.admin_muted) return;
       const videoId = String(d.videoId || '');
       if (state !== 'stop' && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) return;
       // الوضع العادي: المستمعون يسمعون عبر ميكرفون المقعد (WebRTC) فلا حاجة للمزامنة.
@@ -9592,6 +9636,7 @@ io.on('connection', (socket) => {
       if (seatTarget ? !(await canActOnTarget(room, admin, seatTarget)) : !(await canManageRoom(room, admin))) return;
 
       await run('UPDATE room_seats SET is_muted = ?, admin_muted = ? WHERE room_id = ? AND seat_index = ?', [isMuted ? 1 : 0, isMuted ? 1 : 0, roomId, seatIndex]);
+      if (isMuted && targetUserId) clearRoomMusicState(roomId, targetUserId, seatIndex);
       
       const payload = {
         roomId,
@@ -9623,6 +9668,7 @@ io.on('connection', (socket) => {
       if (kickSeatTarget ? !(await canActOnTarget(room, admin, kickSeatTarget)) : !(await canManageRoom(room, admin))) return;
       if (kickSeatTarget && isSeatProtected(admin, kickSeatTarget)) return socket.emit('error_message', { message: SEAT_PROTECTED_MSG });
       const keepMuted = !!(seat && seat.is_muted);
+      if (kickedUserId) clearRoomMusicState(roomId, kickedUserId, seatIndex);
 
       await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [keepMuted ? 1 : 0, roomId, seatIndex]);
       io.to(`room:${roomId}`).emit('seat_updated', { seatIndex, user: null, isMuted: keepMuted });
@@ -9655,6 +9701,7 @@ io.on('connection', (socket) => {
         }
         if (seat && seat.user_id) {
           vacatedUserId = seat.user_id;
+          clearRoomMusicState(roomId, vacatedUserId, seatIndex);
           const keepMuted = !!(seat.is_muted || activeRoomStates.get(roomId)?.allSeatsMuted);
           await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [keepMuted ? 1 : 0, roomId, seatIndex]);
           io.to(`room:${roomId}`).emit('seat_updated', { seatIndex, user: null, isMuted: keepMuted });
@@ -9690,6 +9737,7 @@ io.on('connection', (socket) => {
       const seats = await all('SELECT seat_index, user_id FROM room_seats WHERE room_id = ? AND seat_index > 0', [roomId]);
       for (const st of seats) {
         await run('UPDATE room_seats SET is_muted = ?, admin_muted = ? WHERE room_id = ? AND seat_index = ?', [isMuted ? 1 : 0, isMuted ? 1 : 0, roomId, st.seat_index]);
+        if (isMuted && st.user_id) clearRoomMusicState(roomId, st.user_id, st.seat_index);
         const payload = { roomId, seatIndex: st.seat_index, userId: st.user_id, isMuted: !!isMuted, adminMuted: !!isMuted, adminName: admin.name };
         io.to(`room:${roomId}`).emit('seat_mute_changed', payload);
         io.to(`room:${roomId}`).emit('user_force_muted', payload);
@@ -9724,6 +9772,7 @@ io.on('connection', (socket) => {
         const occupied = (await all('SELECT seat_index, user_id FROM room_seats WHERE room_id = ? AND seat_index > 0 AND user_id IS NOT NULL', [roomId])).filter(o => !protectedSeatIdx.includes(o.seat_index));
         for (const s of occupied) {
           vacatedUserIds.push(s.user_id);
+          clearRoomMusicState(roomId, s.user_id, s.seat_index);
           await run('UPDATE room_seats SET user_id = NULL, is_muted = 1 WHERE room_id = ? AND seat_index = ?', [roomId, s.seat_index]);
           io.to(`room:${roomId}`).emit('seat_updated', {
             seatIndex: s.seat_index,
@@ -9800,6 +9849,7 @@ io.on('connection', (socket) => {
       // Vacate their seat if on stage
       const seats = await all('SELECT seat_index, is_muted FROM room_seats WHERE room_id = ? AND user_id = ?', [roomId, targetUserId]);
       for (const s of seats) {
+        clearRoomMusicState(roomId, targetUserId, s.seat_index);
         await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [s.is_muted ? 1 : 0, roomId, s.seat_index]);
         io.to(`room:${roomId}`).emit('seat_updated', {
           seatIndex: s.seat_index,
@@ -10499,8 +10549,8 @@ io.on('connection', (socket) => {
         const heldSeats = await all('SELECT room_id, seat_index, is_muted FROM room_seats WHERE user_id = ?', [currentUserId]);
         if (heldSeats && heldSeats.length > 0) {
           for (const s of heldSeats) {
+            clearRoomMusicState(s.room_id, currentUserId, s.seat_index);
             await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [s.is_muted ? 1 : 0, s.room_id, s.seat_index]);
-            { const mm = roomMusicState.get(s.room_id); if (mm && mm.has(String(currentUserId))) { mm.delete(String(currentUserId)); if (!mm.size) roomMusicState.delete(s.room_id); io.to(`room:${s.room_id}`).emit('room_music_stopped', { roomId: s.room_id, userId: currentUserId, seatIndex: s.seat_index }); } }
             io.to(`room:${s.room_id}`).emit('seat_updated', {
               seatIndex: s.seat_index,
               user: null,
@@ -10559,6 +10609,7 @@ io.on('connection', (socket) => {
           const heldSeats = await all('SELECT room_id, seat_index, is_muted FROM room_seats WHERE user_id = ?', [uid]);
           if (heldSeats && heldSeats.length > 0) {
             for (const s of heldSeats) {
+              clearRoomMusicState(s.room_id, uid, s.seat_index);
               await run('UPDATE room_seats SET user_id = NULL, is_muted = ? WHERE room_id = ? AND seat_index = ?', [s.is_muted ? 1 : 0, s.room_id, s.seat_index]);
               io.to(`room:${s.room_id}`).emit('seat_updated', {
                 seatIndex: s.seat_index,

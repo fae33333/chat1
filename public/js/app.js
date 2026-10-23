@@ -26,6 +26,11 @@
     micLevelInterval: null,
     isMuted: false,
     userSeatIndex: null,
+    // Optimistic seat changes are reconciled with the server.  This prevents
+    // a rejected/late seat response from leaving a ghost microphone live.
+    seatTransition: null,
+    micCaptureStarting: false,
+    micCaptureSeq: 0,
     // Voice note recording
     mediaRecorder: null,
     recordedAudioChunks: [],
@@ -827,6 +832,44 @@
     // تغيّر شكل المقاعد (مضيف الغرفة فعّل/ألغى «مقعد مايك» من المتجر)
     state.socket.on('room_seat_skin_updated', ({ roomId, mic_seat }) => {
       if (state.activeRoom && String(state.activeRoom.id) === String(roomId)) applyRoomSeatSkin(mic_seat);
+    });
+
+    state.socket.on('seat_error', ({ message }) => {
+      const tr = state.seatTransition;
+      state.seatTransition = null;
+      // The server rejected the optimistic click (seat locked/taken, room
+      // limit, etc.). Restore the previous seat and stop any capture started
+      // for the rejected target.
+      if (tr && state.userSeatIndex === tr.target) {
+        state.userSeatIndex = tr.previous;
+        state.isMuted = tr.previousMuted;
+        const hadPreviousSeat = tr.previous !== null && tr.previous !== undefined;
+        const rtc = window.soulRtc;
+
+        if (!hadPreviousSeat) {
+          stopLocalMicCapture();
+          if (rtc) rtc.stopBroadcastingVoice();
+        } else if (tr.previousMuted) {
+          // كان المستخدم مكتوماً قبل محاولة الانتقال: أوقف أي capture
+          // بدأناه للمقعد المرفوض، لكن أبقِ مسار الموسيقى/المكسر القديم
+          // إن كانا ما زالا صالحين.
+          stopLocalMicCapture();
+          if (rtc && tr.voiceWasBroadcasting && rtc.isBroadcastingVoice) rtc.setVoiceMuted(true);
+          else if (rtc) rtc.stopBroadcastingVoice();
+        } else {
+          // الانتقال المرفوض لا يحتاج إطفاء المايك العامل ثم فتحه من جديد؛
+          // نعيد استخدامه لتفادي انقطاع صوتي أو نشر مسار شبحي.
+          startLocalMicCapture();
+          if (rtc && tr.voiceWasBroadcasting && rtc.isBroadcastingVoice) {
+            rtc.setVoiceMuted(false);
+          } else if (rtc && state.activeRoom) {
+            rtc.startBroadcastingVoice(state.activeRoom.id);
+            rtc.setVoiceMuted(false);
+          }
+        }
+        updateMicButtonUI();
+      }
+      showToast(message || 'تعذر الصعود إلى هذا المقعد');
     });
 
     state.socket.on('seat_updated', ({ seatIndex, user, isMuted, movedTo, adminMuted }) => {
@@ -8300,11 +8343,23 @@
     const targetSeat = (state.activeRoom.seats || []).find(seat => seat.seat_index === seatIndex);
     // كتم الإدارة فقط (admin_muted) — كتم من سبقك لنفسه لا يخصك
     const adminMuted = !!(targetSeat && targetSeat.admin_muted);
+    const previous = state.userSeatIndex;
+    const previousMuted = !!state.isMuted;
+    state.seatTransition = {
+      target: seatIndex,
+      previous,
+      previousMuted,
+      voiceWasBroadcasting: !!(window.soulRtc && window.soulRtc.isBroadcastingVoice),
+      at: Date.now()
+    };
+
     state.socket.emit('take_seat', {
       roomId: state.activeRoom.id,
       seatIndex,
       userId: state.currentUser.id
     });
+    // Start/stop locally for responsive UI; seat_error and seat_updated below
+    // reconcile this optimistic state with the authoritative server response.
     state.userSeatIndex = seatIndex;
     state.isMuted = adminMuted;
     if (adminMuted) {
@@ -8666,6 +8721,20 @@
     if (state.currentUser) {
       if (user && user.id === state.currentUser.id) {
         state.userSeatIndex = seatIndex;
+        state.isMuted = !!isMuted;
+        if (state.seatTransition && state.seatTransition.target === seatIndex) state.seatTransition = null;
+        // The server may have applied a newer admin mute policy than the
+        // optimistic client copy.  Apply it without opening a second mic.
+        if (isMuted) {
+          stopLocalMicCapture();
+          if (window.soulRtc) window.soulRtc.stopBroadcastingVoice();
+        } else {
+          startLocalMicCapture();
+          if (window.soulRtc && state.activeRoom) {
+            window.soulRtc.startBroadcastingVoice(state.activeRoom.id);
+            window.soulRtc.setVoiceMuted(false);
+          }
+        }
         updateMicButtonUI();
       } else if (!user && state.userSeatIndex === seatIndex) {
         // Current user was removed or vacated this seat
@@ -8837,13 +8906,24 @@
 
   // Real Microphone Capture & Sound Wave Analyser
   async function startLocalMicCapture() {
+    if (state.micCaptureStarting) return state.localStream;
+    const seq = ++state.micCaptureSeq;
+    state.micCaptureStarting = true;
     try {
+      if (state.localStream && state.localStream.getAudioTracks().some(t => t.readyState === 'live')) return state.localStream;
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.warn('getUserMedia not supported in this browser context');
         return;
       }
 
-      state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      // A quick down/move while the permission prompt is open must not attach
+      // the newly granted microphone to the old seat.
+      if (seq !== state.micCaptureSeq || state.userSeatIndex === null || state.isMuted) {
+        stream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+        return;
+      }
+      state.localStream = stream;
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       state.audioContext = new AudioCtx();
       const source = state.audioContext.createMediaStreamSource(state.localStream);
@@ -8883,8 +8963,11 @@
           broadcastSpeakingStatus(isSpeaking, avg / 255);
         }
       }, 150);
+      return state.localStream;
     } catch (err) {
       console.log('Mic permission not granted or available, running in virtual mic mode:', err.message);
+    } finally {
+      state.micCaptureStarting = false;
     }
   }
 
@@ -8900,6 +8983,7 @@
   }
 
   function stopLocalMicCapture() {
+    state.micCaptureSeq++;
     if (window.voiceRings && state.currentUser) window.voiceRings.unwatch(String(state.currentUser.id), 'mic');
     if (state.micLevelInterval) {
       clearInterval(state.micLevelInterval);

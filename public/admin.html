@@ -666,6 +666,145 @@
     .ml-cell-input { width: 74px !important; padding: 5px 8px !important; font-size: 12px !important; }
     @media (max-width: 860px) { .ml-field { width: 100%; justify-content: space-between; } }
   </style>
+
+  <style id="admin-polish">
+    /* لوحة الإدارة: طبقة ترتيب موحّدة للكمبيوتر والهاتف */
+    :root {
+      --admin-gutter: clamp(14px, 2.4vw, 32px);
+      --admin-surface: rgba(19, 12, 37, .88);
+      --admin-surface-strong: rgba(25, 16, 48, .96);
+      --admin-line: rgba(196, 181, 253, .16);
+    }
+
+    html { background: #07030f; }
+    body { overflow-x: hidden; background:
+      radial-gradient(900px 500px at 100% -10%, rgba(124, 58, 237, .28), transparent 70%),
+      radial-gradient(700px 420px at 0% 35%, rgba(236, 72, 153, .11), transparent 70%),
+      #07030f; }
+    button, input, select, textarea { font-family: inherit; }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 2px solid #fbbf24;
+      outline-offset: 2px;
+    }
+
+    .admin-navbar {
+      min-height: 68px;
+      padding: 12px var(--admin-gutter);
+      background: rgba(11, 6, 24, .86);
+      border-bottom-color: rgba(196, 181, 253, .18);
+      box-shadow: 0 10px 34px rgba(0,0,0,.2);
+    }
+    .nav-brand { min-width: 0; }
+    .nav-brand > div { min-width: 0; }
+    .nav-brand-title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nav-brand-badge { white-space: nowrap; }
+    .nav-actions { flex-shrink: 0; }
+    .btn-nav { min-height: 36px; white-space: nowrap; }
+
+    .admin-main {
+      width: min(100%, 1580px);
+      padding: 24px var(--admin-gutter) 42px;
+      grid-template-columns: minmax(238px, 278px) minmax(0, 1fr);
+      column-gap: clamp(18px, 2.2vw, 32px);
+    }
+    .metrics-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .metric-card {
+      min-width: 0;
+      padding: 14px;
+      border-color: var(--admin-line);
+      background: linear-gradient(145deg, rgba(28, 18, 52, .9), rgba(14, 9, 28, .84));
+    }
+    .metric-card > div:last-child { min-width: 0; }
+    .metric-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .admin-tabs {
+      top: 84px;
+      padding: 9px;
+      background: linear-gradient(180deg, rgba(25, 15, 48, .96), rgba(14, 9, 27, .94));
+      border-color: var(--admin-line);
+      box-shadow: 0 16px 34px rgba(0,0,0,.18);
+    }
+    .tab-btn { min-height: 42px; padding: 9px 11px; border-radius: 11px; }
+    .tab-btn.active { box-shadow: inset -3px 0 0 #fbbf24, 0 5px 16px rgba(124,58,237,.14); }
+
+    .tab-pane { min-width: 0; }
+    .content-box {
+      width: 100%;
+      background: linear-gradient(145deg, rgba(25, 16, 48, .9), rgba(14, 8, 28, .88));
+      border-color: var(--admin-line);
+      border-radius: 18px;
+      padding: clamp(16px, 1.7vw, 24px);
+      box-shadow: 0 12px 26px rgba(0,0,0,.12);
+    }
+    .content-box-title { gap: 12px; line-height: 1.55; }
+    .content-box-title > span:first-child { min-width: 0; }
+    .form-input { min-width: 0; background: rgba(5, 3, 13, .58); border-color: rgba(255,255,255,.14); }
+    .form-input::placeholder { color: #71809b; }
+    .btn-submit { min-height: 42px; }
+    .data-table-wrapper { max-width: 100%; background: rgba(3,2,8,.18); }
+    table.data-table { min-width: 640px; }
+    table.data-table th { position: sticky; top: 0; z-index: 1; }
+    table.data-table td, table.data-table th { padding: 11px 12px; }
+    .modal-box { max-height: min(88vh, 760px); overflow: auto; }
+
+    /* Inline form rows used by the existing management screens wrap instead
+       of overflowing the content column. */
+    .content-box > div[style*="display: flex"],
+    .content-box form[style*="display: flex"] {
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .content-box > div[style*="display: flex"] > .form-input,
+    .content-box form[style*="display: flex"] > .form-input { flex: 1 1 220px; }
+
+    @media (max-width: 1280px) {
+      .metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .admin-main { grid-template-columns: 238px minmax(0, 1fr); }
+    }
+    @media (max-width: 860px) {
+      .admin-navbar { min-height: 60px; }
+      .admin-main { padding: 14px 12px 32px; }
+      .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+      .metric-card { padding: 11px; border-radius: 14px; }
+      .metric-icon-box { width: 38px; height: 38px; font-size: 19px; flex: 0 0 38px; }
+      .metric-val { font-size: 18px; }
+      .metric-title { font-size: 10.5px; }
+      .admin-tabs { box-shadow: -18px 0 40px rgba(0,0,0,.35); }
+      .content-box { border-radius: 15px; margin-bottom: 14px; }
+      .content-box-title { align-items: flex-start; }
+      .content-box-title > span:last-child { width: 100%; }
+      .content-box > div[style*="display: flex"] > .btn-submit,
+      .content-box form[style*="display: flex"] > .btn-submit { flex: 1 1 100%; width: 100% !important; }
+      table.data-table { min-width: 580px; }
+    }
+    @media (max-width: 520px) {
+      .admin-navbar { align-items: center; padding: 9px 10px; }
+      .nav-brand { gap: 7px; }
+      .nav-brand > span { font-size: 19px !important; }
+      .nav-brand-title { font-size: 12px; }
+      .nav-brand-badge { display: none; }
+      .nav-actions { gap: 5px; }
+      .nav-actions .btn-nav { min-width: 36px; width: 36px; height: 36px; padding: 0; justify-content: center; font-size: 0; gap: 0; }
+      .nav-actions .btn-nav::first-letter { font-size: 17px; }
+      .nav-actions a.btn-nav { display: none; }
+      .admin-menu-btn { width: 36px; height: 36px; font-size: 18px; }
+      .metrics-grid { gap: 8px; }
+      .metric-card { gap: 8px; padding: 9px; }
+      .metric-icon-box { width: 34px; height: 34px; flex-basis: 34px; font-size: 17px; border-radius: 10px; }
+      .metric-val { font-size: 16px; }
+      .admin-tabs { width: min(88vw, 330px); }
+      .content-box { padding: 13px 11px; }
+      .content-box-title { font-size: 14px; }
+      .form-group { margin-bottom: 12px; }
+      .form-input { font-size: 13px; padding: 10px 11px; }
+      .data-table-wrapper { margin-inline: -2px; }
+    }
+  </style>
+
 </head>
 <body>
 

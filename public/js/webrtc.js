@@ -37,6 +37,15 @@ class SoulRtcEngine {
     this._voiceStartRoom = null;
     this._pendingPlay = new Set();     // عناصر audio منعها المتصفح (autoplay) لإعادة تشغيلها عند أول لمسة
     this._gestureBound = false;
+    // Local playback/mixing state.  Keep the microphone and music on separate
+    // gain nodes so muting the microphone never mutes the song being sent to
+    // the room (and so a quick seat change cannot tear down the music graph).
+    this.remoteAudioMuted = false;
+    this.voiceMixerMicSource = null;
+    this.voiceMixerMusicSource = null;
+    this.voiceMixerMicGain = null;
+    this.voiceMixerMusicGain = null;
+    this._voiceMixerVersion = 0;
   }
 
   toggleCameraMirroring(explicitState = null) {
@@ -131,7 +140,10 @@ class SoulRtcEngine {
     // إيقاف قسري للمتحدثين (إدارة/مشرف) — نصمت صوت هؤلاء المستخدمين محليًا
     this.socket.on('webrtc_speakers_force_stopped', ({ userIds }) => {
       if (Array.isArray(userIds)) {
-        userIds.forEach(uid => this.removeRemoteUserAudio(uid));
+        // This is an authoritative moderation event: unlike a delayed seat
+        // update it must remove the remote track even if the UI has not caught
+        // up yet.
+        userIds.forEach(uid => this.removeRemoteUserAudio(uid, { force: true }));
       }
     });
 
@@ -346,8 +358,11 @@ class SoulRtcEngine {
       this.userAudioMap.get(uidStr).add(audioEl);
     }
     audioEl.dataset.streamType = 'voice_seat';
-    audioEl.muted = false;
-    audioEl.volume = 1;
+    // Apply the room-wide local silence preference to tracks created after the
+    // user pressed mute as well.  Previously a newly subscribed song/voice
+    // track reset the preference and became audible again.
+    audioEl.muted = this.remoteAudioMuted;
+    audioEl.volume = this.remoteAudioMuted ? 0 : 1;
     if (audioEl.srcObject !== remoteStream) audioEl.srcObject = remoteStream;
     this._tryPlay(audioEl);
     // تذبذبات حول صورة المتحدث حسب مستوى صوته (ويشمل الأغنية التي يشغّلها)
@@ -530,7 +545,9 @@ class SoulRtcEngine {
       if (!track) return null;
       const lp = room.localParticipant;
       try {
-        const existing = lp.getTrackPublication('microphone');
+        // LiveKit يعرّف المصدر كسلسلة "microphone"، لكن الاسم "mic" أكثر
+        // ثباتاً عند استبدال مسار قديم أو بعد إعادة الاتصال.
+        const existing = lp.getTrackPublicationByName('mic') || lp.getTrackPublication('microphone');
         if (existing && existing.track && existing.track.mediaStreamTrack === track) return existing;
         if (existing && existing.track) {
           try { await lp.unpublishTrack(existing.track, false); } catch (e) { console.warn('mic unpublish:', e); }
@@ -568,10 +585,28 @@ class SoulRtcEngine {
     const room = this.lkRoom;
     if (!room) return false;
     try {
-      const pub = room.localParticipant.getTrackPublication('microphone');
+      const pub = room.localParticipant.getTrackPublicationByName('mic') || room.localParticipant.getTrackPublication('microphone');
       const mst = pub && pub.track && pub.track.mediaStreamTrack;
       return !!(mst && mst.readyState === 'live');
     } catch (e) { return false; }
+  }
+
+  // يُستخدم قبل بدء تشغيل الموسيقى: لا نسمح بتشغيلها محلياً فقط إذا كان
+  // مسار الصوت المدموج لم يصل إلى LiveKit بعد.
+  isVoiceAudioPublished(stream = this.localAudioStream) {
+    if (!this.isBroadcastingVoice || !this.lkRoom || !stream) return false;
+    try {
+      const track = stream.getAudioTracks()[0];
+      const pub = this.lkRoom.localParticipant.getTrackPublicationByName('mic') || this.lkRoom.localParticipant.getTrackPublication('microphone');
+      const published = pub && pub.track && pub.track.mediaStreamTrack;
+      return !!(track && track.readyState === 'live' && published === track);
+    } catch (e) { return false; }
+  }
+
+  async waitForVoiceAudioPublished(stream = this.localAudioStream) {
+    const expected = stream;
+    try { await this._micChain; } catch (e) {}
+    return this.isVoiceAudioPublished(expected);
   }
 
   // إلغاء نشر المايك. النشر يتم بالمصدر 'microphone' (واسم 'mic') — البحث القديم بالاسم 'microphone'
@@ -879,14 +914,32 @@ class SoulRtcEngine {
 
   setVoiceMuted(isMuted) {
     this.isVoiceMuted = !!isMuted;
-    // كتم المايك يخص صوتي أنا فقط؛ مسار الموسيقى المدموج يبقى مفتوحاً كي لا تنقطع عن الحاضرين.
-    // (تعطيل المسار محليًا يُرسل صمتًا عبر LiveKit — نفس سلوك الصمت القديم)
+    const muted = this.isVoiceMuted;
+
+    // When music is mixed, mute only the microphone gain.  Disabling the
+    // source track itself can also silence a MediaStreamDestination in some
+    // mobile browsers, which was the reason YouTube audio disappeared until
+    // the user unmuted again.
+    if (this.voiceMixerMicGain && this.voiceMixerContext) {
+      try {
+        const now = this.voiceMixerContext.currentTime;
+        this.voiceMixerMicGain.gain.cancelScheduledValues(now);
+        this.voiceMixerMicGain.gain.setTargetAtTime(muted ? 0 : 1, now, 0.025);
+      } catch (e) { try { this.voiceMixerMicGain.gain.value = muted ? 0 : 1; } catch (x) {} }
+      // Keep the input track alive while the mixer is active; the gain node is
+      // the actual privacy boundary for the published stream.
+      if (this.voiceBaseStream) this.voiceBaseStream.getAudioTracks().forEach(t => { t.enabled = true; });
+      if (this.localAudioStream && this.localAudioStream !== this.voiceBaseStream) {
+        this.localAudioStream.getAudioTracks().forEach(t => { t.enabled = true; });
+      }
+      return;
+    }
+
     if (this.voiceBaseStream) {
-      this.voiceBaseStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
+      this.voiceBaseStream.getAudioTracks().forEach(track => { track.enabled = !muted; });
     }
     if (this.localAudioStream && this.localAudioStream !== this.voiceBaseStream) {
-      const mixed = !!this.voiceMixerDestination && this.localAudioStream === this.voiceMixerDestination.stream;
-      this.localAudioStream.getAudioTracks().forEach(track => { track.enabled = mixed ? true : !isMuted; });
+      this.localAudioStream.getAudioTracks().forEach(track => { track.enabled = !muted; });
     }
   }
 
@@ -896,28 +949,50 @@ class SoulRtcEngine {
     if (!musicStream) return false;
     this.pendingMusicStream = musicStream;
     if (!this.isBroadcastingVoice || !this.voiceBaseStream) return false;
-    // نفس الدمج قائم أصلاً: لا نعيد بناءه
-    if (this.voiceMixerContext && this.voiceMusicStream === musicStream && this.voiceMixerBase === this.voiceBaseStream) return true;
+    if (this.voiceMixerContext && this.voiceMusicStream === musicStream && this.voiceMixerBase === this.voiceBaseStream) {
+      this.ensureMixerAlive();
+      this.setVoiceMuted(this.isVoiceMuted);
+      return true;
+    }
+
     this._unmixVoice();
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return false;
+    const version = ++this._voiceMixerVersion;
     try {
       const ac = new AudioCtx();
       const micSource = ac.createMediaStreamSource(this.voiceBaseStream);
       const musicSource = ac.createMediaStreamSource(musicStream);
+      const micGain = ac.createGain();
+      const musicGain = ac.createGain();
       const destination = ac.createMediaStreamDestination();
-      micSource.connect(destination);
-      musicSource.connect(destination);
+      micGain.gain.value = this.isVoiceMuted ? 0 : 1;
+      musicGain.gain.value = 1;
+      micSource.connect(micGain).connect(destination);
+      musicSource.connect(musicGain).connect(destination);
+
       this.voiceMixerContext = ac;
       this.voiceMixerDestination = destination;
+      this.voiceMixerMicSource = micSource;
+      this.voiceMixerMusicSource = musicSource;
+      this.voiceMixerMicGain = micGain;
+      this.voiceMixerMusicGain = musicGain;
       this.voiceMixerBase = this.voiceBaseStream;
       this.voiceMusicStream = musicStream;
       this.localAudioStream = destination.stream;
       this.setVoiceMuted(this.isVoiceMuted);
       this.replaceVoiceAudioTrack(destination.stream.getAudioTracks()[0]);
-      const wake = () => { if (ac.state === 'suspended') ac.resume().catch(() => {}); };
+      const wake = () => {
+        if (ac.state === 'suspended') ac.resume().catch(() => {});
+      };
       ac.onstatechange = wake;
       ac.resume().catch(() => {});
+      // If another seat/music operation superseded this graph while the
+      // context was being created, close it instead of publishing a stale one.
+      if (version !== this._voiceMixerVersion) {
+        try { ac.close(); } catch (e) {}
+        return false;
+      }
       return true;
     } catch (err) {
       console.warn('Voice/music mix unavailable:', err);
@@ -938,30 +1013,36 @@ class SoulRtcEngine {
       if (ac && ac.state !== 'running') ac.resume().catch(() => {});
       const out = this.voiceMixerDestination && this.voiceMixerDestination.stream.getAudioTracks()[0];
       if (out && out.readyState === 'ended' && this.pendingMusicStream) {
-        this.voiceMixerContext = null; // يُبنى من جديد
+        this._unmixVoice();
         this.setVoiceMusicStream(this.pendingMusicStream);
-      } else if (out && !out.enabled) {
-        out.enabled = true; // المسار المدموج يبقى مفتوحاً دائماً كي لا تنقطع الموسيقى
+      } else if (out) {
+        out.enabled = true; // يبقى مسار الموسيقى منشوراً عند كتم المايك
+      }
+      if (this._hasLiveMicPub() === false && this.localAudioStream) {
+        this._publishMicTrack(this.localAudioStream);
       }
     } catch (e) { console.warn('ensureMixerAlive:', e); }
   }
 
   // فك الدمج فقط (يُبقي الموسيقى المطلوبة محفوظة لإعادة دمجها لاحقاً)
   _unmixVoice() {
-    if (!this.voiceMixerContext) return;
+    const ac = this.voiceMixerContext;
+    const destination = this.voiceMixerDestination;
     const base = this.voiceBaseStream;
-    try {
-      this.voiceMixerDestination?.stream?.getTracks().forEach(track => track.stop());
-      this.voiceMixerContext.onstatechange = null;
-      this.voiceMixerContext.close();
-    } catch (e) {}
+    this._voiceMixerVersion++;
     this.voiceMixerContext = null;
     this.voiceMixerDestination = null;
+    this.voiceMixerMicSource = null;
+    this.voiceMixerMusicSource = null;
+    this.voiceMixerMicGain = null;
+    this.voiceMixerMusicGain = null;
     this.voiceMixerBase = null;
     this.voiceMusicStream = null;
+    try { destination?.stream?.getTracks().forEach(track => track.stop()); } catch (e) {}
+    try { if (ac) { ac.onstatechange = null; ac.close(); } } catch (e) {}
     if (base) {
       this.localAudioStream = base;
-      this.replaceVoiceAudioTrack(base.getAudioTracks()[0]);
+      if (this.isBroadcastingVoice) this.replaceVoiceAudioTrack(base.getAudioTracks()[0]);
       this.setVoiceMuted(this.isVoiceMuted);
     }
   }
@@ -1010,6 +1091,9 @@ class SoulRtcEngine {
     // المايك أثناء النزول نفسه (فيبقى نشر ميت يمنع الصوت في الصعود التالي).
     this.isBroadcastingVoice = false;
     this.isVoiceMuted = true;
+    // لا تحمل أغنية المقعد القديم إلى الصعود التالي إذا نزل المستخدم قبل
+    // أن يصل حدث إيقاف الموسيقى من واجهة الغرفة.
+    this.pendingMusicStream = null;
     this._unmixVoice();
 
     // إلغاء نشر مسار المايك فعليًا (قبل إيقاف المسارات) — بقية مسارات الغرفة تبقى كما هي
@@ -1073,21 +1157,43 @@ class SoulRtcEngine {
     const uidStr = String(userId);
     if (this.userAudioMap.has(uidStr)) {
       for (const el of this.userAudioMap.get(uidStr)) {
-        el.muted = !!isMuted;
-        el.volume = isMuted ? 0 : 1;
+        const muted = this.remoteAudioMuted || !!isMuted;
+        el.muted = muted;
+        el.volume = muted ? 0 : 1;
       }
     }
     for (const [key, el] of this.audioElements.entries()) {
       if (el.dataset.userId === uidStr) {
-        el.muted = !!isMuted;
-        el.volume = isMuted ? 0 : 1;
+        const muted = this.remoteAudioMuted || !!isMuted;
+        el.muted = muted;
+        el.volume = muted ? 0 : 1;
       }
     }
   }
 
-  removeRemoteUserAudio(userId) {
+  _isUserCurrentlySeated(userId) {
+    try {
+      const room = window.SoulChillApp && window.SoulChillApp.state && window.SoulChillApp.state.activeRoom;
+      return !!(room && Array.isArray(room.seats) && room.seats.some(s => s && s.user_id && String(s.user_id) === String(userId)));
+    } catch (e) { return false; }
+  }
+
+  setRemoteAudioMuted(isMuted) {
+    this.remoteAudioMuted = !!isMuted;
+    for (const el of this.audioElements.values()) {
+      if (!el || !el.isConnected) continue;
+      el.muted = this.remoteAudioMuted;
+      el.volume = this.remoteAudioMuted ? 0 : 1;
+    }
+  }
+
+  removeRemoteUserAudio(userId, options = {}) {
     if (!userId) return;
     const uidStr = String(userId);
+    // A late "seat left"/stream-ended packet is common while moving from one
+    // seat to another.  Do not kill the user's new LiveKit track while the
+    // authoritative room state still shows them seated somewhere.
+    if (!options.force && this._isUserCurrentlySeated(uidStr)) return;
     const now = Date.now();
     // مسار صوت رُبط للتو (أقل من 700ms) غالبًا هو صعود جديد وصل قبل حدث «المقعد خلا» المتأخر:
     // لا نقتله حتى لا يضيع صوت المتحدث الجديد.
@@ -1152,6 +1258,12 @@ class SoulRtcEngine {
       this.lkRoom = null;
       this.lkRoomName = null;
     }
+
+    // Close the mixer before stopping its source tracks.  Leaving a room used
+    // to leave an old MediaStreamDestination alive and the next seat could
+    // publish the previous song or a dead track.
+    this.pendingMusicStream = null;
+    this._unmixVoice();
 
     if (this.localStream) {
       this.localStream.getTracks().forEach(t => t.stop());
