@@ -1,0 +1,333 @@
+/* بطاقة المستخدم السفلية داخل الغرفة (عند النقر على الاسم) — مطابقة لفيديو «عند النقر على الاسم وأنا بالغرفة» */
+.rus-backdrop {
+  position: fixed; inset: 0; z-index: 260; display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(0, 0, 0, .45); direction: rtl; animation: rusFade .18s ease;
+}
+.rus-backdrop.closing { opacity: 0; transition: opacity .18s; }
+.rus-backdrop.closing .rus-sheet { transform: translateY(100%); transition: transform .18s; }
+@keyframes rusFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rusUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.rus-sheet {
+  position: relative; width: 100%; max-width: 560px; height: 59vh; min-height: 380px; max-height: 92vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: radial-gradient(120% 55% at 50% 12%, #1f3a2c 0%, #141218 46%, #0f0d13 100%);
+  border-radius: 18px 18px 0 0; color: #fff; animation: rusUp .22s ease;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.rus-scroll { flex: 1; overflow-y: auto; padding: 12px 12px 8px; -webkit-overflow-scrolling: touch; }
+.rus-scroll::-webkit-scrollbar { width: 0; }
+
+.rus-top { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 3; min-height: 30px; }
+.rus-top-l { display: flex; gap: 12px; align-items: center; }
+.rus-ic { background: none; border: 0; color: rgba(255,255,255,.85); font-size: 17px; font-weight: 700; padding: 2px; cursor: pointer; line-height: 1; display: inline-flex; }
+.rus-trophy { display: inline-block; padding: 3px 9px; border-radius: 999px; background: rgba(0,0,0,.45); font-size: 12px; font-weight: 700; color: #fff; }
+
+.rus-hero { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: -8px; }
+.rus-avatar { width: 84px; height: 84px; position: relative; margin-bottom: 8px; }
+.rus-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.rus-name { font-size: 17px; font-weight: 800; margin-bottom: 4px; max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rus-uid { font-size: 12px; color: rgba(255,255,255,.62); display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.rus-sep:not(:empty)::before { content: "|"; margin-inline-end: 8px; opacity: .6; }
+.rus-badges { display: flex; gap: 6px; align-items: center; justify-content: center; margin: 8px 0 12px; flex-wrap: wrap; min-height: 20px; }
+.rus-badge { display: inline-flex; align-items: center; gap: 3px; height: 19px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 800; color: #fff; background: #334155; }
+.rus-badge.age.male { background: #1d8cf8; } .rus-badge.age.female { background: #ec4899; } .rus-badge.age.other { background: #8b5cf6; }
+.rus-badge.flag { padding: 0; background: none; height: 17px; }
+.rus-badge.flag img, .rus-badge.flag svg { height: 17px; width: auto; border-radius: 3px; display: block; }
+
+.rus-cards { display: flex; gap: 8px; margin-bottom: 10px; }
+.rus-card { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 9px 10px; border-radius: 13px; background: rgba(32,28,44,.86); border: 1px solid rgba(255,255,255,.1); }
+.rus-card b { display: block; font-size: 15px; font-weight: 800; line-height: 1.1; }
+.rus-card small { display: block; font-size: 10px; color: rgba(255,255,255,.55); margin-top: 2px; }
+.rus-card.c1 { border-color: rgba(168,85,247,.55); } .rus-card.c1 b { color: #e9d5ff; }
+.rus-card.c2 { border-color: rgba(192,38,211,.5); } .rus-card.c2 b { color: #e879f9; }
+.rus-card.c3 { border-color: rgba(148,163,184,.45); background: rgba(34,40,56,.9); }
+.rus-card-ic { display: inline-flex; flex: 0 0 auto; }
+
+.rus-row {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: start; cursor: pointer;
+  padding: 12px 12px; margin-bottom: 8px; border-radius: 13px; border: 0; color: #fff; font-family: inherit;
+  background: rgba(30,27,38,.92);
+}
+.rus-row.plain { background: transparent; border-bottom: 1px solid rgba(255,255,255,.07); border-radius: 0; margin-bottom: 0; padding: 14px 6px; }
+.rus-row-label { order: 0; flex: 1; font-size: 13.5px; font-weight: 700; text-align: start; }
+.rus-row-icons { order: 1; display: inline-flex; gap: 6px; align-items: center; margin-inline-start: auto; }
+.rus-row-icons img { width: 30px; height: 30px; object-fit: contain; }
+.rus-row-icons .rus-emoji { font-size: 22px; line-height: 30px; }
+.rus-row-sub { order: 1; font-size: 11.5px; color: rgba(255,255,255,.5); margin-inline-start: auto; }
+.rus-chev { order: 2; display: inline-flex; color: rgba(255,255,255,.55); }
+.rus-row .rus-chev { transform: none; }
+
+.rus-actions { display: flex; gap: 10px; padding: 10px 12px 12px; background: linear-gradient(to top, #0f0d13 70%, rgba(15,13,19,0)); }
+.rus-btn { flex: 1; height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 999px; font-size: 14px; font-weight: 800; cursor: pointer; font-family: inherit; }
+.rus-btn.follow { background: #fff; color: #111; }
+.rus-btn.follow.on { background: rgba(255,255,255,.16); color: #fff; }
+.rus-btn.gift { background: #6f4cff; color: #fff; }
+.rus-btn:active { transform: scale(.98); }
+
+/* قائمة الإبلاغ والحظر */
+.rus-menu-backdrop { position: absolute; inset: 0; z-index: 10; display: flex; align-items: flex-end; background: rgba(0,0,0,.5); }
+.rus-menu { width: 100%; padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px)); background: #121016; border-radius: 16px 16px 0 0; }
+.rus-menu button { width: 100%; display: flex; align-items: center; justify-content: flex-start; gap: 10px; padding: 15px 8px; border: 0; background: none; color: #fff; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.rus-menu button span { flex: 1; text-align: start; }
+.rus-menu button.danger { color: #ff2d6f; }
+.rus-menu button.cancel { margin-top: 6px; justify-content: center; background: rgba(255,255,255,.06); border-radius: 14px; }
+
+/* صف أوامر الإشراف داخل بطاقة المستخدم (للمدير/المشرف) */
+.rus-admin { flex: 0 0 auto; padding: 8px 0 2px; background: #0f0d13; border-top: 1px solid rgba(255,255,255,.06); }
+.rus-admin-row { display: flex; gap: 14px; overflow-x: auto; padding: 8px 14px 6px; direction: rtl; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.rus-admin-row::-webkit-scrollbar { display: none; }
+.rus-adm { flex: 0 0 auto; width: 60px; background: none; border: 0; color: #fff; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; font-family: inherit; padding: 0; }
+.rus-adm i { width: 52px; height: 52px; border-radius: 50%; background: #1d1b24; display: grid; place-items: center; }
+.rus-adm svg { width: 25px; height: 25px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.rus-adm span { font-size: 10.5px; line-height: 1.3; text-align: center; color: rgba(255,255,255,.9); max-width: 64px; }
+.rus-adm:active i { transform: scale(.92); background: #2a2733; }
+.rus-adm.danger svg { stroke: #fff; }
+.rus-sheet:has(.rus-admin) { height: 72vh; }
+
+/* قالب بطاقتي وأنا على المقعد: خلفية داكنة، بطاقتان، زر النزول من الميكروفون */
+.rus-sheet.rus-onmic { background: #0b0a0e; height: 66vh; }
+.rus-sheet.rus-onmic .rus-top-l,
+.rus-sheet.rus-onmic .rus-card.c3,
+.rus-sheet.rus-onmic [data-act="relation"] { display: none; }
+.rus-sheet.rus-onmic .rus-cards { gap: 12px; margin: 6px 4px 12px; }
+.rus-sheet.rus-onmic .rus-card { justify-content: center; gap: 10px; padding: 12px 10px; border-radius: 14px; }
+.rus-sheet.rus-onmic .rus-card.c1 { background: rgba(20,60,34,.75); border-color: rgba(74,222,128,.55); }
+.rus-sheet.rus-onmic .rus-card.c1 b { color: #fff; }
+.rus-sheet.rus-onmic .rus-card.c2 { background: rgba(48,16,64,.75); border-color: rgba(192,38,211,.6); }
+.rus-sheet.rus-onmic .rus-card.c2 b { color: #fff; }
+.rus-honor { margin: 0 auto 12px; padding: 6px 16px; border-radius: 999px; border: 0; background: rgba(255,255,255,.1); color: #e6e4f3; font-size: 11px; font-family: inherit; cursor: pointer; }
+.rus-btn.leave { background: #fff; color: #111; flex: 1; }
+.rus-sheet.rus-onmic .rus-actions { background: linear-gradient(to top, #0b0a0e 70%, rgba(11,10,14,0)); }
+
+
+/* ---- تحسينات بطاقة المستخدم: مساحة كافية ليظهر الإطار كاملاً دون قصّ أو التصاق بالحافة ---- */
+.rus-hero { margin-top: 0; }
+.rus-avatar { margin-top: 22px; margin-bottom: 12px; }
+.rus-name { font-size: 18px; letter-spacing: .2px; }
+.rus-uid { margin-bottom: 2px; }
+.rus-badges { margin: 10px 0 14px; }
+
+/* ---- صورة المستخدم في بطاقة الغرفة: الإطار بحجمه الكامل (يظهر كاملاً فوق الصورة) ومسافة ثابتة تحته ---- */
+.rus-avatar { cursor: pointer; margin-bottom: 40px !important; overflow: visible; }
+.rus-avatar > .sc-frame-ring { scale: 1; z-index: 3; }
+.rus-avatar > img { scale: 1 !important; }
+/* أبعاد الإطار الثابتة في بطاقة المستخدم فقط (تتجاوز الحساب التلقائي في frames.js) */
+.rus-avatar > .sc-frame-ring {
+  width: 130.408px !important;
+  height: 160.16px !important;
+}
+
+/* شارات بطاقتي على المقعد: شارة الثروة + شارة النشاط (نشيط) */
+.rus-badge.tier { background: none; padding: 0; height: 19px; }
+.rus-badge.tier svg, .rus-badge.tier img { height: 19px; width: auto; display: block; }
+.rus-badge.act { background: linear-gradient(90deg, #f6c453, #e8a317); color: #3a2600; gap: 3px; }
+.rus-sheet.rus-onmic .rus-honor { border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); padding: 7px 18px; font-size: 12px; }
+.rus-sheet.rus-onmic .rus-row { background: rgba(255,255,255,.07); }
+.rus-sheet.rus-onmic [data-act="empire"] { display: none; }
+
+/* =====================================================================
+   بطاقتي وأنا على المقعد — مطابقة للتصميم المرجعي (لقطة الشاشة)
+   القياسات مستخلصة من الصورة: ارتفاع ≈59.4% من الشاشة، الصورة تبرز فوق الحافة،
+   بطاقتا الثروة/الرواج صغيرتان في المنتصف، صفوف بخلفية رمادية داكنة، زر أبيض.
+   ===================================================================== */
+.rus-sheet.rus-onmic {
+  --rm-bg: #111313;
+  background: var(--rm-bg);
+  height: 59.4vh; min-height: 452px; max-height: 92vh;
+  border-radius: 22px 22px 0 0;
+  overflow: visible;                /* ليظهر بروز الصورة فوق الحافة */
+}
+.rus-sheet.rus-onmic .rus-scroll { padding: 0 18px 8px; border-radius: 22px 22px 0 0; }
+
+/* الصورة: على مستوى البطاقة وتبرز ~18px فوق الحافة العليا */
+.rus-sheet.rus-onmic > .rus-avatar {
+  position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+  width: 90px; height: 90px; margin: 0 !important; z-index: 6; cursor: pointer;
+}
+.rus-sheet.rus-onmic > .rus-avatar > img {
+  width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
+  box-shadow: 0 0 0 3px var(--rm-bg);
+}
+
+/* شارة +100 🏆: كبسولة بحدّ رفيع أعلى اليمين، "+100" ثم الكأس */
+.rus-sheet.rus-onmic .rus-top { position: absolute; top: 10px; right: 14px; left: auto; min-height: 0; z-index: 7; }
+.rus-sheet.rus-onmic .rus-trophy {
+  direction: ltr; display: inline-flex; align-items: center; gap: 5px;
+  height: 27px; padding: 0 11px; border-radius: 999px;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.16);
+  font-size: 12.5px; font-weight: 800; color: #fff;
+}
+
+/* الاسم + UID + الشارات + الألقاب (المسافات من القياس) */
+.rus-sheet.rus-onmic .rus-hero { margin-top: 0; padding-top: 91px; background: none; }
+.rus-sheet.rus-onmic .rus-name { font-size: 20px; font-weight: 700; margin: 0; line-height: 26px; letter-spacing: 0; }
+.rus-sheet.rus-onmic .rus-uid { margin: 5px 0 0; font-size: 12.5px; line-height: 16px; color: #98999a; gap: 0; flex-wrap: nowrap; }
+/* الترتيب المرئي: UID · ١ منشور | ٩١٦ يوم   (الأيام أقصى اليمين) */
+.rus-sheet.rus-onmic .rus-uid [data-f="days"] { order: -1; }
+.rus-sheet.rus-onmic .rus-uid [data-f="uid"] { order: 1; }
+.rus-sheet.rus-onmic .rus-sep:not(:empty)::before { content: none; }
+.rus-sheet.rus-onmic .rus-sep:not(:empty)::after { content: "·"; margin-inline: 7px; opacity: .9; }
+.rus-sheet.rus-onmic .rus-badges { margin: 8px 0 0; gap: 5px; min-height: 20px; }
+.rus-sheet.rus-onmic .rus-badge { height: 20px; border-radius: 999px; padding: 0 8px; font-size: 11px; }
+.rus-sheet.rus-onmic .rus-badge.flag, .rus-sheet.rus-onmic .rus-badge.tier { padding: 0; border-radius: 4px; }
+.rus-sheet.rus-onmic .rus-badge.age.male { background: #1f8fd6; }
+.rus-sheet.rus-onmic .rus-honor {
+  margin: 16px auto 0; height: 25px; padding: 0 16px; border-radius: 999px;
+  background: #252824; border: 1px solid rgba(255,255,255,.1); color: #c9cac9;
+  font-size: 12px; font-weight: 500;
+}
+
+/* بطاقتا الثروة (يمين) والرواج (يسار): صغيرتان في المنتصف، الأيقونة يميناً ثم الأرقام */
+.rus-sheet.rus-onmic .rus-cards { justify-content: center; gap: 6px; margin: 16px 0 10px; }
+.rus-sheet.rus-onmic .rus-card {
+  flex: 0 0 114px; width: 114px; height: 59px; padding: 0 8px; gap: 8px;
+  justify-content: center; border-radius: 15px; border-width: 1.5px; border-style: solid;
+}
+.rus-sheet.rus-onmic .rus-card > div { text-align: start; }
+.rus-sheet.rus-onmic .rus-card b { font-size: 18px; font-weight: 800; line-height: 1.15; }
+.rus-sheet.rus-onmic .rus-card small { font-size: 10.5px; margin-top: 1px; }
+.rus-sheet.rus-onmic .rus-card.c1 { background: linear-gradient(135deg, #2d3d2a 0%, #1c231b 100%); border-color: rgba(122,214,80,.7); }
+.rus-sheet.rus-onmic .rus-card.c1 b { color: #9bf05a; }
+.rus-sheet.rus-onmic .rus-card.c1 small { color: #6fc050; }
+.rus-sheet.rus-onmic .rus-card.c2 { background: linear-gradient(135deg, #3a1f40 0%, #1c121e 100%); border-color: rgba(196,84,222,.75); }
+.rus-sheet.rus-onmic .rus-card.c2 b { color: #e27cf5; }
+.rus-sheet.rus-onmic .rus-card.c2 small { color: #b95ccd; }
+
+/* الصفوف (حائط الميداليات / معرض الهدايا) */
+.rus-sheet.rus-onmic .rus-row { background: #1a1d1c; height: 51px; margin-bottom: 11px; padding: 0 16px; border-radius: 14px; }
+.rus-sheet.rus-onmic .rus-row-label { font-size: 13.5px; font-weight: 600; color: #d2d3d2; }
+.rus-sheet.rus-onmic .rus-row-label .rus-num { color: #fff; font-weight: 700; }
+.rus-sheet.rus-onmic .rus-row-label .rus-unit { color: #8d8f8e; font-weight: 500; }
+.rus-sheet.rus-onmic .rus-row-icons { gap: 4px; }
+.rus-sheet.rus-onmic .rus-row-icons img { width: 28px; height: 28px; }
+.rus-sheet.rus-onmic .rus-row-icons .rus-emoji { font-size: 24px; line-height: 28px; }
+.rus-sheet.rus-onmic .rus-chev { color: #b9bab9; }
+
+/* زر النزول من الميكروفون: كبسولة بيضاء بهوامش جانبية 27px */
+.rus-sheet.rus-onmic .rus-actions {
+  padding: 12px 27px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--rm-bg) 76%, rgba(17,19,19,0));
+  position: relative; z-index: 3; border-radius: 0;
+}
+.rus-sheet.rus-onmic .rus-btn.leave { height: 47px; background: #fff; color: #1b1b1b; font-size: 15px; font-weight: 600; gap: 9px; }
+.rus-sheet.rus-onmic .rus-btn.leave .rus-btn-ic { display: inline-flex; }
+
+/* ---- ضبط دقيق نهائي (مقارنة بصرية مع اللقطة المرجعية) ---- */
+.rus-sheet.rus-onmic .rus-badges { gap: 4px; min-height: 17px; margin-top: 9px; }
+.rus-sheet.rus-onmic .rus-badge { height: 16px; padding: 0 6px; font-size: 10px; border-radius: 999px; gap: 2px; }
+.rus-sheet.rus-onmic .rus-badge.flag { height: 14px; }
+.rus-sheet.rus-onmic .rus-badge.flag img, .rus-sheet.rus-onmic .rus-badge.flag svg { height: 14px; }
+.rus-sheet.rus-onmic .rus-badge.tier { height: 16px; }
+.rus-sheet.rus-onmic .rus-badge.tier svg, .rus-sheet.rus-onmic .rus-badge.tier img { height: 16px; }
+.rus-sheet.rus-onmic .rus-honor { padding: 0 13px; font-size: 11.5px; }
+
+.rus-sheet.rus-onmic .rus-card { gap: 6px; border-width: 1px; }
+.rus-sheet.rus-onmic .rus-card b { font-size: 15px; }
+.rus-sheet.rus-onmic .rus-card small { font-size: 9px; }
+.rus-sheet.rus-onmic .rus-card .rus-card-ic svg { width: 24px; height: 24px; }
+.rus-sheet.rus-onmic .rus-card.c2 .rus-card-ic svg { width: 19px; height: 19px; }
+.rus-sheet.rus-onmic .rus-card.c1 { border-color: rgba(110,190,72,.55); }
+.rus-sheet.rus-onmic .rus-card.c2 { border-color: rgba(176,76,198,.6); }
+
+.rus-sheet.rus-onmic .rus-row-label { font-weight: 500; font-size: 13px; color: #cfd0cf; }
+.rus-sheet.rus-onmic .rus-row-label .rus-num { font-weight: 600; }
+.rus-sheet.rus-onmic .rus-row-icons img { width: 26px; height: 26px; }
+.rus-sheet.rus-onmic .rus-row-icons .rus-emoji { font-size: 22px; line-height: 26px; }
+.rus-sheet.rus-onmic .rus-chev .f7-icons { font-size: 14px !important; }
+.rus-sheet.rus-onmic .rus-btn.leave { font-weight: 500; font-size: 14.5px; color: #2a2a2a; }
+
+/* =====================================================================
+   بطاقتي وأنا خارج المقعد (النقر على نفسي) — مطابقة للقطة الثانية:
+   بلا اسم ولا صف ميداليات ولا زر نزول، مع صف «إمبراطورية»
+   ===================================================================== */
+.rus-sheet.rus-onmic.rus-offmic { height: 51.4vh; min-height: 410px; }
+.rus-sheet.rus-offmic .rus-scroll { padding-bottom: 27px; }
+.rus-sheet.rus-offmic .rus-name,
+.rus-sheet.rus-offmic [data-act="medals"] { display: none; }
+.rus-sheet.rus-onmic.rus-offmic [data-act="empire"] {
+  display: flex; height: 56px; margin-bottom: 0; border: 0; background: #1a1d1c; border-radius: 14px;
+}
+.rus-sheet.rus-offmic [data-act="empire"] .rus-row-label { font-weight: 700; color: #e9eae9; }
+.rus-sheet.rus-offmic [data-act="empire"] .rus-row-sub { font-size: 12.5px; color: #a3a4a3; }
+
+
+/* ===== شريطا Active / Popular الذهبيان (بطاقة غيري) ===== */
+.rus-ribbons { display: flex; gap: 8px; justify-content: center; margin: -4px 0 12px; }
+.rus-ribbons:empty { display: none; }
+.rus-ribbon {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 12px 0 9px; direction: ltr;
+  font-size: 13px; font-weight: 900; font-style: italic; color: #fff; letter-spacing: .2px;
+  background: linear-gradient(180deg, #f9a43a, #d9621c); border: 1.5px solid #ffd27a; border-radius: 4px;
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 50%, 100% 100%, 6px 100%, 0 50%);
+  text-shadow: 0 1px 1px rgba(90,30,0,.6); box-shadow: 0 0 6px rgba(255,170,60,.45);
+}
+.rus-ribbon i { font-style: normal; font-size: 12px; }
+
+/* ===== قاعة المجد (معرض الهدايا) ===== */
+.gh-backdrop { position: fixed; inset: 0; z-index: 280; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.35); direction: rtl; animation: rusFade .18s ease; }
+.gh-backdrop.closing { opacity: 0; transition: opacity .18s; }
+.gh-backdrop.closing .gh-sheet { transform: translateY(100%); transition: transform .18s; }
+.gh-sheet { width: 100%; max-width: 560px; height: 66vh; min-height: 420px; display: flex; flex-direction: column; background: #121215; border-radius: 20px 20px 0 0; color: #fff; animation: rusUp .22s ease; padding-bottom: env(safe-area-inset-bottom, 0px); overflow: hidden; }
+.gh-head { position: relative; display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 6px; }
+.gh-head h3 { position: absolute; inset-inline: 0; margin: 0; text-align: center; font-size: 15px; font-weight: 800; pointer-events: none; }
+.gh-back, .gh-help { position: relative; z-index: 1; background: none; border: 0; color: #fff; cursor: pointer; display: inline-flex; padding: 0; }
+.gh-help { width: 22px; height: 22px; border: 1.8px solid #fff; border-radius: 50%; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; }
+.gh-tabs { display: flex; justify-content: space-around; padding: 10px 8px 0; }
+.gh-tabs button { background: none; border: 0; color: rgba(255,255,255,.55); font-family: inherit; font-size: 13.5px; font-weight: 700; padding: 6px 4px 8px; cursor: pointer; position: relative; }
+.gh-tabs button b { font-weight: 800; margin-inline-start: 3px; }
+.gh-tabs button.on { color: #fff; }
+.gh-tabs button.on::after { content: ""; position: absolute; bottom: 0; left: 50%; width: 10px; height: 2.5px; margin-left: -5px; border-radius: 2px; background: #fff; }
+.gh-levels { display: flex; gap: 8px; padding: 8px 12px 10px; overflow-x: auto; scrollbar-width: none; }
+.gh-levels::-webkit-scrollbar { display: none; }
+.gh-levels button { flex: 0 0 auto; height: 28px; padding: 0 13px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); color: rgba(255,255,255,.7); font-family: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.gh-levels button.on { color: #fff; border-color: #fff; background: rgba(255,255,255,.1); }
+.gh-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 4px 10px 14px; align-content: start; -webkit-overflow-scrolling: touch; }
+.gh-grid::-webkit-scrollbar { width: 0; }
+.gh-empty { grid-column: 1 / -1; text-align: center; color: rgba(255,255,255,.5); padding: 40px 0; font-size: 13px; }
+.gh-card { position: relative; display: flex; flex-direction: column; align-items: center; padding: 10px 6px 8px; border-radius: 14px; border: 0; background: #1d1d22; color: #fff; font-family: inherit; cursor: pointer; min-width: 0; }
+.gh-card.dim { background: #1a1a1e; }
+.gh-card:active { transform: scale(.97); }
+.gh-ready { position: absolute; top: 6px; left: 6px; z-index: 2; padding: 1px 7px; border-radius: 6px; background: #7c4dff; color: #fff; font-size: 10px; font-weight: 800; line-height: 15px; font-family: system-ui, sans-serif; }
+.gh-ready.big { top: 12px; left: 50%; transform: translateX(-50%); font-size: 11px; line-height: 17px; padding: 1px 9px; }
+.gh-img { width: 74px; height: 74px; margin-top: 8px; display: grid; place-items: center; font-size: 52px; line-height: 1; }
+.gh-img img, .gh-modal-img img { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; }
+.gh-x { position: absolute; top: 58px; left: 8px; z-index: 2; padding: 0 7px; border-radius: 9px; background: rgba(60,60,66,.95); color: #ddd; font-size: 10.5px; font-weight: 700; line-height: 17px; font-family: system-ui, sans-serif; }
+.gh-name { margin-top: 8px; font-size: 13px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gh-title { margin-top: 6px; min-height: 22px; display: flex; align-items: center; gap: 5px; font-size: 10px; color: rgba(255,255,255,.55); }
+.gh-title img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+.gh-title .none { color: rgba(255,255,255,.4); }
+
+/* بطاقة الهدية المنبثقة (الاسم + السعر + إرسال) */
+.gh-modal-bd { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; background: rgba(0,0,0,.55); direction: rtl; animation: rusFade .15s ease; }
+.gh-modal { position: relative; width: min(82vw, 340px); padding: 54px 20px 20px; border-radius: 18px; background: #1b1b1f; color: #fff; display: flex; flex-direction: column; align-items: center; }
+.gh-x-btn { position: absolute; top: 12px; left: 12px; width: 26px; height: 26px; border: 0; background: none; display: grid; place-items: center; cursor: pointer; opacity: .85; }
+.gh-modal-img { width: 150px; height: 150px; display: grid; place-items: center; font-size: 104px; margin: 4px 0 10px; }
+.gh-modal-name { font-size: 16px; font-weight: 800; margin-bottom: 8px; text-align: center; }
+.gh-modal-price { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 700; color: #cfcfd6; margin-bottom: 18px; direction: ltr; }
+.gh-send { width: 100%; height: 48px; border: 0; border-radius: 999px; background: #7357ff; color: #fff; font-family: inherit; font-size: 15px; font-weight: 800; cursor: pointer; }
+.gh-send:disabled { opacity: .6; }
+.gh-send:active { transform: scale(.98); }
+
+
+/* =====================================================================
+   بطاقة غيري (عند النقر على أي شخص) — نفس قالب اللقطة المرجعية:
+   الصورة تبرز فوق الحافة، الاسم + UID + الشارات، بطاقتا الثروة/الرواج،
+   معرض الهدايا، إمبراطورية، ثم زرّا «متابعة» و«إرسال هدية»
+   ===================================================================== */
+.rus-sheet.rus-peer { height: 59.4vh; min-height: 452px; }
+.rus-sheet.rus-peer:has(.rus-admin) { height: 72vh; }
+.rus-sheet.rus-peer .rus-top-l { display: flex; gap: 14px; }
+.rus-sheet.rus-peer .rus-top { left: 14px; right: 14px; justify-content: space-between; }
+.rus-sheet.rus-peer .rus-ribbons,
+.rus-sheet.rus-peer [data-act="medals"],
+.rus-sheet.rus-peer .rus-card.c3 { display: none !important; }
+.rus-sheet.rus-peer [data-act="empire"] { display: flex; height: 56px; margin-bottom: 0; background: #1a1d1c; border: 0; border-radius: 14px; }
+.rus-sheet.rus-peer [data-act="empire"] .rus-row-label { font-weight: 700; color: #e9eae9; }
+.rus-sheet.rus-peer [data-act="empire"] .rus-row-sub { font-size: 12.5px; color: #a3a4a3; }
+.rus-sheet.rus-peer [data-act="relation"] { display: flex; }
+.rus-sheet.rus-peer .rus-actions { gap: 10px; padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px)); }
+.rus-sheet.rus-peer .rus-btn { height: 47px; font-size: 14.5px; font-weight: 600; }
+.rus-sheet.rus-peer .rus-btn.follow { background: #fff; color: #1b1b1b; }
+.rus-sheet.rus-peer .rus-btn.follow .rus-btn-ic svg { stroke: #1b1b1b; }
+.rus-sheet.rus-peer .rus-btn.gift { background: #6f4cff; color: #fff; }

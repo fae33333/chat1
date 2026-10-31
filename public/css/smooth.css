@@ -1,0 +1,42 @@
+/* ===== سلاسة الدردشة والأزرار ===== */
+
+/* 1) التمويه (backdrop-filter) على كل فقاعة رسالة هو أكبر سبب للرجفة أثناء التمرير: نلغيه */
+.room-chat-bubble,
+#live-voice-room-modal .room-chat-bubble,
+.room-chat-bubble.gift-notice {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* 2) حاوية الرسائل: تمرير ناعم دون سحب الصفحة خلفها */
+#room-chat-messages-container,
+.direct-messages-stream {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 3) حركة دخول خفيفة للرسالة الجديدة (opacity + transform فقط = على كرت الرسوميات) */
+@keyframes scMsgIn {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+.sc-new { animation: scMsgIn .18s ease-out backwards; }
+
+/* 4) الأزرار: بدون وميض اللمس وبدون تأخير 300ms، وانتقال خفيف بدل transition: all */
+button, [role="button"], a, label, summary, input, select, textarea {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+button, [role="button"] {
+  transition-property: background-color, border-color, color, opacity, box-shadow, transform !important;
+}
+button:not(:disabled):active, [role="button"]:active { opacity: .86; }
+
+/* 5) صور الأفاتار داخل الدردشة: مساحة محجوزة حتى لا يقفز الخط عند اكتمال التحميل */
+.room-chat-avatar { flex-shrink: 0; background-color: rgba(255,255,255,.06); }
+
+/* 6) من يفضّل تقليل الحركة في نظامه */
+@media (prefers-reduced-motion: reduce) {
+  .sc-new { animation: none; }
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

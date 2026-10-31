@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>فحص الإشعارات</title>
+<style>body{font:15px/1.7 system-ui,sans-serif;background:#1b0f3a;color:#fff;margin:0;padding:18px}h1{font-size:19px}
+.r{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;margin:6px 0;border-radius:10px;background:rgba(255,255,255,.08)}
+.ok{color:#6ee7a0}.no{color:#ff8a8a}button{width:100%;border:0;border-radius:12px;padding:13px;margin-top:12px;background:#ffd166;color:#2a1a55;font-weight:800;font-size:15px}
+#out{margin-top:12px;padding:12px;border-radius:10px;background:rgba(0,0,0,.35);white-space:pre-wrap;direction:rtl}</style></head>
+<body><h1>🔔 فحص الإشعارات على هذا الجهاز</h1><div id="rows"></div>
+<button id="en">تفعيل الإشعارات الآن</button><div id="out"></div>
+<script src="js/push-client.js"></script>
+<script>
+const rows=document.getElementById('rows');
+function row(l,v,good){rows.insertAdjacentHTML('beforeend',`<div class="r"><span>${l}</span><b class="${good?'ok':'no'}">${v}</b></div>`)}
+const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+row('الاتصال آمن (HTTPS أو localhost)',isSecureContext?'نعم':'لا — هذا هو السبب',isSecureContext);
+row('Service Worker','serviceWorker' in navigator?'مدعوم':'غير متاح',('serviceWorker' in navigator));
+row('Push','PushManager' in window?'مدعوم':'غير متاح',('PushManager' in window));
+row('إذن الإشعارات',window.Notification?Notification.permission:'غير متاح',window.Notification&&Notification.permission==='granted');
+row('مثبّت كتطبيق',standalone?'نعم':'لا (مطلوب على iPhone)',standalone);
+row('العنوان',location.origin,isSecureContext);
+const out=document.getElementById('out');
+document.getElementById('en').onclick=async()=>{
+  out.textContent='جارٍ التفعيل…';
+  try{ await SoulPush.enable(); out.textContent='✅ تم الاشتراك. افتح لوحة الإدارة وستجد الجهاز في القائمة.'; }
+  catch(e){ out.textContent='❌ '+(e.message||e); }
+};
+</script></body></html>

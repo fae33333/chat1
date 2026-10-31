@@ -1,0 +1,105 @@
+/* =====================================================================
+   لوحة الهدايا بنظام الفيديو: ورقة سفلية (الغرفة ظاهرة فوقها)، المستلم، شريط المستوى،
+   تبويبات، شبكة 4 أعمدة، زر إرسال + كمية، وزر «كفووو» للإرسال المتتالي
+   ===================================================================== */
+#gift-store-modal.gsv-backdrop {
+  background: transparent !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  align-items: flex-end !important; justify-content: center !important; padding: 0 !important; z-index: 9000;
+}
+.gift-sheet-pro.gsv {
+  position: relative; direction: rtl; width: 100vw !important; max-width: 520px !important; box-sizing: border-box;
+  height: 54vh !important; min-height: 420px; max-height: 600px !important; overflow: hidden !important;
+  display: flex; flex-direction: column; padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+  background: #0b090f !important; border-radius: 16px 16px 0 0 !important; border: 0 !important;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, .55) !important; animation: gsvUp .28s cubic-bezier(.2, .9, .3, 1);
+}
+@keyframes gsvUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.gsv .gsv-x { display: none; }
+.gsv .gsv-hide, .gsv .gift-recipient-header, .gsv .gift-locked-recipient { display: none !important; }
+
+/* المستلم */
+.gsv .gsv-recv { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 2px 2px 8px; }
+.gsv .gsv-recv img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; }
+.gsv .gsv-recv-name { color: #fff; font-size: 13px; font-weight: 700; max-width: 70%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gsv .gsv-caret { color: rgba(255, 255, 255, .5); font-style: normal; font-size: 11px; }
+.gsv .gift-recipient-selector-box { display: none; margin: 0 0 8px; }
+.gsv.gsv-chips-open .gift-recipient-selector-box, .gsv-backdrop.gsv-chips-open .gift-recipient-selector-box { display: block; }
+
+/* شريط المستوى */
+.gsv .gsv-level { padding: 2px 0 6px; }
+.gsv .gsv-lv-track { position: relative; height: 5px; border-radius: 4px; background: rgba(255, 255, 255, .14); margin: 0 0 0 36px; }
+.gsv .gsv-lv-fill { position: absolute; inset-block: 0; right: 0; width: 2%; border-radius: 4px; background: linear-gradient(270deg, #b06bff, #6f4cff); transition: width .5s ease; }
+.gsv .gsv-lv-pill {
+  position: absolute; right: auto; left: -40px; top: -8px; height: 20px; padding: 0 9px 0 7px; border-radius: 10px;
+  background: #36c24a; color: #fff; font-size: 10.5px; font-weight: 800; display: flex; align-items: center; direction: ltr;
+}
+.gsv .gsv-lv-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; color: rgba(255, 255, 255, .6); font-size: 10.5px; }
+
+/* التبويبات */
+.gsv .gift-tabs-bar { gap: 22px; padding: 6px 2px 8px; }
+.gsv .gift-tab-btn { font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, .5); }
+.gsv .gift-tab-btn.active { color: #fff; border-bottom: 2px solid #fff; }
+
+/* الشبكة */
+.gsv .gift-shelf-grid {
+  flex: 1 1 auto; overflow-y: auto; display: grid !important; grid-template-columns: repeat(4, 1fr) !important;
+  gap: 8px 4px; padding: 6px 0 70px; align-content: start; scrollbar-width: none;
+}
+.gsv .gift-shelf-grid::-webkit-scrollbar { display: none; }
+.gsv .gift-shelf-item {
+  background: transparent !important; border: 1.5px solid transparent !important; border-radius: 12px; padding: 8px 2px 6px; text-align: center; box-shadow: none !important;
+}
+.gsv .gift-shelf-item.selected { background: rgba(255, 255, 255, .06) !important; border-color: rgba(255, 255, 255, .28) !important; }
+.gsv .gift-shelf-icon { width: 54px !important; height: 54px !important; margin: 0 auto 4px; }
+.gsv .gift-shelf-name { color: #fff; font-size: 11.5px; font-weight: 600; }
+.gsv .gift-shelf-price { display: flex; align-items: center; justify-content: center; gap: 3px; color: rgba(255, 255, 255, .55); font-size: 10.5px; }
+.gsv-gem {
+  display: inline-block; width: 9px; height: 11px; background: linear-gradient(160deg, #c79bff, #7a4cff);
+  clip-path: polygon(50% 0, 100% 35%, 50% 100%, 0 35%); vertical-align: middle;
+}
+
+/* الشريط السفلي */
+.gsv .gsv-bottom {
+  position: absolute; inset-inline: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(180deg, rgba(11, 9, 15, 0), #0b090f 35%);
+}
+.gsv .gsv-bal { display: flex; align-items: center; gap: 5px; color: #fff; font-size: 14px; font-weight: 700; direction: ltr; }
+.gsv .gsv-sendgroup { position: relative; display: flex; align-items: center; direction: ltr; background: #1b1722; border-radius: 22px; height: 44px; }
+.gsv .gsv-sendgroup[hidden] { display: none; }
+.gsv .gsv-qty { background: none; border: 0; color: #fff; font-size: 13px; font-weight: 700; padding: 0 16px; height: 100%; cursor: pointer; }
+.gsv .gsv-send { height: 44px; padding: 0 28px; border: 0; border-radius: 22px; background: linear-gradient(90deg, #7b4dff, #5b3cf0); color: #fff; font-size: 15px; font-weight: 800; cursor: pointer; }
+.gsv .gsv-send:active { transform: scale(.97); }
+.gsv .gsv-qty-pop {
+  position: absolute; bottom: 52px; left: 0; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 12px;
+  background: #1b1722; box-shadow: 0 6px 18px rgba(0, 0, 0, .5); z-index: 5;
+}
+.gsv .gsv-qty-pop[hidden] { display: none; }
+.gsv .gsv-qty-pop button { background: none; border: 0; color: #fff; font-size: 13px; padding: 6px 18px; border-radius: 8px; cursor: pointer; }
+.gsv .gsv-qty-pop button:hover { background: rgba(255, 255, 255, .1); }
+
+/* زر الكومبو «كفووو» */
+.gsv .gsv-combo {
+  position: absolute; left: 10px; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); width: 84px; height: 84px; border-radius: 50%;
+  border: 0; background: radial-gradient(circle at 35% 30%, #8a63ff, #5a36e6 70%); color: #fff; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px; cursor: pointer; z-index: 6; box-shadow: 0 6px 20px rgba(110, 70, 255, .55);
+}
+.gsv .gsv-combo[hidden] { display: none; }
+.gsv .gsv-combo b { font-size: 16px; font-weight: 900; }
+.gsv .gsv-combo small { font-size: 13px; font-weight: 700; opacity: .9; }
+.gsv .gsv-combo.pulse { animation: gsvPulse .35s ease; }
+.gsv .gsv-combo:disabled { opacity: .6; }
+@keyframes gsvPulse { 0% { transform: scale(.88); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
+
+/* القلب الطائر إلى المقعد */
+.gift-fly-seat {
+  position: fixed; z-index: 99992; width: 64px; height: 64px; pointer-events: none; display: flex; align-items: center; justify-content: center;
+  font-size: 54px; line-height: 1; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .45)); will-change: transform, opacity;
+}
+.gift-fly-seat .gift-img, .gift-fly-seat img { width: 100%; height: 100%; object-fit: contain; }
+
+/* الهدية العادية: تظهر في منتصف الشاشة ثم تطير إلى المستلم (كما في الفيديو) */
+.gift-center-fly {
+  position: fixed; z-index: 99993; width: 84px; height: 84px; pointer-events: none; display: flex; align-items: center; justify-content: center;
+  font-size: 72px; line-height: 1; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .45)); will-change: transform, opacity;
+}
+.gift-center-fly .gift-img, .gift-center-fly img { width: 100%; height: 100%; object-fit: contain; }
