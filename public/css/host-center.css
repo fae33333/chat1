@@ -1,0 +1,34 @@
+/* مركز المضيفة — نافذة سفلية بنفس تصميم SoulChill */
+.fc-backdrop{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
+.fc-sheet{width:100%;max-width:520px;height:68vh;background:#000;border-radius:18px 18px 0 0;display:flex;flex-direction:column;overflow:hidden;color:#fff;animation:fcUp .25s ease}
+@keyframes fcUp{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+.fc-head{position:relative;padding:16px 16px 0;background:linear-gradient(180deg,#3b2a63,#1b1230);text-align:center}
+.fc-head-t{font-size:16px;font-weight:800;margin-bottom:12px}
+.fc-x{position:absolute;left:14px;top:12px;background:none;border:none;color:#fff;font-size:28px;line-height:1;cursor:pointer;transform:rotate(180deg)}
+.fc-q{position:absolute;right:14px;top:14px;width:24px;height:24px;border:2px solid #fff;border-radius:50%;font-size:14px;font-weight:800;display:grid;place-items:center}
+.fc-tabs{display:flex;justify-content:center;gap:34px}
+.fc-tab{background:none;border:none;color:rgba(255,255,255,.55);font-size:17px;font-weight:700;padding:6px 4px 10px;cursor:pointer;position:relative}
+.fc-tab.on{color:#fff}.fc-tab.on::after{content:"";position:absolute;bottom:0;left:30%;right:30%;height:3px;border-radius:2px;background:#fff}
+.fc-sub{padding:12px 18px 6px;display:flex;justify-content:flex-start;font-size:15px;font-weight:700;color:rgba(255,255,255,.55)}
+.fc-sub .on{color:#fff;position:relative;padding-bottom:6px}.fc-sub .on::after{content:"";position:absolute;bottom:0;left:35%;right:35%;height:2px;background:#fff}
+.fc-scroll{flex:1;overflow-y:auto;padding:0 16px 24px}
+.fc-timer{display:flex;justify-content:center;font-size:12px;color:rgba(255,255,255,.6);margin:6px 0 12px}.fc-timer b{color:#fff;font-variant-numeric:tabular-nums}
+.fc-pri{background:linear-gradient(135deg,#3a2468,#241545);border:1px solid rgba(139,108,255,.35);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.fc-pri-lbl{font-size:12px;color:rgba(255,255,255,.55);margin-bottom:8px}
+.fc-pri-main,.fc-row{display:flex;align-items:center;gap:12px;flex-direction:row}
+.fc-row{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.fc-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;text-align:right}
+.fc-title{font-size:15px;font-weight:600;line-height:1.5}.fc-title b{font-weight:700}
+.fc-rw{display:flex;align-items:center;gap:5px;font-size:13px;color:rgba(255,255,255,.65)}
+.fc-coin{display:inline-block;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffd27a,#f59e0b 70%);box-shadow:0 0 0 2px rgba(245,158,11,.35)}
+.fc-btn{flex:none;min-width:88px;padding:10px 0;border:none;border-radius:22px;background:#7160f0;color:#fff;font-size:14px;font-weight:700;cursor:pointer}
+.fc-btn:active{transform:scale(.97)}.fc-btn.fc-done,.fc-btn:disabled{background:#26262d;color:rgba(255,255,255,.35);cursor:default}
+.fc-sec{margin:14px 0 2px;font-size:12px;color:rgba(255,255,255,.45)}
+.fc-note{margin:8px 0 4px;padding:10px;border-radius:10px;background:rgba(255,255,255,.06);font-size:12px;color:#fbbf24;text-align:center;line-height:1.6}.fc-note.ok{color:#34d399}
+.fc-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:8px}
+.fc-stat{background:#14141a;border-radius:12px;padding:16px 10px;text-align:center;display:flex;flex-direction:column;gap:6px}.fc-stat b{font-size:22px}.fc-stat span{font-size:12px;color:rgba(255,255,255,.6)}
+
+.fc-bar{height:8px;border-radius:5px;background:rgba(255,255,255,.12);overflow:hidden}
+.fc-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#8b6cff,#f472b6)}
+.fc-warn{margin-top:10px;font-size:11.5px;line-height:1.6;color:#fbbf24}
+.fc-daily{margin-top:10px;font-size:12px;color:rgba(255,255,255,.75)}.fc-daily.ok{color:#34d399}

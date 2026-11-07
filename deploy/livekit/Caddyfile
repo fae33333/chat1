@@ -1,0 +1,5 @@
+# بديل nginx — Caddy يحصل على شهادة Let's Encrypt تلقائياً (يحتاج TCP80/443 مفتوحاً للتحدي)
+# شغّل: caddy run --config Caddyfile   (أو انسخ المحتوى إلى /etc/caddy/Caddyfile)
+live.chat-arab.me:8443 {
+    reverse_proxy 127.0.0.1:7880
+}
